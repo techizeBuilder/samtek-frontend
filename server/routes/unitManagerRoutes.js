@@ -163,6 +163,7 @@ router.get('/dashboard/stats', getDashboardStats);
 
 // Product Summary Approval Routes (Single endpoint for both individual and bulk)
 router.post('/product-summary/approve', approveProductSummaries); // Individual & Bulk approve
+router.post('/approve-product-summaries', approveProductSummaries); // Alternative endpoint for frontend compatibility
 
 // Get approved product summaries with available batches
 router.get('/product-summaries/approved', getApprovedProductSummaries);

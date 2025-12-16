@@ -373,57 +373,80 @@ const SalesApproval = () => {
       // Use selected date for the updates (not current date)
       console.log('📅 Using selected date for bulk approval:', selectedDate);
       
-      // Process each product individually using the update API
-      const results = await Promise.allSettled(
-        selectedProductNames.map(async (productName) => {
-          const product = products.find(p => p.productName === productName);
-          
-          if (!product || !product.productId) {
-            throw new Error(`Product ${productName} not found or missing productId`);
-          }
+      // Prepare bulk approval payload with all products in one request
+      const productSummariesToApprove = selectedProductNames.map((productName) => {
+        const product = products.find(p => p.productName === productName);
+        
+        if (!product || !product.productId) {
+          throw new Error(`Product ${productName} not found or missing productId`);
+        }
 
-          // Extract productId - we need the actual product ID, not the daily summary ID
-          let actualProductId;
-          if (typeof product.productId === 'string') {
-            actualProductId = product.productId;
-          } else if (typeof product.productId === 'object' && product.productId._id) {
-            actualProductId = product.productId._id;  // This is the key fix
-          } else {
-            throw new Error(`Invalid productId structure for ${productName}`);
-          }
+        // Extract productId - we need the actual product ID, not the daily summary ID
+        let actualProductId;
+        if (typeof product.productId === 'string') {
+          actualProductId = product.productId;
+        } else if (typeof product.productId === 'object' && product.productId._id) {
+          actualProductId = product.productId._id;  // This is the key fix
+        } else {
+          throw new Error(`Invalid productId structure for ${productName}`);
+        }
 
-          const response = await fetch(`${config.baseURL}/api/sales/update-product-summary`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${localStorage.getItem('token')}`
-            },
-            body: JSON.stringify({
-              date: selectedDate,
-              productId: actualProductId,
-              updates: {
-                status: 'approved'
-              }
-            })
-          });
+        // Get production data from either productionData or fallback to product data
+        const productionInfo = productionData[productName] || {};
+        const batchAdjusted = productionInfo.batchAdjusted || product.batchAdjusted || 1;
+        const qtyPerBatch = productionInfo.qtyPerBatch || product.qtyPerBatch || 1;
+        const physicalStock = productionInfo.physicalStock || product.physicalStock || 0;
+        const packing = productionInfo.packing || product.packing || 0;
+        const toBeProducedDay = productionInfo.toBeProducedDay || product.toBeProducedDay || 0;
+        const produceBatches = productionInfo.produceBatches || product.produceBatches || 0;
+        
+        console.log(`📦 Bulk approve ${productName} with production data:`, {
+          batchAdjusted,
+          qtyPerBatch,
+          physicalStock,
+          packing,
+          toBeProducedDay,
+          produceBatches
+        });
 
-          if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.message || `Failed to approve ${productName}`);
-          }
+        return {
+          productId: actualProductId,
+          productName: productName,
+          batchAdjusted: batchAdjusted,
+          qtyPerBatch: qtyPerBatch,
+          physicalStock: physicalStock,
+          packing: packing,
+          toBeProducedDay: toBeProducedDay,
+          produceBatches: produceBatches
+        };
+      });
 
-          return await response.json();
+      // Make SINGLE API call for bulk approval
+      const response = await fetch(`${config.baseURL}/api/unit-manager/approve-product-summaries`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({
+          date: selectedDate,
+          productSummaries: productSummariesToApprove
         })
-      );
+      });
 
-      // Count successful and failed approvals
-      const successful = results.filter(r => r.status === 'fulfilled').length;
-      const failed = results.filter(r => r.status === 'rejected').length;
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || `HTTP ${response.status}`);
+      }
 
-      console.log(`✅ Bulk approval completed: ${successful} successful, ${failed} failed`);
+      const bulkResult = await response.json();
+      console.log('✅ Bulk approval completed:', bulkResult);
 
-      if (successful > 0) {
-        // Update local state for all approved products
+      // Update local state for all approved products
+      if (bulkResult.success) {
+        const successCount = bulkResult.summary?.successful || 0;
+        const totalBatchesCreated = bulkResult.summary?.totalBatchesCreated || 0;
+        
         setSummaryStatusData(prev => {
           const newData = { ...prev };
           selectedProductNames.forEach(productName => {
@@ -439,7 +462,7 @@ const SalesApproval = () => {
         
         toast({
           title: 'Bulk Approval Success',
-          description: `Approved ${successful} product summaries${failed > 0 ? ` (${failed} failed)` : ''}`
+          description: `Successfully approved ${successCount} products and created ${totalBatchesCreated} production batches`
         });
         
         setSelectedProducts(new Set());
@@ -449,17 +472,10 @@ const SalesApproval = () => {
         console.log('🔄 Auto-refreshing data after bulk approval...');
         await refreshProductionData(selectedDate);
         await loadSummaryStatusData();
-      }
-
-      if (failed > 0) {
-        const failedReasons = results
-          .filter(r => r.status === 'rejected')
-          .map(r => r.reason.message)
-          .join(', ');
-        
+      } else {
         toast({
-          title: 'Some Approvals Failed',
-          description: failedReasons,
+          title: 'Bulk Approval Failed',
+          description: bulkResult.message || 'An error occurred during bulk approval',
           variant: 'destructive'
         });
       }
@@ -467,7 +483,7 @@ const SalesApproval = () => {
       console.error('💥 Error bulk approving:', error);
       toast({
         title: 'Error',
-        description: 'Network error during bulk approval',
+        description: error.message || 'Network error during bulk approval',
         variant: 'destructive'
       });
     } finally {

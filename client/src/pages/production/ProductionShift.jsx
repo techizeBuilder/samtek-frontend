@@ -38,7 +38,6 @@ export default function ProductionShift() {
   useEffect(() => {
     console.log('🎯 ProductionShift component mounted, calling fetchProductionShiftData');
     fetchProductionShiftData();
-    fetchUngroupedItems();
   }, []);
 
   // Fetch production groups with shift data
@@ -61,6 +60,29 @@ export default function ProductionShift() {
         console.log('✅ API call successful, setting production groups:', data.data.groups);
         setProductionGroups(data.data.groups);
         
+        // Set ungrouped items from the same API response
+        if (data.data.ungroupedItems) {
+          console.log('✅ Setting ungrouped items:', data.data.ungroupedItems.length, 'items');
+          setUngroupedItems(data.data.ungroupedItems);
+          
+          // Initialize ungrouped batch data
+          const ungroupedBatchData = {};
+          data.data.ungroupedItems.forEach(item => {
+            const itemKey = `ungrouped_${item._id}`;
+            ungroupedBatchData[itemKey] = {
+              mouldingTime: item.mouldingTime || '',
+              unloadingTime: item.unloadingTime || '',
+              productionLoss: item.productionLoss || '',
+              qtyAchieved: Math.max(0, (item.qtyPerBatch || 0) - (item.productionLoss || 0))
+            };
+          });
+          setUngroupedBatchData(ungroupedBatchData);
+        } else {
+          console.log('ℹ️ No ungrouped items in response');
+          setUngroupedItems([]);
+          setUngroupedBatchData({});
+        }
+        
         // Initialize batch data with proper values from database
         const initialBatchData = {};
         data.data.groups.forEach(group => {
@@ -76,8 +98,18 @@ export default function ProductionShift() {
           for (let batchIndex = 0; batchIndex < batchCount; batchIndex++) {
             const batchKey = `${group._id}_batch_${batchIndex + 1}`;
             
-            // Get individual batch data from API response or use defaults
-            const batchFromAPI = group.batchData?.[batchKey] || {};
+            // Get the actual item for this batch to find its batchNo
+            const item = group.items && group.items[batchIndex] ? group.items[batchIndex] : null;
+            const itemBatchNo = item?.batchNo;
+            
+            // Get individual batch data from API response using actual batchNo
+            const batchFromAPI = (itemBatchNo && group.batchData?.[itemBatchNo]) ? group.batchData[itemBatchNo] : {};
+            
+            console.log('🔍 Mapping batch data:', {
+              batchKey,
+              itemBatchNo,
+              batchFromAPI
+            });
             
             initialBatchData[batchKey] = {
               productGroup: group.name,
@@ -117,94 +149,9 @@ export default function ProductionShift() {
     }
   };
 
-  // Fetch ungrouped items
-  const fetchUngroupedItems = async () => {
-    console.log('🚀 Starting fetchUngroupedItems...');
-    setUngroupedLoading(true);
-    try {
-      console.log('📡 Making API call to /api/production/ungrouped-items-sheet');
-      const response = await fetch('/api/production/ungrouped-items-sheet', {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
-      });
 
-      console.log('📡 Response status:', response.status);
-      const data = await response.json();
-      console.log('📊 Ungrouped items response data:', data);
-      
-      if (data.success) {
-        console.log('✅ Ungrouped items API call successful:', data.data.items.length, 'items');
-        setUngroupedItems(data.data.items);
-        
-        // Fetch production data for these items
-        await fetchUngroupedItemsProductionData();
-      } else {
-        console.error('❌ Ungrouped items API call failed:', data.message);
-        toast({
-          title: "Error",
-          description: data.message || "Failed to fetch ungrouped items",
-          variant: "destructive"
-        });
-      }
-    } catch (error) {
-      console.error('💥 Error fetching ungrouped items:', error);
-      toast({
-        title: "Error",
-        description: "Failed to fetch ungrouped items",
-        variant: "destructive"
-      });
-    } finally {
-      console.log('🏁 fetchUngroupedItems completed');
-      setUngroupedLoading(false);
-    }
-  };
 
-  // Fetch ungrouped items production data
-  const fetchUngroupedItemsProductionData = async () => {
-    try {
-      console.log('🏷️ Fetching ungrouped items production data...');
-      const response = await fetch('/api/production/ungrouped-items/production', {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
-      });
 
-      const data = await response.json();
-      console.log('📋 Ungrouped items production data:', data);
-      
-      if (data.success) {
-        setUngroupedBatchData(data.data.productionRecords || {});
-        console.log('✅ Production data loaded for', Object.keys(data.data.productionRecords || {}).length, 'items');
-      } else {
-        console.error('❌ Failed to fetch production data:', data.message);
-        // Initialize empty batch data if API fails
-        const emptyBatchData = {};
-        ungroupedItems.forEach(item => {
-          const itemKey = `ungrouped_${item._id}`;
-          emptyBatchData[itemKey] = {
-            mouldingTime: '',
-            unloadingTime: '',
-            productionLoss: ''
-          };
-        });
-        setUngroupedBatchData(emptyBatchData);
-      }
-    } catch (error) {
-      console.error('💥 Error fetching production data:', error);
-      // Initialize empty batch data on error
-      const emptyBatchData = {};
-      ungroupedItems.forEach(item => {
-        const itemKey = `ungrouped_${item._id}`;
-        emptyBatchData[itemKey] = {
-          mouldingTime: '',
-          unloadingTime: '',
-          productionLoss: ''
-        };
-      });
-      setUngroupedBatchData(emptyBatchData);
-    }
-  };
 
   // Handle batch data changes with auto-save
   const handleBatchDataChange = async (batchKey, field, value) => {
@@ -287,7 +234,7 @@ export default function ProductionShift() {
       }
       
       const requestPayload = {
-        itemId: originalItemId,  // Use original item ID without batch suffix
+        _id: originalItemId,  // Use original item ID without batch suffix
         field,
         value
       };
@@ -337,7 +284,7 @@ export default function ProductionShift() {
         });
         
         // Revert local state on error
-        await fetchUngroupedItemsProductionData();
+        await fetchProductionShiftData();
       }
     } catch (error) {
       console.error(`❌ Error saving ${field}:`, error);
@@ -349,14 +296,35 @@ export default function ProductionShift() {
       });
       
       // Revert local state on error
-      await fetchUngroupedItemsProductionData();
+      await fetchProductionShiftData();
     }
   };
 
   // Auto-save function - calls API when field changes
   const handleAutoSave = async (batchKey, field, value) => {
     try {
-      console.log(`🔄 Auto-saving ${field} for group ${batchKey}:`, value);
+      console.log(`🔄 Auto-saving ${field} for batch ${batchKey}:`, value);
+      
+      // Find the item data from the batchKey
+      // batchKey format: "${group._id}_batch_${batchIndex + 1}"
+      const batchKeyParts = batchKey.split('_batch_');
+      if (batchKeyParts.length !== 2) {
+        console.error('❌ Invalid batchKey format:', batchKey);
+        return;
+      }
+      
+      const groupId = batchKeyParts[0];
+      const batchIndex = parseInt(batchKeyParts[1]) - 1; // Convert to 0-based index
+      
+      // Find the group and item
+      const group = productionGroups.find(g => g._id === groupId);
+      if (!group || !group.items || !group.items[batchIndex]) {
+        console.error('❌ Could not find item for batchKey:', batchKey);
+        return;
+      }
+      
+      const item = group.items[batchIndex];
+      console.log('📦 Found item:', { _id: item._id, batchNo: item.batchNo });
       
       let processedValue = value;
       
@@ -373,13 +341,14 @@ export default function ProductionShift() {
       }
       
       const updateData = {
-        groupId: batchKey,
+        _id: item._id,        // Item ID
+        batchno: item.batchNo, // Item batch number like "BATNO01"
         field: field,
         value: processedValue
       };
 
-      console.log('📤 Sending auto-save API request:', updateData);
-      const response = await fetch('/api/production/production-shift', {
+      console.log('📤 Sending unified production API request:', updateData);
+      const response = await fetch('/api/production/ungrouped-items/production', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -389,10 +358,20 @@ export default function ProductionShift() {
       });
 
       const result = await response.json();
-      console.log('✅ Auto-save API Response:', result);
+      console.log('✅ Unified Production API Response:', result);
 
       if (result.success) {
         console.log(`✅ Successfully auto-saved ${field}`);
+        
+        // Update local batchData state immediately with the response
+        setBatchData(prev => ({
+          ...prev,
+          [batchKey]: {
+            ...prev[batchKey],
+            [field]: processedValue
+          }
+        }));
+        
         toast({
           title: "Auto-saved",
           description: `${field} updated successfully`,
@@ -401,7 +380,7 @@ export default function ProductionShift() {
         
         // Refetch the production shift data to get updated values
         console.log('🔄 Refetching production shift data after successful update...');
-        fetchProductionShiftData();
+        await fetchProductionShiftData();
       } else {
         console.error('❌ Auto-save failed:', result.message);
         toast({
@@ -487,10 +466,14 @@ export default function ProductionShift() {
       const batchKey = `${group._id}_batch_${batchIndex + 1}`;
       const batch = batchData[batchKey] || {};
       const batchNumber = (groupIndex * batchCount) + (batchIndex + 1); // Sequential batch numbering across all groups
+      
+      // Get the corresponding item from group.items array for this batch
+      const item = group.items && group.items[batchIndex] ? group.items[batchIndex] : null;
+      const displayBatchNo = item?.batchNo || `BATNO${batchNumber.toString().padStart(2, '0')}`;
 
       rows.push(
         <TableRow key={batchKey}>
-          <TableCell className="text-center">{batchNumber}</TableCell>
+          <TableCell className="text-center">{displayBatchNo}</TableCell>
           
           {/* Product Group - Simple text, not editable */}
           <TableCell>
@@ -610,7 +593,7 @@ export default function ProductionShift() {
               >
                 <Eye className="w-4 h-4" />
               </Button>
-              <Button
+              {/* <Button
                 variant="outline"
                 size="sm"
                 onClick={() => handleDeleteBatch(batchKey)}
@@ -618,7 +601,7 @@ export default function ProductionShift() {
                 className="text-red-600 hover:text-red-800"
               >
                 <Trash2 className="w-4 h-4" />
-              </Button>
+              </Button> */}
             </div>
           </TableCell>
         </TableRow>

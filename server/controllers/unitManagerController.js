@@ -3,6 +3,8 @@ import { Item } from '../models/Inventory.js';
 import User from '../models/User.js';
 import ProductDailySummary from '../models/ProductDailySummary.js';
 import ProductDetailsDailySummary from '../models/ProductDetailsDailySummary.js';
+import ProductionBatch from '../models/ProductionBatch.js';
+import ProductionGroup from '../models/ProductionGroup.js';
 import mongoose from 'mongoose';
 
 // Get items for Unit Manager (inventory access)
@@ -1550,7 +1552,7 @@ export const getOrderById = async (req, res) => {
 export const approveProductSummaries = async (req, res) => {
   try {
     const user = req.user;
-    const { summaryIds, summaryId } = req.body;
+    const { summaryIds, summaryId, date, productSummaries } = req.body;
 
     // Only allow Unit Manager role
     if (user.role !== 'Unit Manager') {
@@ -1560,7 +1562,98 @@ export const approveProductSummaries = async (req, res) => {
       });
     }
 
-    // Support both single ID and array of IDs
+    // Handle new bulk approval format with production data
+    if (productSummaries && Array.isArray(productSummaries)) {
+      console.log('🔄 Processing new bulk approval with production data for', productSummaries.length, 'products');
+      
+      const approvalResults = [];
+      const approvalDate = new Date(date || new Date());
+      approvalDate.setUTCHours(0, 0, 0, 0);
+      
+      for (const productSummary of productSummaries) {
+        try {
+          const { productId, productName, batchAdjusted, qtyPerBatch, physicalStock, packing, toBeProducedDay, produceBatches } = productSummary;
+          
+          console.log(`📋 Processing ${productName} with batchAdjusted: ${batchAdjusted}`);
+          
+          // Find and update the ProductDetailsDailySummary
+          const updatedSummary = await ProductDetailsDailySummary.findOneAndUpdate(
+            {
+              productId: productId,
+              companyId: user.companyId,
+              date: approvalDate
+            },
+            {
+              status: 'approved',
+              batchAdjusted: batchAdjusted,
+              qtyPerBatch: qtyPerBatch,
+              physicalStock: physicalStock,
+              packing: packing,
+              toBeProducedDay: toBeProducedDay,
+              produceBatches: produceBatches
+            },
+            { new: true }
+          );
+
+          if (updatedSummary) {
+            // Create ProductionBatch entries based on batchAdjusted
+            const batchesToCreate = Math.ceil(batchAdjusted || 1);
+            
+            await createBulkProductionBatchEntries({
+              productId: productId,
+              companyId: user.companyId,
+              date: approvalDate,
+              qtyPerBatch: qtyPerBatch || 1,
+              produceBatches: batchesToCreate,
+              approvedBy: user.username,
+              productName: productName
+            });
+            
+            approvalResults.push({
+              productId,
+              productName,
+              status: 'success',
+              batchesCreated: batchesToCreate
+            });
+            
+            console.log(`✅ Approved ${productName} and created ${batchesToCreate} batch entries`);
+          } else {
+            console.log(`⚠️ Product summary not found for ${productName}`);
+            approvalResults.push({
+              productId,
+              productName,
+              status: 'not_found'
+            });
+          }
+        } catch (error) {
+          console.error(`❌ Error processing ${productSummary.productName}:`, error);
+          approvalResults.push({
+            productId: productSummary.productId,
+            productName: productSummary.productName,
+            status: 'error',
+            error: error.message
+          });
+        }
+      }
+      
+      const successCount = approvalResults.filter(r => r.status === 'success').length;
+      const totalBatches = approvalResults
+        .filter(r => r.status === 'success')
+        .reduce((sum, r) => sum + (r.batchesCreated || 0), 0);
+      
+      return res.json({
+        success: true,
+        message: `Successfully approved ${successCount} products and created ${totalBatches} ProductionBatch entries`,
+        results: approvalResults,
+        summary: {
+          totalProcessed: productSummaries.length,
+          successful: successCount,
+          totalBatchesCreated: totalBatches
+        }
+      });
+    }
+
+    // Legacy support for old bulk approval format with summaryIds
     let idsToApprove = [];
     if (summaryId) {
       idsToApprove = [summaryId]; // Single approve
@@ -1569,7 +1662,7 @@ export const approveProductSummaries = async (req, res) => {
     } else {
       return res.status(400).json({
         success: false,
-        message: 'Either summaryId or summaryIds array is required'
+        message: 'Either productSummaries array, summaryId, or summaryIds array is required'
       });
     }
 
@@ -1594,6 +1687,33 @@ export const approveProductSummaries = async (req, res) => {
     }).populate('productId', 'name code');
 
     console.log('✅ Approval successful:', updateResult.modifiedCount, 'summaries updated');
+    
+    // 🎯 NEW FEATURE: Create ProductionBatch entries for bulk approved products
+    console.log('🏭 Creating ProductionBatch entries for bulk approved products...');
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    for (const summary of updatedSummaries) {
+      try {
+        // Create ProductionBatch entries for each approved product
+        const batchesToCreate = 1; // Default 1 batch per approved item
+        
+        await createBulkProductionBatchEntries({
+          productId: summary.productId._id,
+          companyId: user.companyId,
+          date: today,
+          qtyPerBatch: summary.qtyPerBatch || 1,
+          produceBatches: batchesToCreate,
+          approvedBy: user.username,
+          productName: summary.productId.name
+        });
+        
+        console.log(`📦 Created ${batchesToCreate} batch entry for: ${summary.productId.name}`);
+      } catch (error) {
+        console.error(`❌ Failed to create batch entries for ${summary.productId.name}:`, error.message);
+        // Continue with other products even if one fails
+      }
+    }
 
     const isPlural = idsToApprove.length > 1;
     res.json({
@@ -1613,8 +1733,139 @@ export const approveProductSummaries = async (req, res) => {
   }
 };
 
-// Import additional models needed for production groups
-import ProductionGroup from '../models/ProductionGroup.js';
+/**
+ * Helper function to create ProductionBatch entries for bulk approved products
+ * Similar to createProductionBatchEntries in salesSummaryController but simpler for bulk operations
+ */
+const createBulkProductionBatchEntries = async ({
+  productId,
+  companyId,
+  date,
+  qtyPerBatch,
+  produceBatches,
+  approvedBy,
+  productName
+}) => {
+  try {
+    console.log('🏭 Creating ProductionBatch entries for bulk approval:', {
+      productName,
+      productId,
+      companyId,
+      produceBatches,
+      qtyPerBatch,
+      approvedBy
+    });
+
+    // Validate inputs
+    if (!produceBatches || produceBatches <= 0) {
+      console.log('⚠️ No batches to produce - skipping ProductionBatch creation');
+      return;
+    }
+
+    // 🔒 DUPLICATE PREVENTION: Check if ProductionBatch entries already exist for this product and date
+    const today = new Date(date);
+    today.setUTCHours(0, 0, 0, 0); // Use UTC to avoid timezone issues
+    
+    const existingProductBatches = await ProductionBatch.find({
+      itemId: productId,
+      companyId,
+      productionDate: today,
+      status: 'pending' // Only check pending batches
+    });
+    
+    if (existingProductBatches.length > 0) {
+      console.log(`⚠️ Found ${existingProductBatches.length} existing ProductionBatch entries for ${productName} on this date`);
+      console.log('🗑️ Removing existing pending batches to prevent duplicates...');
+      
+      // Remove existing pending batches for this product to avoid duplicates
+      await ProductionBatch.deleteMany({
+        itemId: productId,
+        companyId,
+        productionDate: today,
+        status: 'pending'
+      });
+      
+      console.log(`✅ Removed ${existingProductBatches.length} existing pending batches for ${productName}`);
+    }
+
+    // Get the next batch number for this company and date (after cleanup)
+    const existingBatches = await ProductionBatch.find({
+      companyId,
+      productionDate: today
+    }).select('batchNumber').sort({ batchNumber: -1 }).limit(1);
+    
+    let nextBatchNumber = 1;
+    if (existingBatches.length > 0) {
+      nextBatchNumber = existingBatches[0].batchNumber + 1;
+    }
+    
+    console.log(`📊 Next batch number will start from: ${nextBatchNumber}`);
+
+    // Check if this product is part of a production group
+    const productionGroup = await ProductionGroup.findOne({
+      company: companyId,
+      items: productId,
+      isActive: true
+    });
+    
+    const groupId = productionGroup ? productionGroup._id : null;
+    console.log(`🔗 Product ${groupId ? 'IS' : 'IS NOT'} part of a production group: ${groupId}`);
+
+    // Create ProductionBatch entries
+    const batchEntries = [];
+    const batchQuantityPerBatch = Math.ceil(qtyPerBatch / produceBatches);
+    
+    for (let i = 0; i < produceBatches; i++) {
+      const currentBatchNumber = nextBatchNumber + i;
+      const paddedBatchNumber = String(currentBatchNumber).padStart(2, '0');
+      const batchNo = `BATNO${paddedBatchNumber}`;
+      
+      // Calculate quantity for this specific batch
+      let batchQtyPerBatch = batchQuantityPerBatch;
+      if (i === produceBatches - 1) {
+        // For the last batch, use remaining quantity to ensure total adds up correctly
+        const totalUsed = batchQuantityPerBatch * i;
+        batchQtyPerBatch = qtyPerBatch - totalUsed;
+      }
+      
+      const batchEntry = {
+        companyId,
+        itemId: productId,
+        groupId, // Optional - will be null for ungrouped items
+        batchNumber: currentBatchNumber,
+        batchNo,
+        productionDate: today,
+        qtyPerBatch: Math.max(0, batchQtyPerBatch), // Ensure non-negative
+        qtyAchieved: 0, // Will be updated during production
+        productionLoss: 0,
+        status: 'pending', // Start with pending status
+        mouldingTime: null,
+        unloadingTime: null,
+        createdBy: approvedBy,
+        notes: `Created by unit manager bulk approval`
+      };
+      
+      batchEntries.push(batchEntry);
+      console.log(`📦 Prepared batch ${i + 1}/${produceBatches}: ${batchNo} with qty ${batchQtyPerBatch}`);
+    }
+    
+    // Insert all batch entries at once
+    const createdBatches = await ProductionBatch.insertMany(batchEntries);
+    console.log(`✅ Successfully created ${createdBatches.length} ProductionBatch entries for ${productName}`);
+    
+    // Log the created batch numbers for verification
+    const createdBatchNos = createdBatches.map(batch => batch.batchNo);
+    console.log(`🏷️ Created batch numbers: ${createdBatchNos.join(', ')}`);
+    
+    return createdBatches;
+    
+  } catch (error) {
+    console.error('❌ Error creating ProductionBatch entries for bulk approval:', error);
+    // Don't throw - this is a supplementary feature, main functionality should continue
+    console.error('⚠️ ProductionBatch creation failed but product approval will continue');
+    return [];
+  }
+};
 
 // Get all production groups for unit manager
 export const getUnitManagerProductionGroups = async (req, res) => {

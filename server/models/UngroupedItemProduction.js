@@ -85,9 +85,10 @@ const ungroupedItemProductionSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Compound index to ensure one production record per item per batch per day per company
+// Compound index to ensure one production record per batch per day per company
+// This allows the same item to have multiple batches on the same day
 ungroupedItemProductionSchema.index(
-  { companyId: 1, itemId: 1, batchNo: 1, productionDate: 1 }, 
+  { companyId: 1, batchNo: 1, productionDate: 1 }, 
   { unique: true }
 );
 
