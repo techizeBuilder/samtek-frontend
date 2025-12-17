@@ -751,112 +751,104 @@ export const debugProductSummaryData = async (req, res) => {
 // Get ungrouped items only (dedicated endpoint)
 export const getUngroupedItems = async (req, res) => {
   try {
-    console.log('🏭 Getting ProductionBatches for today');
+    console.log('🏭 Getting ACTUAL ProductDetailsDailySummary for today');
     console.log('User details:', {
       username: req.user?.username,
       role: req.user?.role,
       companyId: req.user?.companyId
     });
 
-    // Get today's date range
+    // Get today's date
     const today = new Date();
     today.setUTCHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
     
     console.log('Date filter:', {
-      from: today.toISOString(),
-      to: tomorrow.toISOString()
+      date: today.toISOString().split('T')[0]
     });
     
-    // Get today's production batches without groupId (ungrouped items)
-    const ungroupedBatches = await ProductionBatch.find({
+    // Get today's ACTUAL production data from ProductDetailsDailySummary
+    const actualProductionData = await ProductDetailsDailySummary.find({
       companyId: req.user.companyId,
-      productionDate: { $gte: today, $lt: tomorrow },
-      $or: [
-        { groupId: { $exists: false } },
-        { groupId: null }
-      ]
+      date: today
     })
-    .populate('itemId', 'name code category subCategory qty unit price image description')
-    .sort({ batchNumber: 1 })
+    .populate('productId', 'name code category subCategory qty unit price image description')
     .lean();
     
-    console.log(`📦 Found ${ungroupedBatches.length} ungrouped production batches for today`);
-    console.log('Raw batch data:', ungroupedBatches.map(b => ({ 
-      batchNo: b.batchNo, 
-      itemId: b.itemId?._id || b.itemId,
-      companyId: b.companyId,
-      productionDate: b.productionDate,
-      qtyPerBatch: b.qtyPerBatch
+    console.log(`📦 Found ${actualProductionData.length} actual production records for today`);
+    console.log('Actual production data:', actualProductionData.map(p => ({ 
+      productName: p.productId?.name,
+      productionFinalBatches: p.productionFinalBatches,
+      packing: p.packing,
+      physicalStock: p.physicalStock
     })));
     
-    // Group batches by itemId and count them
-    const itemBatchMap = {};
-    ungroupedBatches.forEach(batch => {
-      if (!batch.itemId) {
-        console.warn(`⚠️ Batch ${batch.batchNo} has no itemId populated`);
-        return;
-      }
-      
-      const itemIdStr = batch.itemId._id.toString();
-      if (!itemBatchMap[itemIdStr]) {
-        itemBatchMap[itemIdStr] = {
-          item: batch.itemId,
-          batches: [],
-          totalBatches: 0
-        };
-      }
-      
-      itemBatchMap[itemIdStr].batches.push(batch);
-      itemBatchMap[itemIdStr].totalBatches++;
+    // Filter items that are not assigned to any production group
+    const assignedGroups = await ProductionGroup.find({
+      company: req.user.companyId,
+      isActive: true
+    }).select('items');
+    
+    const assignedItemIds = assignedGroups.flatMap(group => 
+      group.items.map(item => item.toString())
+    );
+    
+    // Filter ungrouped items from actual production data
+    const ungroupedActualData = actualProductionData.filter(productData => {
+      return productData.productId && 
+             !assignedItemIds.includes(productData.productId._id.toString());
     });
     
-    // Format the data for frontend - one entry per item with batch count
-    const formattedItems = Object.values(itemBatchMap).map(itemData => {
-      const { item, batches, totalBatches } = itemData;
-      const firstBatch = batches[0]; // Use first batch for common data
+    console.log(`🔄 Found ${ungroupedActualData.length} ungrouped items with actual production data`);
+    
+    // Format the data for frontend with ACTUAL batch values
+    const formattedItems = ungroupedActualData.map(productData => {
+      const { productId, productionFinalBatches, packing, physicalStock, batchAdjusted, toBeProduced } = productData;
       
-      console.log(`📊 Item: ${item.name} has ${totalBatches} batches`);
+      console.log(`📊 Item: ${productId.name} has ACTUAL productionFinalBatches: ${productionFinalBatches}`);
       
       return {
-        _id: item._id,
-        name: item.name || 'Unnamed Item',
-        code: item.code || 'No Code',
-        category: item.category || 'No Category',
-        subCategory: item.subCategory || '',
-        qty: item.qty || 0,
-        unit: item.unit || '',
-        price: item.price || 0,
-        image: item.image,
-        description: item.description,
-        // Show count of batches instead of individual batch data
-        noOfBatchesForProduction: totalBatches,
-        productionFinalBatches: totalBatches, // Alternative field name
-        qtyPerBatch: firstBatch?.qtyPerBatch || 0,
-        productionStatus: firstBatch?.productionStatus || 'not_started',
+        _id: productId._id,
+        name: productId.name || 'Unnamed Item',
+        code: productId.code || 'No Code',
+        category: productId.category || 'No Category',
+        subCategory: productId.subCategory || '',
+        qty: productId.qty || 0,
+        unit: productId.unit || '',
+        price: productId.price || 0,
+        image: productId.image,
+        description: productId.description,
+        // ACTUAL batch values from ProductDetailsDailySummary
+        noOfBatchesForProduction: productionFinalBatches || 0,
+        productionFinalBatches: productionFinalBatches || 0, // This is the ACTUAL value you want
+        packing: packing || 0,
+        physicalStock: physicalStock || 0,
+        batchAdjusted: batchAdjusted || 0,
+        toBeProduced: toBeProduced || 0,
+        qtyPerBatch: productId.qty || 0, // Item's standard quantity
+        productionStatus: productionFinalBatches > 0 ? 'completed' : 'not_started',
         isUngrouped: true,
-        batches: batches.map(b => ({
-          batchId: b._id,
-          batchNo: b.batchNo,
-          batchNumber: b.batchNumber,
-          qtyPerBatch: b.qtyPerBatch,
-          productionStatus: b.productionStatus,
-          mouldingTime: b.mouldingTime,
-          unloadingTime: b.unloadingTime,
-          productionLoss: b.productionLoss || 0
-        }))
+        // For compatibility with frontend expectations
+        batches: [{
+          batchId: `actual-${productId._id}`,
+          batchNo: 'ACTUAL',
+          qtyPerBatch: productionFinalBatches || 0,
+          productionStatus: productionFinalBatches > 0 ? 'completed' : 'not_started',
+          productionLoss: 0,
+          actualProduction: true
+        }]
       };
     });
     
-    console.log('📊 Formatted items with batch counts:', formattedItems.map(item => ({
+    console.log('📊 Formatted items with ACTUAL batch values:', formattedItems.map(item => ({
       name: item.name,
-      noOfBatchesForProduction: item.noOfBatchesForProduction
+      productionFinalBatches: item.productionFinalBatches,
+      packing: item.packing,
+      physicalStock: item.physicalStock
     })));
     
     res.json({
       success: true,
-      message: 'Production batches fetched successfully',
+      message: 'Actual production data fetched successfully',
       data: {
         items: formattedItems,
         totalItems: formattedItems.length
@@ -864,10 +856,10 @@ export const getUngroupedItems = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error fetching production batches:', error);
+    console.error('Error fetching actual production data:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch production batches',
+      message: 'Failed to fetch actual production data',
       error: error.message
     });
   }
@@ -1332,8 +1324,14 @@ export const updateUngroupedItemProduction = async (req, res) => {
         companyId: req.user.companyId
       }).lean();
 
-      const defaultQtyPerBatch = itemSummary?.qtyPerBatch || 0;
+      const defaultQtyPerBatch = itemSummary?.qtyPerBatch || 100; // Default to 100 instead of 0
       const batchNumber = parseInt(batchno.replace('BATNO', '')) || 1;
+
+      console.log(`📊 Using qtyPerBatch from ProductDailySummary: ${defaultQtyPerBatch}`);
+      
+      if (!itemSummary) {
+        console.warn(`⚠️ No ProductDailySummary found for productId: ${_id}, using default qtyPerBatch: ${defaultQtyPerBatch}`);
+      }
 
       // Create new production record
       productionRecord = new ProductionBatch({
@@ -1392,7 +1390,7 @@ export const updateUngroupedItemProduction = async (req, res) => {
 
     console.log(`🔧 Updating field: ${field} with value:`, processedValue);
 
-    // Save the record
+    // Save the record (let the model's pre-save hook handle qtyAchieved calculation)
     const savedRecord = await productionRecord.save();
 
     console.log(`✅ Successfully ${savedRecord.isNew === false ? 'UPDATED' : 'CREATED'} record for batchNo: ${batchno}`);
@@ -1556,6 +1554,13 @@ export const updateUngroupedItemProductionWithBatch = async (req, res) => {
     }
 
     productionRecord.updatedBy = userId;
+
+    // If we're updating productionLoss or qtyPerBatch, ensure qtyAchieved is recalculated
+    if (field === 'productionLoss' || field === 'qtyPerBatch') {
+      console.log(`📊 AUTO-CALCULATING qtyAchieved: ${productionRecord.qtyPerBatch} - ${productionRecord.productionLoss}`);
+      productionRecord.qtyAchieved = Math.max(0, (productionRecord.qtyPerBatch || 0) - (productionRecord.productionLoss || 0));
+      console.log(`📊 NEW qtyAchieved: ${productionRecord.qtyAchieved}`);
+    }
 
     // Save the record (pre-save middleware will calculate qtyAchieved and status)
     await productionRecord.save();

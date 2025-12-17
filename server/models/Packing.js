@@ -25,6 +25,11 @@ const PackingItemSchema = new mongoose.Schema({
     default: 0,
     min: 0
   },
+  packingLoss: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
   notes: {
     type: String,
     trim: true,
@@ -42,7 +47,8 @@ const PackingSheetSchema = new mongoose.Schema({
   productionGroup: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'ProductionGroup',
-    required: true
+    required: false,
+    default: null
   },
   productionGroupName: {
     type: String,

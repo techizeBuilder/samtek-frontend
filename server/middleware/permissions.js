@@ -147,8 +147,7 @@ export const getUserPermissions = (user) => {
           name: 'dispatches',
           dashboard: true,
           features: [
-            { key: 'dispatchNotes', view: true, add: true, edit: true, delete: true, alter: true },
-            { key: 'proofOfDelivery', view: true, add: true, edit: true, delete: true, alter: true }
+            // Only dashboard access - removed all other features
           ]
         },
         {
@@ -242,8 +241,7 @@ export const getUserPermissions = (user) => {
           name: 'dispatches',
           dashboard: true,
           features: [
-            { key: 'dispatchNotes', view: true, add: false, edit: false, delete: false, alter: false },
-            { key: 'proofOfDelivery', view: true, add: false, edit: false, delete: false, alter: false }
+            // Only dashboard access - removed all other features for Unit Head
           ]
         },
         {

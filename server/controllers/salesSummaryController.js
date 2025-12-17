@@ -74,7 +74,7 @@ export const getSalesSummary = async (req, res) => {
 
     console.log('📊 Master products found:', masterProducts.length);
 
-    // Step 2: Get daily details for the specific date
+    // Step 2: Get daily details for the specific date - with fallback to most recent
     const dailyFilter = {
       date: summaryDate
     };
@@ -82,11 +82,32 @@ export const getSalesSummary = async (req, res) => {
       dailyFilter.companyId = new mongoose.Types.ObjectId(filterCompanyId);
     }
 
-    const dailyDetails = await ProductDetailsDailySummary.find(dailyFilter)
+    let dailyDetails = await ProductDetailsDailySummary.find(dailyFilter)
       .populate('productId', 'name category subCategory')
       .populate('companyId', 'name');
 
     console.log('📅 Daily details found for date:', dailyDetails.length);
+
+    // If no data for the specific date, show master products with empty sales data
+    if (dailyDetails.length === 0) {
+      console.log('⚠️ No daily data found for specific date, showing master products with empty sales...');
+      
+      // Create empty daily details for all master products
+      const emptyDailyDetails = masterProducts.map(masterProduct => ({
+        _id: `empty-${masterProduct._id}`,
+        date: summaryDate,
+        productId: masterProduct.productId,
+        companyId: masterProduct.companyId,
+        productionFinalBatches: 0,
+        packing: 0,
+        physicalStock: 0,
+        batchAdjusted: 0,
+        toBeProduced: 0
+      }));
+      
+      dailyDetails = emptyDailyDetails;
+      console.log('📦 Created empty daily details for:', dailyDetails.length, 'master products');
+    }
 
     // Step 3: Create a map of daily details by productId
     const dailyDetailsMap = new Map();
@@ -392,7 +413,7 @@ export const updateSalesSummary = async (req, res) => {
       if (updates.status === 'approved' || (dailyDetails.status === 'approved' && updates.batchAdjusted)) {
         console.log('🏭 Unit Manager approved product or updated batches - creating ProductionBatch entries...');
         
-        // First, remove existing pending batches for this product to avoid duplicates
+        // First, remove existing non-completed batches for this product to avoid duplicates
         const today = new Date(summaryDate);
         today.setUTCHours(0, 0, 0, 0);
         
@@ -400,10 +421,10 @@ export const updateSalesSummary = async (req, res) => {
           itemId: actualProductId,
           companyId: masterProduct.companyId._id,
           productionDate: today,
-          status: 'pending' // Only delete pending batches
+          status: { $ne: 'completed' } // Remove all except completed batches
         });
         
-        console.log(`🗑️ Removed ${deletedBatches.deletedCount} existing pending ProductionBatch entries before creating new ones`);
+        console.log(`🗑️ Removed ${deletedBatches.deletedCount} existing non-completed ProductionBatch entries before creating new ones`);
         
         // Fix: Use batchAdjusted field and round up decimals (1.6 → 2 batches)
         const batchesToCreate = Math.ceil(dailyDetails.batchAdjusted || 1);
@@ -425,14 +446,16 @@ export const updateSalesSummary = async (req, res) => {
         const today = new Date(summaryDate);
         today.setHours(0, 0, 0, 0);
         
+        // Remove ALL ProductionBatch entries except completed ones
+        // This includes: pending, not_started, in_progress, paused, cancelled, migrated_from_batchdata
         const deletedBatches = await ProductionBatch.deleteMany({
           itemId: actualProductId,
           companyId: masterProduct.companyId._id,
           productionDate: today,
-          status: 'pending' // Only delete pending batches, not ones that are already in production
+          status: { $ne: 'completed' } // Remove all except completed batches
         });
         
-        console.log(`🗑️ Removed ${deletedBatches.deletedCount} ProductionBatch entries for pending product`);
+        console.log(`🗑️ Removed ${deletedBatches.deletedCount} ProductionBatch entries for pending product (all except completed)`);
       }
     }
 
@@ -534,20 +557,11 @@ const createProductionBatchEntries = async ({
 
     // Create multiple ProductionBatch entries based on produceBatches count
     const batchEntries = [];
-    const batchQuantityPerBatch = Math.ceil(qtyPerBatch / produceBatches); // Distribute quantity across batches
     
     for (let i = 0; i < produceBatches; i++) {
       const currentBatchNumber = nextBatchNumber + i;
       const paddedBatchNumber = String(currentBatchNumber).padStart(2, '0');
       const batchNo = `BATNO${paddedBatchNumber}`;
-      
-      // Calculate quantity for this specific batch
-      let batchQtyPerBatch = batchQuantityPerBatch;
-      if (i === produceBatches - 1) {
-        // For the last batch, use remaining quantity to ensure total adds up correctly
-        const totalUsed = batchQuantityPerBatch * i;
-        batchQtyPerBatch = qtyPerBatch - totalUsed;
-      }
       
       const batchEntry = {
         companyId,
@@ -556,8 +570,8 @@ const createProductionBatchEntries = async ({
         batchNumber: currentBatchNumber,
         batchNo,
         productionDate: today,
-        qtyPerBatch: Math.max(0, batchQtyPerBatch), // Ensure non-negative
-        qtyAchieved: 0, // Will be updated during production
+        qtyPerBatch: qtyPerBatch, // Use original qtyPerBatch for each batch (don't divide)
+        qtyAchieved: qtyPerBatch, // Start with full quantity achieved
         productionLoss: 0,
         status: 'pending', // Start with pending status
         mouldingTime: null,
@@ -567,7 +581,7 @@ const createProductionBatchEntries = async ({
       };
       
       batchEntries.push(batchEntry);
-      console.log(`📦 Prepared batch ${i + 1}/${produceBatches}: ${batchNo} with qty ${batchQtyPerBatch}`);
+      console.log(`📦 Prepared batch ${i + 1}/${produceBatches}: ${batchNo} with qty ${qtyPerBatch}`);
     }
     
     // Insert all batch entries at once

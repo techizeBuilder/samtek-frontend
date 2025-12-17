@@ -1762,30 +1762,24 @@ const createBulkProductionBatchEntries = async ({
       return;
     }
 
-    // 🔒 DUPLICATE PREVENTION: Check if ProductionBatch entries already exist for this product and date
+    // 🔒 ATOMIC DUPLICATE PREVENTION: Remove and recreate in single operation
     const today = new Date(date);
     today.setUTCHours(0, 0, 0, 0); // Use UTC to avoid timezone issues
     
-    const existingProductBatches = await ProductionBatch.find({
+    // First, remove ALL existing ProductionBatch entries for this product and date (except completed)
+    const deleteResult = await ProductionBatch.deleteMany({
       itemId: productId,
       companyId,
       productionDate: today,
-      status: 'pending' // Only check pending batches
+      status: { $ne: 'completed' } // Remove all except completed batches
     });
     
-    if (existingProductBatches.length > 0) {
-      console.log(`⚠️ Found ${existingProductBatches.length} existing ProductionBatch entries for ${productName} on this date`);
-      console.log('🗑️ Removing existing pending batches to prevent duplicates...');
-      
-      // Remove existing pending batches for this product to avoid duplicates
-      await ProductionBatch.deleteMany({
-        itemId: productId,
-        companyId,
-        productionDate: today,
-        status: 'pending'
-      });
-      
-      console.log(`✅ Removed ${existingProductBatches.length} existing pending batches for ${productName}`);
+    console.log(`🗑️ Removed ${deleteResult.deletedCount} existing non-completed ProductionBatch entries for ${productName} on ${today.toDateString()}`);
+
+    // Validate inputs - if no batches to produce, return early
+    if (!produceBatches || produceBatches <= 0) {
+      console.log('⚠️ No batches to produce - ProductionBatch cleanup completed');
+      return;
     }
 
     // Get the next batch number for this company and date (after cleanup)
@@ -1813,20 +1807,11 @@ const createBulkProductionBatchEntries = async ({
 
     // Create ProductionBatch entries
     const batchEntries = [];
-    const batchQuantityPerBatch = Math.ceil(qtyPerBatch / produceBatches);
     
     for (let i = 0; i < produceBatches; i++) {
       const currentBatchNumber = nextBatchNumber + i;
       const paddedBatchNumber = String(currentBatchNumber).padStart(2, '0');
       const batchNo = `BATNO${paddedBatchNumber}`;
-      
-      // Calculate quantity for this specific batch
-      let batchQtyPerBatch = batchQuantityPerBatch;
-      if (i === produceBatches - 1) {
-        // For the last batch, use remaining quantity to ensure total adds up correctly
-        const totalUsed = batchQuantityPerBatch * i;
-        batchQtyPerBatch = qtyPerBatch - totalUsed;
-      }
       
       const batchEntry = {
         companyId,
@@ -1835,8 +1820,8 @@ const createBulkProductionBatchEntries = async ({
         batchNumber: currentBatchNumber,
         batchNo,
         productionDate: today,
-        qtyPerBatch: Math.max(0, batchQtyPerBatch), // Ensure non-negative
-        qtyAchieved: 0, // Will be updated during production
+        qtyPerBatch: qtyPerBatch, // Use original qtyPerBatch for each batch (don't divide)
+        qtyAchieved: qtyPerBatch, // Start with full quantity achieved
         productionLoss: 0,
         status: 'pending', // Start with pending status
         mouldingTime: null,
@@ -1846,7 +1831,7 @@ const createBulkProductionBatchEntries = async ({
       };
       
       batchEntries.push(batchEntry);
-      console.log(`📦 Prepared batch ${i + 1}/${produceBatches}: ${batchNo} with qty ${batchQtyPerBatch}`);
+      console.log(`📦 Prepared batch ${i + 1}/${produceBatches}: ${batchNo} with qty ${qtyPerBatch}`);
     }
     
     // Insert all batch entries at once

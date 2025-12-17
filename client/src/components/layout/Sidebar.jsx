@@ -263,16 +263,6 @@ const dispatchMenuItems = [
     module: 'dashboard'
   },
   {
-    label: 'Dispatches',
-    path: '/dispatches',
-    icon: Truck,
-    module: 'dispatches',
-    submodules: [
-      { label: 'Dispatch Notes', path: '/dispatches/notes', feature: 'dispatchNotes' },
-      { label: 'Proof of Delivery', path: '/dispatches/delivery', feature: 'proofOfDelivery' }
-    ]
-  },
-  {
     label: 'Orders',
     path: '/orders',
     icon: Receipt,

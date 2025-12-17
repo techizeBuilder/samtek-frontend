@@ -130,8 +130,11 @@ productionBatchSchema.index(
 productionBatchSchema.pre('save', function(next) {
   try {
     // Auto-calculate qtyAchieved based on qtyPerBatch - productionLoss
-    if (this.isModified('qtyPerBatch') || this.isModified('productionLoss')) {
-      this.qtyAchieved = Math.max(0, (this.qtyPerBatch || 0) - (this.productionLoss || 0));
+    if (this.isModified('qtyPerBatch') || this.isModified('productionLoss') || this.isNew) {
+      const qtyPerBatch = Number(this.qtyPerBatch) || 0;
+      const productionLoss = Number(this.productionLoss) || 0;
+      this.qtyAchieved = qtyPerBatch - productionLoss; // Allow negative values
+      console.log(`📊 PRE-SAVE: qtyAchieved = ${qtyPerBatch} - ${productionLoss} = ${this.qtyAchieved}`);
     }
     
     // Auto-update status based on timing fields

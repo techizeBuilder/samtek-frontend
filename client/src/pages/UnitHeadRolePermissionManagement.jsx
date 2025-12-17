@@ -115,10 +115,7 @@ const UNIT_HEAD_MODULES = [
     name: 'dispatch',
     label: 'Dispatch',
     features: [
-      { key: 'allDispatches', label: 'All Dispatches' },
-      { key: 'createDispatch', label: 'Create Dispatch' },
-      { key: 'trackingInfo', label: 'Tracking Info' },
-      { key: 'deliveryStatus', label: 'Delivery Status' }
+      // Only dashboard access - removed all other features
     ]
   },
   {
@@ -986,28 +983,9 @@ const UnitHeadRolePermissionManagement = () => {
               
               <div className="bg-white border rounded-lg">
                 <div className="p-4">
-                  <div className="grid grid-cols-5 gap-4 mb-4 pb-2 border-b">
-                    <div className="font-medium text-sm text-gray-600">Feature</div>
-                    <div className="text-center font-medium text-sm text-gray-600 flex items-center justify-center gap-1">
-                      <Eye className="w-4 h-4" />
-                      <span>View</span>
-                    </div>
-                    <div className="text-center font-medium text-sm text-gray-600 flex items-center justify-center gap-1">
-                      <Plus className="w-4 h-4" />
-                      <span>Add</span>
-                    </div>
-                    <div className="text-center font-medium text-sm text-gray-600 flex items-center justify-center gap-1">
-                      <Edit className="w-4 h-4" />
-                      <span>Edit</span>
-                    </div>
-                    <div className="text-center font-medium text-sm text-gray-600 flex items-center justify-center gap-1">
-                      <Trash2 className="w-4 h-4" />
-                      <span>Delete</span>
-                    </div>
-                  </div>
-                  
-                  <div className="space-y-3 max-h-64 overflow-y-auto">
-                    {UNIT_HEAD_MODULES
+                  {/* Get filtered modules and features */}
+                  {(() => {
+                    const filteredModules = UNIT_HEAD_MODULES
                       .filter(module => {
                         // Show relevant modules based on selected role
                         if (formData.role === 'Unit Manager') return module.name === 'unitManager';
@@ -1017,9 +995,46 @@ const UnitHeadRolePermissionManagement = () => {
                         if (formData.role === 'Dispatch') return module.name === 'dispatch';
                         if (formData.role === 'Packing') return module.name === 'packing';
                         return false; // Don't show any modules by default for unknown roles
-                      })
-                      .flatMap(module => 
-                      module.features.map(feature => (
+                      });
+                    
+                    const allFeatures = filteredModules.flatMap(module => 
+                      module.features.map(feature => ({ module, feature }))
+                    );
+                    
+                    // Only show header if there are features to display
+                    if (allFeatures.length === 0) {
+                      return (
+                        <div className="text-center py-8 text-gray-500">
+                          <p className="text-sm">Dashboard access only</p>
+                          <p className="text-xs text-gray-400">No additional features configured for this role</p>
+                        </div>
+                      );
+                    }
+                    
+                    return (
+                      <>
+                        <div className="grid grid-cols-5 gap-4 mb-4 pb-2 border-b">
+                          <div className="font-medium text-sm text-gray-600">Feature</div>
+                          <div className="text-center font-medium text-sm text-gray-600 flex items-center justify-center gap-1">
+                            <Eye className="w-4 h-4" />
+                            <span>View</span>
+                          </div>
+                          <div className="text-center font-medium text-sm text-gray-600 flex items-center justify-center gap-1">
+                            <Plus className="w-4 h-4" />
+                            <span>Add</span>
+                          </div>
+                          <div className="text-center font-medium text-sm text-gray-600 flex items-center justify-center gap-1">
+                            <Edit className="w-4 h-4" />
+                            <span>Edit</span>
+                          </div>
+                          <div className="text-center font-medium text-sm text-gray-600 flex items-center justify-center gap-1">
+                            <Trash2 className="w-4 h-4" />
+                            <span>Delete</span>
+                          </div>
+                        </div>
+                        
+                        <div className="space-y-3 max-h-64 overflow-y-auto">
+                          {allFeatures.map(({ module, feature }) => (
                         <div key={`${module.name}-${feature.key}`} className="grid grid-cols-5 gap-4 items-center py-2 hover:bg-gray-50 rounded">
                           <div className="font-medium text-sm">{feature.label}</div>
                           <div className="flex justify-center">
@@ -1057,11 +1072,13 @@ const UnitHeadRolePermissionManagement = () => {
                               }
                               className="data-[state=checked]:bg-blue-600"
                             />
-                          </div>
+                              </div>
+                            </div>
+                          ))}
                         </div>
-                      ))
-                    )}
-                  </div>
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             </div>

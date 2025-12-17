@@ -140,9 +140,7 @@ const MODULES = [
     name: 'dispatches',
     label: 'Dispatches',
     features: [
-      { key: 'allDispatches', label: 'All Dispatches' },
-      { key: 'createDispatch', label: 'Create Dispatch' },
-      { key: 'trackingInfo', label: 'Tracking Info' }
+      // Only dashboard access - removed all other features
     ]
   },
   {
@@ -954,30 +952,41 @@ export default function RolePermissionManagement() {
                         {moduleEnabled && (
                           <CardContent className="pt-0">
                             <div className="space-y-3">
-                              <div className="hidden lg:grid grid-cols-5 gap-4 text-sm font-medium text-center border-b pb-2">
-                                <div>Feature</div>
-                                <div className="flex flex-col items-center">
-                                  <Eye className="h-4 w-4 mb-1" />
-                                  <span>View</span>
-                                </div>
-                                <div className="flex flex-col items-center">
-                                  <Plus className="h-4 w-4 mb-1" />
-                                  <span>Add</span>
-                                </div>
-                                <div className="flex flex-col items-center">
-                                  <Edit className="h-4 w-4 mb-1" />
-                                  <span>Edit</span>
-                                </div>
-                                <div className="flex flex-col items-center">
-                                  <Trash2 className="h-4 w-4 mb-1" />
-                                  <span>Delete</span>
-                                </div>
-                              </div>
+                              {getModuleFeatures(module.name).length > 0 && (
+                                <>
+                                  <div className="hidden lg:grid grid-cols-5 gap-4 text-sm font-medium text-center border-b pb-2">
+                                    <div>Feature</div>
+                                    <div className="flex flex-col items-center">
+                                      <Eye className="h-4 w-4 mb-1" />
+                                      <span>View</span>
+                                    </div>
+                                    <div className="flex flex-col items-center">
+                                      <Plus className="h-4 w-4 mb-1" />
+                                      <span>Add</span>
+                                    </div>
+                                    <div className="flex flex-col items-center">
+                                      <Edit className="h-4 w-4 mb-1" />
+                                      <span>Edit</span>
+                                    </div>
+                                    <div className="flex flex-col items-center">
+                                      <Trash2 className="h-4 w-4 mb-1" />
+                                      <span>Delete</span>
+                                    </div>
+                                  </div>
+                                  
+                                  {/* Mobile Header */}
+                                  <div className="lg:hidden text-sm font-medium text-center border-b pb-2">
+                                    Module Permissions
+                                  </div>
+                                </>
+                              )}
                               
-                              {/* Mobile Header */}
-                              <div className="lg:hidden text-sm font-medium text-center border-b pb-2">
-                                Module Permissions
-                              </div>
+                              {getModuleFeatures(module.name).length === 0 && (
+                                <div className="text-center py-4 text-gray-500">
+                                  <p className="text-sm">Dashboard access only</p>
+                                  <p className="text-xs text-gray-400">No additional features configured</p>
+                                </div>
+                              )}
                               
                               {getModuleFeatures(module.name).map((feature) => (
                                 <div key={feature.key}>

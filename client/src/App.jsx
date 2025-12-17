@@ -54,7 +54,6 @@ import ProductionModule from "@/components/production/ProductionModule";
 import ProductionShift from "@/pages/production/ProductionShift";
 import PackingDashboard from "@/pages/PackingDashboard";
 import PackingSheet from "@/pages/PackingSheet";
-import DispatchDashboard from "@/pages/DispatchDashboard";
 import AccountsDashboard from "@/pages/AccountsDashboard";
 import SalesApproval from "@/pages/SalesApproval";
 import SalesOrderList from "@/pages/SalesOrderList";
@@ -107,11 +106,6 @@ function Router() {
         <ProtectedRoute requiredRole="Production">
           <ProductionHistoryPage />
         </ProtectedRoute>
-      </Route>
-      <Route path="/dispatches">
-        <RoleBasedProtectedRoute>
-          <Dispatches />
-        </RoleBasedProtectedRoute>
       </Route>
       {/* Sales Submodules - specific routes first */}
       <Route path="/sales/orders">
@@ -321,7 +315,7 @@ function Router() {
       </Route>
       <Route path="/dispatch-dashboard">
         <ProtectedRoute requiredRole="Dispatch">
-          <DispatchDashboard />
+          <Dispatches />
         </ProtectedRoute>
       </Route>
       <Route path="/accounts-dashboard">

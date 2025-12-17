@@ -1,203 +1,287 @@
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { useToast } from '@/hooks/use-toast';
-import { api } from '@/services/api';
-import { Plus, Search, Edit, Trash2, Eye, Truck } from 'lucide-react';
+import { Progress } from '@/components/ui/progress';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { format } from 'date-fns';
+import {
+  Truck,
+  Package,
+  Clock,
+  CheckCircle,
+  Calendar as CalendarIcon,
+  BarChart3
+} from 'lucide-react';
+
+// Dummy data for Dispatch Module Dashboard (Prototype)
+const dispatchStats = {
+  todayDispatches: 85,
+  todayTarget: 100,
+  activeVehicles: 24,
+  totalVehicles: 30,
+  onTimeDeliveries: 94.2,
+  avgDeliveryTime: 2.8,
+  pendingPickups: 12,
+  completedDeliveries: 73
+};
+
+const dispatchData = [
+  { group: "Milk 400", fromPacking: 448, yesterdayClosing: "", yesterdayReturn: "", totalForDispatch: "", totalIndent: "", excessQty: "", dispatchedQty: "", pendingDispatch: "", leftOver: "", closingStock: "", manualStock: "" },
+  { group: "Milk 400", fromPacking: 100, yesterdayClosing: "", yesterdayReturn: "", totalForDispatch: "", totalIndent: "", excessQty: "", dispatchedQty: "", pendingDispatch: "", leftOver: "", closingStock: "", manualStock: "" },
+  { group: "Milk 400", fromPacking: 100, yesterdayClosing: "", yesterdayReturn: "", totalForDispatch: "", totalIndent: "", excessQty: "", dispatchedQty: "", pendingDispatch: "", leftOver: "", closingStock: "", manualStock: "" },
+  { group: "Milk 400", fromPacking: 100, yesterdayClosing: "", yesterdayReturn: "", totalForDispatch: "", totalIndent: "", excessQty: "", dispatchedQty: "", pendingDispatch: "", leftOver: "", closingStock: "", manualStock: "" },
+  { group: "Sandwich", fromPacking: 100, yesterdayClosing: "", yesterdayReturn: "", totalForDispatch: "", totalIndent: "", excessQty: "", dispatchedQty: "", pendingDispatch: "", leftOver: "", closingStock: "", manualStock: "" },
+  { group: "Sandwich", fromPacking: 48, yesterdayClosing: "", yesterdayReturn: "", totalForDispatch: "", totalIndent: "", excessQty: "", dispatchedQty: "", pendingDispatch: "", leftOver: "", closingStock: "", manualStock: "" },
+  { group: "Burger 200", fromPacking: 180, yesterdayClosing: "", yesterdayReturn: "", totalForDispatch: "", totalIndent: "", excessQty: "", dispatchedQty: "", pendingDispatch: "", leftOver: "", closingStock: "", manualStock: "" },
+  { group: "Pizza 7", fromPacking: 120, yesterdayClosing: "", yesterdayReturn: "", totalForDispatch: "", totalIndent: "", excessQty: "", dispatchedQty: "", pendingDispatch: "", leftOver: "", closingStock: "", manualStock: "" },
+  { group: "buns", fromPacking: 150, yesterdayClosing: "", yesterdayReturn: "", totalForDispatch: "", totalIndent: "", excessQty: "", dispatchedQty: "", pendingDispatch: "", leftOver: "", closingStock: "", manualStock: "" },
+  { group: "cakes", fromPacking: 120, yesterdayClosing: "", yesterdayReturn: "", totalForDispatch: "", totalIndent: "", excessQty: "", dispatchedQty: "", pendingDispatch: "", leftOver: "", closingStock: "", manualStock: "" }
+];
 
 export default function Dispatches() {
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
-  const [page, setPage] = useState(1);
-  const [search, setSearch] = useState('');
-  const [status, setStatus] = useState('');
-
-  const { data: dispatchesData, isLoading } = useQuery({
-    queryKey: [`/api/dispatches?page=${page}&limit=10&search=${search}&status=${status}`],
-    enabled: true
-  });
-
-  const deleteDispatchMutation = useMutation({
-    mutationFn: (dispatchId) => api.delete(`/dispatches/${dispatchId}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/dispatches'] });
-      toast({
-        title: "Success",
-        description: "Dispatch deleted successfully",
-      });
-    },
-    onError: (error) => {
-      toast({
-        title: "Error",
-        description: error.response?.data?.message || "Failed to delete dispatch",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'Pending':
-        return 'status-pending';
-      case 'In Transit':
-        return 'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400';
-      case 'Delivered':
-        return 'status-delivered';
-      case 'Cancelled':
-        return 'status-cancelled';
-      default:
-        return 'bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400';
-    }
-  };
-
-  const handleDeleteDispatch = (dispatchId) => {
-    if (window.confirm('Are you sure you want to delete this dispatch?')) {
-      deleteDispatchMutation.mutate(dispatchId);
-    }
-  };
-
-  const dispatches = dispatchesData?.dispatches || [];
-  const pagination = dispatchesData?.pagination || {};
+  const [selectedDate, setSelectedDate] = useState(new Date());
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-3">
-          <Truck className="w-8 h-8 text-primary" />
-          <h1 className="text-2xl font-semibold">Dispatches</h1>
+    <div className="p-6 space-y-6">
+      {/* Header with Date Selection */}
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Dispatch Dashboard</h1>
+          <p className="text-gray-600">This is a prototype for Dispatch Module dashboard</p>
         </div>
-        <Button>
-          <Plus className="w-4 h-4 mr-2" />
-          New Dispatch
-        </Button>
+        
+        {/* Date Selection */}
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline" className="gap-2">
+              <CalendarIcon className="h-4 w-4" />
+              {format(selectedDate, 'dd-MM-yyyy')}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="end">
+            <Calendar
+              mode="single"
+              selected={selectedDate}
+              onSelect={(date) => date && setSelectedDate(date)}
+            />
+          </PopoverContent>
+        </Popover>
       </div>
 
-      <Card>
-        <CardHeader>
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-              <Input
-                placeholder="Search dispatches..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            <select
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
-              className="px-3 py-2 border border-border rounded-md bg-background text-foreground"
-            >
-              <option value="">All Status</option>
-              <option value="Pending">Pending</option>
-              <option value="In Transit">In Transit</option>
-              <option value="Delivered">Delivered</option>
-              <option value="Cancelled">Cancelled</option>
-            </select>
-          </div>
-        </CardHeader>
-
-        <CardContent>
-          {isLoading ? (
-            <div className="space-y-4">
-              {[...Array(5)].map((_, i) => (
-                <div key={i} className="animate-pulse flex items-center space-x-4">
-                  <div className="h-4 bg-muted rounded w-32"></div>
-                  <div className="h-4 bg-muted rounded w-48"></div>
-                  <div className="h-6 bg-muted rounded w-20"></div>
-                  <div className="h-4 bg-muted rounded w-24"></div>
-                </div>
-              ))}
-            </div>
-          ) : dispatches.length === 0 ? (
-            <div className="text-center py-12">
-              <Truck className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-              <p className="text-muted-foreground">No dispatches found</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-border">
-                    <th className="text-left py-3 px-4 font-medium">Dispatch Number</th>
-                    <th className="text-left py-3 px-4 font-medium">Customer</th>
-                    <th className="text-left py-3 px-4 font-medium">Status</th>
-                    <th className="text-left py-3 px-4 font-medium">Transporter</th>
-                    <th className="text-left py-3 px-4 font-medium">Expected Delivery</th>
-                    <th className="text-left py-3 px-4 font-medium">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {dispatches.map((dispatch) => (
-                    <tr key={dispatch._id} className="border-b border-border hover:bg-muted/50">
-                      <td className="py-3 px-4 font-medium">{dispatch.dispatchNumber}</td>
-                      <td className="py-3 px-4">{dispatch.customer?.customerName}</td>
-                      <td className="py-3 px-4">
-                        <Badge className={getStatusColor(dispatch.status)}>
-                          {dispatch.status}
-                        </Badge>
-                      </td>
-                      <td className="py-3 px-4">{dispatch.transporterName || '-'}</td>
-                      <td className="py-3 px-4">
-                        {new Date(dispatch.expectedDeliveryDate).toLocaleDateString()}
-                      </td>
-                      <td className="py-3 px-4">
-                        <div className="flex items-center space-x-2">
-                          <Button variant="ghost" size="sm">
-                            <Eye className="w-4 h-4" />
-                          </Button>
-                          <Button variant="ghost" size="sm">
-                            <Edit className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDeleteDispatch(dispatch._id)}
-                            disabled={deleteDispatchMutation.isPending}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {/* Pagination */}
-          {pagination.pages > 1 && (
-            <div className="flex items-center justify-between mt-6">
-              <p className="text-sm text-muted-foreground">
-                Showing {((pagination.page - 1) * pagination.limit) + 1} to{' '}
-                {Math.min(pagination.page * pagination.limit, pagination.total)} of{' '}
-                {pagination.total} dispatches
-              </p>
-              <div className="flex items-center space-x-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage(page - 1)}
-                  disabled={page <= 1}
-                >
-                  Previous
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage(page + 1)}
-                  disabled={page >= pagination.pages}
-                >
-                  Next
-                </Button>
+      {/* Explanation Row */}
+      <Card className="bg-blue-50 border-blue-200">
+        <CardContent className="p-4">
+          <div className="text-sm text-blue-800 space-y-2">
+            <p><strong>Data Flow Explanation:</strong></p>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
+              <div className="bg-white p-3 rounded border">
+                <strong>From Packing:</strong><br/>
+                Data from Unit Manager portal / Indent Summary
+              </div>
+              <div className="bg-white p-3 rounded border">
+                <strong>Yesterday Data:</strong><br/>
+                Derives from Unit Manager Inventory Module
+              </div>
+              <div className="bg-white p-3 rounded border">
+                <strong>Total Indent:</strong><br/>
+                From Unit Manager Inventory Module
+              </div>
+              <div className="bg-white p-3 rounded border">
+                <strong>Manual Entry:</strong><br/>
+                Updated by unit manager on dispatch completion
               </div>
             </div>
-          )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Summary Stats */}
+      <div className="grid gap-4 md:grid-cols-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Today's Dispatches</CardTitle>
+            <Truck className="h-4 w-4 text-blue-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{dispatchStats.todayDispatches}</div>
+            <div className="text-xs text-muted-foreground">
+              Target: {dispatchStats.todayTarget}
+            </div>
+            <Progress value={(dispatchStats.todayDispatches / dispatchStats.todayTarget) * 100} className="mt-2" />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Active Vehicles</CardTitle>
+            <Package className="h-4 w-4 text-green-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{dispatchStats.activeVehicles}</div>
+            <div className="text-xs text-muted-foreground">
+              of {dispatchStats.totalVehicles} total
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">On-Time Delivery</CardTitle>
+            <CheckCircle className="h-4 w-4 text-emerald-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{dispatchStats.onTimeDeliveries}%</div>
+            <div className="text-xs text-muted-foreground">
+              Avg: {dispatchStats.avgDeliveryTime}hrs
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Pending Pickups</CardTitle>
+            <Clock className="h-4 w-4 text-orange-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{dispatchStats.pendingPickups}</div>
+            <div className="text-xs text-muted-foreground">
+              Completed: {dispatchStats.completedDeliveries}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Dispatch Data Table */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <BarChart3 className="h-5 w-5" />
+            Dispatch Console
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm border-collapse border border-gray-300">
+              <thead className="bg-gray-50">
+                <tr>
+              <th className="p-3 text-left font-semibold border border-gray-300 bg-blue-100">
+  Product Group
+</th>
+
+<th className="p-3 text-center font-semibold border border-gray-300 bg-green-100">
+  Packed Quantity
+  <br />
+  <span className="text-xs font-normal">Ready for Dispatch</span>
+</th>
+
+<th className="p-3 text-center font-semibold border border-gray-300 bg-orange-100">
+  Previous Closing Stock
+  <br />
+  <span className="text-xs font-normal">Yesterday Balance</span>
+</th>
+
+<th className="p-3 text-center font-semibold border border-gray-300 bg-red-100">
+  Return Quantity
+  <br />
+  <span className="text-xs font-normal">Yesterday Returns</span>
+</th>
+
+<th className="p-3 text-center font-semibold border border-gray-300 bg-purple-100">
+  Total Available Stock
+  <br />
+  <span className="text-xs font-normal">Packing + Closing + Returns</span>
+</th>
+
+<th className="p-3 text-center font-semibold border border-gray-300 bg-yellow-100">
+  Total Indent Quantity
+  <br />
+  <span className="text-xs font-normal">Orders for the Day</span>
+</th>
+
+<th className="p-3 text-center font-semibold border border-gray-300 bg-indigo-100">
+  Excess / Shortage
+  <br />
+  <span className="text-xs font-normal">Available − Indent</span>
+</th>
+
+<th className="p-3 text-center font-semibold border border-gray-300 bg-green-200">
+  Dispatched Quantity
+  <br />
+  <span className="text-xs font-normal">Sent Today</span>
+</th>
+
+<th className="p-3 text-center font-semibold border border-gray-300 bg-blue-200">
+  Pending Dispatch
+  <br />
+  <span className="text-xs font-normal">Yet to Dispatch</span>
+</th>
+
+<th className="p-3 text-center font-semibold border border-gray-300 bg-orange-200">
+  Leftover Stock
+  <br />
+  <span className="text-xs font-normal">After Dispatch</span>
+</th>
+
+<th className="p-3 text-center font-semibold border border-gray-300 bg-gray-200">
+  Closing Stock
+  <br />
+  <span className="text-xs font-normal">End of Day Balance</span>
+</th>
+
+<th className="p-3 text-center font-semibold border border-gray-300 bg-pink-100">
+  Physical Stock Entry
+  <br />
+  <span className="text-xs font-normal">Manual Verification</span>
+</th>
+ 
+               </tr>
+              </thead>
+              <tbody>
+                <tr className="bg-gray-100 font-bold">
+                  <td className="p-3 border border-gray-300">Dispatch Console Totals</td>
+                  <td className="p-3 border border-gray-300 text-center">1466</td>
+                  <td className="p-3 border border-gray-300 text-center">0</td>
+                  <td className="p-3 border border-gray-300 text-center"></td>
+                  <td className="p-3 border border-gray-300 text-center"></td>
+                  <td className="p-3 border border-gray-300 text-center"></td>
+                  <td className="p-3 border border-gray-300 text-center"></td>
+                  <td className="p-3 border border-gray-300 text-center"></td>
+                  <td className="p-3 border border-gray-300 text-center"></td>
+                  <td className="p-3 border border-gray-300 text-center"></td>
+                  <td className="p-3 border border-gray-300 text-center"></td>
+                  <td className="p-3 border border-gray-300 text-center"></td>
+                </tr>
+                {dispatchData.map((item, index) => (
+                  <tr key={index} className="hover:bg-gray-50">
+                    <td className="p-3 border border-gray-300 font-medium">{item.group}</td>
+                    <td className="p-3 border border-gray-300 text-center">{item.fromPacking}</td>
+                    <td className="p-3 border border-gray-300 text-center">{item.yesterdayClosing}</td>
+                    <td className="p-3 border border-gray-300 text-center">{item.yesterdayReturn}</td>
+                    <td className="p-3 border border-gray-300 text-center">{item.totalForDispatch}</td>
+                    <td className="p-3 border border-gray-300 text-center">{item.totalIndent}</td>
+                    <td className="p-3 border border-gray-300 text-center">{item.excessQty}</td>
+                    <td className="p-3 border border-gray-300 text-center">{item.dispatchedQty}</td>
+                    <td className="p-3 border border-gray-300 text-center">{item.pendingDispatch || ""}</td>
+                    <td className="p-3 border border-gray-300 text-center">{item.leftOver}</td>
+                    <td className="p-3 border border-gray-300 text-center">{item.closingStock || ""}</td>
+                    <td className="p-3 border border-gray-300 text-center">{item.manualStock}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Footer Note */}
+      <Card className="bg-gray-50">
+        <CardContent className="p-4">
+          <p className="text-sm text-gray-600 text-center">
+            <strong>Note:</strong> This is a prototype Dispatch Module dashboard. 
+            All data shown is dummy data for demonstration purposes only.
+          </p>
         </CardContent>
       </Card>
     </div>

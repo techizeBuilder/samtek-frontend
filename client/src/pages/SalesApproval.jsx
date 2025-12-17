@@ -1801,27 +1801,27 @@ const SalesApproval = () => {
                               {groupName} Total
                             </td>
                             <td className="p-2 border-r text-center text-sm font-bold text-green-700">
-                              {parseFloat(groupProducts.reduce((sum, product) => sum + getProductionWithFinalBatches(product), 0).toFixed(2))}
+                              {parseFloat(groupProducts.reduce((sum, product) => sum + getProductionWithFinalBatches(product.productName), 0).toFixed(2))}
                             </td>
                             <td className="p-2 border-r text-center text-sm font-bold text-purple-700">
-                              {parseFloat(groupProducts.reduce((sum, product) => sum + getProduceBatches(product), 0).toFixed(2))}
+                              {parseFloat(groupProducts.reduce((sum, product) => sum + getProduceBatches(product.productName), 0).toFixed(2))}
                             </td>
                             <td className="p-2 border-r text-center text-sm font-bold text-indigo-700">
-                              {groupProducts.reduce((sum, product) => sum + (getProductionData(product).physicalStock || 0), 0)}
+                              {groupProducts.reduce((sum, product) => sum + (getProductionData(product.productName).physicalStock || 0), 0)}
                             </td>
                             <td className="p-2 border-r text-center text-sm font-bold text-cyan-700">
-                              {groupProducts.reduce((sum, product) => sum + getBatchAdjusted(product), 0)}
+                              {groupProducts.reduce((sum, product) => sum + getBatchAdjusted(product.productName), 0)}
                             </td>
                             <td className="p-2 border-r text-center text-sm font-bold text-amber-700">
                               {groupProducts.reduce((sum, product) => {
-                                const productData = orders.find(p => p.productName === product);
+                                const productData = orders.find(p => p.productName === product.productName);
                                 const totalQuantity = productData ? productData.totalQuantity : 0;
-                                return sum + Math.max(0, totalQuantity - (getProductionData(product).physicalStock || 0));
+                                return sum + Math.max(0, totalQuantity - (getProductionData(product.productName).physicalStock || 0));
                               }, 0)}
                             </td>
                             <td className="p-2 text-center text-sm font-bold text-blue-700">
                               {groupProducts.reduce((sum, product) => {
-                                const productData = orders.find(p => p.productName === product);
+                                const productData = orders.find(p => p.productName === product.productName);
                                 return sum + (productData ? productData.totalQuantity : 0);
                               }, 0)}
                             </td>
