@@ -248,6 +248,11 @@ app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
       app.use('/api/packing', packingRoutes);
       console.log('Packing routes registered at /api/packing');
 
+      // Dispatch routes
+      const dispatchRoutes = (await import('./routes/dispatchRoutes.js')).default;
+      app.use('/api/dispatches', dispatchRoutes);
+      console.log('Dispatch routes registered at /api/dispatches');
+
       // Add direct routes for specific endpoints
       const { authenticateToken } = await import('./middleware/auth.js');
       const { getAllOrders } = await import('./controllers/unitManagerController.js');

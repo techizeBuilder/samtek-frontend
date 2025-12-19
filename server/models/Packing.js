@@ -24,16 +24,6 @@ const PackingItemSchema = new mongoose.Schema({
     type: Number,
     default: 0,
     min: 0
-  },
-  packingLoss: {
-    type: Number,
-    default: 0,
-    min: 0
-  },
-  notes: {
-    type: String,
-    trim: true,
-    default: ''
   }
 }, {
   _id: false // Don't create separate _id for subdocuments
@@ -67,6 +57,10 @@ const PackingSheetSchema = new mongoose.Schema({
     default: 0,
     min: 0
   },
+  notes: {
+    type: String,
+    default: ''
+  },
   totalPackedQty: {
     type: Number,
     default: 0,
@@ -75,8 +69,18 @@ const PackingSheetSchema = new mongoose.Schema({
   items: [PackingItemSchema],
   status: {
     type: String,
-    enum: ['pending', 'in_progress', 'completed', 'paused'],
+    enum: ['pending', 'in_progress', 'completed', 'approved', 'paused'],
     default: 'pending'
+  },
+  // Approval tracking
+  approvedAt: {
+    type: Date,
+    default: null
+  },
+  approvedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null
   },
   // Company and user tracking
   company: {

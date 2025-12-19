@@ -11,13 +11,19 @@ import {
   updatePackingItem,
   getPackingSheetById,
   getPackingStats,
-  cleanupDuplicatePackingSheets
+  cleanupDuplicatePackingSheets,
+  getDashboardStats,
+  approvePackingSheet
 } from '../controllers/packingController.js';
 
 const router = express.Router();
 
 // Apply authentication to all routes
 router.use(authenticateToken);
+
+// Dashboard Routes
+// GET /api/packing/dashboard - Get dashboard statistics
+router.get('/dashboard', getDashboardStats);
 
 // Production Groups for Packing Routes
 // GET /api/packing/production-groups - Get production groups with item details for packing
@@ -34,8 +40,8 @@ router.post('/sheets', createPackingSheet);
 // GET /api/packing/packing-sheets - Alternative route for getting packing sheets
 router.get('/packing-sheets', getPackingSheets);
 
-// POST /api/packing/packing-sheets - Alternative route for creating packing sheet
-router.post('/packing-sheets', createPackingSheet);
+// NOTE: Removed duplicate POST route for /packing-sheets to prevent duplicate entries
+// Use only /api/packing/sheets for creating packing sheets
 
 // GET /api/packing/sheets/:packingSheetId - Get specific packing sheet by ID
 router.get('/sheets/:packingSheetId', getPackingSheetById);
@@ -57,9 +63,15 @@ router.put('/sheets/:packingSheetId/quantities', updatePackingQuantities);
 // PUT /api/packing/sheets/:packingSheetId/item - Update individual item fields (packingLoss, notes)
 router.put('/sheets/:packingSheetId/item', updatePackingItem);
 
+// POST /api/packing/sheets/:packingSheetId/approve - Approve a completed packing sheet
+router.post('/sheets/:packingSheetId/approve', approvePackingSheet);
+
 // Packing Statistics Routes
 // GET /api/packing/stats - Get packing statistics and performance metrics
 router.get('/stats', getPackingStats);
+
+// GET /api/packing/dashboard - Get dashboard statistics  
+router.get('/dashboard', getDashboardStats);
 
 // Utility Routes
 // POST /api/packing/cleanup-duplicates - Clean up duplicate packing sheets

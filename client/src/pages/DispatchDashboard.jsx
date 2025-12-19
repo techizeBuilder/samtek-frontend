@@ -1,425 +1,471 @@
-import React, { useState } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Progress } from '@/components/ui/progress';
+import React, { useState, useEffect } from 'react';
+import { config } from '@/config/environment';
+import { useToast } from '@/hooks/use-toast';
 import {
+  RefreshCw,
   Truck,
   Package,
   Clock,
-  MapPin,
   TrendingUp,
   AlertTriangle,
-  CheckCircle,
-  Navigation,
-  Fuel,
   Users,
-  Calendar,
   BarChart3
 } from 'lucide-react';
 
-// Dummy data for Dispatch Dashboard
-const dispatchStats = {
-  todayDispatches: 85,
-  todayTarget: 100,
-  activeVehicles: 24,
-  totalVehicles: 30,
-  onTimeDeliveries: 94.2,
-  avgDeliveryTime: 2.8, // hours
-  pendingPickups: 12,
-  completedDeliveries: 73
-};
+// Simple Card component to replace the problematic UI imports
+const Card = ({ children, className = "" }) => (
+  <div className={`rounded-lg border bg-white shadow-sm ${className}`}>{children}</div>
+);
 
-const activeDeliveries = [
-  { 
-    id: 'DEL-001', 
-    driver: 'John Smith', 
-    vehicle: 'TRK-101', 
-    destination: 'Mumbai Central', 
-    status: 'In Transit', 
-    eta: '2.5 hrs', 
-    progress: 65,
-    packages: 15,
-    priority: 'High'
-  },
-  { 
-    id: 'DEL-002', 
-    driver: 'Mike Johnson', 
-    vehicle: 'VAN-205', 
-    destination: 'Pune Industrial Area', 
-    status: 'Loading', 
-    eta: '4.0 hrs', 
-    progress: 15,
-    packages: 8,
-    priority: 'Medium'
-  },
-  { 
-    id: 'DEL-003', 
-    driver: 'Sarah Wilson', 
-    vehicle: 'TRK-103', 
-    destination: 'Nashik Distribution', 
-    status: 'In Transit', 
-    eta: '1.2 hrs', 
-    progress: 85,
-    packages: 22,
-    priority: 'High'
-  },
-  { 
-    id: 'DEL-004', 
-    driver: 'David Brown', 
-    vehicle: 'VAN-207', 
-    destination: 'Aurangabad Warehouse', 
-    status: 'Delivered', 
-    eta: 'Completed', 
-    progress: 100,
-    packages: 12,
-    priority: 'Medium'
-  },
-  { 
-    id: 'DEL-005', 
-    driver: 'Lisa Davis', 
-    vehicle: 'TRK-105', 
-    destination: 'Thane Industrial Zone', 
-    status: 'Loading', 
-    eta: '3.5 hrs', 
-    progress: 25,
-    packages: 18,
-    priority: 'Low'
-  }
-];
+const CardHeader = ({ children, className = "" }) => (
+  <div className={`flex flex-col space-y-1.5 p-6 ${className}`}>{children}</div>
+);
 
-const vehicleFleet = [
-  { id: 'TRK-101', type: 'Heavy Truck', driver: 'John Smith', status: 'In Transit', fuel: 75, maintenance: 'Good', location: 'Highway-Mumbai' },
-  { id: 'TRK-102', type: 'Heavy Truck', driver: 'Unassigned', status: 'Available', fuel: 90, maintenance: 'Good', location: 'Depot' },
-  { id: 'TRK-103', type: 'Heavy Truck', driver: 'Sarah Wilson', status: 'In Transit', fuel: 45, maintenance: 'Due', location: 'Nashik Route' },
-  { id: 'VAN-205', type: 'Delivery Van', driver: 'Mike Johnson', status: 'Loading', fuel: 80, maintenance: 'Good', location: 'Loading Bay 2' },
-  { id: 'VAN-206', type: 'Delivery Van', driver: 'Unassigned', status: 'Maintenance', fuel: 0, maintenance: 'In Service', location: 'Workshop' },
-  { id: 'VAN-207', type: 'Delivery Van', driver: 'David Brown', status: 'Available', fuel: 95, maintenance: 'Good', location: 'Depot' }
-];
+const CardTitle = ({ children, className = "" }) => (
+  <h3 className={`text-2xl font-semibold leading-none tracking-tight ${className}`}>{children}</h3>
+);
 
-const dispatchRoutes = [
-  { route: 'Mumbai Zone', deliveries: 15, avgTime: '2.5 hrs', status: 'On Track', efficiency: 92 },
-  { route: 'Pune Corridor', deliveries: 12, avgTime: '3.2 hrs', status: 'Delayed', efficiency: 78 },
-  { route: 'Nashik Circuit', deliveries: 8, avgTime: '2.8 hrs', status: 'On Track', efficiency: 88 },
-  { route: 'Aurangabad Line', deliveries: 6, avgTime: '4.1 hrs', status: 'On Track', efficiency: 85 },
-  { route: 'Thane Local', deliveries: 10, avgTime: '1.5 hrs', status: 'Ahead', efficiency: 95 }
-];
+const CardDescription = ({ children, className = "" }) => (
+  <p className={`text-sm text-muted-foreground ${className}`}>{children}</p>
+);
 
-const recentAlerts = [
-  { id: 1, type: 'delay', message: 'VAN-205 delayed due to traffic congestion', time: '15 mins ago', priority: 'Medium' },
-  { id: 2, type: 'maintenance', message: 'TRK-103 requires scheduled maintenance', time: '45 mins ago', priority: 'High' },
-  { id: 3, type: 'fuel', message: 'TRK-101 fuel level below 30%', time: '1 hour ago', priority: 'Medium' },
-  { id: 4, type: 'success', message: 'All morning deliveries completed successfully', time: '2 hours ago', priority: 'Low' },
-  { id: 5, type: 'weather', message: 'Weather alert: Heavy rain expected on Pune route', time: '2.5 hours ago', priority: 'High' }
-];
+const CardContent = ({ children, className = "" }) => (
+  <div className={`p-6 pt-0 ${className}`}>{children}</div>
+);
+
+const Badge = ({ children, className = "" }) => (
+  <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${className}`}>
+    {children}
+  </span>
+);
+
+const Button = ({ children, onClick, className = "", disabled = false }) => (
+  <button 
+    onClick={onClick} 
+    disabled={disabled}
+    className={`inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none ring-offset-background bg-primary text-primary-foreground hover:bg-primary/90 h-10 py-2 px-4 ${className}`}
+  >
+    {children}
+  </button>
+);
+
+const Progress = ({ value, className = "" }) => (
+  <div className={`relative w-full overflow-hidden rounded-full bg-secondary ${className}`}>
+    <div 
+      className="h-full w-full flex-1 bg-primary transition-all"
+      style={{ transform: `translateX(-${100 - (value || 0)}%)` }}
+    />
+  </div>
+);
 
 export default function DispatchDashboard() {
-  const [selectedView, setSelectedView] = useState('overview');
+  const [dashboardData, setDashboardData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [manualStockEntries, setManualStockEntries] = useState({});
+  const { toast } = useToast();
 
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'In Transit': return 'bg-blue-100 text-blue-800 border-blue-200';
-      case 'Loading': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-      case 'Delivered': return 'bg-green-100 text-green-800 border-green-200';
-      case 'Available': return 'bg-gray-100 text-gray-800 border-gray-200';
-      case 'Maintenance': return 'bg-red-100 text-red-800 border-red-200';
-      default: return 'bg-gray-100 text-gray-800 border-gray-200';
+  const fetchDashboardData = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch(`${config.baseURL}/api/dispatches/dashboard`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setDashboardData(data.data);
+        setError(null);
+      } else {
+        throw new Error('Failed to fetch dashboard data');
+      }
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error);
+      setError(error.message);
+      toast({
+        title: 'Error',
+        description: 'Failed to load dashboard data',
+        variant: 'destructive'
+      });
+    } finally {
+      setLoading(false);
     }
   };
 
-  const getPriorityColor = (priority) => {
-    switch (priority) {
-      case 'High': return 'bg-red-100 text-red-800';
-      case 'Medium': return 'bg-yellow-100 text-yellow-800';
-      case 'Low': return 'bg-green-100 text-green-800';
-      default: return 'bg-gray-100 text-gray-800';
+  useEffect(() => {
+    fetchDashboardData();
+  }, []);
+
+  const handleRefresh = () => {
+    fetchDashboardData();
+    toast({
+      title: 'Success',
+      description: 'Dashboard refreshed successfully'
+    });
+  };
+
+  const handleManualStockEntry = async (productGroup, packingSheetId, value) => {
+    try {
+      const response = await fetch(`${config.baseURL}/api/dispatches/manual-stock`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          productGroup,
+          packingSheetId,
+          physicalStockEntry: parseFloat(value) || 0
+        })
+      });
+
+      if (response.ok) {
+        // Update local state
+        setManualStockEntries(prev => ({
+          ...prev,
+          [packingSheetId]: parseFloat(value) || 0
+        }));
+        
+        toast({
+          title: 'Success',
+          description: 'Physical stock entry updated'
+        });
+      } else {
+        throw new Error('Failed to update physical stock entry');
+      }
+    } catch (error) {
+      console.error('Error updating physical stock:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to update physical stock entry',
+        variant: 'destructive'
+      });
     }
   };
 
-  const getRouteStatus = (status) => {
-    switch (status) {
-      case 'On Track': return 'bg-green-100 text-green-800';
-      case 'Delayed': return 'bg-red-100 text-red-800';
-      case 'Ahead': return 'bg-blue-100 text-blue-800';
-      default: return 'bg-gray-100 text-gray-800';
-    }
-  };
-
-  const getFuelColor = (fuel) => {
-    if (fuel > 60) return 'text-green-600';
-    if (fuel > 30) return 'text-yellow-600';
-    return 'text-red-600';
-  };
-
-  const getMaintenanceColor = (maintenance) => {
-    switch (maintenance) {
-      case 'Good': return 'text-green-600';
-      case 'Due': return 'text-yellow-600';
-      case 'In Service': return 'text-red-600';
-      default: return 'text-gray-600';
-    }
-  };
-
-  return (
-    <div className="space-y-6 p-4 md:p-6">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-700 rounded-xl p-6 text-white">
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-bold flex items-center gap-3">
-              <Truck className="h-10 w-10" />
-              Dispatch Dashboard
-            </h1>
-            <p className="text-indigo-100 mt-2">
-              Monitor delivery operations, vehicle fleet, and route efficiency
-            </p>
+  if (loading) {
+    return (
+      <div className="flex flex-col min-h-screen bg-gray-50">
+        <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
+          {/* Header Skeleton */}
+          <div className="flex items-center justify-between space-y-2">
+            <div>
+              <div className="h-8 bg-gray-200 rounded-lg w-64 mb-2 animate-pulse"></div>
+              <div className="h-4 bg-gray-200 rounded w-96 animate-pulse"></div>
+            </div>
+            <div className="h-10 bg-gray-200 rounded-lg w-24 animate-pulse"></div>
           </div>
-          <div className="flex gap-2">
-            <Button variant="outline" className="bg-white/10 border-white/20 text-white hover:bg-white/20">
-              <Calendar className="h-4 w-4 mr-2" />
-              Today
-            </Button>
-            <Button variant="outline" className="bg-white/10 border-white/20 text-white hover:bg-white/20">
-              <BarChart3 className="h-4 w-4 mr-2" />
-              Routes
-            </Button>
+
+          {/* Stats Cards Skeleton */}
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="rounded-xl border bg-white p-6 shadow-sm">
+                <div className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <div className="h-4 bg-gray-200 rounded w-24 animate-pulse"></div>
+                  <div className="h-4 w-4 bg-gray-200 rounded animate-pulse"></div>
+                </div>
+                <div>
+                  <div className="h-8 bg-gray-200 rounded w-16 mb-2 animate-pulse"></div>
+                  <div className="h-3 bg-gray-200 rounded w-32 animate-pulse"></div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Table Skeleton */}
+          <div className="rounded-xl border bg-white shadow-sm">
+            <div className="p-6">
+              <div className="h-6 bg-gray-200 rounded w-48 mb-2 animate-pulse"></div>
+              <div className="h-4 bg-gray-200 rounded w-96 mb-4 animate-pulse"></div>
+              <div className="space-y-3">
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <div key={i} className="h-12 bg-gray-200 rounded animate-pulse"></div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </div>
+    );
+  }
 
-      {/* Key Dispatch Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <Card className="border-l-4 border-l-blue-500">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Today's Dispatches</CardTitle>
-            <Package className="h-4 w-4 text-blue-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{dispatchStats.todayDispatches}</div>
-            <p className="text-xs text-muted-foreground">
-              Target: {dispatchStats.todayTarget} dispatches
-            </p>
-            <Progress value={(dispatchStats.todayDispatches / dispatchStats.todayTarget) * 100} className="mt-2 h-2" />
-          </CardContent>
-        </Card>
-
-        <Card className="border-l-4 border-l-green-500">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Active Vehicles</CardTitle>
-            <Truck className="h-4 w-4 text-green-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{dispatchStats.activeVehicles}/{dispatchStats.totalVehicles}</div>
-            <p className="text-xs text-muted-foreground">
-              {Math.round((dispatchStats.activeVehicles / dispatchStats.totalVehicles) * 100)}% fleet utilization
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-l-4 border-l-purple-500">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">On-Time Delivery</CardTitle>
-            <Clock className="h-4 w-4 text-purple-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{dispatchStats.onTimeDeliveries}%</div>
-            <p className="text-xs text-muted-foreground">
-              Avg time: {dispatchStats.avgDeliveryTime} hours
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-l-4 border-l-orange-500">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Pending Pickups</CardTitle>
-            <Navigation className="h-4 w-4 text-orange-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{dispatchStats.pendingPickups}</div>
-            <p className="text-xs text-muted-foreground">
-              {dispatchStats.completedDeliveries} completed today
-            </p>
-          </CardContent>
-        </Card>
+  if (error || !dashboardData) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <AlertTriangle className="w-8 h-8 text-red-500 mx-auto mb-4" />
+          <p className="text-red-600 mb-4">{error || 'No data available'}</p>
+          <Button
+            onClick={handleRefresh}
+            className="bg-blue-500 text-white hover:bg-blue-600"
+          >
+            Try Again
+          </Button>
+        </div>
       </div>
+    );
+  }
 
-      {/* Active Deliveries & Vehicle Fleet */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Active Deliveries */}
+  return (
+    <div className="flex flex-col min-h-screen bg-gray-50">
+      <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
+        {/* Header */}
+        <div className="flex items-center justify-between space-y-2">
+          <div>
+            <h2 className="text-3xl font-bold tracking-tight flex items-center gap-2">
+              <Truck className="w-8 h-8 text-blue-600" />
+              Dispatch Dashboard
+            </h2>
+            <p className="text-muted-foreground">
+              Monitor dispatch operations, inventory status, and delivery tracking
+            </p>
+          </div>
+          <Button
+            onClick={handleRefresh}
+            className="inline-flex items-center gap-2 bg-blue-600 text-white hover:bg-blue-700"
+          >
+            <RefreshCw className="w-4 h-4" />
+            Refresh
+          </Button>
+        </div>
+
+        {/* Key Metrics Cards */}
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Today's Packed</CardTitle>
+              <Package className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{dashboardData?.stats?.totalPackedQuantity || 0}</div>
+              <p className="text-xs text-muted-foreground">
+                Ready for dispatch
+              </p>
+              <div className="mt-2">
+                <Progress value={dashboardData?.stats?.totalPackedQuantity > 0 ? 75 : 0} className="h-2" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Ready Items</CardTitle>
+              <Users className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{dashboardData?.stats?.totalDispatchReadyItems || 0}</div>
+              <p className="text-xs text-muted-foreground">
+                Items ready to dispatch
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Approved Sheets</CardTitle>
+              <Clock className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{dashboardData?.stats?.totalApprovedSheets || 0}</div>
+              <p className="text-xs text-muted-foreground">
+                Packing sheets approved
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Today's Dispatches</CardTitle>
+              <TrendingUp className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{dashboardData?.stats?.totalDispatchesToday || 0}</div>
+              <p className="text-xs text-muted-foreground">
+                Dispatched today
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Dispatch Console Table */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <MapPin className="h-5 w-5" />
-              Active Deliveries
-            </CardTitle>
-            <CardDescription>
-              Real-time tracking of ongoing deliveries
-            </CardDescription>
+            <div className="flex items-center justify-between">
+              <div className="space-y-1">
+                <CardTitle className="text-xl">📊 Dispatch Console</CardTitle>
+                <CardDescription>
+                  Monitor packing operations, order queue, and material inventory
+                </CardDescription>
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              {activeDeliveries.map((delivery) => (
-                <div key={delivery.id} className="space-y-2 p-3 border rounded-lg">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <h3 className="font-medium">{delivery.id}</h3>
-                      <Badge className={getStatusColor(delivery.status)}>
-                        {delivery.status}
-                      </Badge>
-                      <Badge className={getPriorityColor(delivery.priority)}>
-                        {delivery.priority}
-                      </Badge>
-                    </div>
-                    <div className="text-sm text-gray-600">
-                      {delivery.packages} packages
-                    </div>
-                  </div>
-                  <div className="text-sm text-gray-600">
-                    <div>Driver: {delivery.driver} • Vehicle: {delivery.vehicle}</div>
-                    <div>Destination: {delivery.destination}</div>
-                  </div>
-                  {delivery.status !== 'Delivered' && (
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-sm">
-                        <span>Progress</span>
-                        <span>ETA: {delivery.eta}</span>
-                      </div>
-                      <Progress value={delivery.progress} className="h-2" />
-                    </div>
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse border border-gray-300">
+                <thead>
+                  <tr>
+                    <th className="border border-gray-900 p-2 text-center font-medium text-sm bg-green-100">
+                      Product Group
+                    </th>
+                    <th className="border border-gray-900 p-2 text-center font-medium text-sm bg-green-100">
+                      <div>Packed</div>
+                      <div>Quantity</div>
+                      <div className="text-xs">Ready for Dispatch</div>
+                    </th>
+                    <th className="border border-gray-900 p-2 text-center font-medium text-sm bg-orange-100">
+                      <div>Previous Closing</div>
+                      <div>Stock</div>
+                      <div className="text-xs">Yesterday Balance</div>
+                    </th>
+                    <th className="border border-gray-900 p-2 text-center font-medium text-sm bg-purple-100">
+                      <div>Return</div>
+                      <div>Quantity</div>
+                      <div className="text-xs">Yesterday Returns</div>
+                    </th>
+                    <th className="border border-gray-900 p-2 text-center font-medium text-sm bg-purple-100">
+                      <div>Total Available Stock</div>
+                      <div className="text-xs">Packing + Closing + Returns</div>
+                    </th>
+                    <th className="border border-gray-900 p-2 text-center font-medium text-sm bg-yellow-100">
+                      <div>Total Indent</div>
+                      <div>Quantity</div>
+                      <div className="text-xs">Orders for the Day</div>
+                    </th>
+                    <th className="border border-gray-900 p-2 text-center font-medium text-sm bg-yellow-100">
+                      <div>Excess /</div>
+                      <div>Shortage</div>
+                      <div className="text-xs">Available - Indent</div>
+                    </th>
+                    <th className="border border-gray-900 p-2 text-center font-medium text-sm bg-green-100">
+                      <div>Dispatched</div>
+                      <div>Quantity</div>
+                      <div className="text-xs">Sent Today</div>
+                    </th>
+                    <th className="border border-gray-900 p-2 text-center font-medium text-sm bg-blue-100">
+                      <div>Closing Stock</div>
+                      <div>End of Day</div>
+                      <div className="text-xs">Balance</div>
+                    </th>
+                    <th className="border border-gray-900 p-2 text-center font-medium text-sm bg-blue-100">
+                      <div>Physical Stock</div>
+                      <div>Entry</div>
+                      <div className="text-xs">Manual Verification</div>
+                    </th>
+                    <th className="border border-gray-900 p-2 text-center font-medium text-sm bg-red-100">
+                      <div>Overall Loss</div>
+                      <div className="text-xs">Closing - Physical</div>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr className="bg-blue-50">
+                    <td className="border border-gray-900 p-2 font-medium">Dispatch Console<br />Totals</td>
+                    <td className="border border-gray-900 p-2 text-center font-bold">{dashboardData?.stats?.totalPackedQuantity || 0}</td>
+                    <td className="border border-gray-900 p-2 text-center">0</td>
+                    <td className="border border-gray-900 p-2 text-center">0</td>
+                    <td className="border border-gray-900 p-2 text-center font-bold">{dashboardData?.stats?.totalPackedQuantity || 0}</td>
+                    <td className="border border-gray-900 p-2 text-center">0</td>
+                    <td className="border border-gray-900 p-2 text-center font-bold">
+                      <span className={`px-2 py-1 rounded text-sm ${
+                        (0 - (dashboardData?.stats?.totalPackedQuantity || 0)) >= 0 
+                          ? 'bg-red-100 text-red-800' 
+                          : 'bg-green-100 text-green-800'
+                      }`}>
+                        {0 - (dashboardData?.stats?.totalPackedQuantity || 0)}
+                      </span>
+                    </td>
+                    <td className="border border-gray-900 p-2 text-center">0</td>
+                    <td className="border border-gray-900 p-2 text-center font-bold">
+                      {(dashboardData?.stats?.totalPackedQuantity || 0) - 0}
+                    </td>
+                    <td className="border border-gray-900 p-2 text-center">
+                      <input
+                        type="number"
+                        className="w-20 p-1 border rounded text-center"
+                        placeholder="Manual"
+                        disabled
+                      />
+                    </td>
+                    <td className="border border-gray-900 p-2 text-center">
+                      <span className="text-red-600 font-medium">
+                        {((dashboardData?.stats?.totalPackedQuantity || 0) - 0) - 0}
+                      </span>
+                    </td>
+                  </tr>
+
+                  {dashboardData?.dispatchReadyItems?.map((item, index) => (
+                    <tr key={index}>
+                      <td className="border border-gray-900 p-2">
+                        <div>
+                          <div className="font-medium">{item.productionGroup}</div>
+                          <div className="text-sm text-gray-600">{item.productName}</div>
+                        </div>
+                      </td>
+                      <td className="border border-gray-900 p-2 text-center font-medium">{item.packedQuantity || 0}</td>
+                      <td className="border border-gray-900 p-2 text-center">-</td>
+                      <td className="border border-gray-900 p-2 text-center">-</td>
+                      <td className="border border-gray-900 p-2 text-center">{item.packedQuantity || 0}</td>
+                      <td className="border border-gray-900 p-2 text-center">{item.indentQuantity || 0}</td>
+                      <td className="border border-gray-900 p-2 text-center">
+                        <span className={`px-2 py-1 rounded text-sm ${
+                          ((item.indentQuantity || 0) - (item.packedQuantity || 0)) >= 0 
+                            ? 'bg-red-100 text-red-800' 
+                            : 'bg-green-100 text-green-800'
+                        }`}>
+                          {(item.indentQuantity || 0) - (item.packedQuantity || 0)}
+                        </span>
+                      </td>
+                      <td className="border border-gray-900 p-2 text-center">0</td>
+                      <td className="border border-gray-900 p-2 text-center font-bold">
+                        {(item.packedQuantity || 0) - 0}
+                      </td>
+                      <td className="border border-gray-900 p-2 text-center">
+                        <input
+                          type="number"
+                          className="w-20 p-1 border rounded text-center"
+                          placeholder="0"
+                          value={manualStockEntries[item.productGroup] || ''}
+                          onChange={(e) => handleManualStockEntry(
+                            item.packingSheetId, 
+                            item.productGroup, 
+                            e.target.value
+                          )}
+                        />
+                      </td>
+                      <td className="border border-gray-900 p-2 text-center">
+                        <span className={`font-medium ${
+                          ((item.packedQuantity || 0) - (manualStockEntries[item.productGroup] || 0)) !== 0 
+                            ? 'text-red-600' 
+                            : 'text-green-600'
+                        }`}>
+                          {(item.packedQuantity || 0) - (manualStockEntries[item.productGroup] || 0)}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                  
+                  {(!dashboardData?.dispatchReadyItems || dashboardData.dispatchReadyItems.length === 0) && (
+                    <tr>
+                      <td colSpan="11" className="border border-gray-900 p-4 text-center text-gray-500">
+                        No dispatch-ready items found
+                      </td>
+                    </tr>
                   )}
-                </div>
-              ))}
+                </tbody>
+              </table>
             </div>
           </CardContent>
         </Card>
 
-        {/* Vehicle Fleet */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Truck className="h-5 w-5" />
-              Vehicle Fleet Status
-            </CardTitle>
-            <CardDescription>
-              Fleet overview with fuel and maintenance status
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {vehicleFleet.map((vehicle) => (
-                <div key={vehicle.id} className="space-y-2 p-3 border rounded-lg">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <h3 className="font-medium">{vehicle.id}</h3>
-                      <Badge className={getStatusColor(vehicle.status)}>
-                        {vehicle.status}
-                      </Badge>
-                    </div>
-                    <div className="text-sm text-gray-600">
-                      {vehicle.type}
-                    </div>
-                  </div>
-                  <div className="text-sm text-gray-600">
-                    <div>Driver: {vehicle.driver}</div>
-                    <div>Location: {vehicle.location}</div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div className="flex items-center gap-2">
-                      <Fuel className="h-4 w-4" />
-                      <span className={getFuelColor(vehicle.fuel)}>
-                        Fuel: {vehicle.fuel}%
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <CheckCircle className="h-4 w-4" />
-                      <span className={getMaintenanceColor(vehicle.maintenance)}>
-                        {vehicle.maintenance}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Route Performance & Recent Alerts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Route Performance */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Navigation className="h-5 w-5" />
-              Route Performance
-            </CardTitle>
-            <CardDescription>
-              Delivery routes efficiency and status
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {dispatchRoutes.map((route) => (
-                <div key={route.route} className="space-y-2 p-3 border rounded-lg">
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-medium">{route.route}</h3>
-                    <Badge className={getRouteStatus(route.status)}>
-                      {route.status}
-                    </Badge>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4 text-sm text-gray-600">
-                    <div>Deliveries: {route.deliveries}</div>
-                    <div>Avg Time: {route.avgTime}</div>
-                  </div>
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-sm">
-                      <span>Efficiency</span>
-                      <span>{route.efficiency}%</span>
-                    </div>
-                    <Progress value={route.efficiency} className="h-2" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Recent Alerts */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5" />
-              Recent Alerts
-            </CardTitle>
-            <CardDescription>
-              Important notifications and updates
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {recentAlerts.map((alert) => (
-                <div key={alert.id} className="flex items-start gap-3 p-3 rounded-lg border">
-                  {alert.type === 'delay' && <Clock className="h-4 w-4 text-yellow-500 mt-0.5" />}
-                  {alert.type === 'maintenance' && <AlertTriangle className="h-4 w-4 text-red-500 mt-0.5" />}
-                  {alert.type === 'fuel' && <Fuel className="h-4 w-4 text-orange-500 mt-0.5" />}
-                  {alert.type === 'success' && <CheckCircle className="h-4 w-4 text-green-500 mt-0.5" />}
-                  {alert.type === 'weather' && <AlertTriangle className="h-4 w-4 text-blue-500 mt-0.5" />}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900">
-                      {alert.message}
-                    </p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <Badge className={getPriorityColor(alert.priority)}>
-                        {alert.priority}
-                      </Badge>
-                      <span className="text-xs text-gray-500">{alert.time}</span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+        {/* Note */}
+        <div className="rounded-lg bg-blue-50 p-4">
+          <p className="text-sm text-blue-800">
+            <strong>Note:</strong> This report shows Current Updated information of All Inventory movement for various operations process.
+          </p>
+        </div>
       </div>
     </div>
   );

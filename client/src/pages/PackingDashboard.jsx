@@ -22,55 +22,10 @@ import {
 import { config } from '@/config/environment';
 import { useToast } from '@/hooks/use-toast';
 
-// Dummy data for other sections (keeping for now)
-const packingStats = {
-  todayPacked: 950,
-  todayTarget: 1100,
-  pendingOrders: 245,
-  completedOrders: 89,
-  packingLines: 6,
-  activePackers: 18,
-  efficiency: 86.4,
-  qualityScore: 98.1
-};
-
-const packingLines = [
-  { id: 'Pack-01', product: 'Electronics Package', status: 'Running', packed: 145, target: 180, speed: 'Normal', operator: 'Alice Johnson' },
-  { id: 'Pack-02', product: 'Auto Parts Kit', status: 'Running', packed: 120, target: 150, speed: 'Fast', operator: 'Bob Wilson' },
-  { id: 'Pack-03', product: 'Hardware Set', status: 'Break', packed: 89, target: 140, speed: 'Slow', operator: 'Carol Davis' },
-  { id: 'Pack-04', product: 'Medical Supplies', status: 'Running', packed: 200, target: 220, speed: 'Normal', operator: 'David Lee' },
-  { id: 'Pack-05', product: 'Food Items', status: 'Setup', packed: 0, target: 160, speed: 'Idle', operator: 'Eva Martinez' },
-  { id: 'Pack-06', product: 'Textile Products', status: 'Running', packed: 156, target: 170, speed: 'Normal', operator: 'Frank Brown' }
-];
-
-const orderQueue = [
-  { orderId: 'ORD-2024-001', customer: 'Tech Solutions Inc', items: 25, priority: 'High', deadline: '2 hours', status: 'In Progress' },
-  { orderId: 'ORD-2024-002', customer: 'AutoMax Corp', items: 40, priority: 'Medium', deadline: '4 hours', status: 'Queued' },
-  { orderId: 'ORD-2024-003', customer: 'MedCare Supplies', items: 15, priority: 'High', deadline: '1 hour', status: 'In Progress' },
-  { orderId: 'ORD-2024-004', customer: 'FoodMart Chain', items: 60, priority: 'Low', deadline: '6 hours', status: 'Queued' },
-  { orderId: 'ORD-2024-005', customer: 'Fashion Hub', items: 35, priority: 'Medium', deadline: '3 hours', status: 'Queued' }
-];
-
-const packagingMaterials = [
-  { material: 'Cardboard Boxes (Small)', current: 1250, minimum: 500, status: 'Good' },
-  { material: 'Cardboard Boxes (Large)', current: 340, minimum: 300, status: 'Low' },
-  { material: 'Bubble Wrap', current: 85, minimum: 100, status: 'Critical' },
-  { material: 'Packing Tape', current: 200, minimum: 150, status: 'Good' },
-  { material: 'Labels & Stickers', current: 2500, minimum: 1000, status: 'Good' },
-  { material: 'Protective Padding', current: 180, minimum: 200, status: 'Low' }
-];
-
-const recentActivities = [
-  { id: 1, activity: 'Large order completed for Tech Solutions Inc', time: '15 mins ago', type: 'completion', line: 'Pack-01' },
-  { id: 2, activity: 'Quality check passed for medical supplies batch', time: '32 mins ago', type: 'quality', line: 'Pack-04' },
-  { id: 3, activity: 'Material shortage alert: Bubble wrap running low', time: '45 mins ago', type: 'alert', line: 'All Lines' },
-  { id: 4, activity: 'New batch started for automotive parts', time: '1 hour ago', type: 'start', line: 'Pack-02' },
-  { id: 5, activity: 'Shift handover completed successfully', time: '2 hours ago', type: 'shift', line: 'All Lines' }
-];
-
 export default function PackingDashboard() {
   const { toast } = useToast();
   const [productionGroups, setProductionGroups] = useState([]);
+  const [dashboardStats, setDashboardStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -112,14 +67,46 @@ export default function PackingDashboard() {
     }
   };
 
+  // Fetch dashboard statistics
+  const fetchDashboardStats = async () => {
+    try {
+      const response = await fetch(`${config.baseURL}/api/packing/dashboard`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch dashboard stats: ${response.status}`);
+      }
+
+      const result = await response.json();
+      if (result.success) {
+        setDashboardStats(result.data);
+      } else {
+        throw new Error(result.message || 'Failed to fetch dashboard stats');
+      }
+    } catch (error) {
+      console.error('Error fetching dashboard stats:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load dashboard statistics",
+        variant: "destructive",
+      });
+    }
+  };
+
   // Load data on component mount
   useEffect(() => {
     fetchProductionGroups();
+    fetchDashboardStats();
   }, []);
 
   // Refresh data function
   const handleRefresh = () => {
     fetchProductionGroups();
+    fetchDashboardStats();
   };
   const [selectedView, setSelectedView] = useState('overview');
 
@@ -175,16 +162,6 @@ export default function PackingDashboard() {
               Monitor packing operations, order queue, and material inventory
             </p>
           </div>
-          <div className="flex gap-2">
-            <Button variant="outline" className="bg-white/10 border-white/20 text-white hover:bg-white/20">
-              <Calendar className="h-4 w-4 mr-2" />
-              Today
-            </Button>
-            <Button variant="outline" className="bg-white/10 border-white/20 text-white hover:bg-white/20">
-              <BarChart3 className="h-4 w-4 mr-2" />
-              Reports
-            </Button>
-          </div>
         </div>
       </div>
 
@@ -196,11 +173,11 @@ export default function PackingDashboard() {
             <Box className="h-4 w-4 text-green-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{packingStats.todayPacked}</div>
+            <div className="text-2xl font-bold">{dashboardStats?.todaysPacked || 0}</div>
             <p className="text-xs text-muted-foreground">
-              Target: {packingStats.todayTarget} packages
+              Target: {dashboardStats?.todayTarget || 0} packages
             </p>
-            <Progress value={(packingStats.todayPacked / packingStats.todayTarget) * 100} className="mt-2 h-2" />
+            <Progress value={dashboardStats?.todayTarget ? ((dashboardStats.todaysPacked / dashboardStats.todayTarget) * 100) : 0} className="mt-2 h-2" />
           </CardContent>
         </Card>
 
@@ -210,9 +187,9 @@ export default function PackingDashboard() {
             <Users className="h-4 w-4 text-blue-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{packingStats.activePackers}</div>
+            <div className="text-2xl font-bold">{dashboardStats?.activePackers || 0}</div>
             <p className="text-xs text-muted-foreground">
-              {packingStats.packingLines} packing lines
+              {dashboardStats?.activePacking || 0} active sheets
             </p>
           </CardContent>
         </Card>
@@ -223,9 +200,9 @@ export default function PackingDashboard() {
             <Clock className="h-4 w-4 text-orange-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{packingStats.pendingOrders}</div>
+            <div className="text-2xl font-bold">{dashboardStats?.pendingOrders || 0}</div>
             <p className="text-xs text-muted-foreground">
-              {packingStats.completedOrders} completed today
+              {dashboardStats?.completedSheets || 0} completed today
             </p>
           </CardContent>
         </Card>
@@ -236,9 +213,9 @@ export default function PackingDashboard() {
             <TrendingUp className="h-4 w-4 text-purple-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{packingStats.efficiency}%</div>
+            <div className="text-2xl font-bold">{dashboardStats?.efficiency || 0}%</div>
             <p className="text-xs text-muted-foreground">
-              Quality: {packingStats.qualityScore}%
+              Loss: {dashboardStats?.packingLoss || 0} units
             </p>
           </CardContent>
         </Card>
@@ -314,9 +291,9 @@ export default function PackingDashboard() {
                         {group.totalItems} items • Created by {group.createdBy}
                       </p>
                     </div>
-                    <Badge variant="outline" className="text-xs">
+                    {/* <Badge variant="outline" className="text-xs">
                       Group #{group._id.slice(-6)}
-                    </Badge>
+                    </Badge> */}
                   </div>
                   
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -406,91 +383,6 @@ export default function PackingDashboard() {
         </CardContent>
       </Card>
 
-      {/* Packing Lines & Order Queue */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Packing Lines */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Archive className="h-5 w-5" />
-              Packing Lines Status
-            </CardTitle>
-            <CardDescription>
-              Real-time status of all packing stations
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {packingLines.map((line) => (
-                <div key={line.id} className="space-y-2 p-3 border rounded-lg">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <h3 className="font-medium">{line.id}</h3>
-                      <Badge className={getStatusColor(line.status)}>
-                        {line.status}
-                      </Badge>
-                    </div>
-                    <div className="text-sm text-gray-600">
-                      {line.operator}
-                    </div>
-                  </div>
-                  <div className="text-sm text-gray-600">
-                    {line.product}
-                  </div>
-                  {line.status === 'Running' && (
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-sm">
-                        <span>Packed: {line.packed} / {line.target}</span>
-                        <span className={getSpeedColor(line.speed)}>Speed: {line.speed}</span>
-                      </div>
-                      <Progress value={(line.packed / line.target) * 100} className="h-2" />
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Order Queue */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Truck className="h-5 w-5" />
-              Order Queue
-            </CardTitle>
-            <CardDescription>
-              Pending orders and their priorities
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {orderQueue.map((order) => (
-                <div key={order.orderId} className="space-y-2 p-3 border rounded-lg">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <h3 className="font-medium text-sm">{order.orderId}</h3>
-                      <Badge className={getPriorityColor(order.priority)}>
-                        {order.priority}
-                      </Badge>
-                    </div>
-                    <Badge variant="outline">
-                      {order.status}
-                    </Badge>
-                  </div>
-                  <div className="text-sm text-gray-600">
-                    {order.customer}
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span>{order.items} items</span>
-                    <span className="text-orange-600">Due in {order.deadline}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
     </div>
   );
 }

@@ -212,18 +212,6 @@ export default function Dispatches() {
   <span className="text-xs font-normal">Sent Today</span>
 </th>
 
-<th className="p-3 text-center font-semibold border border-gray-300 bg-blue-200">
-  Pending Dispatch
-  <br />
-  <span className="text-xs font-normal">Yet to Dispatch</span>
-</th>
-
-<th className="p-3 text-center font-semibold border border-gray-300 bg-orange-200">
-  Leftover Stock
-  <br />
-  <span className="text-xs font-normal">After Dispatch</span>
-</th>
-
 <th className="p-3 text-center font-semibold border border-gray-300 bg-gray-200">
   Closing Stock
   <br />
@@ -250,8 +238,6 @@ export default function Dispatches() {
                   <td className="p-3 border border-gray-300 text-center"></td>
                   <td className="p-3 border border-gray-300 text-center"></td>
                   <td className="p-3 border border-gray-300 text-center"></td>
-                  <td className="p-3 border border-gray-300 text-center"></td>
-                  <td className="p-3 border border-gray-300 text-center"></td>
                 </tr>
                 {dispatchData.map((item, index) => (
                   <tr key={index} className="hover:bg-gray-50">
@@ -263,8 +249,6 @@ export default function Dispatches() {
                     <td className="p-3 border border-gray-300 text-center">{item.totalIndent}</td>
                     <td className="p-3 border border-gray-300 text-center">{item.excessQty}</td>
                     <td className="p-3 border border-gray-300 text-center">{item.dispatchedQty}</td>
-                    <td className="p-3 border border-gray-300 text-center">{item.pendingDispatch || ""}</td>
-                    <td className="p-3 border border-gray-300 text-center">{item.leftOver}</td>
                     <td className="p-3 border border-gray-300 text-center">{item.closingStock || ""}</td>
                     <td className="p-3 border border-gray-300 text-center">{item.manualStock}</td>
                   </tr>

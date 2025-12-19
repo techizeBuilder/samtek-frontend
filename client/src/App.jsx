@@ -13,7 +13,7 @@ import Login from "@/pages/Login";
 import Dashboard from "@/pages/Dashboard";
 
 import Manufacturing from "@/pages/Manufacturing";
-import Dispatches from "@/pages/Dispatches";
+import DispatchDashboard from "@/pages/DispatchDashboard";
 import Sales from "@/pages/Sales";
 import Accounts from "@/pages/Accounts";
 import ModernInventoryUI from "@/components/inventory/ModernInventoryUI";
@@ -330,7 +330,7 @@ function Router() {
       </Route>
       <Route path="/dispatch-dashboard">
         <ProtectedRoute requiredRole="Dispatch">
-          <Dispatches />
+          <DispatchDashboard />
         </ProtectedRoute>
       </Route>
       <Route path="/accounts-dashboard">

@@ -275,14 +275,77 @@ export const getProductionGroupsForPacking = async (req, res) => {
       });
     });
 
-    console.log('✅ Production groups with completed batches processed for packing:', filteredPackingData.length);
+    // Add packing sheet relationship data for each production group
+    const productionGroupsWithPackingSheets = await Promise.all(filteredPackingData.map(async (group) => {
+      try {
+        let packingSheetQuery;
+        
+        // Handle ungrouped items vs regular production groups
+        if (group._id === 'ungrouped-items') {
+          // For ungrouped items, search for null productionGroup
+          packingSheetQuery = {
+            company: req.user.companyId,
+            $or: [
+              { productionGroup: null },
+              { productionGroup: { $exists: false } }
+            ],
+            productionGroupName: 'Ungrouped Items',
+            packingDate: { $gte: today, $lte: endOfDay }
+          };
+        } else {
+          // For regular production groups
+          packingSheetQuery = {
+            company: req.user.companyId,
+            productionGroup: group._id,
+            packingDate: { $gte: today, $lte: endOfDay }
+          };
+        }
+        
+        console.log(`🔍 Searching packing sheets for group ${group.name}`);
+        
+        const existingPackingSheets = await PackingSheet.find(packingSheetQuery)
+          .select('_id slNo status packingStartTime packingEndTime totalPackedQty packingLoss notes items')
+          .lean();
+          
+        console.log(`📋 Found ${existingPackingSheets.length} packing sheets for group ${group.name}`);
+
+        return {
+          ...group,
+          packingSheets: existingPackingSheets || []
+        };
+      } catch (error) {
+        console.error(`Error fetching packing sheets for group ${group.name}:`, error);
+        return {
+          ...group,
+          packingSheets: []
+        };
+      }
+    }));
+
+    // Add packing sheet data for ungrouped items as well
+    const ungroupedPackingSheets = await PackingSheet.find({
+      company: req.user.companyId,
+      $or: [
+        { productionGroup: null },
+        { productionGroup: { $exists: false } }
+      ],
+      productionGroupName: 'Ungrouped Items',
+      packingDate: { $gte: today, $lte: endOfDay }
+    })
+    .select('_id slNo status packingStartTime packingEndTime totalPackedQty packingLoss items')
+    .lean();
+
+    console.log('✅ Production groups with completed batches and packing sheets processed:', productionGroupsWithPackingSheets.length);
+    console.log('📦 Found existing packing sheets across all groups:', productionGroupsWithPackingSheets.reduce((sum, g) => sum + g.packingSheets.length, 0));
+    console.log('🔄 Ungrouped packing sheets found:', ungroupedPackingSheets.length);
 
     res.json({
       success: true,
       message: 'Production groups for packing fetched successfully',
       data: {
-        productionGroups: filteredPackingData,
-        totalGroups: filteredPackingData.length,
+        productionGroups: productionGroupsWithPackingSheets,
+        ungroupedPackingSheets: ungroupedPackingSheets,
+        totalGroups: productionGroupsWithPackingSheets.length,
         dateFilter: today.toISOString(),
         totalCompletedBatches: completedBatches.length
       }
@@ -376,20 +439,27 @@ export const createPackingSheet = async (req, res) => {
     let productionGroupName = 'Unknown Group';
     let productionGroup = null;
 
+    console.log(`📋 Request body:`, JSON.stringify(req.body, null, 2));
+    
     // STEP 1: ALWAYS DELETE EXISTING SHEETS FIRST (NO CHECKING)
     if (productionGroupId === 'ungrouped-items') {
       productionGroupName = 'Ungrouped Items';
       
-      // Delete ALL ungrouped packing sheets for today
-      const deleteResult = await PackingSheet.deleteMany({
+      // Delete ALL ungrouped packing sheets for today with more specific query
+      const deleteQuery = {
         company: req.user.companyId,
         $or: [
           { productionGroup: null },
           { productionGroup: { $exists: false } }
         ],
         productionGroupName: 'Ungrouped Items',
-        packingDate: { $gte: today, $lte: endOfDay }
-      });
+        packingDate: { $gte: today, $lte: endOfDay },
+        isActive: { $ne: false }
+      };
+      
+      console.log(`🗑️ Deleting ungrouped packing sheets with query:`, JSON.stringify(deleteQuery, null, 2));
+      
+      const deleteResult = await PackingSheet.deleteMany(deleteQuery);
       
       console.log(`🗑️ REMOVED ${deleteResult.deletedCount} existing ungrouped packing sheets`);
     } else {
@@ -421,8 +491,8 @@ export const createPackingSheet = async (req, res) => {
 
     // STEP 2: CREATE NEW PACKING SHEET
     const nextSlNo = await PackingSheet.getNextSlNo(req.user.companyId);
-
-    const packingSheet = new PackingSheet({
+    
+    const packingSheetData = {
       slNo: nextSlNo,
       productionGroup: productionGroupId === 'ungrouped-items' ? null : productionGroupId,
       productionGroupName: productionGroupName,
@@ -432,12 +502,43 @@ export const createPackingSheet = async (req, res) => {
       createdBy: req.user._id || req.user.id,
       lastUpdatedBy: req.user._id || req.user.id,
       status: req.body.status || 'pending',
-      packingStartTime: req.body.packingStartTime ? new Date(req.body.packingStartTime) : null
-    });
+      packingStartTime: req.body.packingStartTime ? new Date(req.body.packingStartTime) : null,
+      packingDate: today,
+      isActive: true
+    };
+    
+    console.log('📋 Creating packing sheet with data:', JSON.stringify(packingSheetData, null, 2));
 
+    const packingSheet = new PackingSheet(packingSheetData);
     await packingSheet.save();
 
     console.log('✅ NEW PACKING SHEET CREATED:', packingSheet._id);
+    
+    // Verify no duplicates exist after creation
+    const verifyQuery = productionGroupId === 'ungrouped-items' 
+      ? {
+          company: req.user.companyId,
+          $or: [{ productionGroup: null }, { productionGroup: { $exists: false } }],
+          productionGroupName: 'Ungrouped Items',
+          packingDate: { $gte: today, $lte: endOfDay },
+          isActive: { $ne: false }
+        }
+      : {
+          company: req.user.companyId,
+          productionGroup: productionGroupId,
+          packingDate: { $gte: today, $lte: endOfDay },
+          isActive: { $ne: false }
+        };
+        
+    const remainingSheets = await PackingSheet.find(verifyQuery).lean();
+    console.log(`🔍 Verification: ${remainingSheets.length} packing sheets exist after creation`);
+    
+    if (remainingSheets.length > 1) {
+      console.warn(`⚠️ WARNING: ${remainingSheets.length} packing sheets found, expected 1!`);
+      remainingSheets.forEach((sheet, index) => {
+        console.log(`   Sheet ${index + 1}: ID=${sheet._id}, Created=${sheet.createdAt}`);
+      });
+    }
 
     res.status(201).json({
       success: true,
@@ -475,7 +576,7 @@ export const startPackingTiming = async (req, res) => {
 
     // Start timing
     await packingSheet.startPacking();
-    packingSheet.lastUpdatedBy = req.user.id;
+    packingSheet.lastUpdatedBy = req.user._id || req.user.id;
     await packingSheet.save();
 
     console.log('Packing started at:', packingSheet.packingStartTime);
@@ -520,7 +621,7 @@ export const stopPackingTiming = async (req, res) => {
 
     // Stop timing
     await packingSheet.endPacking();
-    packingSheet.lastUpdatedBy = req.user.id;
+    packingSheet.lastUpdatedBy = req.user._id || req.user.id;
     await packingSheet.save();
 
     console.log('Packing ended at:', packingSheet.packingEndTime);
@@ -574,7 +675,7 @@ export const updatePackingLoss = async (req, res) => {
 
     // Update packing loss
     packingSheet.packingLoss = packingLoss;
-    packingSheet.lastUpdatedBy = req.user.id;
+    packingSheet.lastUpdatedBy = req.user._id || req.user.id;
     await packingSheet.save();
 
     console.log('Packing loss updated to:', packingLoss);
@@ -628,13 +729,15 @@ export const updatePackingQuantities = async (req, res) => {
           // Update fields if provided
           if (updateItem.indentQty !== undefined) existingItem.indentQty = updateItem.indentQty;
           if (updateItem.producedQty !== undefined) existingItem.producedQty = updateItem.producedQty;
-          if (updateItem.packingLoss !== undefined) existingItem.packingLoss = updateItem.packingLoss;
-          if (updateItem.notes !== undefined) existingItem.notes = updateItem.notes;
+          // Store packingLoss at MAIN SHEET LEVEL, not item level
+          if (updateItem.packingLoss !== undefined) packingSheet.packingLoss = updateItem.packingLoss;
+          // Store notes at MAIN SHEET LEVEL, not item level  
+          if (updateItem.notes !== undefined) packingSheet.notes = updateItem.notes;
           
-          // AUTO-CALCULATE packedQty = producedQty - packingLoss
+          // AUTO-CALCULATE packedQty = producedQty - packingLoss (from main sheet)
           if (updateItem.producedQty !== undefined || updateItem.packingLoss !== undefined) {
             const producedQty = existingItem.producedQty || 0;
-            const packingLoss = existingItem.packingLoss || 0;
+            const packingLoss = packingSheet.packingLoss || 0; // Use main sheet packingLoss
             existingItem.packedQty = Math.max(0, producedQty - packingLoss);
             console.log(`📊 Auto-calculated packedQty for ${existingItem.productName}: ${producedQty} - ${packingLoss} = ${existingItem.packedQty}`);
           }
@@ -648,7 +751,7 @@ export const updatePackingQuantities = async (req, res) => {
       });
     }
 
-    packingSheet.lastUpdatedBy = req.user.id;
+    packingSheet.lastUpdatedBy = req.user._id || req.user.id;
     await packingSheet.save();
 
     console.log('Packing quantities updated');
@@ -802,6 +905,8 @@ export const updatePackingItem = async (req, res) => {
     const { packingSheetId } = req.params;
     const { productId, packingLoss, notes } = req.body;
     console.log('📝 Updating individual packing item:', { packingSheetId, productId, packingLoss, notes });
+    console.log('📝 Raw req.body:', req.body);
+    console.log('📝 Notes value type and content:', typeof notes, notes);
 
     // Validation
     if (!productId) {
@@ -842,29 +947,33 @@ export const updatePackingItem = async (req, res) => {
 
     // Update fields if provided
     if (packingLoss !== undefined) {
-      item.packingLoss = Number(packingLoss);
-      console.log(`🔄 Updated packingLoss for ${item.productName}: ${item.packingLoss}`);
+      // Store packingLoss at MAIN SHEET LEVEL, not item level
+      packingSheet.packingLoss = Number(packingLoss);
+      console.log(`🔄 Updated packingLoss for main sheet: ${packingSheet.packingLoss}`);
     }
     if (notes !== undefined) {
-      item.notes = notes;
-      console.log(`📝 Updated notes for ${item.productName}: ${item.notes}`);
+      // Store notes at MAIN SHEET LEVEL, not item level
+      packingSheet.notes = notes;
+      console.log(`📝 Updated notes for main sheet: ${packingSheet.notes}`);
     }
 
-    // AUTO-CALCULATE packedQty = producedQty - packingLoss
+    // AUTO-CALCULATE packedQty = producedQty - packingLoss (from main sheet)
     const producedQty = Number(item.producedQty) || 0;
-    const currentPackingLoss = Number(item.packingLoss) || 0;
+    const currentPackingLoss = Number(packingSheet.packingLoss) || 0; // Use main sheet packingLoss
     item.packedQty = Math.max(0, producedQty - currentPackingLoss);
     
     console.log(`📊 Auto-calculated for ${item.productName}: packedQty = ${producedQty} - ${currentPackingLoss} = ${item.packedQty}`);
 
     // Update sheet metadata
-    packingSheet.lastUpdatedBy = req.user.id;
+    packingSheet.lastUpdatedBy = req.user._id || req.user.id;
     packingSheet.updatedAt = new Date();
     
     // Save the changes
     await packingSheet.save();
-
+    
     console.log(`✅ Successfully updated packing item for ${item.productName}`);
+    console.log(`📝 Final saved notes: "${packingSheet.notes}"`);
+    console.log(`📦 Final saved packingLoss: ${packingSheet.packingLoss}`);
 
     res.json({
       success: true,
@@ -875,9 +984,9 @@ export const updatePackingItem = async (req, res) => {
         productName: item.productName,
         indentQty: item.indentQty,
         producedQty: item.producedQty,
-        packingLoss: item.packingLoss,
+        packingLoss: packingSheet.packingLoss, // Return from main sheet level
         packedQty: item.packedQty,
-        notes: item.notes,
+        notes: packingSheet.notes, // Return from main sheet level
         lastUpdated: packingSheet.updatedAt
       }
     });
@@ -958,6 +1067,147 @@ export const cleanupDuplicatePackingSheets = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to cleanup duplicate packing sheets',
+      error: error.message
+    });
+  }
+};
+
+// Dashboard Statistics Controller
+export const getDashboardStats = async (req, res) => {
+  try {
+    const today = new Date();
+    const startOfDay = new Date(today.setHours(0, 0, 0, 0));
+    const endOfDay = new Date(today.setHours(23, 59, 59, 999));
+
+    // Today's packed items count
+    const todayPackedCount = await PackingSheet.aggregate([
+      {
+        $match: {
+          company: req.user.companyId,
+          packingDate: { $gte: startOfDay, $lte: endOfDay },
+          status: { $in: ['in_progress', 'completed'] }
+        }
+      },
+      {
+        $unwind: '$items'
+      },
+      {
+        $group: {
+          _id: null,
+          totalPacked: { $sum: '$items.packedQty' }
+        }
+      }
+    ]);
+
+    // Active packers count (sheets in progress today)
+    const activePackersCount = await PackingSheet.countDocuments({
+      company: req.user.companyId,
+      packingDate: { $gte: startOfDay, $lte: endOfDay },
+      status: 'in_progress'
+    });
+
+    // Total pending orders (sheets not started)
+    const pendingOrdersCount = await PackingSheet.countDocuments({
+      company: req.user.companyId,
+      status: 'pending'
+    });
+
+    // Calculate efficiency (completed vs total for today)
+    const completedToday = await PackingSheet.countDocuments({
+      company: req.user.companyId,
+      packingDate: { $gte: startOfDay, $lte: endOfDay },
+      status: 'completed'
+    });
+
+    const totalToday = await PackingSheet.countDocuments({
+      company: req.user.companyId,
+      packingDate: { $gte: startOfDay, $lte: endOfDay }
+    });
+
+    const efficiency = totalToday > 0 ? ((completedToday / totalToday) * 100).toFixed(1) : 0;
+
+    res.json({
+      success: true,
+      data: {
+        todaysPacked: todayPackedCount[0]?.totalPacked || 0,
+        activePackers: activePackersCount,
+        pendingOrders: pendingOrdersCount,
+        efficiency: parseFloat(efficiency),
+        targetPacked: 1100, // You can make this configurable
+        qualityRate: 98.1 // You can calculate this from actual data if available
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching dashboard stats:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch dashboard statistics',
+      error: error.message
+    });
+  }
+};
+
+// Approve a packing sheet
+export const approvePackingSheet = async (req, res) => {
+  try {
+    const { packingSheetId } = req.params;
+    console.log('✅ Approving packing sheet:', packingSheetId);
+
+    const packingSheet = await PackingSheet.findOne({
+      _id: packingSheetId,
+      company: req.user.companyId
+    });
+
+    if (!packingSheet) {
+      return res.status(404).json({
+        success: false,
+        message: 'Packing sheet not found'
+      });
+    }
+
+    // Check if already approved
+    if (packingSheet.status === 'approved') {
+      return res.status(400).json({
+        success: false,
+        message: 'Packing sheet is already approved'
+      });
+    }
+
+    // Check if completed
+    if (packingSheet.status !== 'completed') {
+      return res.status(400).json({
+        success: false,
+        message: 'Packing sheet must be completed before approval'
+      });
+    }
+
+    // Update approval status
+    packingSheet.status = 'approved';
+    packingSheet.approvedAt = new Date();
+    packingSheet.approvedBy = req.user._id || req.user.id;
+    packingSheet.lastUpdatedBy = req.user._id || req.user.id;
+    
+    await packingSheet.save();
+
+    console.log('✅ Packing sheet approved successfully');
+
+    res.json({
+      success: true,
+      message: 'Packing sheet approved successfully',
+      data: {
+        packingSheetId: packingSheet._id,
+        status: packingSheet.status,
+        approvedAt: packingSheet.approvedAt,
+        approvedBy: packingSheet.approvedBy
+      }
+    });
+
+  } catch (error) {
+    console.error('Error approving packing sheet:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to approve packing sheet',
       error: error.message
     });
   }

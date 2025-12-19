@@ -1,6 +1,7 @@
 import Dispatch from '../models/Dispatch.js';
 import Order from '../models/Order.js';
 import Customer from '../models/Customer.js';
+import PackingSheet from '../models/Packing.js';
 import { USER_ROLES } from '../../shared/schema.js';
 
 export const getDispatches = async (req, res) => {
@@ -266,5 +267,184 @@ export const getDispatchStats = async (req, res) => {
   } catch (error) {
     console.error('Get dispatch stats error:', error);
     res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+// Get dispatch dashboard data with approved packing sheets, production batches and related records
+export const getDispatchDashboardData = async (req, res) => {
+  try {
+    const today = new Date();
+    const startOfDay = new Date(today.setHours(0, 0, 0, 0));
+    const endOfDay = new Date(today.setHours(23, 59, 59, 999));
+
+    // Import PackingSheet model
+    const PackingSheet = (await import('../models/Packing.js')).default;
+    const ProductionBatch = (await import('../models/ProductionBatch.js')).default;
+    const ProductionGroup = (await import('../models/ProductionGroup.js')).default;
+    
+    // Get approved packing sheets from today with related data
+    const approvedPackingSheets = await PackingSheet.find({
+      company: req.user.companyId,
+      packingDate: { $gte: startOfDay, $lte: endOfDay },
+      status: 'approved'
+    })
+    .populate({
+      path: 'productionGroup',
+      select: 'name description qtyPerBatch items',
+      populate: {
+        path: 'items',
+        select: 'name code category unit image'
+      }
+    })
+    .populate('createdBy', 'username fullName')
+    .populate('lastUpdatedBy', 'username fullName')
+    .lean();
+
+    // Get production batches for approved packing sheets
+    const productionBatchData = [];
+    
+    for (const packingSheet of approvedPackingSheets) {
+      // Get related production batches for each item in the packing sheet
+      for (const item of packingSheet.items) {
+        const relatedBatches = await ProductionBatch.find({
+          itemId: item.productId,
+          company: req.user.companyId,
+          status: 'completed',
+          batchDate: { $gte: startOfDay, $lte: endOfDay }
+        })
+        .populate('itemId', 'name code category unit')
+        .populate('groupId', 'name description')
+        .lean();
+
+        if (relatedBatches.length > 0) {
+          productionBatchData.push({
+            packingSheetId: packingSheet._id,
+            productId: item.productId,
+            productName: item.productName,
+            batches: relatedBatches
+          });
+        }
+      }
+    }
+
+    // Calculate dispatch-ready quantities
+    const dispatchReadyItems = approvedPackingSheets.flatMap(sheet => 
+      sheet.items.map(item => ({
+        packingSheetId: sheet._id,
+        productId: item.productId,
+        productName: item.productName,
+        packedQuantity: item.packedQty,
+        indentQuantity: item.indentQty,
+        packingLoss: sheet.packingLoss || 0,
+        readyForDispatch: item.packedQty > 0,
+        packingDate: sheet.packingDate,
+        productionGroup: sheet.productionGroupName || 'Unknown Group'
+      }))
+    );
+
+    // Get existing dispatch records for today to show what's already dispatched
+    const todaysDispatches = await Dispatch.find({
+      company: req.user.companyId,
+      createdAt: { $gte: startOfDay, $lte: endOfDay }
+    })
+    .populate('order', 'orderNumber')
+    .populate('customer', 'customerName contactPerson')
+    .lean();
+
+    // Calculate dashboard stats
+    const stats = {
+      totalApprovedSheets: approvedPackingSheets.length,
+      totalDispatchReadyItems: dispatchReadyItems.filter(item => item.readyForDispatch).length,
+      totalPackedQuantity: dispatchReadyItems.reduce((sum, item) => sum + item.packedQuantity, 0),
+      totalDispatchesToday: todaysDispatches.length,
+      pendingDispatchItems: dispatchReadyItems.filter(item => item.readyForDispatch && !todaysDispatches.find(d => d.productId === item.productId)).length
+    };
+
+    res.json({
+      success: true,
+      data: {
+        stats,
+        approvedPackingSheets: approvedPackingSheets.map(sheet => ({
+          _id: sheet._id,
+          slNo: sheet.slNo,
+          productionGroupName: sheet.productionGroupName,
+          status: sheet.status,
+          packingStartTime: sheet.packingStartTime,
+          packingEndTime: sheet.packingEndTime,
+          packingLoss: sheet.packingLoss,
+          totalPackedQty: sheet.totalPackedQty,
+          notes: sheet.notes,
+          items: sheet.items,
+          createdAt: sheet.createdAt,
+          createdBy: sheet.createdBy
+        })),
+        dispatchReadyItems,
+        productionBatchData,
+        todaysDispatches: todaysDispatches.map(dispatch => ({
+          _id: dispatch._id,
+          dispatchNumber: dispatch.dispatchNumber,
+          status: dispatch.status,
+          customer: dispatch.customer,
+          order: dispatch.order,
+          transporterName: dispatch.transporterName,
+          trackingNumber: dispatch.trackingNumber,
+          createdAt: dispatch.createdAt
+        }))
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching dispatch dashboard data:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch dispatch dashboard data',
+      error: error.message
+    });
+  }
+};
+
+// Update manual stock entry for dispatch
+export const updateManualStock = async (req, res) => {
+  try {
+    const { productGroup, packingSheetId, physicalStockEntry } = req.body;
+
+    // You can create a separate ManualStockEntry model or add this to PackingSheet
+    // For now, let's add it to the dispatch context
+    const result = await PackingSheet.findByIdAndUpdate(
+      packingSheetId,
+      { 
+        $set: { 
+          physicalStockEntry: physicalStockEntry,
+          lastUpdatedBy: req.user._id || req.user.id,
+          updatedAt: new Date()
+        }
+      },
+      { new: true }
+    );
+
+    if (!result) {
+      return res.status(404).json({
+        success: false,
+        message: 'Packing sheet not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Physical stock entry updated successfully',
+      data: {
+        productGroup,
+        physicalStockEntry,
+        updatedAt: new Date()
+      }
+    });
+
+  } catch (error) {
+    console.error('Error updating manual stock entry:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update manual stock entry',
+      error: error.message
+    });
   }
 };
