@@ -1,6 +1,8 @@
 import Order from '../models/Order.js';
 import { Item } from '../models/Inventory.js';
 import User from '../models/User.js';
+import Return from '../models/Return.js';
+import Customer from '../models/Customer.js';
 import ProductDailySummary from '../models/ProductDailySummary.js';
 import ProductDetailsDailySummary from '../models/ProductDetailsDailySummary.js';
 import ProductionBatch from '../models/ProductionBatch.js';
@@ -2689,6 +2691,662 @@ export const getApprovedProductSummaries = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to fetch approved product summaries',
+      error: error.message
+    });
+  }
+};
+
+// ===============================================
+// UNIT MANAGER RETURNS/DAMAGES MANAGEMENT
+// ===============================================
+
+// Get sales persons for the unit manager's company
+export const getUnitManagerSalesPersons = async (req, res) => {
+  try {
+    const unitManager = req.user;
+    
+    if (unitManager.role !== 'Unit Manager') {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied - Unit Manager role required'
+      });
+    }
+
+    console.log('🔍 Getting sales persons for Unit Manager:', {
+      userId: unitManager._id,
+      companyId: unitManager.companyId
+    });
+
+    const salesPersons = await User.find({
+      companyId: unitManager.companyId,
+      role: { $in: ['Sales', 'sales', 'SALES', 'Sales Person', 'SalesPerson'] },
+      isActive: { $ne: false }
+    }).select('_id username fullName email').sort({ username: 1 });
+
+    console.log('✅ Found sales persons:', salesPersons.length);
+
+    res.json({
+      success: true,
+      data: salesPersons
+    });
+  } catch (error) {
+    console.error('Error fetching sales persons:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch sales persons',
+      error: error.message
+    });
+  }
+};
+
+// Get returns for Unit Manager (all returns for the company)
+export const getUnitManagerReturns = async (req, res) => {
+  try {
+    const unitManager = req.user;
+    
+    if (unitManager.role !== 'Unit Manager') {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied - Unit Manager role required'
+      });
+    }
+
+    const { salesPersonId, status, type } = req.query;
+
+    console.log('🔍 Getting returns for Unit Manager:', {
+      userId: unitManager._id,
+      companyId: unitManager.companyId,
+      salesPersonId,
+      status,
+      type
+    });
+
+    // Build filter for company - include both returns and damages
+    const filter = { 
+      companyId: unitManager.companyId,
+      type: { $in: ['refund', 'exchange', 'damage'] } // Include both returns and damages
+    };
+
+    if (salesPersonId) {
+      filter.salesPerson = salesPersonId;
+    }
+
+    if (status) {
+      filter.status = status;
+    }
+
+    if (type && type !== 'all') {
+      filter.type = type; // Override the $in filter if specific type is requested
+    }
+
+    const returns = await Return.find(filter)
+      .populate('salesPerson', 'username fullName')
+      .populate('customerId', 'name address')
+      .sort({ createdAt: -1 });
+
+    // Add enriched data
+    const enrichedReturns = returns.map(returnItem => ({
+      ...returnItem.toObject(),
+      salesPersonName: returnItem.salesPerson?.username || returnItem.salesPerson?.fullName || 'N/A'
+    }));
+
+    console.log('✅ Found returns:', enrichedReturns.length);
+
+    res.json({
+      success: true,
+      data: enrichedReturns
+    });
+  } catch (error) {
+    console.error('Error fetching returns:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch returns',
+      error: error.message
+    });
+  }
+};
+
+// Create return for Unit Manager (assign to selected sales person)
+export const createUnitManagerReturn = async (req, res) => {
+  try {
+    const unitManager = req.user;
+    
+    if (unitManager.role !== 'Unit Manager') {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied - Unit Manager role required'
+      });
+    }
+
+    const { salesPersonId, ...returnData } = req.body;
+
+    if (!salesPersonId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Sales person selection is required'
+      });
+    }
+
+    console.log('🔄 Unit Manager creating return:', {
+      userId: unitManager._id,
+      companyId: unitManager.companyId,
+      salesPersonId,
+      body: returnData
+    });
+
+    // Verify the sales person belongs to the same company
+    const salesPerson = await User.findOne({
+      _id: salesPersonId,
+      companyId: unitManager.companyId,
+      role: { $in: ['Sales', 'sales', 'SALES', 'Sales Person', 'SalesPerson'] }
+    });
+
+    if (!salesPerson) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid sales person selected'
+      });
+    }
+
+    // Prepare return data with associations
+    const finalReturnData = {
+      ...returnData,
+      companyId: unitManager.companyId,
+      salesPerson: salesPersonId,
+      createdBy: unitManager._id,
+      status: 'pending' // Unit Manager creates in pending state
+    };
+
+    const newReturn = new Return(finalReturnData);
+    const savedReturn = await newReturn.save();
+
+    res.status(201).json({
+      success: true,
+      message: 'Return created successfully',
+      return: savedReturn
+    });
+  } catch (error) {
+    console.error('Unit Manager create return error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to create return',
+      error: error.message 
+    });
+  }
+};
+
+// Update return for Unit Manager
+export const updateUnitManagerReturn = async (req, res) => {
+  try {
+    const unitManager = req.user;
+    const { id } = req.params;
+    
+    if (unitManager.role !== 'Unit Manager') {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied - Unit Manager role required'
+      });
+    }
+
+    console.log('🔄 Unit Manager updating return:', {
+      returnId: id,
+      userId: unitManager._id,
+      companyId: unitManager.companyId
+    });
+
+    // Find return - Unit Manager can update any return in their company
+    const existingReturn = await Return.findOne({
+      _id: id,
+      companyId: unitManager.companyId
+    });
+
+    if (!existingReturn) {
+      return res.status(404).json({
+        success: false,
+        message: 'Return not found or access denied'
+      });
+    }
+
+    // Update the return
+    const updatedReturn = await Return.findByIdAndUpdate(
+      id,
+      { 
+        ...req.body,
+        updatedBy: unitManager._id,
+        updatedAt: new Date()
+      },
+      { new: true }
+    );
+
+    console.log('✅ Return updated successfully');
+
+    res.json({
+      success: true,
+      message: 'Return updated successfully',
+      return: updatedReturn
+    });
+  } catch (error) {
+    console.error('Unit Manager update return error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update return',
+      error: error.message
+    });
+  }
+};
+
+// Delete return for Unit Manager
+export const deleteUnitManagerReturn = async (req, res) => {
+  try {
+    const unitManager = req.user;
+    const { id } = req.params;
+    
+    if (unitManager.role !== 'Unit Manager') {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied - Unit Manager role required'
+      });
+    }
+
+    console.log('🗑️ Unit Manager deleting return:', {
+      returnId: id,
+      userId: unitManager._id,
+      companyId: unitManager.companyId
+    });
+
+    // Find return - Unit Manager can delete any return in their company
+    const existingReturn = await Return.findOne({
+      _id: id,
+      companyId: unitManager.companyId
+    });
+
+    if (!existingReturn) {
+      return res.status(404).json({
+        success: false,
+        message: 'Return not found or access denied'
+      });
+    }
+
+    // Delete the return
+    await Return.findByIdAndDelete(id);
+
+    console.log('✅ Return deleted successfully');
+
+    res.json({
+      success: true,
+      message: 'Return deleted successfully'
+    });
+  } catch (error) {
+    console.error('Unit Manager delete return error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete return',
+      error: error.message
+    });
+  }
+};
+
+// Approve return for Unit Manager
+export const approveUnitManagerReturn = async (req, res) => {
+  try {
+    const unitManager = req.user;
+    const { id } = req.params;
+    
+    if (unitManager.role !== 'Unit Manager') {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied - Unit Manager role required'
+      });
+    }
+
+    console.log('✅ Unit Manager approving return:', {
+      returnId: id,
+      userId: unitManager._id,
+      companyId: unitManager.companyId
+    });
+
+    // Find return - Unit Manager can approve any return in their company
+    const existingReturn = await Return.findOne({
+      _id: id,
+      companyId: unitManager.companyId,
+      status: 'pending' // Only approve pending returns
+    });
+
+    if (!existingReturn) {
+      return res.status(404).json({
+        success: false,
+        message: 'Return not found, already processed, or access denied'
+      });
+    }
+
+    // Approve the return
+    const approvedReturn = await Return.findByIdAndUpdate(
+      id,
+      { 
+        status: 'approved',
+        approvedBy: unitManager._id,
+        approvedAt: new Date(),
+        updatedAt: new Date()
+      },
+      { new: true }
+    );
+
+    console.log('✅ Return approved successfully');
+
+    res.json({
+      success: true,
+      message: 'Return approved successfully',
+      return: approvedReturn
+    });
+  } catch (error) {
+    console.error('Unit Manager approve return error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to approve return',
+      error: error.message
+    });
+  }
+};
+
+// Get damages for Unit Manager (all damages for the company)
+export const getUnitManagerDamages = async (req, res) => {
+  try {
+    const unitManager = req.user;
+    
+    if (unitManager.role !== 'Unit Manager') {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied - Unit Manager role required'
+      });
+    }
+
+    const { salesPersonId, status } = req.query;
+
+    console.log('🔍 Getting damages for Unit Manager:', {
+      userId: unitManager._id,
+      companyId: unitManager.companyId,
+      salesPersonId,
+      status
+    });
+
+    // Build filter for company
+    const filter = { 
+      companyId: unitManager.companyId,
+      type: { $in: ['damage', 'defective', 'expired'] } // Damages only
+    };
+
+    if (salesPersonId) {
+      filter.salesPerson = salesPersonId;
+    }
+
+    if (status) {
+      filter.status = status;
+    }
+
+    const damages = await Return.find(filter)
+      .populate('salesPerson', 'username fullName')
+      .populate('customerId', 'name address')
+      .sort({ createdAt: -1 });
+
+    // Add enriched data
+    const enrichedDamages = damages.map(damageItem => ({
+      ...damageItem.toObject(),
+      salesPersonName: damageItem.salesPerson?.username || damageItem.salesPerson?.fullName || 'N/A'
+    }));
+
+    console.log('✅ Found damages:', enrichedDamages.length);
+
+    res.json({
+      success: true,
+      data: enrichedDamages
+    });
+  } catch (error) {
+    console.error('Error fetching damages:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch damages',
+      error: error.message
+    });
+  }
+};
+
+// Create damage for Unit Manager (assign to selected sales person)
+export const createUnitManagerDamage = async (req, res) => {
+  try {
+    const unitManager = req.user;
+    
+    if (unitManager.role !== 'Unit Manager') {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied - Unit Manager role required'
+      });
+    }
+
+    const { salesPersonId, ...damageData } = req.body;
+
+    if (!salesPersonId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Sales person selection is required'
+      });
+    }
+
+    console.log('🔄 Unit Manager creating damage:', {
+      userId: unitManager._id,
+      companyId: unitManager.companyId,
+      salesPersonId,
+      body: damageData
+    });
+
+    // Verify the sales person belongs to the same company
+    const salesPerson = await User.findOne({
+      _id: salesPersonId,
+      companyId: unitManager.companyId,
+      role: { $in: ['Sales', 'sales', 'SALES', 'Sales Person', 'SalesPerson'] }
+    });
+
+    if (!salesPerson) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid sales person selected'
+      });
+    }
+
+    // Prepare damage data with associations
+    const finalDamageData = {
+      ...damageData,
+      companyId: unitManager.companyId,
+      salesPerson: salesPersonId,
+      createdBy: unitManager._id,
+      status: 'pending' // Unit Manager creates in pending state
+    };
+
+    const newDamage = new Return(finalDamageData);
+    const savedDamage = await newDamage.save();
+
+    res.status(201).json({
+      success: true,
+      message: 'Damage created successfully',
+      damage: savedDamage
+    });
+  } catch (error) {
+    console.error('Unit Manager create damage error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to create damage',
+      error: error.message 
+    });
+  }
+};
+
+// Update damage for Unit Manager
+export const updateUnitManagerDamage = async (req, res) => {
+  try {
+    const unitManager = req.user;
+    const { id } = req.params;
+    
+    if (unitManager.role !== 'Unit Manager') {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied - Unit Manager role required'
+      });
+    }
+
+    console.log('🔄 Unit Manager updating damage:', {
+      damageId: id,
+      userId: unitManager._id,
+      companyId: unitManager.companyId
+    });
+
+    // Find damage - Unit Manager can update any damage in their company
+    const existingDamage = await Return.findOne({
+      _id: id,
+      companyId: unitManager.companyId
+    });
+
+    if (!existingDamage) {
+      return res.status(404).json({
+        success: false,
+        message: 'Damage not found or access denied'
+      });
+    }
+
+    // Update the damage
+    const updatedDamage = await Return.findByIdAndUpdate(
+      id,
+      { 
+        ...req.body,
+        updatedBy: unitManager._id,
+        updatedAt: new Date()
+      },
+      { new: true }
+    );
+
+    console.log('✅ Damage updated successfully');
+
+    res.json({
+      success: true,
+      message: 'Damage updated successfully',
+      damage: updatedDamage
+    });
+  } catch (error) {
+    console.error('Unit Manager update damage error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update damage',
+      error: error.message
+    });
+  }
+};
+
+// Delete damage for Unit Manager
+export const deleteUnitManagerDamage = async (req, res) => {
+  try {
+    const unitManager = req.user;
+    const { id } = req.params;
+    
+    if (unitManager.role !== 'Unit Manager') {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied - Unit Manager role required'
+      });
+    }
+
+    console.log('🗑️ Unit Manager deleting damage:', {
+      damageId: id,
+      userId: unitManager._id,
+      companyId: unitManager.companyId
+    });
+
+    // Find damage - Unit Manager can delete any damage in their company
+    const existingDamage = await Return.findOne({
+      _id: id,
+      companyId: unitManager.companyId
+    });
+
+    if (!existingDamage) {
+      return res.status(404).json({
+        success: false,
+        message: 'Damage not found or access denied'
+      });
+    }
+
+    // Delete the damage
+    await Return.findByIdAndDelete(id);
+
+    console.log('✅ Damage deleted successfully');
+
+    res.json({
+      success: true,
+      message: 'Damage deleted successfully'
+    });
+  } catch (error) {
+    console.error('Unit Manager delete damage error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete damage',
+      error: error.message
+    });
+  }
+};
+
+// Approve damage for Unit Manager
+export const approveUnitManagerDamage = async (req, res) => {
+  try {
+    const unitManager = req.user;
+    const { id } = req.params;
+    
+    if (unitManager.role !== 'Unit Manager') {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied - Unit Manager role required'
+      });
+    }
+
+    console.log('✅ Unit Manager approving damage:', {
+      damageId: id,
+      userId: unitManager._id,
+      companyId: unitManager.companyId
+    });
+
+    // Find damage - Unit Manager can approve any damage in their company
+    const existingDamage = await Return.findOne({
+      _id: id,
+      companyId: unitManager.companyId,
+      status: 'pending' // Only approve pending damages
+    });
+
+    if (!existingDamage) {
+      return res.status(404).json({
+        success: false,
+        message: 'Damage not found, already processed, or access denied'
+      });
+    }
+
+    // Approve the damage
+    const approvedDamage = await Return.findByIdAndUpdate(
+      id,
+      { 
+        status: 'approved',
+        approvedBy: unitManager._id,
+        approvedAt: new Date(),
+        updatedAt: new Date()
+      },
+      { new: true }
+    );
+
+    console.log('✅ Damage approved successfully');
+
+    res.json({
+      success: true,
+      message: 'Damage approved successfully',
+      damage: approvedDamage
+    });
+  } catch (error) {
+    console.error('Unit Manager approve damage error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to approve damage',
       error: error.message
     });
   }

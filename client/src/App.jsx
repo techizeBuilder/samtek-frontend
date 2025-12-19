@@ -32,7 +32,8 @@ import MyCustomers from "@/pages/sales/MyCustomers";
 import MyDeliveries from "@/pages/sales/MyDeliveries";
 import MyInvoices from "@/pages/sales/MyInvoices";
 
-import RefundDamage from "@/pages/sales/RefundDamage";
+import Returns from "@/pages/sales/Returns";
+import Damages from "@/pages/sales/Damages";
 import SalesDashboard from "@/pages/SalesDashboard";
 import ProductionHistoryPage from "@/pages/ProductionHistoryPage";
 import RoleBasedDashboard from "@/components/layout/RoleBasedDashboard";
@@ -59,6 +60,7 @@ import SalesApproval from "@/pages/SalesApproval";
 import SalesOrderList from "@/pages/SalesOrderList";
 import UnitHeadProductionGroup from "@/components/unit-head/UnitHeadProductionGroup";
 import UnitManagerProductionGroup from "@/pages/unit-manager/UnitManagerProductionGroup";
+import UnitManagerReturns from "@/pages/unit-manager/UnitManagerReturns";
 import UnitManagerLayout from "@/components/layout/UnitManagerLayout";
 import RoleBasedLayout from "@/components/layout/RoleBasedLayout";
 
@@ -129,9 +131,15 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/sales/refund-return">
+      <Route path="/sales/returns">
         <ProtectedRoute>
-          <RefundDamage />
+          <Returns />
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/sales/damages">
+        <ProtectedRoute>
+          <Damages />
         </ProtectedRoute>
       </Route>
       
@@ -303,6 +311,13 @@ function Router() {
           <UnitManagerProductionGroup />
         </UnitManagerProtectedRoute>
       </Route>
+      
+      <Route path="/unit-manager/returns">
+        <UnitManagerProtectedRoute requiredRole="Unit Manager">
+          <UnitManagerReturns />
+        </UnitManagerProtectedRoute>
+      </Route>
+      
       <Route path="/packing-dashboard">
         <ProtectedRoute requiredRole="Packing">
           <PackingDashboard />

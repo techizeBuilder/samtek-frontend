@@ -36,7 +36,8 @@ import {
   FileText,
   CheckCircle,
   BarChart,
-  Clock
+  Clock,
+  AlertTriangle
 } from 'lucide-react';
 
 // Separate menu items for each role
@@ -212,6 +213,13 @@ const unitManagerMenuItems = [
     path: '/customers',
     icon: Users,
     module: 'customers'
+  },
+  {
+    label: 'Returns & Damage',
+    path: '/unit-manager/returns',
+    icon: RotateCcw,
+    module: 'unitManager',
+    feature: 'returns'
   }
 ];
 
@@ -306,11 +314,18 @@ const salesMenuItems = [
     feature: 'myInvoices'
   },
   {
-    label: 'Return/Damage',
-    path: '/sales/refund-return',
+    label: 'Returns',
+    path: '/sales/returns',
     icon: RotateCcw,
     module: 'sales',
-    feature: 'refundReturn'
+    feature: 'returns'
+  },
+  {
+    label: 'Damages',
+    path: '/sales/damages',
+    icon: AlertTriangle,
+    module: 'sales',
+    feature: 'damages'
   },
   {
     label: 'Customers',

@@ -71,7 +71,7 @@ const returnSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['refund', 'damage'],
+    enum: ['refund', 'damage', 'exchange', 'defective', 'expired'],
     default: 'refund'
   },
   totalAmount: {
@@ -88,6 +88,15 @@ const returnSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  // Company and sales person associations
+  companyId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Company'
+  },
+  salesPerson: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
@@ -95,6 +104,14 @@ const returnSchema = new mongoose.Schema({
   updatedBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
+  },
+  // Approval tracking
+  approvedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  approvedAt: {
+    type: Date
   }
 }, {
   timestamps: true
@@ -120,5 +137,7 @@ returnSchema.index({ returnDate: -1 });
 returnSchema.index({ status: 1 });
 returnSchema.index({ type: 1 });
 returnSchema.index({ createdAt: -1 });
+returnSchema.index({ companyId: 1 });
+returnSchema.index({ salesPerson: 1 });
 
 export default mongoose.model('Return', returnSchema);

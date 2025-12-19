@@ -117,7 +117,7 @@ export const salesApi = {
   },
 
   // Get sales person refund/returns (company-filtered)
-  getMyRefundReturns: (params = {}) => {
+  getMyReturns: (params = {}) => {
     const queryParams = new URLSearchParams();
     
     Object.entries(params).forEach(([key, value]) => {
@@ -128,7 +128,25 @@ export const salesApi = {
 
     const queryString = queryParams.toString();
     const token = localStorage.getItem('token');
-    return apiRequest(`/sales/refund-return${queryString ? `?${queryString}` : ''}`, {
+    return apiRequest(`/sales/returns${queryString ? `?${queryString}` : ''}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+  },
+
+  getMyDamages: (params = {}) => {
+    const queryParams = new URLSearchParams();
+    
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== '') {
+        queryParams.append(key, value);
+      }
+    });
+
+    const queryString = queryParams.toString();
+    const token = localStorage.getItem('token');
+    return apiRequest(`/sales/damages${queryString ? `?${queryString}` : ''}`, {
       headers: {
         'Authorization': `Bearer ${token}`
       }
@@ -147,7 +165,7 @@ export const salesApi = {
 
     const queryString = queryParams.toString();
     const token = localStorage.getItem('token');
-    return apiRequest(`/api/sales/items${queryString ? `?${queryString}` : ''}`, {
+    return apiRequest(`/sales/items${queryString ? `?${queryString}` : ''}`, {
       headers: {
         'Authorization': `Bearer ${token}`
       }
@@ -237,6 +255,80 @@ export const unitHeadSalesApi = {
     const queryString = queryParams.toString();
     const token = localStorage.getItem('token');
     return apiRequest(`/unit-head/sales-persons/${salesPersonId}/orders${queryString ? `?${queryString}` : ''}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+  },
+
+  // Create a new return (sales-specific)
+  createReturn: (returnData) => {
+    const token = localStorage.getItem('token');
+    return apiRequest('/sales/create-return', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(returnData)
+    });
+  },
+
+  // Update a return (sales-specific)
+  updateReturn: (id, updateData) => {
+    const token = localStorage.getItem('token');
+    return apiRequest(`/sales/update-return/${id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(updateData)
+    });
+  },
+
+  // Create a new damage (sales-specific)
+  createDamage: (damageData) => {
+    const token = localStorage.getItem('token');
+    return apiRequest('/sales/create-damage', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(damageData)
+    });
+  },
+
+  // Update a damage (sales-specific)
+  updateDamage: (id, updateData) => {
+    const token = localStorage.getItem('token');
+    return apiRequest(`/sales/update-damage/${id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(updateData)
+    });
+  },
+
+  // Delete a return (sales-specific)
+  deleteReturn: (id) => {
+    const token = localStorage.getItem('token');
+    return apiRequest(`/sales/delete-return/${id}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+  },
+
+  // Delete a damage (sales-specific)
+  deleteDamage: (id) => {
+    const token = localStorage.getItem('token');
+    return apiRequest(`/sales/delete-damage/${id}`, {
+      method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${token}`
       }

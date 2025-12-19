@@ -89,7 +89,8 @@ const MODULES = [
     features: [
       { key: 'salesApproval', label: 'Sales Approval' },
       { key: 'salesOrderList', label: 'Sales Order List' },
-      { key: 'productionGroup', label: 'Production Group' }
+      { key: 'productionGroup', label: 'Production Group' },
+      { key: 'returns', label: 'Returns & Damage' }
     ]
   },
   {
@@ -133,7 +134,8 @@ const MODULES = [
       { key: 'myCustomers', label: 'My Customers' },
       { key: 'myDeliveries', label: 'My Dispatches' },
       { key: 'myInvoices', label: 'My Payments' },
-      { key: 'refundReturn', label: 'Return/Damage' }
+      { key: 'returns', label: 'Returns' },
+      { key: 'damages', label: 'Damages' }
     ]
   },
   {

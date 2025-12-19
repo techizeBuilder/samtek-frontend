@@ -673,6 +673,116 @@ export const getSalespersonRefundReturns = async (req, res) => {
   }
 };
 
+// Get returns for salesperson (filtered by type and company)
+export const getSalespersonReturns = async (req, res) => {
+  try {
+    const { page = 1, limit = 10, status = '', search = '' } = req.query;
+
+    console.log('🔄 getSalespersonReturns called - getting all returns');
+
+    // Simple query - just get returns by type
+    let query = { type: 'refund' };
+
+    if (status && status !== 'all') {
+      query.status = status;
+    }
+
+    if (search) {
+      query.$or = [
+        { returnCode: { $regex: search, $options: 'i' } },
+        { reason: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    let returns = [];
+    let total = 0;
+
+    try {
+      returns = await Return.find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(parseInt(limit));
+
+      total = await Return.countDocuments(query);
+    } catch (returnError) {
+      console.log('Return model error:', returnError);
+      returns = [];
+      total = 0;
+    }
+
+    res.json({
+      success: true,
+      returns,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages: Math.ceil(total / limit)
+      }
+    });
+  } catch (error) {
+    console.error('Get salesperson returns error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+// Get damages for salesperson (filtered by type and company)
+export const getSalespersonDamages = async (req, res) => {
+  try {
+    const { page = 1, limit = 10, status = '', search = '' } = req.query;
+
+    console.log('🔄 getSalespersonDamages called - getting all damages');
+
+    // Simple query - just get damages by type
+    let query = { type: 'damage' };
+
+    if (status && status !== 'all') {
+      query.status = status;
+    }
+
+    if (search) {
+      query.$or = [
+        { returnCode: { $regex: search, $options: 'i' } },
+        { reason: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    let damages = [];
+    let total = 0;
+
+    try {
+      damages = await Return.find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(parseInt(limit));
+
+      total = await Return.countDocuments(query);
+    } catch (returnError) {
+      console.log('Return model error:', returnError);
+      damages = [];
+      total = 0;
+    }
+
+    res.json({
+      success: true,
+      damages,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages: Math.ceil(total / limit)
+      }
+    });
+  } catch (error) {
+    console.error('Get salesperson damages error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
 // Get items for salesperson (filtered by company location)
 export const getSalespersonItems = async (req, res) => {
   try {
@@ -1417,6 +1527,305 @@ export const getSalesCutoffTimeStatus = async (req, res) => {
       success: false,
       message: 'Failed to get cutoff time status',
       error: error.message
+    });
+  }
+};
+
+// Create return for salesperson (with automatic company/salesperson association)
+export const createSalespersonReturn = async (req, res) => {
+  try {
+    const salespersonId = req.user._id || req.user.id;
+    const userRole = req.user.role;
+    const userCompanyId = req.user.companyId;
+
+    console.log('🔄 createSalespersonReturn called:', {
+      userId: salespersonId,
+      role: userRole,
+      companyId: userCompanyId,
+      body: req.body
+    });
+
+    // Prepare return data with automatic associations
+    const returnData = {
+      ...req.body,
+      companyId: userCompanyId, // Auto-associate with user's company
+      salesPerson: salespersonId, // Auto-associate with current salesperson
+      createdBy: salespersonId
+    };
+
+    const newReturn = new Return(returnData);
+    const savedReturn = await newReturn.save();
+
+    res.status(201).json({
+      success: true,
+      message: 'Return created successfully',
+      return: savedReturn
+    });
+  } catch (error) {
+    console.error('Create salesperson return error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to create return',
+      error: error.message 
+    });
+  }
+};
+
+// Update return for salesperson
+export const updateSalespersonReturn = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const salespersonId = req.user._id || req.user.id;
+    const userRole = req.user.role;
+    const userCompanyId = req.user.companyId;
+
+    console.log('🔄 updateSalespersonReturn called:', {
+      returnId: id,
+      userId: salespersonId,
+      role: userRole,
+      companyId: userCompanyId
+    });
+
+    // More flexible access control - try to find the return first
+    let findQuery = { _id: id };
+    
+    // Only apply company filtering if user has a companyId
+    if (userCompanyId) {
+      findQuery.$or = [
+        { companyId: userCompanyId },
+        { companyId: { $exists: false } }, // Allow records without companyId
+        { companyId: null }
+      ];
+    }
+    
+    // Additional role-based filtering only for Sales role
+    if (userRole === 'Sales') {
+      // For sales users, also allow returns they created or are assigned to
+      findQuery.$and = findQuery.$and || [];
+      findQuery.$and.push({
+        $or: [
+          { salesPerson: salespersonId },
+          { createdBy: salespersonId },
+          { salesPerson: { $exists: false } }, // Allow records without salesPerson
+          { salesPerson: null }
+        ]
+      });
+    }
+
+    console.log('🔍 Update query:', JSON.stringify(findQuery, null, 2));
+
+    const updatedReturn = await Return.findOneAndUpdate(
+      findQuery,
+      { 
+        ...req.body, 
+        updatedBy: salespersonId,
+        // Ensure these fields are set if missing
+        companyId: req.body.companyId || userCompanyId,
+        salesPerson: req.body.salesPerson || salespersonId
+      },
+      { new: true, runValidators: true }
+    );
+
+    if (!updatedReturn) {
+      return res.status(404).json({
+        success: false,
+        message: 'Return not found or access denied'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Return updated successfully',
+      return: updatedReturn
+    });
+  } catch (error) {
+    console.error('Update salesperson return error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to update return',
+      error: error.message 
+    });
+  }
+};
+
+// Create damage for salesperson (with automatic company/salesperson association)
+export const createSalespersonDamage = async (req, res) => {
+  try {
+    const salespersonId = req.user._id || req.user.id;
+    const userRole = req.user.role;
+    const userCompanyId = req.user.companyId;
+
+    console.log('🔄 createSalespersonDamage called:', {
+      userId: salespersonId,
+      role: userRole,
+      companyId: userCompanyId,
+      body: req.body
+    });
+
+    // Prepare damage data with automatic associations
+    const damageData = {
+      ...req.body,
+      companyId: userCompanyId, // Auto-associate with user's company
+      salesPerson: salespersonId, // Auto-associate with current salesperson
+      createdBy: salespersonId
+    };
+
+    const newDamage = new Return(damageData);
+    const savedDamage = await newDamage.save();
+
+    res.status(201).json({
+      success: true,
+      message: 'Damage created successfully',
+      damage: savedDamage
+    });
+  } catch (error) {
+    console.error('Create salesperson damage error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to create damage',
+      error: error.message 
+    });
+  }
+};
+
+// Update damage for salesperson
+export const updateSalespersonDamage = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const salespersonId = req.user._id || req.user.id;
+    const userRole = req.user.role;
+    const userCompanyId = req.user.companyId;
+
+    console.log('🔄 updateSalespersonDamage called:', {
+      damageId: id,
+      userId: salespersonId,
+      role: userRole,
+      companyId: userCompanyId
+    });
+
+    // Find damage with proper access control
+    let findQuery = { _id: id };
+    
+    // Company filtering
+    if (userCompanyId) {
+      findQuery.companyId = userCompanyId;
+    }
+    
+    // Role-based filtering
+    if (userRole === 'Sales') {
+      findQuery.salesPerson = salespersonId;
+    }
+
+    const updatedDamage = await Return.findOneAndUpdate(
+      findQuery,
+      { ...req.body, updatedBy: salespersonId },
+      { new: true, runValidators: true }
+    );
+
+    if (!updatedDamage) {
+      return res.status(404).json({
+        success: false,
+        message: 'Damage not found or access denied'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Damage updated successfully',
+      damage: updatedDamage
+    });
+  } catch (error) {
+    console.error('Update salesperson damage error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to update damage',
+      error: error.message 
+    });
+  }
+};
+
+// Delete a return (sales-specific)
+export const deleteSalespersonReturn = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    console.log('🗑️ deleteSalespersonReturn called:', {
+      returnId: id,
+      userId: req.user._id
+    });
+
+    // Find the return first
+    const returnDoc = await Return.findById(id);
+    if (!returnDoc) {
+      return res.status(404).json({
+        success: false,
+        message: 'Return not found'
+      });
+    }
+
+    // Delete the return
+    await Return.findByIdAndDelete(id);
+
+    console.log('✅ Return deleted successfully');
+
+    res.json({
+      success: true,
+      message: 'Return deleted successfully'
+    });
+
+  } catch (error) {
+    console.error('❌ Error deleting return:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Failed to delete return',
+      error: error.message 
+    });
+  }
+};
+
+// Delete a damage (sales-specific)
+export const deleteSalespersonDamage = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    console.log('🗑️ deleteSalespersonDamage called:', {
+      damageId: id,
+      userId: req.user._id
+    });
+
+    // Find the damage first
+    const damageDoc = await Return.findById(id);
+    if (!damageDoc) {
+      return res.status(404).json({
+        success: false,
+        message: 'Damage not found'
+      });
+    }
+
+    // Verify it's actually a damage type
+    if (damageDoc.type !== 'damage') {
+      return res.status(400).json({
+        success: false,
+        message: 'Document is not a damage record'
+      });
+    }
+
+    // Delete the damage
+    await Return.findByIdAndDelete(id);
+
+    console.log('✅ Damage deleted successfully');
+
+    res.json({
+      success: true,
+      message: 'Damage deleted successfully'
+    });
+
+  } catch (error) {
+    console.error('❌ Error deleting damage:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Failed to delete damage',
+      error: error.message 
     });
   }
 };

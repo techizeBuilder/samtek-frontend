@@ -16,7 +16,19 @@ import {
   updateUnitManagerProductionGroup,
   deleteUnitManagerProductionGroup,
   getUnitManagerAvailableItems,
-  getApprovedProductSummaries
+  getApprovedProductSummaries,
+  // Unit Manager Returns & Damage functions (Consolidated)
+  getUnitManagerReturns,
+  createUnitManagerReturn,
+  updateUnitManagerReturn,
+  deleteUnitManagerReturn,
+  approveUnitManagerReturn,
+  getUnitManagerDamages,
+  createUnitManagerDamage,
+  updateUnitManagerDamage,
+  deleteUnitManagerDamage,
+  approveUnitManagerDamage,
+  getUnitManagerSalesPersons
 } from '../controllers/unitManagerController.js';
 // Import models for debug endpoint
 import User from '../models/User.js';
@@ -106,8 +118,52 @@ router.get('/debug', async (req, res) => {
   }
 });
 
-// Unit Manager specific routes
-router.get('/items', getItems); // Comment out but keep for reference
+// Unit Manager specific routes - Fixed to use proper items endpoint
+router.get('/items', async (req, res) => {
+  try {
+    // Import necessary modules
+    const { Item } = await import('../models/Inventory.js');
+    
+    const user = req.user;
+    console.log('🔍 Unit Manager Items API:', {
+      role: user.role,
+      companyId: user.companyId,
+      store: user.companyId
+    });
+
+    // Only allow Unit Manager role
+    if (user.role !== 'Unit Manager') {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied - Unit Manager role required'
+      });
+    }
+
+    // Get all items for this company using correct field 'store'
+    const items = await Item.find({
+      store: user.companyId // Items use 'store' field, not 'companyId'
+    })
+    .select('name code category subCategory batch qty unit price image salePrice stdCost')
+    .sort({ name: 1 })
+    .lean();
+
+    console.log(`Unit Manager items API: Found ${items.length} items for company ${user.companyId}`);
+
+    res.json({ 
+      success: true, 
+      data: items,
+      items: items // Also include 'items' for backward compatibility
+    });
+
+  } catch (error) {
+    console.error('Unit Manager items API error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch items',
+      error: error.message
+    });
+  }
+});
 // COMMENTED OUT - Using product summary API instead
 // router.get('/orders', getOrders); // Main API with all data
 router.get('/all-orders', getAllOrders); // New endpoint for sales order list
@@ -175,5 +231,85 @@ router.post('/production-groups', createUnitManagerProductionGroup);
 router.put('/production-groups/:id', updateUnitManagerProductionGroup);
 router.delete('/production-groups/:id', deleteUnitManagerProductionGroup);
 router.get('/production-groups/items/available', getUnitManagerAvailableItems);
+
+// Unit Manager Returns & Damage Management Routes (Consolidated)
+router.get('/returns', getUnitManagerReturns);
+router.post('/create-return', createUnitManagerReturn);
+router.put('/update-return/:id', updateUnitManagerReturn);
+router.delete('/delete-return/:id', deleteUnitManagerReturn);
+router.post('/approve-return/:id', approveUnitManagerReturn);
+router.post('/update-return-status/:id', async (req, res) => {
+  try {
+    const Return = (await import('../models/Return.js')).default;
+    const { status } = req.body;
+    const { id } = req.params;
+    const user = req.user;
+
+    console.log('🔄 Updating return status:', { id, status, userId: user._id });
+
+    // Only allow Unit Manager role
+    if (user.role !== 'Unit Manager') {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied - Unit Manager role required'
+      });
+    }
+
+    // Validate status
+    const validStatuses = ['pending', 'approved', 'rejected', 'processing', 'completed'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid status. Must be one of: ' + validStatuses.join(', ')
+      });
+    }
+
+    // Find and update the return
+    const returnRecord = await Return.findOne({
+      _id: id,
+      companyId: user.companyId
+    });
+
+    if (!returnRecord) {
+      return res.status(404).json({
+        success: false,
+        message: 'Return not found'
+      });
+    }
+
+    // Update status
+    returnRecord.status = status;
+    returnRecord.updatedAt = new Date();
+    returnRecord.updatedBy = user._id;
+    
+    await returnRecord.save();
+
+    console.log('✅ Return status updated successfully');
+
+    res.json({
+      success: true,
+      message: 'Return status updated successfully',
+      data: returnRecord
+    });
+
+  } catch (error) {
+    console.error('❌ Error updating return status:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update return status',
+      error: error.message
+    });
+  }
+});
+
+// Unit Manager Damages Management Routes
+router.get('/damages', getUnitManagerDamages);
+router.post('/create-damage', createUnitManagerDamage);
+router.put('/update-damage/:id', updateUnitManagerDamage);
+router.delete('/delete-damage/:id', deleteUnitManagerDamage);
+router.post('/approve-damage/:id', approveUnitManagerDamage);
+
+// Get sales persons for the company (for dropdowns)
+router.get('/sales-persons', getUnitManagerSalesPersons);
 
 export default router;

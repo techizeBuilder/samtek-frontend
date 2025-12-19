@@ -5,6 +5,14 @@ import {
   getSalespersonDeliveries,
   getSalespersonInvoices,
   getSalespersonRefundReturns,
+  getSalespersonReturns,
+  getSalespersonDamages,
+  createSalespersonReturn,
+  updateSalespersonReturn,
+  deleteSalespersonReturn,
+  createSalespersonDamage,
+  updateSalespersonDamage,
+  deleteSalespersonDamage,
   getSalespersonItems,
   getSalesSummary,
   getSalesRecentOrders,
@@ -172,6 +180,14 @@ salesRouter.get('/my-customers', getSalespersonCustomers);
 salesRouter.get('/my-deliveries', getSalespersonDeliveries);
 salesRouter.get('/my-invoices', getSalespersonInvoices);
 salesRouter.get('/refund-return', getSalespersonRefundReturns);
+salesRouter.get('/returns', getSalespersonReturns);
+salesRouter.get('/damages', getSalespersonDamages);
+salesRouter.post('/create-return', createSalespersonReturn);
+salesRouter.put('/update-return/:id', updateSalespersonReturn);
+salesRouter.delete('/delete-return/:id', deleteSalespersonReturn);
+salesRouter.post('/create-damage', createSalespersonDamage);
+salesRouter.put('/update-damage/:id', updateSalespersonDamage);
+salesRouter.delete('/delete-damage/:id', deleteSalespersonDamage);
 salesRouter.get('/items', getSalespersonItems);
 
 export default salesRouter;
