@@ -286,18 +286,38 @@ export const useProductionReports = (params = {}) => {
   return useQuery({
     queryKey: ['productionReports', params],
     queryFn: async () => {
+      const token = localStorage.getItem('authToken');
+      if (!token) {
+        throw new Error('Authentication token not found. Please log in.');
+      }
+
+      console.log('Fetching production reports with params:', params);
+      
       const queryString = new URLSearchParams(params).toString();
-      const response = await fetch(`/api/production/reports/production-summary?${queryString}`, {
+      const url = `/api/production/reports?${queryString}`;
+      
+      console.log('API URL:', url);
+      
+      const response = await fetch(url, {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
         }
       });
       
+      console.log('Response status:', response.status);
+      
       if (!response.ok) {
-        throw new Error('Failed to fetch production reports');
+        const errorData = await response.text();
+        console.error('API Error:', errorData);
+        throw new Error(`HTTP ${response.status}: ${errorData}`);
       }
       
-      return response.json();
-    }
+      const data = await response.json();
+      console.log('Production reports data:', data);
+      return data;
+    },
+    enabled: !!localStorage.getItem('authToken'), // Only run if token exists
+    retry: 1
   });
 };

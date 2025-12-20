@@ -1617,3 +1617,188 @@ export const updateUngroupedItemProductionWithBatch = async (req, res) => {
     });
   }
 };
+
+// Get all production data for reports (history)
+export const getAllProductionReports = async (req, res) => {
+  try {
+    const { page = 1, limit = 10, startDate, endDate, companyId, status, itemId, groupId } = req.query;
+    const userCompanyId = req.user.companyId;
+
+    // Build filter object
+    const filter = {
+      companyId: companyId || userCompanyId
+    };
+
+    // Add date range filter
+    if (startDate || endDate) {
+      filter.productionDate = {};
+      if (startDate) {
+        filter.productionDate.$gte = new Date(startDate);
+      }
+      if (endDate) {
+        const endDateObj = new Date(endDate);
+        endDateObj.setHours(23, 59, 59, 999); // Include full end date
+        filter.productionDate.$lte = endDateObj;
+      }
+    }
+
+    // Add status filter
+    if (status && status !== 'all') {
+      filter.status = status;
+    }
+
+    // Add item filter
+    if (itemId) {
+      filter.itemId = itemId;
+    }
+
+    // Add group filter
+    if (groupId) {
+      filter.groupId = groupId;
+    }
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    // Get paginated production data with populated item and group details
+    const productionData = await ProductionBatch.find(filter)
+      .populate({
+        path: 'itemId',
+        select: 'name code category subCategory unit type importance store'
+      })
+      .populate({
+        path: 'groupId',
+        select: 'groupName description'
+      })
+      .populate({
+        path: 'companyId',
+        select: 'companyName'
+      })
+      .sort({ productionDate: -1, createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit))
+      .lean();
+
+    // Get total count for pagination
+    const totalCount = await ProductionBatch.countDocuments(filter);
+    const totalPages = Math.ceil(totalCount / parseInt(limit));
+
+    // Calculate summary statistics
+    const summaryStats = await ProductionBatch.aggregate([
+      { $match: filter },
+      {
+        $group: {
+          _id: null,
+          totalBatches: { $sum: 1 },
+          totalProduced: { $sum: '$qtyAchieved' },
+          totalPlanned: { $sum: '$qtyPerBatch' },
+          totalLoss: { $sum: '$productionLoss' },
+          completedBatches: {
+            $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] }
+          },
+          inProgressBatches: {
+            $sum: { $cond: [{ $eq: ['$status', 'in_progress'] }, 1, 0] }
+          },
+          pendingBatches: {
+            $sum: { $cond: [{ $eq: ['$status', 'pending'] }, 1, 0] }
+          }
+        }
+      }
+    ]);
+
+    const stats = summaryStats[0] || {
+      totalBatches: 0,
+      totalProduced: 0,
+      totalPlanned: 0,
+      totalLoss: 0,
+      completedBatches: 0,
+      inProgressBatches: 0,
+      pendingBatches: 0
+    };
+
+    // Calculate efficiency percentage
+    stats.efficiency = stats.totalPlanned > 0 
+      ? ((stats.totalProduced / stats.totalPlanned) * 100).toFixed(2)
+      : 0;
+
+    // Format the production data
+    const formattedData = productionData.map(batch => ({
+      id: batch._id,
+      batchNo: batch.batchNo,
+      batchNumber: batch.batchNumber,
+      productionDate: batch.productionDate,
+      item: {
+        id: batch.itemId?._id,
+        name: batch.itemId?.name,
+        code: batch.itemId?.code,
+        category: batch.itemId?.category,
+        subCategory: batch.itemId?.subCategory,
+        unit: batch.itemId?.unit,
+        type: batch.itemId?.type,
+        importance: batch.itemId?.importance
+      },
+      group: batch.groupId ? {
+        id: batch.groupId._id,
+        name: batch.groupId.groupName,
+        description: batch.groupId.description
+      } : null,
+      company: {
+        id: batch.companyId._id,
+        name: batch.companyId.companyName
+      },
+      production: {
+        qtyPerBatch: batch.qtyPerBatch,
+        qtyAchieved: batch.qtyAchieved,
+        productionLoss: batch.productionLoss,
+        efficiency: batch.qtyPerBatch > 0 
+          ? ((batch.qtyAchieved / batch.qtyPerBatch) * 100).toFixed(2)
+          : 0
+      },
+      timing: {
+        mouldingTime: batch.mouldingTime,
+        unloadingTime: batch.unloadingTime,
+        duration: batch.mouldingTime && batch.unloadingTime 
+          ? Math.round((new Date(batch.unloadingTime) - new Date(batch.mouldingTime)) / (1000 * 60)) + ' minutes'
+          : null
+      },
+      status: batch.status,
+      notes: batch.notes,
+      createdBy: batch.createdBy,
+      updatedBy: batch.updatedBy,
+      createdAt: batch.createdAt,
+      updatedAt: batch.updatedAt
+    }));
+
+    res.json({
+      success: true,
+      message: 'Production reports retrieved successfully',
+      data: {
+        reports: formattedData,
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages,
+          totalCount,
+          limit: parseInt(limit),
+          hasNext: parseInt(page) < totalPages,
+          hasPrev: parseInt(page) > 1
+        },
+        summary: stats,
+        filters: {
+          startDate,
+          endDate,
+          companyId: filter.companyId,
+          status,
+          itemId,
+          groupId
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching production reports:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch production reports',
+      error: error.message
+    });
+  }
+};

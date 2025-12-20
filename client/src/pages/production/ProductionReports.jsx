@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -33,541 +33,293 @@ import {
   Clock,
   DollarSign,
   Users,
-  Activity
+  Activity,
+  RefreshCw,
+  ChevronLeft,
+  ChevronRight,
+  Loader2
 } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 
 export default function ProductionReports() {
+  const { user } = useAuth();
   const { toast } = useToast();
-  const [reportType, setReportType] = useState('daily');
-  const [dateFrom, setDateFrom] = useState('2024-11-01');
-  const [dateTo, setDateTo] = useState('2024-11-24');
-  const [selectedBatch, setSelectedBatch] = useState('all');
-  const [selectedUnitManager, setSelectedUnitManager] = useState('all');
-  const [selectedShift, setSelectedShift] = useState('all');
+  
+  // Filter states
+  const [filters, setFilters] = useState({
+    startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 30 days ago
+    endDate: new Date().toISOString().split('T')[0], // today
+    status: 'all',
+    page: 1,
+    limit: 20
+  });
 
-  // Mock data for reports
-  const reportData = {
-    daily: [
-      {
-        date: '2024-11-24',
-        totalBatches: 5,
-        completedBatches: 4,
-        producedUnits: 3150,
-        plannedUnits: 3300,
-        efficiency: 95.5,
-        damages: 85,
-        damagesCost: 1200,
-        shifts: {
-          morning: { batches: 2, units: 1450, efficiency: 96 },
-          afternoon: { batches: 2, units: 1200, efficiency: 94 },
-          night: { batches: 1, units: 500, efficiency: 98 }
-        }
-      },
-      {
-        date: '2024-11-23',
-        totalBatches: 4,
-        completedBatches: 4,
-        producedUnits: 2800,
-        plannedUnits: 2900,
-        efficiency: 96.5,
-        damages: 45,
-        damagesCost: 650,
-        shifts: {
-          morning: { batches: 2, units: 1300, efficiency: 97 },
-          afternoon: { batches: 1, units: 800, efficiency: 95 },
-          night: { batches: 1, units: 700, efficiency: 98 }
-        }
-      }
-    ],
-    batch: [
-      {
-        batchId: 'BATCH001',
-        productName: 'Product A',
-        plannedQty: 1000,
-        producedQty: 950,
-        efficiency: 95,
-        startTime: '2024-11-24T08:15:00',
-        endTime: '2024-11-24T15:45:00',
-        duration: '7h 30m',
-        productionHead: 'Alice Johnson',
-        machine: 'Machine A1',
-        shift: 'Morning',
-        damages: 50,
-        cost: 500
-      },
-      {
-        batchId: 'BATCH002',
-        productName: 'Product B',
-        plannedQty: 500,
-        producedQty: 480,
-        efficiency: 96,
-        startTime: '2024-11-24T14:00:00',
-        endTime: '2024-11-24T21:30:00',
-        duration: '7h 30m',
-        productionHead: 'Bob Wilson',
-        machine: 'Machine B2',
-        shift: 'Afternoon',
-        damages: 20,
-        cost: 150
-      }
-    ],
-    machine: [
-      {
-        machine: 'Machine A1',
-        totalBatches: 8,
-        totalHours: 64,
-        producedUnits: 7500,
-        plannedUnits: 8000,
-        efficiency: 93.75,
-        downtimeHours: 4,
-        maintenanceCost: 2500,
-        damages: 200
-      },
-      {
-        machine: 'Machine B2',
-        totalBatches: 6,
-        totalHours: 48,
-        producedUnits: 5800,
-        plannedUnits: 6000,
-        efficiency: 96.67,
-        downtimeHours: 2,
-        maintenanceCost: 1800,
-        damages: 150
-      }
-    ],
-    damage: [
-      {
-        date: '2024-11-24',
-        batchId: 'BATCH001',
-        productName: 'Product A',
-        damageType: 'Quality Defects',
-        quantity: 30,
-        cost: 300,
-        reason: 'Minor surface defects'
-      },
-      {
-        date: '2024-11-24',
-        batchId: 'BATCH001',
-        productName: 'Product A',
-        damageType: 'Machine Issues',
-        quantity: 20,
-        cost: 200,
-        reason: 'Machine calibration issues'
-      }
-    ],
-    rawMaterial: [
-      {
-        date: '2024-11-24',
-        batchId: 'BATCH001',
-        productName: 'Product A',
-        rawMaterial: 'Raw Material A',
-        planned: 100,
-        actual: 98,
-        variance: -2,
-        cost: 980,
-        efficiency: 102
-      },
-      {
-        date: '2024-11-24',
-        batchId: 'BATCH001',
-        productName: 'Product A',
-        rawMaterial: 'Raw Material B',
-        planned: 50,
-        actual: 52,
-        variance: 2,
-        cost: 520,
-        efficiency: 96
-      }
-    ]
+  // Build query params
+  const queryParams = new URLSearchParams({
+    page: filters.page.toString(),
+    limit: filters.limit.toString(),
+    ...(filters.startDate && { fromDate: filters.startDate }),
+    ...(filters.endDate && { toDate: filters.endDate }),
+    ...(filters.status !== 'all' && { status: filters.status })
+  });
+
+  // Fetch production reports data
+  const {
+    data: reportsData,
+    isLoading,
+    error,
+    refetch
+  } = useQuery({
+    queryKey: ['production-reports', filters.startDate, filters.endDate, filters.status, filters.page],
+    queryFn: () => apiRequest('GET', `/api/production/reports?${queryParams}`),
+    staleTime: 30000,
+    retry: 1
+  });
+
+  const productionData = reportsData?.data?.reports || [];
+  const pagination = reportsData?.pagination || {
+    currentPage: 1,
+    totalPages: 1,
+    totalItems: 0,
+    hasNext: false,
+    hasPrev: false
   };
 
-  const unitManagers = [
-    { id: 'all', name: 'All Unit Managers' },
-    { id: 'UM001', name: 'John Doe' },
-    { id: 'UM002', name: 'Jane Smith' },
-    { id: 'UM003', name: 'Mike Johnson' }
-  ];
+  // Ensure reports is always an array
+  const reports = Array.isArray(productionData) ? productionData : [];
+  
+  // Debug: Log the first report to see the structure
+  if (reports.length > 0) {
+    console.log('First report structure:', reports[0]);
+    console.log('Item structure:', reports[0]?.item);
+  }
+  
+  // Create summary from actual data
+  const summary = {
+    totalBatches: reports.length,
+    completedBatches: reports.filter(r => r.status === 'completed').length,
+    efficiency: reports.length > 0 
+      ? Math.round(reports.reduce((sum, r) => sum + (parseFloat(r.production?.efficiency) || 0), 0) / reports.length)
+      : 0,
+    totalProduced: reports.reduce((sum, r) => sum + (parseInt(r.production?.qtyAchieved) || 0), 0),
+    totalPlanned: reports.reduce((sum, r) => sum + (parseInt(r.production?.qtyPerBatch) || 0), 0),
+    totalLoss: reports.reduce((sum, r) => sum + (parseInt(r.production?.productionLoss) || 0), 0),
+    inProgressBatches: reports.filter(r => r.status === 'in_progress' || r.status === 'in-progress').length,
+    pendingBatches: reports.filter(r => r.status === 'pending').length
+  };
 
-  const downloadReport = (format) => {
-    const formatText = format === 'pdf' ? 'PDF' : 'Excel';
-    const reportText = reportType === 'daily' ? 'Daily Production' :
-                      reportType === 'batch' ? 'Batch-wise Production' :
-                      reportType === 'machine' ? 'Machine Efficiency' :
-                      reportType === 'damage' ? 'Damage/Wastage' :
-                      'Raw Material vs Output';
+  const handleFilterChange = (key, value) => {
+    setFilters(prev => ({
+      ...prev,
+      [key]: value,
+      page: key !== 'page' ? 1 : value // Reset page when other filters change
+    }));
+  };
 
+  const handleExport = () => {
     toast({
-      title: "Download Started",
-      description: `${reportText} report in ${formatText} format is being generated`,
+      title: "Export Started",
+      description: "Your production report is being prepared for download.",
     });
+    // TODO: Implement actual export functionality
   };
 
-  const getEfficiencyColor = (efficiency) => {
-    if (efficiency >= 95) return 'text-green-600';
-    if (efficiency >= 90) return 'text-yellow-600';
-    return 'text-red-600';
-  };
-
-  const renderReportContent = () => {
-    switch (reportType) {
-      case 'daily':
-        return (
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold">Daily Production Report</h3>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Batches</TableHead>
-                  <TableHead>Production</TableHead>
-                  <TableHead>Efficiency</TableHead>
-                  <TableHead>Damages</TableHead>
-                  <TableHead>Shift Breakdown</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {reportData.daily.map((day, index) => (
-                  <TableRow key={index}>
-                    <TableCell className="font-medium">{day.date}</TableCell>
-                    <TableCell>
-                      <div className="text-sm">
-                        <div>{day.completedBatches}/{day.totalBatches} completed</div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-sm">
-                        <div className="font-medium">{day.producedUnits} units</div>
-                        <div className="text-gray-500">Planned: {day.plannedUnits}</div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <span className={`font-medium ${getEfficiencyColor(day.efficiency)}`}>
-                        {day.efficiency}%
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-sm">
-                        <div className="text-red-600">{day.damages} units</div>
-                        <div className="text-gray-500">₹{day.damagesCost}</div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-xs space-y-1">
-                        <div>Morning: {day.shifts.morning.units} ({day.shifts.morning.efficiency}%)</div>
-                        <div>Afternoon: {day.shifts.afternoon.units} ({day.shifts.afternoon.efficiency}%)</div>
-                        <div>Night: {day.shifts.night.units} ({day.shifts.night.efficiency}%)</div>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        );
-
-      case 'batch':
-        return (
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold">Batch-wise Production Report</h3>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Batch ID</TableHead>
-                  <TableHead>Product</TableHead>
-                  <TableHead>Production</TableHead>
-                  <TableHead>Duration</TableHead>
-                  <TableHead>Production Head</TableHead>
-                  <TableHead>Machine</TableHead>
-                  <TableHead>Efficiency</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {reportData.batch.map((batch, index) => (
-                  <TableRow key={index}>
-                    <TableCell className="font-medium">{batch.batchId}</TableCell>
-                    <TableCell>{batch.productName}</TableCell>
-                    <TableCell>
-                      <div className="text-sm">
-                        <div className="font-medium">{batch.producedQty} / {batch.plannedQty}</div>
-                        {batch.damages > 0 && (
-                          <div className="text-red-600">-{batch.damages} damaged</div>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-sm">
-                        <div>{batch.duration}</div>
-                        <div className="text-gray-500">{batch.shift} Shift</div>
-                      </div>
-                    </TableCell>
-                    <TableCell>{batch.productionHead}</TableCell>
-                    <TableCell>{batch.machine}</TableCell>
-                    <TableCell>
-                      <span className={`font-medium ${getEfficiencyColor(batch.efficiency)}`}>
-                        {batch.efficiency}%
-                      </span>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        );
-
-      case 'machine':
-        return (
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold">Machine/Shift Production Efficiency Report</h3>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Machine</TableHead>
-                  <TableHead>Batches</TableHead>
-                  <TableHead>Operating Hours</TableHead>
-                  <TableHead>Production</TableHead>
-                  <TableHead>Efficiency</TableHead>
-                  <TableHead>Downtime</TableHead>
-                  <TableHead>Maintenance Cost</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {reportData.machine.map((machine, index) => (
-                  <TableRow key={index}>
-                    <TableCell className="font-medium">{machine.machine}</TableCell>
-                    <TableCell>{machine.totalBatches}</TableCell>
-                    <TableCell>
-                      <div className="text-sm">
-                        <div>{machine.totalHours}h total</div>
-                        <div className="text-gray-500">{machine.downtimeHours}h downtime</div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-sm">
-                        <div className="font-medium">{machine.producedUnits}</div>
-                        <div className="text-gray-500">Planned: {machine.plannedUnits}</div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <span className={`font-medium ${getEfficiencyColor(machine.efficiency)}`}>
-                        {machine.efficiency}%
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-sm text-red-600">
-                        {machine.downtimeHours}h
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-sm">
-                        ₹{machine.maintenanceCost}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        );
-
-      case 'damage':
-        return (
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold">Damage/Wastage Report</h3>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Batch ID</TableHead>
-                  <TableHead>Product</TableHead>
-                  <TableHead>Damage Type</TableHead>
-                  <TableHead>Quantity</TableHead>
-                  <TableHead>Cost</TableHead>
-                  <TableHead>Reason</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {reportData.damage.map((damage, index) => (
-                  <TableRow key={index}>
-                    <TableCell>{damage.date}</TableCell>
-                    <TableCell className="font-medium">{damage.batchId}</TableCell>
-                    <TableCell>{damage.productName}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="bg-red-50 text-red-700">
-                        {damage.damageType}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-red-600 font-medium">{damage.quantity} units</TableCell>
-                    <TableCell className="text-red-600">₹{damage.cost}</TableCell>
-                    <TableCell className="text-sm">{damage.reason}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        );
-
-      case 'rawmaterial':
-        return (
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold">Raw Material vs Output Report</h3>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Batch ID</TableHead>
-                  <TableHead>Product</TableHead>
-                  <TableHead>Raw Material</TableHead>
-                  <TableHead>Planned vs Actual</TableHead>
-                  <TableHead>Variance</TableHead>
-                  <TableHead>Cost</TableHead>
-                  <TableHead>Efficiency</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {reportData.rawMaterial.map((material, index) => (
-                  <TableRow key={index}>
-                    <TableCell>{material.date}</TableCell>
-                    <TableCell className="font-medium">{material.batchId}</TableCell>
-                    <TableCell>{material.productName}</TableCell>
-                    <TableCell>{material.rawMaterial}</TableCell>
-                    <TableCell>
-                      <div className="text-sm">
-                        <div>Planned: {material.planned} kg</div>
-                        <div className="font-medium">Actual: {material.actual} kg</div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <span className={`font-medium ${material.variance > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                        {material.variance > 0 ? '+' : ''}{material.variance} kg
-                      </span>
-                    </TableCell>
-                    <TableCell>₹{material.cost}</TableCell>
-                    <TableCell>
-                      <span className={`font-medium ${getEfficiencyColor(material.efficiency)}`}>
-                        {material.efficiency}%
-                      </span>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        );
-
+  const getStatusBadge = (status) => {
+    switch (status) {
+      case 'completed':
+        return <Badge className="bg-green-100 text-green-800">Completed</Badge>;
+      case 'in-progress':
+        return <Badge className="bg-blue-100 text-blue-800">In Progress</Badge>;
+      case 'pending':
+        return <Badge className="bg-yellow-100 text-yellow-800">Pending</Badge>;
       default:
-        return <div>Select a report type to view data</div>;
+        return <Badge className="bg-gray-100 text-gray-800">{status || 'Unknown'}</Badge>;
     }
   };
 
+  const formatTime = (timeStr) => {
+    if (!timeStr) return 'N/A';
+    try {
+      return new Date(timeStr).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } catch (error) {
+      return timeStr;
+    }
+  };
+
+  const formatDate = (dateStr) => {
+    if (!dateStr) return 'N/A';
+    try {
+      return new Date(dateStr).toLocaleDateString();
+    } catch (error) {
+      return dateStr;
+    }
+  };
+
+  // Show error state
+  if (error) {
+    return (
+      <div className="p-6">
+        <div className="bg-red-50 border border-red-200 rounded-md p-4">
+          <h3 className="text-red-800 font-medium">Error Loading Reports</h3>
+          <p className="text-red-600 text-sm mt-1">
+            {error.message}
+          </p>
+          <Button onClick={() => refetch()} className="mt-3 bg-red-600 hover:bg-red-700">
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Retry
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-64">
+        <div className="text-center">
+          <AlertTriangle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
+            Error Loading Production Reports
+          </h3>
+          <p className="text-gray-600 dark:text-gray-400 mb-4">
+            {error.message || 'Failed to load production data'}
+          </p>
+          <Button onClick={() => refetch()}>
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Retry
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+      <div className="flex justify-between items-start">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Production Reports</h1>
-          <p className="text-gray-600 dark:text-gray-400">Generate and download production reports</p>
+          <p className="text-gray-600 dark:text-gray-400">View and analyze all production data history</p>
         </div>
-        <div className="flex gap-3">
-          <Button variant="outline" onClick={() => downloadReport('pdf')}>
-            <Download className="h-4 w-4 mr-2" />
-            Download PDF
-          </Button>
-          <Button onClick={() => downloadReport('excel')}>
-            <Download className="h-4 w-4 mr-2" />
-            Download Excel
+        <div className="flex space-x-2">
+          <Button onClick={() => refetch()} variant="outline">
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Refresh
           </Button>
         </div>
       </div>
 
-      {/* Report Filters */}
+      {/* Summary Cards */}
+      {/* <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Batches</CardTitle>
+            <Package className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{summary.totalBatches || 0}</div>
+            <p className="text-xs text-muted-foreground">
+              {summary.completedBatches || 0} completed
+            </p>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Production Efficiency</CardTitle>
+            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{summary.efficiency || 0}%</div>
+            <p className="text-xs text-muted-foreground">
+              {summary.totalProduced || 0} / {summary.totalPlanned || 0} units
+            </p>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Loss</CardTitle>
+            <AlertTriangle className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{summary.totalLoss || 0}</div>
+            <p className="text-xs text-muted-foreground">
+              Units lost in production
+            </p>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">In Progress</CardTitle>
+            <Activity className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{summary.inProgressBatches || 0}</div>
+            <p className="text-xs text-muted-foreground">
+              {summary.pendingBatches || 0} pending start
+            </p>
+          </CardContent>
+        </Card>
+      </div> */}
+
+      {/* Filters */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Filter className="h-5 w-5" />
-            Report Filters
+          <CardTitle className="flex items-center">
+            <Filter className="h-5 w-5 mr-2" />
+            Filters
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="reportType">Report Type</Label>
-              <Select value={reportType} onValueChange={setReportType}>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div>
+              <Label htmlFor="start-date">Start Date</Label>
+              <Input
+                id="start-date"
+                type="date"
+                value={filters.startDate}
+                onChange={(e) => handleFilterChange('startDate', e.target.value)}
+              />
+            </div>
+            <div>
+              <Label htmlFor="end-date">End Date</Label>
+              <Input
+                id="end-date"
+                type="date"
+                value={filters.endDate}
+                onChange={(e) => handleFilterChange('endDate', e.target.value)}
+              />
+            </div>
+            <div>
+              <Label htmlFor="status">Status</Label>
+              <Select value={filters.status} onValueChange={(value) => handleFilterChange('status', value)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="in_progress">In Progress</SelectItem>
+                  <SelectItem value="completed">Completed</SelectItem>
+                  <SelectItem value="paused">Paused</SelectItem>
+                  <SelectItem value="cancelled">Cancelled</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="limit">Items per page</Label>
+              <Select value={filters.limit.toString()} onValueChange={(value) => handleFilterChange('limit', parseInt(value))}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="daily">Daily Production</SelectItem>
-                  <SelectItem value="batch">Batch-wise Production</SelectItem>
-                  <SelectItem value="machine">Machine Efficiency</SelectItem>
-                  <SelectItem value="damage">Damage/Wastage</SelectItem>
-                  <SelectItem value="rawmaterial">Raw Material vs Output</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="dateFrom">Date From</Label>
-              <Input
-                id="dateFrom"
-                type="date"
-                value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="dateTo">Date To</Label>
-              <Input
-                id="dateTo"
-                type="date"
-                value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="batch">Batch</Label>
-              <Select value={selectedBatch} onValueChange={setSelectedBatch}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select batch..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Batches</SelectItem>
-                  <SelectItem value="BATCH001">BATCH001</SelectItem>
-                  <SelectItem value="BATCH002">BATCH002</SelectItem>
-                  <SelectItem value="BATCH003">BATCH003</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="unitManager">Unit Manager</Label>
-              <Select value={selectedUnitManager} onValueChange={setSelectedUnitManager}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select manager..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {unitManagers.map((manager) => (
-                    <SelectItem key={manager.id} value={manager.id}>
-                      {manager.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="shift">Shift</Label>
-              <Select value={selectedShift} onValueChange={setSelectedShift}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select shift..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Shifts</SelectItem>
-                  <SelectItem value="morning">Morning Shift</SelectItem>
-                  <SelectItem value="afternoon">Afternoon Shift</SelectItem>
-                  <SelectItem value="night">Night Shift</SelectItem>
+                  <SelectItem value="10">10</SelectItem>
+                  <SelectItem value="20">20</SelectItem>
+                  <SelectItem value="50">50</SelectItem>
+                  <SelectItem value="100">100</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -575,75 +327,133 @@ export default function ProductionReports() {
         </CardContent>
       </Card>
 
-      {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <Card className="bg-gradient-to-r from-blue-50 to-indigo-50">
-          <CardContent className="p-6">
-            <div className="flex items-center space-x-4">
-              <div className="p-3 bg-blue-100 rounded-lg">
-                <Package className="h-6 w-6 text-blue-600" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-blue-900">127</p>
-                <p className="text-sm text-blue-600">Total Batches</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gradient-to-r from-green-50 to-emerald-50">
-          <CardContent className="p-6">
-            <div className="flex items-center space-x-4">
-              <div className="p-3 bg-green-100 rounded-lg">
-                <TrendingUp className="h-6 w-6 text-green-600" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-green-900">95.8%</p>
-                <p className="text-sm text-green-600">Avg Efficiency</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gradient-to-r from-orange-50 to-red-50">
-          <CardContent className="p-6">
-            <div className="flex items-center space-x-4">
-              <div className="p-3 bg-orange-100 rounded-lg">
-                <AlertTriangle className="h-6 w-6 text-orange-600" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-orange-900">₹12.5K</p>
-                <p className="text-sm text-orange-600">Damage Cost</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gradient-to-r from-purple-50 to-pink-50">
-          <CardContent className="p-6">
-            <div className="flex items-center space-x-4">
-              <div className="p-3 bg-purple-100 rounded-lg">
-                <Activity className="h-6 w-6 text-purple-600" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-purple-900">89.2%</p>
-                <p className="text-sm text-purple-600">Uptime</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Report Content */}
+      {/* Production Reports Table */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <BarChart3 className="h-5 w-5" />
-            Report Data
-          </CardTitle>
+          <CardTitle>Production History</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Showing {reports.length} of {pagination.totalCount || 0} production records
+          </p>
         </CardHeader>
         <CardContent>
-          {renderReportContent()}
+          {isLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
+              <span className="ml-2 text-muted-foreground">Loading production data...</span>
+            </div>
+          ) : (!reports || reports.length === 0) ? (
+            <div className="text-center py-8">
+              <Package className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <h3 className="text-lg font-semibold mb-2">No Production Data</h3>
+              <p className="text-muted-foreground">No production records found for the selected criteria.</p>
+            </div>
+          ) : (
+            <>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Batch No</TableHead>
+                      <TableHead>Item</TableHead>
+                      <TableHead>Production Date</TableHead>
+                      <TableHead>Planned Qty</TableHead>
+                      <TableHead>Achieved Qty</TableHead>
+                      <TableHead>Loss</TableHead>
+                      <TableHead>Efficiency</TableHead>
+                      <TableHead>Timing</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Group</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {reports && reports.length > 0 ? reports.map((report, index) => (
+                      <TableRow key={report.id || index}>
+                        <TableCell className="font-medium">
+                          {report.batchNo || `Batch ${report.batchNumber}` || 'N/A'}
+                        </TableCell>
+                        <TableCell>
+                          <div>
+                            <div className="font-medium">
+                              {report.item?.name || report.item?.description || 'Unknown Item'}
+                            </div>
+                            <div className="text-sm text-muted-foreground">
+                              {report.item?.category || 'No Category'} • {report.item?.unit || 'pieces'}
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>{formatDate(report.productionDate)}</TableCell>
+                        <TableCell>{report.production?.qtyPerBatch || report.qtyPerBatch || 0}</TableCell>
+                        <TableCell>{report.production?.qtyAchieved || report.qtyAchieved || 0}</TableCell>
+                        <TableCell>{report.production?.productionLoss || report.productionLoss || 0}</TableCell>
+                        <TableCell>
+                          <Badge variant={(report.production?.efficiency || report.efficiency || 0) >= 90 ? "default" : "secondary"}>
+                            {report.production?.efficiency || report.efficiency || 0}%
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="text-sm">
+                            <div>Start: {formatTime(report.timing?.mouldingTime || report.mouldingTime)}</div>
+                            <div>End: {formatTime(report.timing?.unloadingTime || report.unloadingTime)}</div>
+                            {(report.timing?.duration || report.duration) && (
+                              <div className="text-muted-foreground">
+                                Duration: {report.timing?.duration || report.duration}
+                              </div>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {getStatusBadge(report.status || 'completed')}
+                        </TableCell>
+                        <TableCell>
+                          {report.group?.name ? (
+                            <span className="text-sm">{report.group.name}</span>
+                          ) : (
+                            <span className="text-sm text-muted-foreground">Ungrouped</span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    )) : (
+                      <TableRow>
+                        <TableCell colSpan={9} className="text-center py-8">
+                          <Package className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                          <p className="text-muted-foreground">No data available</p>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+              
+              {/* Pagination */}
+              {pagination.totalPages > 1 && (
+                <div className="flex items-center justify-between mt-4">
+                  <div className="text-sm text-muted-foreground">
+                    Page {pagination.currentPage} of {pagination.totalPages}
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleFilterChange('page', pagination.currentPage - 1)}
+                      disabled={!pagination.hasPrev || isLoading}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                      Previous
+                    </Button>
+                    <Button
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => handleFilterChange('page', pagination.currentPage + 1)}
+                      disabled={!pagination.hasNext || isLoading}
+                    >
+                      Next
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </CardContent>
       </Card>
     </div>

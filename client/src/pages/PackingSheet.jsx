@@ -52,7 +52,10 @@ export default function PackingSheet() {
           
           // Get packing start time from existing sheet
           let packingStartTime = null;
+          let packingEndTime = null;
           let punchInStatus = false;
+          let punchOutStatus = false;
+          
           if (existingSheet && existingSheet.packingStartTime) {
             const startTime = new Date(existingSheet.packingStartTime);
             packingStartTime = startTime.toLocaleTimeString('en-IN', { 
@@ -61,6 +64,17 @@ export default function PackingSheet() {
               hour12: true 
             });
             punchInStatus = true;
+          }
+          
+          // Get packing end time from existing sheet if available
+          if (existingSheet && existingSheet.packingEndTime) {
+            const endTime = new Date(existingSheet.packingEndTime);
+            packingEndTime = endTime.toLocaleTimeString('en-IN', { 
+              hour: '2-digit', 
+              minute: '2-digit',
+              hour12: true 
+            });
+            punchOutStatus = true;
           }
           
           return {
@@ -77,7 +91,12 @@ export default function PackingSheet() {
             existingPackingSheet: existingSheet,
             packingSheetId: existingSheet?._id || null,
             packingStartTime: packingStartTime,
+            packingEndTime: packingEndTime,
             punchInStatus: punchInStatus,
+            punchOutStatus: punchOutStatus,
+            // Load approval status from existing sheet
+            isApproved: existingSheet?.isApproved || existingSheet?.status === 'approved' || false,
+            status: existingSheet?.status || 'pending',
             items: existingSheet ? 
               // Use data from existing packing sheet
               existingSheet.items.map(item => ({
@@ -112,7 +131,9 @@ export default function PackingSheet() {
           if (group.punchInStatus && group.packingStartTime) {
             initialTimings[index] = {
               punchedIn: true,
-              startTime: group.packingStartTime
+              startTime: group.packingStartTime,
+              punchedOut: group.punchOutStatus || false,
+              endTime: group.packingEndTime || null
             };
           }
         });
@@ -310,22 +331,55 @@ export default function PackingSheet() {
             };
             return newData;
           });
-          
+
           toast({
             title: 'Success',
-            description: `Packing sheet approved for ${group.productGroup}`,
+            description: `Packing sheet approved and dispatch created for ${group.productGroup}`,
           });
         } else {
           const errorData = await response.json();
           console.log('❌ Error response data:', errorData);
-          throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+          
+          // If it's already approved, update the frontend state to reflect this
+          if (errorData.message && errorData.message.includes('already approved')) {
+            console.log('ℹ️ Packing sheet is already approved, updating frontend state');
+            setPackingData(prev => {
+              const newData = [...prev];
+              newData[groupIndex] = {
+                ...newData[groupIndex],
+                status: 'approved',
+                isApproved: true
+              };
+              return newData;
+            });
+            
+            toast({
+              title: 'Info',
+              description: 'This packing sheet is already approved',
+            });
+          } else {
+            throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+          }
         }
       } else {
-        console.log('❌ No packingSheetId found for group:', group.productGroup);
+        console.log('⚠️ No packingSheetId found for group:', group.productGroup);
+        console.log('ℹ️ This might be an ungrouped item or legacy data');
+        
+        // For groups without packingSheetId, we can still mark as approved locally
+        // This handles cases like "Ungrouped Items" that might not have formal packing sheets
+        setPackingData(prev => {
+          const newData = [...prev];
+          newData[groupIndex] = {
+            ...newData[groupIndex],
+            status: 'approved',
+            isApproved: true
+          };
+          return newData;
+        });
+        
         toast({
-          title: 'Error',
-          description: 'No packing sheet found for this group',
-          variant: 'destructive'
+          title: 'Success',
+          description: `Packing loss approved for ${group.productGroup}`,
         });
       }
     } catch (error) {
@@ -634,14 +688,14 @@ export default function PackingSheet() {
                       {/* Packing End time - show timing for first item of each group */}
                       <td className="border border-gray-900 px-1 sm:px-2 py-2 text-center">
                         {itemIndex === 0 ? (
-                          (groupTimings[groupIndex]?.punchedOut || group.status === 'completed') ? (
+                          (groupTimings[groupIndex]?.punchedOut || group.punchOutStatus || group.status === 'completed') ? (
                             <span className="text-red-600 font-medium text-xs sm:text-sm">
                               {groupTimings[groupIndex]?.endTime || group.packingEndTime}
                             </span>
                           ) : (groupTimings[groupIndex]?.punchedIn || group.punchInStatus) ? (
                             <button
                               onClick={() => handlePunchOut(groupIndex)}
-                              className="bg-red-500 text-white px-2 sm:px-3 py-1 rounded text-xs hover:bg-red-600 transition-colors whitespace-nowrap"
+                              className="bg-red-500 text-white px-2 py-1 rounded text-xs hover:bg-red-600 transition-colors"
                             >
                               Punch Out
                             </button>
@@ -683,22 +737,63 @@ export default function PackingSheet() {
                       <td className="border border-gray-900 px-1 sm:px-2 py-2 text-center">
                         {itemIndex === 0 ? (
                           <div className="flex flex-col gap-1">
-                            {(groupTimings[groupIndex]?.punchedOut || group.status === 'completed') && !(group.isApproved || group.status === 'approved') && group.packingSheetId ? (
-                              <button
-                                onClick={() => handleApproval(groupIndex)}
-                                className="bg-green-500 text-white px-2 sm:px-3 py-1 rounded text-xs hover:bg-green-600 transition-colors whitespace-nowrap"
-                              >
-                                Approve
-                              </button>
-                            ) : group.isApproved || group.status === 'approved' ? (
-                              <span className="bg-green-100 text-green-800 px-2 py-1 rounded text-xs font-medium whitespace-nowrap">
-                                ✅ Approved
-                              </span>
-                            ) : (
-                              <span className="text-gray-400 text-xs">
-                                Complete first
-                              </span>
-                            )}
+                            {(() => {
+                              // Calculate total packing loss for the group
+                              const totalPackingLoss = group.items.reduce((sum, item) => sum + (Number(item.packingLoss) || 0), 0);
+                              const hasPackingLoss = totalPackingLoss > 0;
+                              const isCompleted = groupTimings[groupIndex]?.punchedOut || group.status === 'completed' || group.punchOutStatus;
+                              const isApproved = group.isApproved || group.status === 'approved';
+                              
+                              console.log(`🔍 Group ${groupIndex} (${group.productGroup}):`, {
+                                totalPackingLoss,
+                                hasPackingLoss,
+                                isCompleted,
+                                isApproved,
+                                packingSheetId: group.packingSheetId,
+                                groupTimings: groupTimings[groupIndex],
+                                groupStatus: group.status,
+                                punchOutStatus: group.punchOutStatus
+                              });
+                              
+                              // Already approved
+                              if (isApproved) {
+                                return (
+                                  <span className="bg-green-100 text-green-800 px-2 py-1 rounded text-xs font-medium whitespace-nowrap">
+                                    ✅ Approved
+                                  </span>
+                                );
+                              }
+                              
+                              // Completed - check for approval needs
+                              if (isCompleted) {
+                                // Has packing loss - needs approval (don't require packingSheetId)
+                                if (hasPackingLoss) {
+                                  return (
+                                    <button
+                                      onClick={() => handleApproval(groupIndex)}
+                                      className="bg-green-500 text-white px-2 sm:px-3 py-1 rounded text-xs hover:bg-green-600 transition-colors whitespace-nowrap"
+                                    >
+                                      Approve
+                                    </button>
+                                  );
+                                }
+                                // No packing loss - automatically completed
+                                else {
+                                  return (
+                                    <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs font-medium whitespace-nowrap">
+                                      ✅ Completed
+                                    </span>
+                                  );
+                                }
+                              }
+                              
+                              // Not completed yet
+                              return (
+                                <span className="text-gray-400 text-xs">
+                                  Complete first
+                                </span>
+                              );
+                            })()}
                           </div>
                         ) : ''}
                       </td>

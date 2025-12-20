@@ -118,20 +118,17 @@ export default function DispatchDashboard() {
         body: JSON.stringify({
           productGroup,
           packingSheetId,
-          physicalStockEntry: parseFloat(value) || 0
+          physicalStockEntryManualVerification: parseFloat(value) || 0
         })
       });
 
       if (response.ok) {
-        // Update local state
-        setManualStockEntries(prev => ({
-          ...prev,
-          [packingSheetId]: parseFloat(value) || 0
-        }));
+        // Refresh dashboard data to get updated calculations
+        await fetchDashboardData();
         
         toast({
           title: 'Success',
-          description: 'Physical stock entry updated'
+          description: 'Physical stock entry updated and calculations refreshed'
         });
       } else {
         throw new Error('Failed to update physical stock entry');
@@ -141,6 +138,43 @@ export default function DispatchDashboard() {
       toast({
         title: 'Error',
         description: 'Failed to update physical stock entry',
+        variant: 'destructive'
+      });
+    }
+  };
+
+  const handleDispatchedQuantityUpdate = async (productGroup, packingSheetId, productId, value) => {
+    try {
+      const response = await fetch(`${config.baseURL}/api/dispatches/manual-stock`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          productGroup,
+          packingSheetId,
+          productId, // Include productId to update specific product entry
+          dispatchedQuantitySentToday: parseFloat(value) || 0
+        })
+      });
+
+      if (response.ok) {
+        // Refresh dashboard data to get updated calculations
+        await fetchDashboardData();
+        
+        toast({
+          title: 'Success',
+          description: 'Dispatched quantity updated and calculations refreshed'
+        });
+      } else {
+        throw new Error('Failed to update dispatched quantity');
+      }
+    } catch (error) {
+      console.error('Error updating dispatched quantity:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to update dispatched quantity',
         variant: 'destructive'
       });
     }
@@ -240,51 +274,57 @@ export default function DispatchDashboard() {
               <Package className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{dashboardData?.stats?.totalPackedQuantity || 0}</div>
+              <div className="text-2xl font-bold">{dashboardData?.summary?.totalPackedQuantity || 0}</div>
               <p className="text-xs text-muted-foreground">
                 Ready for dispatch
               </p>
               <div className="mt-2">
-                <Progress value={dashboardData?.stats?.totalPackedQuantity > 0 ? 75 : 0} className="h-2" />
+                <Progress value={dashboardData?.summary?.totalPackedQuantity > 0 ? 75 : 0} className="h-2" />
               </div>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Ready Items</CardTitle>
+              <CardTitle className="text-sm font-medium">Total Available</CardTitle>
               <Users className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{dashboardData?.stats?.totalDispatchReadyItems || 0}</div>
+              <div className="text-2xl font-bold">{dashboardData?.summary?.totalAvailableStock || 0}</div>
               <p className="text-xs text-muted-foreground">
-                Items ready to dispatch
+                Stock available for dispatch
               </p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Approved Sheets</CardTitle>
+              <CardTitle className="text-sm font-medium">Console Entries</CardTitle>
               <Clock className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{dashboardData?.stats?.totalApprovedSheets || 0}</div>
+              <div className="text-2xl font-bold">{dashboardData?.summary?.totalEntries || 0}</div>
               <p className="text-xs text-muted-foreground">
-                Packing sheets approved
+                Dispatch console entries
               </p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Today's Dispatches</CardTitle>
+              <CardTitle className="text-sm font-medium">Excess/Shortage</CardTitle>
               <TrendingUp className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{dashboardData?.stats?.totalDispatchesToday || 0}</div>
+              <div className={`text-2xl font-bold ${
+                (dashboardData?.summary?.totalExcessShortage || 0) >= 0 
+                  ? 'text-green-600' 
+                  : 'text-red-600'
+              }`}>
+                {dashboardData?.summary?.totalExcessShortage || 0}
+              </div>
               <p className="text-xs text-muted-foreground">
-                Dispatched today
+                Overall excess/shortage
               </p>
             </CardContent>
           </Card>
@@ -347,7 +387,7 @@ export default function DispatchDashboard() {
                     <th className="border border-gray-900 p-2 text-center font-medium text-sm bg-blue-100">
                       <div>Closing Stock</div>
                       <div>End of Day</div>
-                      <div className="text-xs">Balance</div>
+                      <div className="text-xs">Available - Dispatched</div>
                     </th>
                     <th className="border border-gray-900 p-2 text-center font-medium text-sm bg-blue-100">
                       <div>Physical Stock</div>
@@ -363,94 +403,117 @@ export default function DispatchDashboard() {
                 <tbody>
                   <tr className="bg-blue-50">
                     <td className="border border-gray-900 p-2 font-medium">Dispatch Console<br />Totals</td>
-                    <td className="border border-gray-900 p-2 text-center font-bold">{dashboardData?.stats?.totalPackedQuantity || 0}</td>
-                    <td className="border border-gray-900 p-2 text-center">0</td>
-                    <td className="border border-gray-900 p-2 text-center">0</td>
-                    <td className="border border-gray-900 p-2 text-center font-bold">{dashboardData?.stats?.totalPackedQuantity || 0}</td>
-                    <td className="border border-gray-900 p-2 text-center">0</td>
-                    <td className="border border-gray-900 p-2 text-center font-bold">
-                      <span className={`px-2 py-1 rounded text-sm ${
-                        (0 - (dashboardData?.stats?.totalPackedQuantity || 0)) >= 0 
-                          ? 'bg-red-100 text-red-800' 
-                          : 'bg-green-100 text-green-800'
-                      }`}>
-                        {0 - (dashboardData?.stats?.totalPackedQuantity || 0)}
-                      </span>
-                    </td>
-                    <td className="border border-gray-900 p-2 text-center">0</td>
-                    <td className="border border-gray-900 p-2 text-center font-bold">
-                      {(dashboardData?.stats?.totalPackedQuantity || 0) - 0}
+                    <td className="border border-gray-900 p-2 text-center font-bold">{dashboardData?.summary?.totalPackedQuantity || 0}</td>
+                    <td className="border border-gray-900 p-2 text-center">
+                      {dashboardData?.dispatchConsoleEntries?.reduce((sum, entry) => sum + (entry.previousClosingStockYesterdayBalance || 0), 0) || 0}
                     </td>
                     <td className="border border-gray-900 p-2 text-center">
-                      <input
-                        type="number"
-                        className="w-20 p-1 border rounded text-center"
-                        placeholder="Manual"
-                        disabled
-                      />
+                      {dashboardData?.dispatchConsoleEntries?.reduce((sum, entry) => sum + (entry.returnQuantityYesterdayReturns || 0), 0) || 0}
+                    </td>
+                    <td className="border border-gray-900 p-2 text-center font-bold">{dashboardData?.summary?.totalAvailableStock || 0}</td>
+                    <td className="border border-gray-900 p-2 text-center">{dashboardData?.summary?.totalIndentQuantity || 0}</td>
+                    <td className="border border-gray-900 p-2 text-center font-bold">
+                      <span className={`px-2 py-1 rounded text-sm ${
+                        (dashboardData?.summary?.totalExcessShortage || 0) >= 0 
+                          ? 'bg-green-100 text-green-800' 
+                          : 'bg-red-100 text-red-800'
+                      }`}>
+                        {dashboardData?.summary?.totalExcessShortage || 0}
+                      </span>
+                    </td>
+                    <td className="border border-gray-900 p-2 text-center">{dashboardData?.summary?.totalDispatchedQuantity || 0}</td>
+                    <td className="border border-gray-900 p-2 text-center font-bold">
+                      {dashboardData?.dispatchConsoleEntries?.reduce((sum, entry) => sum + (entry.closingStockEndOfDayBalance || 0), 0) || 0}
+                    </td>
+                    <td className="border border-gray-900 p-2 text-center">
+                      {dashboardData?.dispatchConsoleEntries?.reduce((sum, entry) => sum + (entry.physicalStockEntryManualVerification || 0), 0) || 0}
                     </td>
                     <td className="border border-gray-900 p-2 text-center">
                       <span className="text-red-600 font-medium">
-                        {((dashboardData?.stats?.totalPackedQuantity || 0) - 0) - 0}
+                        {dashboardData?.dispatchConsoleEntries?.reduce((sum, entry) => sum + (entry.overallLoss || 0), 0) || 0}
                       </span>
                     </td>
                   </tr>
 
-                  {dashboardData?.dispatchReadyItems?.map((item, index) => (
-                    <tr key={index}>
+                  {dashboardData?.dispatchConsoleEntries?.map((entry, index) => (
+                    <tr key={entry.id || index}>
                       <td className="border border-gray-900 p-2">
                         <div>
-                          <div className="font-medium">{item.productionGroup}</div>
-                          <div className="text-sm text-gray-600">{item.productName}</div>
+                          <div className="font-medium">{entry.productGroup}</div>
+                          <div className="text-sm text-gray-600">
+                            {entry.packingSheetSlNo ? `Sheet: ${entry.packingSheetSlNo}` : 'No Sheet'}
+                            {entry.batchNo && ` • Batch: ${entry.batchNo}`}
+                          </div>
                         </div>
                       </td>
-                      <td className="border border-gray-900 p-2 text-center font-medium">{item.packedQuantity || 0}</td>
-                      <td className="border border-gray-900 p-2 text-center">-</td>
-                      <td className="border border-gray-900 p-2 text-center">-</td>
-                      <td className="border border-gray-900 p-2 text-center">{item.packedQuantity || 0}</td>
-                      <td className="border border-gray-900 p-2 text-center">{item.indentQuantity || 0}</td>
+                      <td className="border border-gray-900 p-2 text-center font-medium">{entry.packedQuantityReadyForDispatch || 0}</td>
+                      <td className="border border-gray-900 p-2 text-center">{entry.previousClosingStockYesterdayBalance || 0}</td>
+                      <td className="border border-gray-900 p-2 text-center">{entry.returnQuantityYesterdayReturns || 0}</td>
+                      <td className="border border-gray-900 p-2 text-center font-medium">{entry.totalAvailableStock || 0}</td>
+                      <td className="border border-gray-900 p-2 text-center">{entry.totalIndentQuantityOrdersForTheDay || 0}</td>
                       <td className="border border-gray-900 p-2 text-center">
-                        <span className={`px-2 py-1 rounded text-sm ${
-                          ((item.indentQuantity || 0) - (item.packedQuantity || 0)) >= 0 
-                            ? 'bg-red-100 text-red-800' 
-                            : 'bg-green-100 text-green-800'
+                        <span className={`font-medium ${
+                          (entry.excessShortage || 0) >= 0 
+                            ? 'text-green-600' 
+                            : 'text-red-600'
                         }`}>
-                          {(item.indentQuantity || 0) - (item.packedQuantity || 0)}
+                          {entry.excessShortage || 0}
                         </span>
-                      </td>
-                      <td className="border border-gray-900 p-2 text-center">0</td>
-                      <td className="border border-gray-900 p-2 text-center font-bold">
-                        {(item.packedQuantity || 0) - 0}
                       </td>
                       <td className="border border-gray-900 p-2 text-center">
                         <input
                           type="number"
                           className="w-20 p-1 border rounded text-center"
+                          value={entry.dispatchedQuantitySentToday || 0}
                           placeholder="0"
-                          value={manualStockEntries[item.productGroup] || ''}
-                          onChange={(e) => handleManualStockEntry(
-                            item.packingSheetId, 
-                            item.productGroup, 
-                            e.target.value
-                          )}
+                          onChange={(e) => {
+                            handleDispatchedQuantityUpdate(
+                              entry.productGroup, 
+                              entry.packingSheetId,
+                              entry.productId,
+                              e.target.value
+                            );
+                          }}
+                          onBlur={(e) => {
+                            // Optional: you can add onBlur validation here
+                          }}
+                        />
+                      </td>
+                      <td className="border border-gray-900 p-2 text-center">{entry.closingStockEndOfDayBalance || 0}</td>
+                      <td className="border border-gray-900 p-2 text-center">
+                        <input
+                          type="number"
+                          className="w-20 p-1 border rounded text-center"
+                          value={entry.physicalStockEntryManualVerification || 0}
+                          placeholder="Manual"
+                          onChange={(e) => {
+                            handleManualStockEntry(
+                              entry.productGroup,
+                              entry.packingSheetId,
+                              e.target.value
+                            );
+                          }}
+                          onBlur={(e) => {
+                            // Optional: you can add onBlur validation here
+                          }}
                         />
                       </td>
                       <td className="border border-gray-900 p-2 text-center">
                         <span className={`font-medium ${
-                          ((item.packedQuantity || 0) - (manualStockEntries[item.productGroup] || 0)) !== 0 
+                          (entry.overallLoss || 0) !== 0 
                             ? 'text-red-600' 
                             : 'text-green-600'
                         }`}>
-                          {(item.packedQuantity || 0) - (manualStockEntries[item.productGroup] || 0)}
+                          {entry.overallLoss || 0}
                         </span>
                       </td>
                     </tr>
                   ))}
                   
-                  {(!dashboardData?.dispatchReadyItems || dashboardData.dispatchReadyItems.length === 0) && (
+                  {(!dashboardData?.dispatchConsoleEntries || dashboardData.dispatchConsoleEntries.length === 0) && (
                     <tr>
                       <td colSpan="11" className="border border-gray-900 p-4 text-center text-gray-500">
-                        No dispatch-ready items found
+                        No dispatch console entries found for today
                       </td>
                     </tr>
                   )}
@@ -460,12 +523,8 @@ export default function DispatchDashboard() {
           </CardContent>
         </Card>
 
-        {/* Note */}
-        <div className="rounded-lg bg-blue-50 p-4">
-          <p className="text-sm text-blue-800">
-            <strong>Note:</strong> This report shows Current Updated information of All Inventory movement for various operations process.
-          </p>
-        </div>
+
+
       </div>
     </div>
   );

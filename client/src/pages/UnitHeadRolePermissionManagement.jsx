@@ -99,7 +99,8 @@ const UNIT_HEAD_MODULES = [
     label: 'Packing',
     features: [
       { key: 'dashboard', label: 'Dashboard' },
-      { key: 'packingSheet', label: 'Packing Sheet' }
+      { key: 'packingSheet', label: 'Packing Sheet' },
+      { key: 'packingHistory', label: 'History' }
     ]
   },
   {
@@ -116,7 +117,9 @@ const UNIT_HEAD_MODULES = [
     name: 'dispatch',
     label: 'Dispatch',
     features: [
-      // Only dashboard access - removed all other features
+      { key: 'dashboard', label: 'Dashboard' },
+      { key: 'deliveryChallan', label: 'Delivery Challan' },
+      { key: 'dispatchHistory', label: 'History' }
     ]
   },
   {

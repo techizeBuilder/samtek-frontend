@@ -17,6 +17,28 @@ export const updatePermissionStructure = async () => {
       ]
     };
 
+    // Define Packing permissions for roles that need it
+    const packingPermissions = {
+      name: 'packing',
+      dashboard: true,
+      features: [
+        { key: 'packingDashboard', view: true, add: true, edit: true, delete: true, alter: true },
+        { key: 'packingSheet', view: true, add: true, edit: true, delete: true, alter: true },
+        { key: 'packingHistory', view: true, add: false, edit: false, delete: false, alter: false }
+      ]
+    };
+
+    // Define Dispatch permissions for roles that need it
+    const dispatchPermissions = {
+      name: 'dispatches',
+      dashboard: true,
+      features: [
+        { key: 'dispatchDashboard', view: true, add: true, edit: true, delete: true, alter: true },
+        { key: 'deliveryChallan', view: true, add: true, edit: true, delete: true, alter: true },
+        { key: 'dispatchHistory', view: true, add: false, edit: false, delete: false, alter: false }
+      ]
+    };
+
     // Update Production role users
     const productionUsers = await User.find({ role: 'Production' });
     for (const user of productionUsers) {
@@ -65,37 +87,144 @@ export const updatePermissionStructure = async () => {
       }
     }
 
-    // Update Unit Head users - add productionGroup feature
+    // Update Unit Head users - add new module permissions
     const unitHeadUsers = await User.find({ role: 'Unit Head' });
     for (const user of unitHeadUsers) {
-      // Find production module in Unit Head permissions
+      // Update/add production module
       let productionModule = user.permissions.modules.find(m => m.name === 'production');
       if (productionModule) {
-        // Update production module to only include required features
         productionModule.features = [
           { key: 'productionDashboard', view: true, add: true, edit: true, delete: true, alter: true },
           { key: 'productionReports', view: true, add: true, edit: true, delete: true, alter: true },
           { key: 'productionGroup', view: true, add: true, edit: true, delete: true, alter: true },
           { key: 'productionSheet', view: true, add: true, edit: true, delete: true, alter: true }
         ];
-        await user.save();
       }
+
+      // Add/update packing module with history feature
+      let packingModule = user.permissions.modules.find(m => m.name === 'packing');
+      if (packingModule) {
+        // Add history feature if not exists
+        const hasHistory = packingModule.features.some(f => f.key === 'packingHistory');
+        if (!hasHistory) {
+          packingModule.features.push({
+            key: 'packingHistory',
+            view: true,
+            add: false,
+            edit: false,
+            delete: false,
+            alter: false
+          });
+        }
+      } else {
+        // Create new packing module if it doesn't exist
+        user.permissions.modules.push(packingPermissions);
+      }
+
+      // Add/update dispatches module with new features
+      let dispatchModule = user.permissions.modules.find(m => m.name === 'dispatches');
+      if (dispatchModule) {
+        // Add delivery challan feature if not exists
+        const hasDeliveryChallan = dispatchModule.features.some(f => f.key === 'deliveryChallan');
+        if (!hasDeliveryChallan) {
+          dispatchModule.features.push({
+            key: 'deliveryChallan',
+            view: true,
+            add: true,
+            edit: true,
+            delete: true,
+            alter: true
+          });
+        }
+
+        // Add dispatch history feature if not exists
+        const hasHistory = dispatchModule.features.some(f => f.key === 'dispatchHistory');
+        if (!hasHistory) {
+          dispatchModule.features.push({
+            key: 'dispatchHistory',
+            view: true,
+            add: false,
+            edit: false,
+            delete: false,
+            alter: false
+          });
+        }
+      } else {
+        // Create new dispatch module if it doesn't exist
+        user.permissions.modules.push(dispatchPermissions);
+      }
+
+      await user.save();
     }
 
-    // Update Super Admin users - update production module features
+    // Update Super Admin users - add new module permissions
     const superAdminUsers = await User.find({ role: 'Super Admin' });
     for (const user of superAdminUsers) {
+      // Update production module
       let productionModule = user.permissions.modules.find(m => m.name === 'production');
       if (productionModule) {
-        // Update production module to only include required features
         productionModule.features = [
           { key: 'productionDashboard', view: true, add: true, edit: true, delete: true, alter: true },
           { key: 'productionReports', view: true, add: true, edit: true, delete: true, alter: true },
           { key: 'productionGroup', view: true, add: true, edit: true, delete: true, alter: true },
           { key: 'productionSheet', view: true, add: true, edit: true, delete: true, alter: true }
         ];
-        await user.save();
       }
+
+      // Add/update packing module with history feature
+      let packingModule = user.permissions.modules.find(m => m.name === 'packing');
+      if (packingModule) {
+        // Add history feature if not exists
+        const hasHistory = packingModule.features.some(f => f.key === 'packingHistory');
+        if (!hasHistory) {
+          packingModule.features.push({
+            key: 'packingHistory',
+            view: true,
+            add: false,
+            edit: false,
+            delete: false,
+            alter: false
+          });
+        }
+      } else {
+        // Create new packing module with all features
+        user.permissions.modules.push(packingPermissions);
+      }
+
+      // Add/update dispatches module with new features
+      let dispatchModule = user.permissions.modules.find(m => m.name === 'dispatches');
+      if (dispatchModule) {
+        // Add delivery challan feature if not exists
+        const hasDeliveryChallan = dispatchModule.features.some(f => f.key === 'deliveryChallan');
+        if (!hasDeliveryChallan) {
+          dispatchModule.features.push({
+            key: 'deliveryChallan',
+            view: true,
+            add: true,
+            edit: true,
+            delete: true,
+            alter: true
+          });
+        }
+
+        // Add dispatch history feature if not exists
+        const hasHistory = dispatchModule.features.some(f => f.key === 'dispatchHistory');
+        if (!hasHistory) {
+          dispatchModule.features.push({
+            key: 'dispatchHistory',
+            view: true,
+            add: false,
+            edit: false,
+            delete: false,
+            alter: false
+          });
+        }
+      } else {
+        // Create new dispatch module with all features
+        user.permissions.modules.push(dispatchPermissions);
+      }
+
+      await user.save();
     }
 
     console.log('Permission structure update completed');
@@ -107,6 +236,10 @@ export const updatePermissionStructure = async () => {
         unitManager: unitManagerUsers.length,
         unitHead: unitHeadUsers.length,
         superAdmin: superAdminUsers.length
+      },
+      newFeatures: {
+        packing: ['packingHistory'],
+        dispatches: ['deliveryChallan', 'dispatchHistory']
       }
     };
 

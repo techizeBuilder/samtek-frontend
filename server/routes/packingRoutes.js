@@ -13,7 +13,8 @@ import {
   getPackingStats,
   cleanupDuplicatePackingSheets,
   getDashboardStats,
-  approvePackingSheet
+  approvePackingSheet,
+  getPackingHistory
 } from '../controllers/packingController.js';
 
 const router = express.Router();
@@ -72,6 +73,10 @@ router.get('/stats', getPackingStats);
 
 // GET /api/packing/dashboard - Get dashboard statistics  
 router.get('/dashboard', getDashboardStats);
+
+// History Routes
+// GET /api/packing/history - Get packing history with pagination and filters
+router.get('/history', getPackingHistory);
 
 // Utility Routes
 // POST /api/packing/cleanup-duplicates - Clean up duplicate packing sheets

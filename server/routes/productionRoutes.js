@@ -6,7 +6,8 @@ import {
   updateProductionShiftTiming,
   getProductionDashboard,
   updateUngroupedItemProduction,
-  getUngroupedItems
+  getUngroupedItems,
+  getAllProductionReports
 } from '../controllers/productionController.js';
 
 const router = express.Router();
@@ -16,6 +17,9 @@ router.use(authenticateToken);
 
 // Production Dashboard
 router.get('/dashboard', getProductionDashboard);
+
+// Production Reports - All production history data
+router.get('/reports', getAllProductionReports);
 
 // Ungrouped Items
 router.get('/ungrouped-items', getUngroupedItems);

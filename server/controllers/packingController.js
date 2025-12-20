@@ -1192,14 +1192,267 @@ export const approvePackingSheet = async (req, res) => {
 
     console.log('✅ Packing sheet approved successfully');
 
+    // Create dispatch console entry automatically with proper data calculation
+    try {
+      const Dispatch = (await import('../models/Dispatch.js')).default;
+      const ProductDetailsDailySummary = (await import('../models/ProductDetailsDailySummary.js')).default;
+      
+      const today = new Date();
+      const startOfDay = new Date(today.setHours(0, 0, 0, 0));
+      const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
+      const yesterdayStart = new Date(yesterday.setHours(0, 0, 0, 0));
+      const yesterdayEnd = new Date(yesterday.setHours(23, 59, 59, 999));
+
+      // Get the product group from packing sheet items to find related ProductDetailsDailySummary
+      let totalPackedQuantity = packingSheet.totalPackedQty || 0;
+      let totalIndentQuantity = 0;
+      let previousClosingStock = 0;
+      let returnQuantity = 0;
+
+      // Get today's ProductDetailsDailySummary for items in this packing sheet
+      if (packingSheet.items && packingSheet.items.length > 0) {
+        const productIds = packingSheet.items.map(item => item.productId);
+        
+        // Get today's data for total indent
+        const todaysSummaries = await ProductDetailsDailySummary.find({
+          productId: { $in: productIds },
+          companyId: req.user.companyId,
+          date: { $gte: startOfDay, $lte: new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000) }
+        });
+
+        // Get yesterday's data for closing stock
+        const yesterdaysSummaries = await ProductDetailsDailySummary.find({
+          productId: { $in: productIds },
+          companyId: req.user.companyId,
+          date: { $gte: yesterdayStart, $lte: yesterdayEnd }
+        });
+
+        // Calculate totals
+        totalIndentQuantity = todaysSummaries.reduce((sum, s) => sum + (s.totalIndent || 0), 0);
+        previousClosingStock = yesterdaysSummaries.reduce((sum, s) => sum + (s.physicalStock || 0), 0);
+        
+        // For return quantity, we can check if there are any return records (simplified to 0 for now)
+        returnQuantity = 0; // TODO: Integrate with actual return data if available
+
+        console.log('📊 Calculated dispatch data:', {
+          totalPackedQuantity,
+          totalIndentQuantity,
+          previousClosingStock,
+          returnQuantity,
+          productIds: productIds.length
+        });
+      }
+      
+      // Create separate dispatch console entries for each item in the packing sheet
+      const dispatchEntries = [];
+      
+      for (const item of packingSheet.items) {
+        if (item.packedQty > 0) { // Only create entries for items with packed quantity
+          
+          // Validate item has required fields
+          if (!item.productId || !item.productName) {
+            console.log('⚠️ Skipping item with missing data:', {
+              productId: item.productId,
+              productName: item.productName,
+              packedQty: item.packedQty
+            });
+            continue;
+          }
+          
+          console.log('🔍 Processing item:', {
+            productId: item.productId,
+            productName: item.productName,
+            packedQty: item.packedQty
+          });
+          
+          // Get individual item data from ProductDetailsDailySummary
+          const todayItemSummary = await ProductDetailsDailySummary.findOne({
+            productId: item.productId,
+            companyId: req.user.companyId,
+            date: { $gte: startOfDay, $lte: new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000) }
+          });
+
+          const yesterdayItemSummary = await ProductDetailsDailySummary.findOne({
+            productId: item.productId,
+            companyId: req.user.companyId,
+            date: { $gte: yesterdayStart, $lte: yesterdayEnd }
+          });
+
+          // Also check for existing dispatch entries from yesterday for closing stock
+          const yesterdayDispatch = await Dispatch.findOne({
+            productId: item.productId,
+            company: req.user.companyId,
+            date: { $gte: yesterdayStart, $lte: yesterdayEnd }
+          });
+
+          const itemIndentQuantity = todayItemSummary?.totalIndent || item.indentQty || 0;
+          
+          // Try multiple fields for previous stock - priority order
+          const itemPreviousStock = yesterdayDispatch?.closingStockEndOfDayBalance || 
+                                   yesterdayDispatch?.physicalStockEntryManualVerification ||
+                                   yesterdayItemSummary?.physicalStock || 
+                                   yesterdayItemSummary?.closingStock || 
+                                   0;
+          
+          const itemReturnQuantity = yesterdayItemSummary?.returnQuantity || yesterdayDispatch?.returnQuantityYesterdayReturns || 0;
+          
+          console.log(`📊 Item calculations for ${item.productName}:`, {
+            packedQty: item.packedQty,
+            previousStock: itemPreviousStock,
+            returnQty: itemReturnQuantity,
+            indentQty: itemIndentQuantity,
+            expectedTotalAvailable: item.packedQty + itemPreviousStock + itemReturnQuantity
+          });
+         
+
+          // Check if dispatch entry already exists for this combination
+          const existingDispatchEntry = await Dispatch.findOne({
+            packingSheetId: packingSheet._id,
+            productId: item.productId,
+            date: startOfDay
+          });
+
+          let dispatchEntry;
+          
+          if (existingDispatchEntry) {
+            // Update existing entry
+            console.log(`🔄 Updating existing dispatch entry for ${item.productName} (ID: ${existingDispatchEntry._id})`);
+            dispatchEntry = await Dispatch.findByIdAndUpdate(
+              existingDispatchEntry._id,
+              {
+                $set: {
+                  productGroup: `${packingSheet.productionGroupName || 'Unknown Group'} - ${item.productName}`,
+                  productName: item.productName,
+                  packedQuantityReadyForDispatch: item.packedQty,
+                  previousClosingStockYesterdayBalance: itemPreviousStock,
+                  returnQuantityYesterdayReturns: itemReturnQuantity,
+                  totalIndentQuantityOrdersForTheDay: itemIndentQuantity,
+                  // Calculate totalAvailableStock = packing + closing + returns
+                  totalAvailableStock: item.packedQty + itemPreviousStock + itemReturnQuantity,
+                  // Calculate excessShortage = available - indent
+                  excessShortage: (item.packedQty + itemPreviousStock + itemReturnQuantity) - itemIndentQuantity,
+                  closingStockEndOfDayBalance: item.packedQty + itemPreviousStock + itemReturnQuantity,
+                  status: 'updated',
+                  lastUpdatedBy: req.user._id || req.user.id
+                }
+              },
+              { new: true }
+            );
+          } else {
+            // Create new dispatch entry
+            console.log(`✨ Creating new dispatch entry for ${item.productName}`);
+       
+            dispatchEntry = await Dispatch.create({
+              packingSheetId: packingSheet._id,
+              productId: item.productId,
+              productName: item.productName,
+              date: startOfDay,
+              productGroup: `${packingSheet.productionGroupName || 'Unknown Group'} - ${item.productName}`,
+              company: req.user.companyId,
+              packedQuantityReadyForDispatch: item.packedQty,
+              previousClosingStockYesterdayBalance: itemPreviousStock,
+              returnQuantityYesterdayReturns: itemReturnQuantity,
+              totalIndentQuantityOrdersForTheDay: itemIndentQuantity,
+              // Calculate totalAvailableStock = packing + closing + returns                                  
+              totalAvailableStock: item.packedQty + itemPreviousStock + itemReturnQuantity,
+              // Calculate excessShortage = available - indent
+              excessShortage: (item.packedQty + itemPreviousStock + itemReturnQuantity) - itemIndentQuantity,
+              dispatchedQuantitySentToday: 0,
+              closingStockEndOfDayBalance: item.packedQty + itemPreviousStock + itemReturnQuantity, // Initial closing = total available
+              physicalStockEntryManualVerification: 0,
+              batchNo: packingSheet.batchNo,
+              status: 'updated',
+              lastUpdatedBy: req.user._id || req.user.id
+            });
+          }
+          console.log(`✨ Creating new dispatch entry for ${dispatchEntry}`);
+          
+          // Log the final calculated values after model auto-calculation
+          console.log(`📈 Final dispatch calculations for ${item.productName}:`, {
+            packedQty: dispatchEntry.packedQuantityReadyForDispatch,
+            previousStock: dispatchEntry.previousClosingStockYesterdayBalance,
+            returns: dispatchEntry.returnQuantityYesterdayReturns,
+            totalAvailable: dispatchEntry.totalAvailableStock,
+            excessShortage: dispatchEntry.excessShortage,
+            dispatchId: dispatchEntry._id
+          });
+          
+          dispatchEntries.push(dispatchEntry);
+        }
+      }
+
+      console.log('✅ Dispatch console entries created:', {
+        totalEntries: dispatchEntries.length,
+        packingSheetId: packingSheet._id,
+        productGroup: packingSheet.productionGroupName,
+        entries: dispatchEntries.map(entry => ({
+          dispatchId: entry._id,
+          productName: entry.productName,
+          packedQuantity: entry.packedQuantityReadyForDispatch,
+          totalAvailableStock: entry.totalAvailableStock,
+          totalIndent: entry.totalIndentQuantityOrdersForTheDay,
+          excessShortage: entry.excessShortage
+        }))
+      });
+
+    } catch (dispatchError) {
+      console.error('⚠️ Error creating dispatch console entry (but approval succeeded):', dispatchError);
+      // Don't fail approval if dispatch entry creation fails
+    }
+
+    // UPDATE ProductDetailsDailySummary with packed quantities (for dispatch console)
+    try {
+      console.log('🚀 Updating ProductDetailsDailySummary with packed quantities...');
+      
+      const ProductDetailsDailySummary = (await import('../models/ProductDetailsDailySummary.js')).default;
+      
+      const today = new Date();
+      const startOfDay = new Date(today.setHours(0, 0, 0, 0));
+      
+      // Update each item's packed quantity in ProductDetailsDailySummary
+      for (const item of packingSheet.items) {
+        if (item.packedQty > 0) {
+          await ProductDetailsDailySummary.findOneAndUpdate(
+            {
+              productId: item.productId,
+              companyId: req.user.companyId,
+              date: {
+                $gte: startOfDay,
+                $lte: new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000)
+              }
+            },
+            {
+              $set: {
+                packing: item.packedQty, // This is "Packed Quantity Ready for Dispatch"
+                status: 'approved'
+              }
+            },
+            {
+              upsert: true,
+              new: true
+            }
+          );
+          
+          console.log(`✅ Updated packing quantity for ${item.productName}: ${item.packedQty}`);
+        }
+      }
+      
+    } catch (summaryError) {
+      console.error('⚠️ Error updating ProductDetailsDailySummary (but approval succeeded):', summaryError);
+      // Don't fail the approval if summary update fails
+    }
+
     res.json({
       success: true,
-      message: 'Packing sheet approved successfully',
+      message: 'Packing sheet approved and dispatch console entry created successfully',
       data: {
         packingSheetId: packingSheet._id,
         status: packingSheet.status,
         approvedAt: packingSheet.approvedAt,
-        approvedBy: packingSheet.approvedBy
+        approvedBy: packingSheet.approvedBy,
+        totalPackedQty: packingSheet.totalPackedQty,
+        productGroup: packingSheet.productionGroupName,
+        dispatchConsoleCreated: true
       }
     });
 
@@ -1208,6 +1461,186 @@ export const approvePackingSheet = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to approve packing sheet',
+      error: error.message
+    });
+  }
+};
+
+// Get packing history with pagination and filters
+export const getPackingHistory = async (req, res) => {
+  try {
+    const { page = 1, limit = 20, startDate, endDate, status, groupId } = req.query;
+    const userCompanyId = req.user.companyId;
+
+    console.log('📊 Fetching packing history with params:', { page, limit, startDate, endDate, status, groupId, userCompanyId });
+
+    // Build filter object - using correct field names for PackingSheet model
+    const filter = {
+      company: userCompanyId  // PackingSheet uses 'company' field, not 'companyId'
+    };
+
+    // Add date range filter
+    if (startDate || endDate) {
+      filter.createdAt = {};
+      if (startDate) {
+        filter.createdAt.$gte = new Date(startDate);
+      }
+      if (endDate) {
+        const endDateObj = new Date(endDate);
+        endDateObj.setHours(23, 59, 59, 999);
+        filter.createdAt.$lte = endDateObj;
+      }
+    }
+
+    // Add status filter
+    if (status && status !== 'all') {
+      filter.status = status;
+    }
+
+    // Add group filter - using correct field name
+    if (groupId && groupId !== 'all') {
+      filter.productionGroup = groupId;  // PackingSheet uses 'productionGroup' field
+    }
+
+    console.log('🔍 Query filter:', JSON.stringify(filter, null, 2));
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    // Get paginated packing history with populated details
+    const packingHistory = await PackingSheet.find(filter)
+      .populate({
+        path: 'productionGroup',
+        select: 'name description'
+      })
+      .populate({
+        path: 'createdBy',
+        select: 'username fullName'
+      })
+      .populate({
+        path: 'approvedBy',
+        select: 'username fullName'
+      })
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit))
+      .lean();
+
+    console.log(`📋 Found ${packingHistory.length} packing sheets`);
+
+    // Get total count for pagination
+    const totalCount = await PackingSheet.countDocuments(filter);
+    const totalPages = Math.ceil(totalCount / parseInt(limit));
+
+    // Calculate summary statistics
+    const summaryStats = await PackingSheet.aggregate([
+      { $match: filter },
+      {
+        $group: {
+          _id: null,
+          totalSheets: { $sum: 1 },
+          completedSheets: {
+            $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] }
+          },
+          inProgressSheets: {
+            $sum: { $cond: [{ $eq: ['$status', 'in_progress'] }, 1, 0] }
+          },
+          approvedSheets: {
+            $sum: { $cond: [{ $eq: ['$status', 'approved'] }, 1, 0] }
+          }
+        }
+      }
+    ]);
+
+    const stats = summaryStats[0] || {
+      totalSheets: 0,
+      completedSheets: 0,
+      inProgressSheets: 0,
+      approvedSheets: 0
+    };
+
+    console.log('📊 Summary stats:', stats);
+
+    // Format the packing history data to match frontend expectations
+    const formattedData = packingHistory.map(sheet => {
+      // Calculate total packed and total loss from items array
+      const totalPacked = sheet.items?.reduce((sum, item) => sum + (item.packedQty || 0), 0) || 0;
+      const totalLoss = sheet.packingLoss || 0;
+      const totalProduced = sheet.items?.reduce((sum, item) => sum + (item.producedQty || 0), 0) || 0;
+      const efficiency = totalProduced > 0 ? Math.round(((totalPacked / totalProduced) * 100)) : 0;
+
+      // Calculate duration if start and end times exist
+      let totalDuration = null;
+      if (sheet.packingStartTime && sheet.packingEndTime) {
+        totalDuration = Math.round((new Date(sheet.packingEndTime) - new Date(sheet.packingStartTime)) / (1000 * 60)); // minutes
+      }
+
+      return {
+        id: sheet._id,
+        sheetId: sheet.slNo || sheet._id,  // Use slNo as sheet ID
+        group: {
+          id: sheet.productionGroup?._id,
+          name: sheet.productionGroup?.name || sheet.productionGroupName || 'N/A',
+          description: sheet.productionGroup?.description || ''
+        },
+        items: sheet.items?.map(item => ({
+          id: item.productId,
+          name: item.productName,
+          code: item.productCode || '',
+          category: item.category || '',
+          unit: item.unit || '',
+          packingQty: item.packedQty || 0,
+          packingLoss: sheet.packingLoss || 0, // Loss is stored at sheet level
+          notes: sheet.notes || ''
+        })) || [],
+        timing: {
+          startTime: sheet.packingStartTime,
+          endTime: sheet.packingEndTime,
+          totalDuration: totalDuration
+        },
+        status: sheet.status,
+        efficiency: efficiency,
+        totalLoss: totalLoss,
+        totalPacked: totalPacked,
+        notes: sheet.notes,
+        createdBy: sheet.createdBy?.username || sheet.createdBy?.fullName || 'Unknown',
+        approvedBy: sheet.approvedBy?.username || sheet.approvedBy?.fullName || null,
+        approvedAt: sheet.approvedAt,
+        createdAt: sheet.createdAt,
+        updatedAt: sheet.updatedAt
+      };
+    });
+
+    console.log(`✅ Formatted ${formattedData.length} packing history records`);
+
+    res.json({
+      success: true,
+      message: 'Packing history retrieved successfully',
+      data: {
+        reports: formattedData,
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages,
+          totalCount,
+          limit: parseInt(limit),
+          hasNext: parseInt(page) < totalPages,
+          hasPrev: parseInt(page) > 1
+        },
+        summary: stats,
+        filters: {
+          startDate,
+          endDate,
+          status,
+          groupId,
+          companyId: filter.company
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching packing history:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch packing history',
       error: error.message
     });
   }

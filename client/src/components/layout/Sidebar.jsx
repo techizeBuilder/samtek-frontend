@@ -260,6 +260,13 @@ const packingMenuItems = [
     icon: FileText,
     module: 'packing',
     feature: 'packingSheet'
+  },
+  {
+    label: 'Packing History',
+    path: '/packing/history',
+    icon: BarChart,
+    module: 'packing',
+    feature: 'packingHistory'
   }
 ];
 
@@ -268,13 +275,22 @@ const dispatchMenuItems = [
     label: 'Dashboard',
     path: '/dispatch-dashboard',
     icon: LayoutDashboard,
-    module: 'dashboard'
+    module: 'dispatches',
+    feature: 'dashboard'
   },
   {
-    label: 'Orders',
-    path: '/orders',
-    icon: Receipt,
-    module: 'orders'
+    label: 'Delivery Challan',
+    path: '/dispatch/delivery-challan',
+    icon: FileText,
+    module: 'dispatches',
+    feature: 'deliveryChallan'
+  },
+  {
+    label: 'History',
+    path: '/dispatch/history',
+    icon: BarChart,
+    module: 'dispatches',
+    feature: 'dispatchHistory'
   }
 ];
 
