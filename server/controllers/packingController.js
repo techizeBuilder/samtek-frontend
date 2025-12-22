@@ -29,10 +29,19 @@ export const getProductionGroupsForPacking = async (req, res) => {
         $gte: today, 
         $lte: endOfDay 
       },
-      status: 'completed'
+      status: 'completed'  // ← Fixed: should be 'completed' not 'pending'
     }).lean();
 
     console.log(`🏁 Found ${completedBatches.length} completed production batches for today`);
+    
+    // Debug: Log the first few batches to see their structure
+    if (completedBatches.length > 0) {
+      console.log('🔍 Sample completed batch data:', JSON.stringify(completedBatches[0], null, 2));
+      console.log('🔍 Completed batch keys:', Object.keys(completedBatches[0]));
+      console.log('🔍 Batch _id:', completedBatches[0]._id);
+      console.log('🔍 Batch companyId:', completedBatches[0].companyId);
+      console.log('🔍 Batch itemId:', completedBatches[0].itemId);
+    }
 
     if (completedBatches.length === 0) {
       return res.json({
@@ -47,11 +56,11 @@ export const getProductionGroupsForPacking = async (req, res) => {
 
     // Extract unique item IDs and group IDs from completed batches
     const completedItemIds = [...new Set(completedBatches.map(batch => batch.itemId?.toString()).filter(id => id))];
-    const completedGroupIds = [...new Set(completedBatches.map(batch => batch.groupId?.toString()).filter(id => id))];
+    const completedGroupIds = [...new Set(completedBatches.map(batch => batch.groupId?.toString()).filter(id => id && id !== 'null'))];
 
     console.log('📋 Completed item IDs:', completedItemIds.length, completedItemIds);
     console.log('📋 Completed group IDs:', completedGroupIds.length, completedGroupIds);
-    console.log('🔍 All completed batches details:', completedBatches.map(b => ({
+    console.log('🔍 Completed batches details:', completedBatches.map(b => ({
       itemId: b.itemId?.toString(),
       groupId: b.groupId?.toString(),
       batchNo: b.batchNo,
@@ -59,7 +68,7 @@ export const getProductionGroupsForPacking = async (req, res) => {
       status: b.status
     })));
 
-    // Get ALL production groups from user's company (not just ones with completed items)
+    // Get ALL production groups from user's company 
     const allProductionGroups = await ProductionGroup.find({
       isActive: true,
       company: req.user.companyId
@@ -79,31 +88,27 @@ export const getProductionGroupsForPacking = async (req, res) => {
 
     console.log(`📦 Found ${allProductionGroups.length} total production groups`);
 
-    // Also get ungrouped items that have completed batches
-    const ungroupedCompletedItems = completedBatches.filter(batch => 
-      !batch.groupId || batch.groupId === null
-    );
-
-    console.log(`🔄 Found ${ungroupedCompletedItems.length} completed ungrouped batches`);
-
-    console.log(`📦 Found ${allProductionGroups.length} production groups to check`);
-
-    // Transform data for packing sheet display - check ALL groups for completed items
-    const packingData = await Promise.all(allProductionGroups.map(async (group) => {
+    // Identify items that need to be in groups (either existing groups or individual groups)
+    const itemsInGroups = new Set();
+    
+    // First, handle existing production groups with multiple items
+    const packingData = [];
+    
+    for (const group of allProductionGroups) {
       const groupItems = [];
       
       if (group.items && group.items.length > 0) {
         for (const item of group.items) {
-          // Check if this item has ANY completed production batches today
+          // Check if this item has completed production batches today
           const itemCompletedBatches = completedBatches.filter(batch => 
             batch.itemId?.toString() === item._id.toString()
           );
 
-          console.log(`🔍 Item ${item.name}: ${itemCompletedBatches.length} completed batches`);
-
           if (itemCompletedBatches.length > 0) {
-            // Calculate total produced quantity from completed batches
-            const totalProducedQty = itemCompletedBatches.reduce((sum, batch) => sum + (batch.qtyAchieved || 0), 0);
+            itemsInGroups.add(item._id.toString()); // Mark item as grouped
+            
+            // Calculate total achieved quantity from completed batches
+            const totalAchievedQty = itemCompletedBatches.reduce((sum, batch) => sum + (batch.qtyAchieved || 0), 0);
             
             // Get ProductDetailsDailySummary data for this item and today's date
             const dailySummary = await ProductDetailsDailySummary.findOne({
@@ -112,119 +117,16 @@ export const getProductionGroupsForPacking = async (req, res) => {
               date: today
             }).lean();
 
-            console.log(`📊 ${item.name}: Batches=${itemCompletedBatches.length}, TotalProduced=${totalProducedQty}, DailySummary=${dailySummary?.productionFinalBatches || 0}`);
+            console.log(`📊 ${item.name} (in group ${group.name}): Completed=${itemCompletedBatches.length}, TotalAchieved=${totalAchievedQty}`);
+            console.log(`🔍 First itemCompletedBatch:`, itemCompletedBatches[0] ? {
+              _id: itemCompletedBatches[0]._id,
+              batchNo: itemCompletedBatches[0].batchNo,
+              companyId: itemCompletedBatches[0].companyId,
+              itemId: itemCompletedBatches[0].itemId,
+              groupId: itemCompletedBatches[0].groupId
+            } : 'No batches');
             
-            try {
-              groupItems.push({
-                _id: item._id,
-                name: item.name,
-                code: item.code,
-                category: item.category,
-                unit: item.unit || '',
-                image: item.image,
-                currentStock: item.qty || 0,
-                // Use productionFinalBatches from ProductDailySummary as Indent Qty
-                producedQty: dailySummary?.productionFinalBatches || 0,
-                indentQty: dailySummary?.productionFinalBatches || 0, // Explicit indent qty field
-                achievedQty: totalProducedQty, // Actual achieved from completed batches
-                // Packing quantities (will be entered manually)
-                packedQty: 0,
-                packingLoss: 0,
-                notes: '',
-                // Add completed batch info for reference
-                completedBatches: itemCompletedBatches.length,
-                batchDetails: itemCompletedBatches.map(batch => ({
-                  batchNo: batch.batchNo,
-                  qtyAchieved: batch.qtyAchieved,
-                  productionLoss: batch.productionLoss
-                })),
-                // Include all ProductDetailsDailySummary data
-                dailySummaryData: dailySummary ? {
-                  productionFinalBatches: dailySummary.productionFinalBatches || 0,
-                  qtyPerBatch: dailySummary.qtyPerBatch || 0,
-                  totalQuantity: dailySummary.totalQuantity || 0,
-                  balanceFinalBatches: dailySummary.balanceFinalBatches || 0,
-                  toBePrintedBatches: dailySummary.toBePrintedBatches || 0,
-                  expiry: dailySummary.expiry || 0,
-                  status: dailySummary.status || 'pending',
-                  date: dailySummary.date,
-                  createdAt: dailySummary.createdAt,
-                  updatedAt: dailySummary.updatedAt
-                } : null
-              });
-
-            } catch (itemError) {
-              console.error(`Error processing item ${item.name}:`, itemError);
-            }
-          }
-        }
-      }
-
-      // Only return groups that have items with completed batches
-      if (groupItems.length === 0) {
-        return null;
-      }
-
-      // Calculate group totals from completed batches for this group
-      const groupCompletedBatches = completedBatches.filter(batch => 
-        batch.groupId?.toString() === group._id.toString()
-      );
-      const totalGroupProducedQty = groupCompletedBatches.reduce((sum, batch) => sum + (batch.qtyAchieved || 0), 0);
-
-      console.log(`📦 Group ${group.name}: ${groupItems.length} completed items, ${groupCompletedBatches.length} completed batches`);
-
-      return {
-        _id: group._id,
-        name: group.name,
-        description: group.description || '',
-        totalItems: groupItems.length,
-        // Production Group level quantities from completed batches
-        qtyPerBatch: group.qtyPerBatch || 0,
-        qtyAchievedPerBatch: totalGroupProducedQty,
-        productionLoss: groupCompletedBatches.reduce((sum, batch) => sum + (batch.productionLoss || 0), 0),
-        items: groupItems,
-        createdBy: group.createdBy?.username || 'Unknown',
-        createdAt: group.createdAt,
-        completedBatches: groupCompletedBatches.length
-      };
-    }));
-
-    // Filter out null entries (groups with no completed items)
-    const filteredPackingData = packingData.filter(group => group !== null);
-
-    // Handle ungrouped completed items (items not in any production group)
-    if (ungroupedCompletedItems.length > 0) {
-      console.log(`🔄 Processing ${ungroupedCompletedItems.length} ungrouped completed items`);
-      
-      const ungroupedItemIds = [...new Set(ungroupedCompletedItems.map(batch => batch.itemId?.toString()).filter(id => id))];
-      
-      // Get item details for ungrouped completed items
-      const ungroupedItems = await Item.find({
-        _id: { $in: ungroupedItemIds },
-        store: req.user.companyId,
-        isActive: { $ne: false }
-      }).lean();
-
-      if (ungroupedItems.length > 0) {
-        const ungroupedPackingItems = [];
-        
-        for (const item of ungroupedItems) {
-          const itemCompletedBatches = ungroupedCompletedItems.filter(batch => 
-            batch.itemId?.toString() === item._id.toString()
-          );
-
-          if (itemCompletedBatches.length > 0) {
-            const totalProducedQty = itemCompletedBatches.reduce((sum, batch) => sum + (batch.qtyAchieved || 0), 0);
-            
-            const dailySummary = await ProductDetailsDailySummary.findOne({
-              productId: item._id,
-              companyId: req.user.companyId,
-              date: today
-            }).lean();
-
-            console.log(`🔄 Ungrouped ${item.name}: ${itemCompletedBatches.length} completed batches`);
-
-            ungroupedPackingItems.push({
+            groupItems.push({
               _id: item._id,
               name: item.name,
               code: item.code,
@@ -234,93 +136,320 @@ export const getProductionGroupsForPacking = async (req, res) => {
               currentStock: item.qty || 0,
               producedQty: dailySummary?.productionFinalBatches || 0,
               indentQty: dailySummary?.productionFinalBatches || 0,
-              achievedQty: totalProducedQty,
+              achievedQty: totalAchievedQty,
               packedQty: 0,
+              packingLoss: 0,
               notes: '',
               completedBatches: itemCompletedBatches.length,
-              batchDetails: itemCompletedBatches.map(batch => ({
-                batchNo: batch.batchNo,
-                qtyAchieved: batch.qtyAchieved,
-                productionLoss: batch.productionLoss
+              batchDetails: await Promise.all(itemCompletedBatches.map(async (batch) => {
+                try {
+                  // Find packing sheets for this specific batch using root level batchId/batchNo
+                  const batchPackingSheets = await PackingSheet.find({
+                    $or: [
+                      { batchId: batch._id },
+                      { batchNo: batch.batchNo }
+                    ],
+                    company: req.user.companyId
+                  }).lean() || [];
+
+                  return {
+                    _id: batch._id,
+                    batchNo: batch.batchNo,
+                    qtyAchieved: batch.qtyAchieved,
+                    productionLoss: batch.productionLoss,
+                    status: 'completed',
+                    companyId: batch.companyId,
+                    itemId: batch.itemId,
+                    groupId: batch.groupId,
+                    productionDate: batch.productionDate,
+                    createdAt: batch.createdAt,
+                    updatedAt: batch.updatedAt,
+                    // Include packing sheets array for this individual batch
+                    packingSheets: Array.isArray(batchPackingSheets) ? batchPackingSheets.map(sheet => ({
+                      _id: sheet._id,
+                      packingStartTime: sheet.packingStartTime,
+                      packingEndTime: sheet.packingEndTime,
+                      packingLoss: sheet.packingLoss || 0,
+                      packedQty: sheet.packedQty || batch.qtyAchieved || 0,
+                      notes: sheet.notes || '',
+                      status: sheet.status || 'pending',
+                      isApproved: sheet.isApproved || false,
+                      createdAt: sheet.createdAt,
+                      updatedAt: sheet.updatedAt
+                    })) : []
+                  };
+                } catch (error) {
+                  console.error('Error processing batch in group:', batch._id, error);
+                  return {
+                    _id: batch._id,
+                    batchNo: batch.batchNo,
+                    qtyAchieved: batch.qtyAchieved,
+                    productionLoss: batch.productionLoss,
+                    status: 'completed',
+                    companyId: batch.companyId,
+                    itemId: batch.itemId,
+                    groupId: batch.groupId,
+                    productionDate: batch.productionDate,
+                    createdAt: batch.createdAt,
+                    updatedAt: batch.updatedAt,
+                    packingSheets: []
+                  };
+                }
               })),
-              dailySummaryData: dailySummary || null
+              dailySummaryData: dailySummary ? {
+                productionFinalBatches: dailySummary.productionFinalBatches || 0,
+                qtyPerBatch: dailySummary.qtyPerBatch || 0,
+                totalQuantity: dailySummary.totalQuantity || 0,
+                balanceFinalBatches: dailySummary.balanceFinalBatches || 0,
+                toBePrintedBatches: dailySummary.toBePrintedBatches || 0,
+                expiry: dailySummary.expiry || 0,
+                status: dailySummary.status || 'pending',
+                date: dailySummary.date,
+                createdAt: dailySummary.createdAt,
+                updatedAt: dailySummary.updatedAt
+              } : null
             });
           }
         }
+      }
 
-        // Add ungrouped items as a separate group
-        if (ungroupedPackingItems.length > 0) {
-          filteredPackingData.push({
-            _id: 'ungrouped-items',
-            name: 'Ungrouped Items',
-            description: 'Items not assigned to any production group',
-            totalItems: ungroupedPackingItems.length,
-            qtyPerBatch: 0,
-            qtyAchievedPerBatch: ungroupedCompletedItems.reduce((sum, batch) => sum + (batch.qtyAchieved || 0), 0),
-            productionLoss: ungroupedCompletedItems.reduce((sum, batch) => sum + (batch.productionLoss || 0), 0),
-            items: ungroupedPackingItems,
-            createdBy: 'System',
-            createdAt: new Date(),
-            completedBatches: ungroupedCompletedItems.length
-          });
-        }
+      // Only add group if it has items with completed batches
+      if (groupItems.length > 0) {
+        const groupCompletedBatches = completedBatches.filter(batch => 
+          batch.groupId?.toString() === group._id.toString()
+        );
+        const totalGroupAchievedQty = groupCompletedBatches.reduce((sum, batch) => sum + (batch.qtyAchieved || 0), 0);
+
+        console.log(`📦 Adding group ${group.name}: ${groupItems.length} items with completed batches`);
+
+        packingData.push({
+          _id: group._id,
+          name: group.name,
+          description: group.description || '',
+          totalItems: groupItems.length,
+          qtyPerBatch: group.qtyPerBatch || 0,
+          qtyAchievedPerBatch: totalGroupAchievedQty,
+          productionLoss: groupCompletedBatches.reduce((sum, batch) => sum + (batch.productionLoss || 0), 0),
+          items: groupItems,
+          createdBy: group.createdBy?.username || 'Unknown',
+          createdAt: group.createdAt,
+          completedBatches: groupCompletedBatches.length
+        });
       }
     }
 
+    // Now handle items that completed production but are NOT in existing groups
+    // Each of these should get their own individual group (no more "ungrouped items")
+    const ungroupedItemIds = completedItemIds.filter(itemId => !itemsInGroups.has(itemId));
+    
+    if (ungroupedItemIds.length > 0) {
+      console.log(`🔄 Found ${ungroupedItemIds.length} items with completed batches but not in existing groups - creating individual groups`);
+      
+      // Get item details for these items
+      const ungroupedItems = await Item.find({
+        _id: { $in: ungroupedItemIds },
+        store: req.user.companyId,
+        isActive: { $ne: false }
+      }).lean();
+
+      // Create individual groups for each item (don't lump them into "ungrouped")
+      for (const item of ungroupedItems) {
+        const itemCompletedBatches = completedBatches.filter(batch => 
+          batch.itemId?.toString() === item._id.toString()
+        );
+
+        if (itemCompletedBatches.length > 0) {
+          const totalAchievedQty = itemCompletedBatches.reduce((sum, batch) => sum + (batch.qtyAchieved || 0), 0);
+          const totalProductionLoss = itemCompletedBatches.reduce((sum, batch) => sum + (batch.productionLoss || 0), 0);
+          
+          const dailySummary = await ProductDetailsDailySummary.findOne({
+            productId: item._id,
+            companyId: req.user.companyId,
+            date: today
+          }).lean();
+
+          console.log(`✨ Creating individual group for ${item.name}: ${itemCompletedBatches.length} batches, total achieved: ${totalAchievedQty}`);
+          
+          // Create individual group for this item (use a unique ID)
+          const individualGroupId = `individual-${item._id}`;
+          
+          packingData.push({
+            _id: individualGroupId,
+            name: item.name, // Use item name as group name
+            description: `Individual production group for ${item.name}`,
+            totalItems: 1,
+            qtyPerBatch: 0,
+            qtyAchievedPerBatch: totalAchievedQty,
+            productionLoss: totalProductionLoss,
+            items: [{
+              _id: item._id,
+              name: item.name,
+              code: item.code,
+              category: item.category,
+              unit: item.unit || '',
+              image: item.image,
+              currentStock: item.qty || 0,
+              producedQty: dailySummary?.productionFinalBatches || 0,
+              indentQty: dailySummary?.productionFinalBatches || 0,
+              achievedQty: totalAchievedQty,
+              packedQty: 0,
+              packingLoss: 0,
+              notes: '',
+              completedBatches: itemCompletedBatches.length,
+              batchDetails: await Promise.all(itemCompletedBatches.map(async (batch) => {
+                try {
+                  // Find packing sheets for this specific batch using root level batchId/batchNo
+                  const batchPackingSheets = await PackingSheet.find({
+                    $or: [
+                      { batchId: batch._id },
+                      { batchNo: batch.batchNo }
+                    ],
+                    company: req.user.companyId
+                  }).lean() || [];
+
+                  return {
+                    _id: batch._id,
+                    batchNo: batch.batchNo,
+                    qtyAchieved: batch.qtyAchieved,
+                    productionLoss: batch.productionLoss,
+                    status: 'completed',
+                    companyId: batch.companyId,
+                    itemId: batch.itemId,
+                    groupId: batch.groupId,
+                    productionDate: batch.productionDate,
+                    createdAt: batch.createdAt,
+                    updatedAt: batch.updatedAt,
+                    // Include packing sheets array for this individual batch
+                    packingSheets: Array.isArray(batchPackingSheets) ? batchPackingSheets.map(sheet => ({
+                      _id: sheet._id,
+                      packingStartTime: sheet.packingStartTime,
+                      packingEndTime: sheet.packingEndTime,
+                      packingLoss: sheet.packingLoss || 0,
+                      packedQty: sheet.packedQty || batch.qtyAchieved || 0,
+                      notes: sheet.notes || '',
+                      status: sheet.status || 'pending',
+                      isApproved: sheet.isApproved || false,
+                      createdAt: sheet.createdAt,
+                      updatedAt: sheet.updatedAt
+                    })) : []
+                  };
+                } catch (error) {
+                  console.error('Error processing individual batch:', batch._id, error);
+                  return {
+                    _id: batch._id,
+                    batchNo: batch.batchNo,
+                    qtyAchieved: batch.qtyAchieved,
+                    productionLoss: batch.productionLoss,
+                    status: 'completed',
+                    companyId: batch.companyId,
+                    itemId: batch.itemId,
+                    groupId: batch.groupId,
+                    productionDate: batch.productionDate,
+                    createdAt: batch.createdAt,
+                    updatedAt: batch.updatedAt,
+                    packingSheets: []
+                  };
+                }
+              })),
+              dailySummaryData: dailySummary || null
+            }],
+            createdBy: 'System',
+            createdAt: new Date(),
+            completedBatches: itemCompletedBatches.length
+          });
+          
+          console.log(`✅ Created individual group "${item.name}" with ${itemCompletedBatches.length} batches:`, 
+            itemCompletedBatches.map(b => `${b.batchNo}:${b.qtyAchieved}`).join(', ')
+          );
+        }
+      }
+    }
+    
+    // Optional: Only add "Ungrouped Items" if there are batches with literally no groupId AND no itemId match
+    // (This should be rare - most items should get individual groups above)
+    const trueOrphanBatches = completedBatches.filter(batch => 
+      (!batch.groupId || batch.groupId === null) && 
+      (!batch.itemId || !completedItemIds.includes(batch.itemId?.toString()))
+    );
+    
+    if (trueOrphanBatches.length > 0) {
+      console.log(`🔄 Found ${trueOrphanBatches.length} truly orphaned batches - adding to ungrouped`);
+      
+      packingData.push({
+        _id: 'ungrouped-items',
+        name: 'Ungrouped Items',
+        description: 'Batches without proper item or group assignment',
+        totalItems: trueOrphanBatches.length,
+        qtyPerBatch: 0,
+        qtyAchievedPerBatch: trueOrphanBatches.reduce((sum, batch) => sum + (batch.qtyAchieved || 0), 0),
+        productionLoss: trueOrphanBatches.reduce((sum, batch) => sum + (batch.productionLoss || 0), 0),
+        items: trueOrphanBatches.map(batch => ({
+          _id: batch._id,
+          name: `Batch ${batch.batchNo}`,
+          code: batch.batchNo,
+          category: 'Unknown',
+          unit: 'pcs',
+          image: null,
+          currentStock: 0,
+          producedQty: 0,
+          indentQty: 0,
+          achievedQty: batch.qtyAchieved || 0,
+          packedQty: 0,
+          packingLoss: 0,
+          notes: '',
+          completedBatches: 1,
+          batchDetails: [{
+            _id: batch._id,
+            batchNo: batch.batchNo,
+            qtyAchieved: batch.qtyAchieved,
+            productionLoss: batch.productionLoss,
+            status: 'completed',
+            companyId: batch.companyId,
+            itemId: batch.itemId,
+            groupId: batch.groupId,
+            productionDate: batch.productionDate,
+            createdAt: batch.createdAt,
+            updatedAt: batch.updatedAt
+          }],
+          dailySummaryData: null
+        })),
+        createdBy: 'System',
+        createdAt: new Date(),
+        completedBatches: trueOrphanBatches.length
+      });
+    }
+
     console.log('✅ Final packing data summary:');
-    filteredPackingData.forEach(group => {
+    packingData.forEach(group => {
       console.log(`   Group: ${group.name} - ${group.items.length} items, ${group.completedBatches} completed batches`);
       group.items.forEach(item => {
-        console.log(`     Item: ${item.name} - ${item.completedBatches} batches, achieved: ${item.achievedQty}`);
+        console.log(`     Item: ${item.name} - ${item.completedBatches} completed batches, achieved: ${item.achievedQty}`);
       });
     });
 
     // Add packing sheet relationship data for each production group
-    const productionGroupsWithPackingSheets = await Promise.all(filteredPackingData.map(async (group) => {
-      try {
-        let packingSheetQuery;
-        
-        // Handle ungrouped items vs regular production groups
-        if (group._id === 'ungrouped-items') {
-          // For ungrouped items, search for null productionGroup
-          packingSheetQuery = {
-            company: req.user.companyId,
-            $or: [
-              { productionGroup: null },
-              { productionGroup: { $exists: false } }
-            ],
-            productionGroupName: 'Ungrouped Items',
-            packingDate: { $gte: today, $lte: endOfDay }
-          };
-        } else {
-          // For regular production groups
-          packingSheetQuery = {
-            company: req.user.companyId,
-            productionGroup: group._id,
-            packingDate: { $gte: today, $lte: endOfDay }
-          };
+    const productionGroupsWithPackingSheets = packingData.map((group) => {
+      // Calculate totals from individual batch packing sheets
+      let totalBatches = 0;
+      let completedBatchSheets = 0;
+      
+      group.items.forEach(item => {
+        if (item.batchDetails) {
+          totalBatches += item.batchDetails.length;
+          completedBatchSheets += item.batchDetails.filter(batch => 
+            batch.packingSheets && batch.packingSheets.length > 0
+          ).length;
         }
-        
-        console.log(`🔍 Searching packing sheets for group ${group.name}`);
-        
-        const existingPackingSheets = await PackingSheet.find(packingSheetQuery)
-          .select('_id slNo status packingStartTime packingEndTime totalPackedQty packingLoss notes items')
-          .lean();
-          
-        console.log(`📋 Found ${existingPackingSheets.length} packing sheets for group ${group.name}`);
+      });
+      
+      console.log(`📋 Group ${group.name}: ${totalBatches} total batches, ${completedBatchSheets} with packing sheets`);
 
-        return {
-          ...group,
-          packingSheets: existingPackingSheets || []
-        };
-      } catch (error) {
-        console.error(`Error fetching packing sheets for group ${group.name}:`, error);
-        return {
-          ...group,
-          packingSheets: []
-        };
-      }
-    }));
+      return {
+        ...group,
+        totalBatches: totalBatches,
+        completedBatchSheets: completedBatchSheets
+      };
+    });
 
     // Add packing sheet data for ungrouped items as well
     const ungroupedPackingSheets = await PackingSheet.find({
@@ -335,16 +464,16 @@ export const getProductionGroupsForPacking = async (req, res) => {
     .select('_id slNo status packingStartTime packingEndTime totalPackedQty packingLoss items')
     .lean();
 
-    console.log('✅ Production groups with completed batches and packing sheets processed:', productionGroupsWithPackingSheets.length);
-    console.log('📦 Found existing packing sheets across all groups:', productionGroupsWithPackingSheets.reduce((sum, g) => sum + g.packingSheets.length, 0));
+    console.log('✅ Production groups processed:', productionGroupsWithPackingSheets.length);
+    console.log('📦 Total batches across all groups:', productionGroupsWithPackingSheets.reduce((sum, g) => sum + (g.totalBatches || 0), 0));
     console.log('🔄 Ungrouped packing sheets found:', ungroupedPackingSheets.length);
-
+    
+    // ungroupedPackingSheets: ungroupedPackingSheets,
     res.json({
       success: true,
       message: 'Production groups for packing fetched successfully',
       data: {
         productionGroups: productionGroupsWithPackingSheets,
-        ungroupedPackingSheets: ungroupedPackingSheets,
         totalGroups: productionGroupsWithPackingSheets.length,
         dateFilter: today.toISOString(),
         totalCompletedBatches: completedBatches.length
@@ -404,13 +533,43 @@ export const getPackingSheets = async (req, res) => {
 
     console.log(`✅ Found ${packingSheets.length} packing sheets`);
 
+    // Add computed fields for each packing sheet
+    const enrichedPackingSheets = packingSheets.map(sheet => ({
+      ...sheet,
+      // Computed fields for frontend logic
+      hasPackingProgress: sheet.items.some(item => (Number(item.packedQty) || 0) > 0) || 
+                         Number(sheet.packingLoss) > 0 || 
+                         (sheet.notes && sheet.notes.trim().length > 0) ||
+                         Boolean(sheet.packingStartTime),
+      isApprovable: sheet.status !== 'approved' && (
+                   sheet.items.some(item => (Number(item.packedQty) || 0) > 0) || 
+                   Number(sheet.packingLoss) > 0 || 
+                   (sheet.notes && sheet.notes.trim().length > 0) ||
+                   Boolean(sheet.packingStartTime)
+                   ),
+      totalPackedQty: sheet.items.reduce((sum, item) => sum + (Number(item.packedQty) || 0), 0),
+      totalProducedQty: sheet.items.reduce((sum, item) => sum + (Number(item.producedQty) || 0), 0),
+      packingProgress: (() => {
+        const totalProduced = sheet.items.reduce((sum, item) => sum + (Number(item.producedQty) || 0), 0);
+        const totalPacked = sheet.items.reduce((sum, item) => sum + (Number(item.packedQty) || 0), 0);
+        return totalProduced > 0 ? Math.round((totalPacked / totalProduced) * 100) : 0;
+      })()
+    }));
+
     res.json({
       success: true,
       message: 'Fresh packing sheets fetched successfully',
       data: {
-        packingSheets,
+        packingSheets: enrichedPackingSheets,
         totalSheets: packingSheets.length,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        summary: {
+          total: packingSheets.length,
+          pending: packingSheets.filter(s => s.status === 'pending').length,
+          inProgress: packingSheets.filter(s => s.status === 'in_progress').length,
+          completed: packingSheets.filter(s => s.status === 'completed').length,
+          approved: packingSheets.filter(s => s.status === 'approved').length
+        }
       }
     });
 
@@ -428,7 +587,7 @@ export const getPackingSheets = async (req, res) => {
 export const createPackingSheet = async (req, res) => {
   try {
     const { productionGroupId, items, shift } = req.body;
-    console.log('📋 REMOVE & RECREATE packing sheet for group:', productionGroupId);
+    console.log('📋 Create/Update packing sheet for group:', productionGroupId);
 
     // Set today's date range
     const today = new Date();
@@ -441,116 +600,259 @@ export const createPackingSheet = async (req, res) => {
 
     console.log(`📋 Request body:`, JSON.stringify(req.body, null, 2));
     
-    // STEP 1: ALWAYS DELETE EXISTING SHEETS FIRST (NO CHECKING)
-    if (productionGroupId === 'ungrouped-items') {
-      productionGroupName = 'Ungrouped Items';
-      
-      // Delete ALL ungrouped packing sheets for today with more specific query
-      const deleteQuery = {
-        company: req.user.companyId,
-        $or: [
-          { productionGroup: null },
-          { productionGroup: { $exists: false } }
-        ],
-        productionGroupName: 'Ungrouped Items',
-        packingDate: { $gte: today, $lte: endOfDay },
-        isActive: { $ne: false }
-      };
-      
-      console.log(`🗑️ Deleting ungrouped packing sheets with query:`, JSON.stringify(deleteQuery, null, 2));
-      
-      const deleteResult = await PackingSheet.deleteMany(deleteQuery);
-      
-      console.log(`🗑️ REMOVED ${deleteResult.deletedCount} existing ungrouped packing sheets`);
-    } else {
-      // Validate and get production group
+    // Handle ungrouped items - check for empty/null/undefined, specific "ungrouped" values, or individual group IDs
+    const isUngrouped = !productionGroupId || 
+                       productionGroupId === '' || 
+                       productionGroupId === 'ungrouped-items' || 
+                       productionGroupId === 'ungrouped' ||
+                       (typeof productionGroupId === 'string' && productionGroupId.startsWith('individual-'));
+    
+    console.log('🔍 Ungrouped check:', { productionGroupId, isUngrouped });
+    
+    // Determine if this is ungrouped or production group
+    if (!isUngrouped && productionGroupId) {
+      // Try to find the production group - if not found, treat as ungrouped
       productionGroup = await ProductionGroup.findOne({
         _id: productionGroupId,
         company: req.user.companyId,
         isActive: true
       });
 
-      if (!productionGroup) {
-        return res.status(404).json({
-          success: false,
-          message: 'Production group not found'
-        });
+      if (productionGroup) {
+        productionGroupName = productionGroup.name;
+        console.log(`✅ Found production group: ${productionGroupName}`);
+      } else {
+        console.log(`⚠️ ProductionGroup not found for ID: ${productionGroupId}, treating as ungrouped`);
+        productionGroupName = 'Ungrouped Items';
+        productionGroup = null;
       }
-      
-      productionGroupName = productionGroup.name;
-      
-      // Delete ALL packing sheets for this production group today
-      const deleteResult = await PackingSheet.deleteMany({
-        company: req.user.companyId,
-        productionGroup: productionGroupId,
-        packingDate: { $gte: today, $lte: endOfDay }
-      });
-      
-      console.log(`🗑️ REMOVED ${deleteResult.deletedCount} existing packing sheets for group: ${productionGroupName}`);
+    } else {
+      productionGroupName = 'Ungrouped Items';
+      productionGroup = null;
+      console.log(`🔄 Handling as ungrouped items`);
     }
 
-    // STEP 2: CREATE NEW PACKING SHEET
-    const nextSlNo = await PackingSheet.getNextSlNo(req.user.companyId);
+    // Extract batchId and batchNo from root level or from first item
+    let batchId = req.body.batchId;
+    let batchNo = req.body.batchNo;
     
-    const packingSheetData = {
-      slNo: nextSlNo,
-      productionGroup: productionGroupId === 'ungrouped-items' ? null : productionGroupId,
-      productionGroupName: productionGroupName,
-      items: items || [],
-      shift: shift || 'morning',
+    // If not provided at root level, get from first item
+    if (!batchId && !batchNo && items && items.length > 0) {
+      batchId = items[0].batchId;
+      batchNo = items[0].batchNo;
+      console.log('📦 Extracted batchId/batchNo from first item:', { batchId, batchNo });
+    }
+    
+    // Process items (batchId and batchNo are now at root level, not item level)
+    const processedItems = (items || []).map(item => ({
+      productId: item.productId,
+      productName: item.productName,
+      indentQty: item.indentQty || 0,
+      producedQty: item.producedQty || 0,
+      packedQty: item.packedQty || 0,
+      packingLoss: item.packingLoss || 0,
+      notes: item.notes || ''
+    }));
+    
+    console.log('📦 Processed items (batchId/batchNo now at root level):', processedItems.map(item => ({
+      productName: item.productName,
+      producedQty: item.producedQty,
+      packedQty: item.packedQty
+    })));
+
+    // Check if packing sheet already exists for today using simple criteria
+    const existingQuery = {
       company: req.user.companyId,
-      createdBy: req.user._id || req.user.id,
-      lastUpdatedBy: req.user._id || req.user.id,
-      status: req.body.status || 'pending',
-      packingStartTime: req.body.packingStartTime ? new Date(req.body.packingStartTime) : null,
-      packingDate: today,
-      isActive: true
+      packingDate: { $gte: today, $lte: endOfDay },
+      batchId: batchId,
+      batchNo: batchNo,
+      isActive: { $ne: false }
     };
-    
-    console.log('📋 Creating packing sheet with data:', JSON.stringify(packingSheetData, null, 2));
 
-    const packingSheet = new PackingSheet(packingSheetData);
-    await packingSheet.save();
+    const existingSheet = await PackingSheet.findOne(existingQuery);
 
-    console.log('✅ NEW PACKING SHEET CREATED:', packingSheet._id);
-    
-    // Verify no duplicates exist after creation
-    const verifyQuery = productionGroupId === 'ungrouped-items' 
-      ? {
-          company: req.user.companyId,
-          $or: [{ productionGroup: null }, { productionGroup: { $exists: false } }],
-          productionGroupName: 'Ungrouped Items',
-          packingDate: { $gte: today, $lte: endOfDay },
-          isActive: { $ne: false }
-        }
-      : {
-          company: req.user.companyId,
-          productionGroup: productionGroupId,
-          packingDate: { $gte: today, $lte: endOfDay },
-          isActive: { $ne: false }
-        };
-        
-    const remainingSheets = await PackingSheet.find(verifyQuery).lean();
-    console.log(`🔍 Verification: ${remainingSheets.length} packing sheets exist after creation`);
-    
-    if (remainingSheets.length > 1) {
-      console.warn(`⚠️ WARNING: ${remainingSheets.length} packing sheets found, expected 1!`);
-      remainingSheets.forEach((sheet, index) => {
-        console.log(`   Sheet ${index + 1}: ID=${sheet._id}, Created=${sheet.createdAt}`);
+    if (existingSheet) {
+      // Update existing packing sheet
+      console.log(`🔄 Updating existing packing sheet: ${existingSheet._id}`);
+      
+      existingSheet.items = processedItems;
+      existingSheet.batchId = batchId || existingSheet.batchId;
+      existingSheet.batchNo = batchNo || existingSheet.batchNo;
+      existingSheet.shift = shift || existingSheet.shift;
+      existingSheet.status = req.body.status || existingSheet.status;
+      existingSheet.packingStartTime = req.body.packingStartTime ? new Date(req.body.packingStartTime) : existingSheet.packingStartTime;
+      existingSheet.lastUpdatedBy = req.user._id || req.user.id;
+      existingSheet.updatedAt = new Date();
+
+      await existingSheet.save();
+
+      console.log('✅ PACKING SHEET UPDATED:', existingSheet._id);
+
+      res.status(200).json({
+        success: true,
+        message: 'Packing sheet updated successfully',
+        data: existingSheet
+      });
+    } else {
+      // Create new packing sheet
+      console.log(`🆕 Creating new packing sheet`);
+      
+      const nextSlNo = await PackingSheet.getNextSlNo(req.user.companyId);
+      
+      const packingSheetData = {
+        slNo: nextSlNo,
+        productionGroup: productionGroup ? productionGroupId : null,
+        productionGroupName: productionGroupName,
+        batchId: batchId || null,
+        batchNo: batchNo || null,
+        items: processedItems,
+        shift: shift || 'morning',
+        company: req.user.companyId,
+        createdBy: req.user._id || req.user.id,
+        lastUpdatedBy: req.user._id || req.user.id,
+        status: req.body.status || 'pending',
+        packingStartTime: req.body.packingStartTime ? new Date(req.body.packingStartTime) : null,
+        packingDate: today,
+        isActive: true
+      };
+      
+      console.log('📋 Creating packing sheet with data:', JSON.stringify(packingSheetData, null, 2));
+
+      const packingSheet = new PackingSheet(packingSheetData);
+      await packingSheet.save();
+
+      console.log('✅ NEW PACKING SHEET CREATED:', packingSheet._id);
+
+      res.status(201).json({
+        success: true,
+        message: 'Packing sheet created successfully',
+        data: packingSheet
       });
     }
 
-    res.status(201).json({
+  } catch (error) {
+    console.error('❌ Error in create/update packing sheet:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create/update packing sheet',
+      error: error.message
+    });
+  }
+};
+
+// Update entire packing sheet
+export const updatePackingSheet = async (req, res) => {
+  try {
+    const updateData = req.body;
+    console.log('📝 Updating packing sheet by batchNo/batchId');
+    console.log('📝 Update data:', JSON.stringify(updateData, null, 2));
+
+    // Validation - need batchNo and batchId to find the sheet
+    if (!updateData.batchNo || !updateData.batchId) {
+      return res.status(400).json({
+        success: false,
+        message: 'batchNo and batchId are required to update packing sheet'
+      });
+    }
+
+    // Set today's date range
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+    const endOfDay = new Date(today);
+    endOfDay.setUTCHours(23, 59, 59, 999);
+
+    console.log('🔍 Finding packing sheet with:', {
+      companyId: req.user.companyId,
+      batchNo: updateData.batchNo,
+      batchId: updateData.batchId,
+      dateRange: { from: today, to: endOfDay }
+    });
+
+    // Find packing sheet by root level batchNo, batchId, company, and today's date
+    const packingSheet = await PackingSheet.findOne({
+      company: req.user.companyId,
+      packingDate: { $gte: today, $lte: endOfDay },
+      batchNo: updateData.batchNo,
+      batchId: updateData.batchId,
+      isActive: { $ne: false }
+    });
+
+    if (!packingSheet) {
+      return res.status(404).json({
+        success: false,
+        message: `Packing sheet not found for batchNo: ${updateData.batchNo}, batchId: ${updateData.batchId} in company ${req.user.companyId} for today`
+      });
+    }
+
+    console.log('✅ Found packing sheet:', packingSheet._id);
+
+    // Update basic fields if provided
+    if (updateData.productionGroupName !== undefined) {
+      packingSheet.productionGroupName = updateData.productionGroupName;
+    }
+    if (updateData.batchId !== undefined) {
+      packingSheet.batchId = updateData.batchId;
+    }
+    if (updateData.batchNo !== undefined) {
+      packingSheet.batchNo = updateData.batchNo;
+    }
+    if (updateData.status !== undefined) {
+      packingSheet.status = updateData.status;
+    }
+    if (updateData.packingStartTime !== undefined) {
+      packingSheet.packingStartTime = updateData.packingStartTime ? new Date(updateData.packingStartTime) : null;
+    }
+    if (updateData.packingEndTime !== undefined) {
+      packingSheet.packingEndTime = updateData.packingEndTime ? new Date(updateData.packingEndTime) : null;
+    }
+    if (updateData.packingLoss !== undefined) {
+      packingSheet.packingLoss = updateData.packingLoss;
+    }
+    if (updateData.notes !== undefined) {
+      packingSheet.notes = updateData.notes;
+    }
+
+    // Update items if provided
+    if (updateData.items && Array.isArray(updateData.items)) {
+      updateData.items.forEach(updateItem => {
+        // Find item by productId since batchId/batchNo are now at root level
+        const existingItem = packingSheet.items.find(
+          item => item.productId?.toString() === updateItem.productId
+        );
+        
+        if (existingItem) {
+          console.log(`🔄 Updating item: ${updateItem.productName || existingItem.productName}`);
+          // Update item fields (batchId/batchNo are handled at root level)
+          if (updateItem.productName !== undefined) existingItem.productName = updateItem.productName;
+          if (updateItem.indentQty !== undefined) existingItem.indentQty = updateItem.indentQty;
+          if (updateItem.producedQty !== undefined) existingItem.producedQty = updateItem.producedQty;
+          if (updateItem.packedQty !== undefined) existingItem.packedQty = updateItem.packedQty;
+          if (updateItem.packingLoss !== undefined) existingItem.packingLoss = updateItem.packingLoss;
+          if (updateItem.notes !== undefined) existingItem.notes = updateItem.notes;
+        } else {
+          console.log(`❌ Item not found with productId: ${updateItem.productId}`);
+        }
+      });
+    }
+
+    packingSheet.lastUpdatedBy = req.user._id || req.user.id;
+    packingSheet.updatedAt = new Date();
+    
+    const updatedSheet = await packingSheet.save();
+
+    console.log('✅ Packing sheet updated successfully:', updatedSheet._id);
+
+    res.json({
       success: true,
-      message: 'Packing sheet created successfully',
-      data: packingSheet
+      message: 'Packing sheet updated successfully',
+      data: updatedSheet
     });
 
   } catch (error) {
-    console.error('❌ Error in remove & recreate packing sheet:', error);
+    console.error('❌ Error updating packing sheet:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to create packing sheet',
+      message: 'Failed to update packing sheet',
       error: error.message
     });
   }
@@ -729,6 +1031,9 @@ export const updatePackingQuantities = async (req, res) => {
           // Update fields if provided
           if (updateItem.indentQty !== undefined) existingItem.indentQty = updateItem.indentQty;
           if (updateItem.producedQty !== undefined) existingItem.producedQty = updateItem.producedQty;
+          // Update batchId and batchNo if provided
+          if (updateItem.batchId !== undefined) existingItem.batchId = updateItem.batchId;
+          if (updateItem.batchNo !== undefined) existingItem.batchNo = updateItem.batchNo;
           // Store packingLoss at MAIN SHEET LEVEL, not item level
           if (updateItem.packingLoss !== undefined) packingSheet.packingLoss = updateItem.packingLoss;
           // Store notes at MAIN SHEET LEVEL, not item level  
@@ -903,8 +1208,8 @@ export const getPackingStats = async (req, res) => {
 export const updatePackingItem = async (req, res) => {
   try {
     const { packingSheetId } = req.params;
-    const { productId, packingLoss, notes } = req.body;
-    console.log('📝 Updating individual packing item:', { packingSheetId, productId, packingLoss, notes });
+    const { productId, packingLoss, notes, batchId, batchNo } = req.body;
+    console.log('📝 Updating individual packing item:', { packingSheetId, productId, packingLoss, notes, batchId, batchNo });
     console.log('📝 Raw req.body:', req.body);
     console.log('📝 Notes value type and content:', typeof notes, notes);
 
@@ -946,6 +1251,14 @@ export const updatePackingItem = async (req, res) => {
     }
 
     // Update fields if provided
+    if (batchId !== undefined) {
+      item.batchId = batchId;
+      console.log(`🔄 Updated batchId for item: ${item.batchId}`);
+    }
+    if (batchNo !== undefined) {
+      item.batchNo = batchNo;
+      console.log(`🔄 Updated batchNo for item: ${item.batchNo}`);
+    }
     if (packingLoss !== undefined) {
       // Store packingLoss at MAIN SHEET LEVEL, not item level
       packingSheet.packingLoss = Number(packingLoss);
@@ -963,6 +1276,31 @@ export const updatePackingItem = async (req, res) => {
     item.packedQty = Math.max(0, producedQty - currentPackingLoss);
     
     console.log(`📊 Auto-calculated for ${item.productName}: packedQty = ${producedQty} - ${currentPackingLoss} = ${item.packedQty}`);
+
+    // AUTO-UPDATE STATUS: Check if packing is complete
+    const allItemsPacked = packingSheet.items.every(item => {
+      const itemProducedQty = Number(item.producedQty) || 0;
+      const itemPackedQty = Number(item.packedQty) || 0;
+      return itemProducedQty > 0 ? itemPackedQty > 0 : true; // If produced, must be packed
+    });
+
+    if (allItemsPacked && packingSheet.status === 'pending') {
+      packingSheet.status = 'in_progress';
+      console.log(`📋 Updated status to in_progress`);
+    }
+
+    // If packedQty equals producedQty for all items, mark as completed
+    const allItemsCompleted = packingSheet.items.every(item => {
+      const itemProducedQty = Number(item.producedQty) || 0;
+      const itemPackedQty = Number(item.packedQty) || 0;
+      return itemProducedQty === 0 || itemPackedQty === itemProducedQty;
+    });
+
+    if (allItemsCompleted && packingSheet.status !== 'completed' && packingSheet.status !== 'approved') {
+      packingSheet.status = 'completed';
+      packingSheet.packingEndTime = new Date();
+      console.log(`✅ Updated status to completed`);
+    }
 
     // Update sheet metadata
     packingSheet.lastUpdatedBy = req.user._id || req.user.id;
@@ -982,12 +1320,25 @@ export const updatePackingItem = async (req, res) => {
         packingSheetId: packingSheet._id,
         productId: item.productId,
         productName: item.productName,
+        batchId: item.batchId,
+        batchNo: item.batchNo,
         indentQty: item.indentQty,
         producedQty: item.producedQty,
         packingLoss: packingSheet.packingLoss, // Return from main sheet level
         packedQty: item.packedQty,
         notes: packingSheet.notes, // Return from main sheet level
-        lastUpdated: packingSheet.updatedAt
+        status: packingSheet.status, // Include status for frontend
+        packingStartTime: packingSheet.packingStartTime,
+        packingEndTime: packingSheet.packingEndTime,
+        lastUpdated: packingSheet.updatedAt,
+        // Include all items for frontend state update
+        allItems: packingSheet.items.map(i => ({
+          productId: i.productId,
+          productName: i.productName,
+          indentQty: i.indentQty,
+          producedQty: i.producedQty,
+          packedQty: i.packedQty
+        }))
       }
     });
 
@@ -1174,11 +1525,27 @@ export const approvePackingSheet = async (req, res) => {
       });
     }
 
-    // Check if completed
-    if (packingSheet.status !== 'completed') {
+    // Check if ready for approval - must have actual packing progress
+    const hasPackingProgress = packingSheet.items.some(item => {
+      const packedQty = Number(item.packedQty) || 0;
+      return packedQty > 0;
+    });
+
+    const hasPackingLoss = Number(packingSheet.packingLoss) > 0;
+    const hasNotes = packingSheet.notes && packingSheet.notes.trim().length > 0;
+    const hasStartTime = packingSheet.packingStartTime;
+
+    if (!hasPackingProgress && !hasPackingLoss && !hasNotes && !hasStartTime) {
       return res.status(400).json({
         success: false,
-        message: 'Packing sheet must be completed before approval'
+        message: 'Cannot approve: No packing activity detected. Please update packed quantities, add notes, or record packing loss.',
+        error: 'NO_PACKING_PROGRESS',
+        details: {
+          packedItems: 0,
+          packingLoss: packingSheet.packingLoss || 0,
+          hasNotes: Boolean(hasNotes),
+          hasStartTime: Boolean(hasStartTime)
+        }
       });
     }
 
@@ -1452,7 +1819,26 @@ export const approvePackingSheet = async (req, res) => {
         approvedBy: packingSheet.approvedBy,
         totalPackedQty: packingSheet.totalPackedQty,
         productGroup: packingSheet.productionGroupName,
-        dispatchConsoleCreated: true
+        dispatchConsoleCreated: true,
+        // Include updated sheet data for frontend state management
+        packingSheet: {
+          _id: packingSheet._id,
+          slNo: packingSheet.slNo,
+          productionGroupName: packingSheet.productionGroupName,
+          batchId: packingSheet.batchId,
+          batchNo: packingSheet.batchNo,
+          status: packingSheet.status,
+          packingStartTime: packingSheet.packingStartTime,
+          packingEndTime: packingSheet.packingEndTime,
+          packingLoss: packingSheet.packingLoss,
+          notes: packingSheet.notes,
+          items: packingSheet.items,
+          totalPackedQty: packingSheet.totalPackedQty,
+          approvedAt: packingSheet.approvedAt,
+          approvedBy: packingSheet.approvedBy,
+          createdAt: packingSheet.createdAt,
+          updatedAt: packingSheet.updatedAt
+        }
       }
     });
 

@@ -331,9 +331,7 @@ export default function PackingHistory() {
                 Packing History
                 {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
               </div>
-              <Button variant="ghost" size="sm" onClick={() => refetch()}>
-                <RefreshCw className="w-4 h-4" />
-              </Button>
+             
             </CardTitle>
           </CardHeader>
           <CardContent>

@@ -294,15 +294,6 @@ export default function DispatchHistory() {
                 </Select>
               </div>
               <div>
-                <Label htmlFor="vehicleId">Vehicle</Label>
-                <Input
-                  id="vehicleId"
-                  placeholder="Vehicle No."
-                  value={filters.vehicleId}
-                  onChange={(e) => handleFilterChange('vehicleId', e.target.value)}
-                />
-              </div>
-              <div>
                 <Label htmlFor="limit">Items per page</Label>
                 <Select value={filters.limit.toString()} onValueChange={(value) => handleFilterChange('limit', parseInt(value))}>
                   <SelectTrigger>
@@ -352,8 +343,8 @@ export default function DispatchHistory() {
             ) : reports.length === 0 ? (
               <div className="text-center py-8">
                 <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-500">No dispatch history found</p>
-                <p className="text-sm text-gray-400">Try adjusting your filters</p>
+                <p className="text-gray-500">No dispatch records found</p>
+                <p className="text-sm text-gray-400">Try adjusting your filters or check if any dispatches have been created</p>
               </div>
             ) : (
               <>
@@ -362,11 +353,10 @@ export default function DispatchHistory() {
                     <TableRow>
                       <TableHead>Dispatch ID</TableHead>
                       <TableHead>Customer</TableHead>
-                      <TableHead>Vehicle</TableHead>
-                      <TableHead>Items</TableHead>
-                      <TableHead>Value</TableHead>
+                      <TableHead>Product Details</TableHead>
+                      <TableHead>Quantities & Value</TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead>Dispatch Date</TableHead>
+                      <TableHead>Date</TableHead>
                       <TableHead>Delivery Date</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -374,38 +364,73 @@ export default function DispatchHistory() {
                     {reports.map((dispatch) => (
                       <TableRow key={dispatch.id} className="hover:bg-gray-50">
                         <TableCell className="font-medium">
-                          {dispatch.dispatchId || 'N/A'}
+                          {dispatch.dispatchId || dispatch.id || 'N/A'}
                         </TableCell>
                         <TableCell>
                           <div>
-                            <p className="font-medium">{dispatch.customer?.name || 'N/A'}</p>
-                            {dispatch.customer?.phone && (
-                              <p className="text-sm text-gray-500">{dispatch.customer.phone}</p>
+                            {dispatch.customer?.name ? (
+                              <>
+                                <p className="font-medium">{dispatch.customer.name}</p>
+                                {dispatch.customer.phone && (
+                                  <p className="text-sm text-gray-500">{dispatch.customer.phone}</p>
+                                )}
+                              </>
+                            ) : (
+                              <div className="flex items-center gap-1 text-gray-400">
+                                <User className="w-4 h-4" />
+                                <span>Not assigned</span>
+                              </div>
+                            )}
+                          </div>
+                        </TableCell>
+                       
+                        <TableCell>
+                          <div>
+                            {dispatch.product && (
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-1">
+                                  <Package className="w-3 h-3 text-green-600" />
+                                  <span className="font-medium text-sm">{dispatch.product.name}</span>
+                                </div>
+                                <div className="text-xs text-gray-500">
+                                  <span className="px-1.5 py-0.5 bg-blue-100 text-blue-800 rounded">
+                                    {dispatch.product.category}
+                                  </span>
+                                  <span className="ml-1">{dispatch.product.code}</span>
+                                </div>
+                                <div className="text-xs text-gray-600">
+                                  Qty: {dispatch.quantities?.packedQty || 0} {dispatch.product.unit}
+                                  {dispatch.packingSheet?.productGroup && dispatch.packingSheet.productGroup !== 'Ungrouped Items' && (
+                                    <span className="ml-2 px-1 py-0.5 bg-gray-100 text-gray-700 rounded text-xs">
+                                      {dispatch.packingSheet.productGroup}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                            {!dispatch.product && (
+                              <Badge variant="outline">0 items</Badge>
                             )}
                           </div>
                         </TableCell>
                         <TableCell>
-                          <div className="flex items-center gap-1">
-                            <Truck className="w-4 h-4 text-blue-600" />
-                            <span className="font-medium">{dispatch.vehicle?.number || 'N/A'}</span>
+                          <div className="space-y-1">
+                            <span className="font-medium">{formatCurrency(dispatch.quantities?.totalIndent * (dispatch.calculations?.overallLoss || 0) || 0)}</span>
+                            <div className="text-xs text-gray-500">
+                              {dispatch.quantities?.totalIndent && (
+                                <div>Indent: {dispatch.quantities.totalIndent}</div>
+                              )}
+                              {dispatch.calculations?.excessShortage && (
+                                <div>Shortage: {Math.abs(dispatch.calculations.excessShortage)}</div>
+                              )}
+                            </div>
                           </div>
-                          {dispatch.driver?.name && (
-                            <p className="text-sm text-gray-500">{dispatch.driver.name}</p>
-                          )}
                         </TableCell>
                         <TableCell>
-                          <Badge variant="outline">
-                            {dispatch.items?.length || 0} items
-                          </Badge>
+                          {getStatusBadge(dispatch.status || dispatch.packingSheet?.status)}
                         </TableCell>
                         <TableCell>
-                          <span className="font-medium">{formatCurrency(dispatch.totalValue)}</span>
-                        </TableCell>
-                        <TableCell>
-                          {getStatusBadge(dispatch.status)}
-                        </TableCell>
-                        <TableCell>
-                          {formatDateTime(dispatch.dispatchDate)}
+                          {formatDateTime(dispatch.date || dispatch.createdAt)}
                         </TableCell>
                         <TableCell>
                           {dispatch.deliveryDate ? formatDateTime(dispatch.deliveryDate) : (
@@ -420,17 +445,17 @@ export default function DispatchHistory() {
                 {/* Pagination */}
                 <div className="flex items-center justify-between mt-6">
                   <div className="text-sm text-gray-600">
-                    Showing {((pagination.currentPage - 1) * pagination.limit) + 1} to{' '}
-                    {Math.min(pagination.currentPage * pagination.limit, pagination.totalCount)} of{' '}
-                    {pagination.totalCount} entries
+                    Showing {((pagination.currentPage - 1) * (pagination.limit || 20)) + 1} to{' '}
+                    {Math.min((pagination.currentPage || 1) * (pagination.limit || 20), pagination.totalCount || reports.length)} of{' '}
+                    {pagination.totalCount || reports.length} entries
                   </div>
                   
                   <div className="flex items-center gap-2">
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => handlePageChange(pagination.currentPage - 1)}
-                      disabled={!pagination.hasPrev}
+                      onClick={() => handlePageChange((pagination.currentPage || 1) - 1)}
+                      disabled={!(pagination.hasPrev || (pagination.currentPage > 1))}
                     >
                       <ChevronLeft className="w-4 h-4" />
                       Previous
@@ -438,15 +463,15 @@ export default function DispatchHistory() {
                     
                     <div className="flex items-center gap-1">
                       <span className="text-sm">
-                        Page {pagination.currentPage} of {pagination.totalPages}
+                        Page {pagination.currentPage || 1} of {pagination.totalPages || 1}
                       </span>
                     </div>
                     
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => handlePageChange(pagination.currentPage + 1)}
-                      disabled={!pagination.hasNext}
+                      onClick={() => handlePageChange((pagination.currentPage || 1) + 1)}
+                      disabled={!(pagination.hasNext || (pagination.currentPage < pagination.totalPages))}
                     >
                       Next
                       <ChevronRight className="w-4 h-4" />

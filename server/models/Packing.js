@@ -24,6 +24,15 @@ const PackingItemSchema = new mongoose.Schema({
     type: Number,
     default: 0,
     min: 0
+  },
+  packingLoss: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
+  notes: {
+    type: String,
+    default: ''
   }
 }, {
   _id: false // Don't create separate _id for subdocuments
@@ -43,6 +52,17 @@ const PackingSheetSchema = new mongoose.Schema({
   productionGroupName: {
     type: String,
     required: true
+  },
+  batchId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'ProductionBatch',
+    required: false,
+    default: null
+  },
+  batchNo: {
+    type: String,
+    required: false,
+    default: null
   },
   packingStartTime: {
     type: Date,

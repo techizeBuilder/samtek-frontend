@@ -4,6 +4,7 @@ import {
   getProductionGroupsForPacking,
   getPackingSheets,
   createPackingSheet,
+  updatePackingSheet,
   startPackingTiming,
   stopPackingTiming,
   updatePackingLoss,
@@ -37,12 +38,8 @@ router.get('/sheets', getPackingSheets);
 // POST /api/packing/sheets - Create a new packing sheet
 router.post('/sheets', createPackingSheet);
 
-// Alternative routes for backward compatibility
-// GET /api/packing/packing-sheets - Alternative route for getting packing sheets
-router.get('/packing-sheets', getPackingSheets);
-
-// NOTE: Removed duplicate POST route for /packing-sheets to prevent duplicate entries
-// Use only /api/packing/sheets for creating packing sheets
+// PUT /api/packing/sheets - Update packing sheet by batchNo/batchId
+router.put('/sheets', updatePackingSheet);
 
 // GET /api/packing/sheets/:packingSheetId - Get specific packing sheet by ID
 router.get('/sheets/:packingSheetId', getPackingSheetById);
@@ -61,7 +58,7 @@ router.put('/sheets/:packingSheetId/loss', updatePackingLoss);
 // PUT /api/packing/sheets/:packingSheetId/quantities - Update item quantities in packing sheet
 router.put('/sheets/:packingSheetId/quantities', updatePackingQuantities);
 
-// PUT /api/packing/sheets/:packingSheetId/item - Update individual item fields (packingLoss, notes)
+// PUT /api/packing/sheets/:packingSheetId/item - Update individual item fields (packingLoss, notes, batchId, batchNo)
 router.put('/sheets/:packingSheetId/item', updatePackingItem);
 
 // POST /api/packing/sheets/:packingSheetId/approve - Approve a completed packing sheet
@@ -70,9 +67,6 @@ router.post('/sheets/:packingSheetId/approve', approvePackingSheet);
 // Packing Statistics Routes
 // GET /api/packing/stats - Get packing statistics and performance metrics
 router.get('/stats', getPackingStats);
-
-// GET /api/packing/dashboard - Get dashboard statistics  
-router.get('/dashboard', getDashboardStats);
 
 // History Routes
 // GET /api/packing/history - Get packing history with pagination and filters

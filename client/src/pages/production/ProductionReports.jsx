@@ -46,13 +46,13 @@ export default function ProductionReports() {
   const { user } = useAuth();
   const { toast } = useToast();
   
-  // Filter states
+  // Filter states - default to show all data without date filtering
   const [filters, setFilters] = useState({
-    startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 30 days ago
-    endDate: new Date().toISOString().split('T')[0], // today
+    startDate: '', // No default date - show all
+    endDate: '', // No default date - show all
     status: 'all',
     page: 1,
-    limit: 20
+    limit: 10
   });
 
   // Build query params
@@ -71,16 +71,18 @@ export default function ProductionReports() {
     error,
     refetch
   } = useQuery({
-    queryKey: ['production-reports', filters.startDate, filters.endDate, filters.status, filters.page],
+    queryKey: ['production-reports', filters],
     queryFn: () => apiRequest('GET', `/api/production/reports?${queryParams}`),
     staleTime: 30000,
-    retry: 1
+    retry: 1,
+    refetchOnWindowFocus: false
   });
 
   const productionData = reportsData?.data?.reports || [];
   const pagination = reportsData?.pagination || {
     currentPage: 1,
     totalPages: 1,
+    totalCount: 0,
     totalItems: 0,
     hasNext: false,
     hasPrev: false
@@ -115,6 +117,16 @@ export default function ProductionReports() {
       [key]: value,
       page: key !== 'page' ? 1 : value // Reset page when other filters change
     }));
+  };
+
+  const clearFilters = () => {
+    setFilters({
+      startDate: '',
+      endDate: '',
+      status: 'all',
+      page: 1,
+      limit: 20
+    });
   };
 
   const handleExport = () => {
@@ -268,10 +280,20 @@ export default function ProductionReports() {
       {/* Filters */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center">
-            <Filter className="h-5 w-5 mr-2" />
-            Filters
-          </CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center">
+              <Filter className="h-5 w-5 mr-2" />
+              Filters
+            </CardTitle>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={clearFilters}
+              className="text-xs"
+            >
+              Clear Filters
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -282,7 +304,11 @@ export default function ProductionReports() {
                 type="date"
                 value={filters.startDate}
                 onChange={(e) => handleFilterChange('startDate', e.target.value)}
+                placeholder="Select start date"
               />
+              {!filters.startDate && (
+                <p className="text-xs text-muted-foreground mt-1">Leave empty to show all</p>
+              )}
             </div>
             <div>
               <Label htmlFor="end-date">End Date</Label>
@@ -291,7 +317,11 @@ export default function ProductionReports() {
                 type="date"
                 value={filters.endDate}
                 onChange={(e) => handleFilterChange('endDate', e.target.value)}
+                placeholder="Select end date"
               />
+              {!filters.endDate && (
+                <p className="text-xs text-muted-foreground mt-1">Leave empty to show all</p>
+              )}
             </div>
             <div>
               <Label htmlFor="status">Status</Label>
@@ -332,7 +362,11 @@ export default function ProductionReports() {
         <CardHeader>
           <CardTitle>Production History</CardTitle>
           <p className="text-sm text-muted-foreground">
-            Showing {reports.length} of {pagination.totalCount || 0} production records
+            {filters.startDate || filters.endDate ? (
+              `Showing ${reports.length} of ${pagination.totalCount || 0} production records ${filters.startDate ? `from ${new Date(filters.startDate).toLocaleDateString()}` : ''} ${filters.endDate ? `to ${new Date(filters.endDate).toLocaleDateString()}` : ''}`
+            ) : (
+              `Showing ${reports.length} of ${pagination.totalCount || 0} total production records (all dates)`
+            )}
           </p>
         </CardHeader>
         <CardContent>
@@ -424,13 +458,21 @@ export default function ProductionReports() {
                 </Table>
               </div>
               
-              {/* Pagination */}
-              {pagination.totalPages > 1 && (
-                <div className="flex items-center justify-between mt-4">
+              {/* Enhanced Pagination */}
+              {pagination.totalCount > filters.limit && (
+                <div className="flex flex-col sm:flex-row items-center justify-between mt-6 gap-4">
                   <div className="text-sm text-muted-foreground">
-                    Page {pagination.currentPage} of {pagination.totalPages}
+                    Showing {((pagination.currentPage - 1) * filters.limit) + 1} to {Math.min(pagination.currentPage * filters.limit, pagination.totalCount || 0)} of {pagination.totalCount || 0} records
                   </div>
                   <div className="flex items-center space-x-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleFilterChange('page', 1)}
+                      disabled={pagination.currentPage === 1 || isLoading}
+                    >
+                      First
+                    </Button>
                     <Button
                       variant="outline"
                       size="sm"
@@ -440,6 +482,35 @@ export default function ProductionReports() {
                       <ChevronLeft className="h-4 w-4" />
                       Previous
                     </Button>
+                    
+                    {/* Page numbers */}
+                    <div className="flex items-center space-x-1">
+                      {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
+                        let pageNum;
+                        if (pagination.totalPages <= 5) {
+                          pageNum = i + 1;
+                        } else {
+                          const start = Math.max(1, pagination.currentPage - 2);
+                          const end = Math.min(pagination.totalPages, start + 4);
+                          pageNum = start + i;
+                          if (pageNum > end) return null;
+                        }
+                        
+                        return (
+                          <Button
+                            key={pageNum}
+                            variant={pageNum === pagination.currentPage ? "default" : "outline"}
+                            size="sm"
+                            className="w-8 h-8 p-0"
+                            onClick={() => handleFilterChange('page', pageNum)}
+                            disabled={isLoading}
+                          >
+                            {pageNum}
+                          </Button>
+                        );
+                      })}
+                    </div>
+                    
                     <Button
                       variant="outline" 
                       size="sm"
@@ -448,6 +519,14 @@ export default function ProductionReports() {
                     >
                       Next
                       <ChevronRight className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleFilterChange('page', pagination.totalPages)}
+                      disabled={pagination.currentPage === pagination.totalPages || isLoading}
+                    >
+                      Last
                     </Button>
                   </div>
                 </div>

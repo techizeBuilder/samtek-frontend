@@ -1388,10 +1388,66 @@ export const updateUngroupedItemProduction = async (req, res) => {
     productionRecord.updatedBy = req.user.username || req.user._id;
     productionRecord.updatedAt = new Date();
 
+    // Auto-update status based on field changes
+    if (field === 'mouldingTime' && processedValue) {
+      // When moulding time is set, change status to 'in_progress' 
+      if (productionRecord.status === 'pending' || productionRecord.status === 'not_started') {
+        productionRecord.status = 'in_progress';
+        console.log(`📊 Auto-updating status to 'in_progress' due to moulding time being set`);
+      }
+    }
+    
+    if (field === 'unloadingTime' && processedValue) {
+      // When unloading time is set, change status to 'completed'
+      productionRecord.status = 'completed';
+      console.log(`📊 Auto-updating status to 'completed' due to unloading time being set`);
+    }
+    
+    // Check if both times are set and auto-complete
+    if (productionRecord.mouldingTime && productionRecord.unloadingTime && productionRecord.status !== 'completed') {
+      productionRecord.status = 'completed';
+      console.log(`📊 Auto-updating status to 'completed' because both moulding and unloading times are set`);
+    }
+
     console.log(`🔧 Updating field: ${field} with value:`, processedValue);
 
-    // Save the record (let the model's pre-save hook handle qtyAchieved calculation)
-    const savedRecord = await productionRecord.save();
+    // Validate qtyAchieved is not negative before saving
+    if (productionRecord.qtyAchieved < 0) {
+      console.warn(`⚠️ WARNING: qtyAchieved is negative (${productionRecord.qtyAchieved}), adjusting to 0`);
+      productionRecord.qtyAchieved = 0;
+    }
+
+    // Save the record with proper error handling
+    let savedRecord;
+    try {
+      savedRecord = await productionRecord.save();
+    } catch (validationError) {
+      console.error('❌ Validation error during save:', validationError);
+      
+      // Handle validation errors with user-friendly messages
+      if (validationError.name === 'ValidationError') {
+        const validationMessages = [];
+        
+        for (let field in validationError.errors) {
+          const error = validationError.errors[field];
+          if (error.kind === 'min') {
+            validationMessages.push(`${field} cannot be negative (current value: ${error.value})`);
+          } else {
+            validationMessages.push(`${field}: ${error.message}`);
+          }
+        }
+        
+        return res.status(400).json({
+          success: false,
+          message: 'Validation failed',
+          details: validationMessages,
+          error: 'Please check your input values and ensure they meet the requirements'
+        });
+      }
+      
+      // Re-throw if not a validation error
+      throw validationError;
+    }
 
     console.log(`✅ Successfully ${savedRecord.isNew === false ? 'UPDATED' : 'CREATED'} record for batchNo: ${batchno}`);
 
@@ -1421,19 +1477,51 @@ export const updateUngroupedItemProduction = async (req, res) => {
   } catch (error) {
     console.error('❌ Error updating production data:', error);
     
-    // Handle specific database errors
+    // Handle specific database errors with better error messages
     if (error.code === 11000) {
       return res.status(409).json({
         success: false,
         message: 'Duplicate entry detected',
-        error: 'A record with this batchNo and date already exists'
+        error: 'A record with this batch number and date already exists'
       });
     }
 
+    // Handle validation errors
+    if (error.name === 'ValidationError') {
+      const validationMessages = [];
+      
+      for (let field in error.errors) {
+        const fieldError = error.errors[field];
+        if (fieldError.kind === 'min') {
+          validationMessages.push(`${field} cannot be negative (current value: ${fieldError.value})`);
+        } else {
+          validationMessages.push(`${field}: ${fieldError.message}`);
+        }
+      }
+      
+      return res.status(400).json({
+        success: false,
+        message: 'Input validation failed',
+        details: validationMessages,
+        error: 'Please ensure all values meet the required constraints'
+      });
+    }
+
+    // Handle CastError (invalid ObjectId, etc.)
+    if (error.name === 'CastError') {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid data format',
+        error: `Invalid ${error.path}: ${error.value}`
+      });
+    }
+
+    // Generic server error
     res.status(500).json({
       success: false,
       message: 'Failed to update production data',
-      error: error.message
+      error: 'An unexpected error occurred. Please try again.',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
@@ -1621,22 +1709,29 @@ export const updateUngroupedItemProductionWithBatch = async (req, res) => {
 // Get all production data for reports (history)
 export const getAllProductionReports = async (req, res) => {
   try {
-    const { page = 1, limit = 10, startDate, endDate, companyId, status, itemId, groupId } = req.query;
+    const { page = 1, limit = 10, fromDate, toDate, startDate, endDate, companyId, status, itemId, groupId } = req.query;
     const userCompanyId = req.user.companyId;
+
+    console.log('📊 Production Reports Query Parameters:', {
+      page, limit, fromDate, toDate, startDate, endDate, status
+    });
 
     // Build filter object
     const filter = {
       companyId: companyId || userCompanyId
     };
 
-    // Add date range filter
-    if (startDate || endDate) {
+    // Add date range filter - support both fromDate/toDate and startDate/endDate
+    const start = fromDate || startDate;
+    const end = toDate || endDate;
+    
+    if (start || end) {
       filter.productionDate = {};
-      if (startDate) {
-        filter.productionDate.$gte = new Date(startDate);
+      if (start) {
+        filter.productionDate.$gte = new Date(start);
       }
-      if (endDate) {
-        const endDateObj = new Date(endDate);
+      if (end) {
+        const endDateObj = new Date(end);
         endDateObj.setHours(23, 59, 59, 999); // Include full end date
         filter.productionDate.$lte = endDateObj;
       }
@@ -1773,23 +1868,25 @@ export const getAllProductionReports = async (req, res) => {
       message: 'Production reports retrieved successfully',
       data: {
         reports: formattedData,
-        pagination: {
-          currentPage: parseInt(page),
-          totalPages,
-          totalCount,
-          limit: parseInt(limit),
-          hasNext: parseInt(page) < totalPages,
-          hasPrev: parseInt(page) > 1
-        },
-        summary: stats,
-        filters: {
-          startDate,
-          endDate,
-          companyId: filter.companyId,
-          status,
-          itemId,
-          groupId
-        }
+        totalRecords: totalCount
+      },
+      pagination: {
+        currentPage: parseInt(page),
+        totalPages,
+        totalCount,
+        totalItems: totalCount,
+        limit: parseInt(limit),
+        hasNext: parseInt(page) < totalPages,
+        hasPrev: parseInt(page) > 1
+      },
+      summary: stats,
+      filters: {
+        fromDate: start,
+        toDate: end,
+        companyId: filter.companyId,
+        status,
+        itemId,
+        groupId
       }
     });
 
