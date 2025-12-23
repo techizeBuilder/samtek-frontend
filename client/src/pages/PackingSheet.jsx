@@ -136,7 +136,7 @@ export default function PackingSheet() {
                     packedQty: batchSheet?.packedQty || batch.qtyAchieved || 0,
                     notes: batchSheet?.notes || '',
                     status: batchSheet?.status || 'pending',
-                    isApproved: batchSheet?.isApproved || false,
+                    isApproved: batchSheet?.isApproved || batchSheet?.status === 'approved' || false,
                     hasExistingSheet: !!(batchSheet && batchSheet._id),
                     // Keep original batch data and packingSheets array
                     batchData: batch,
@@ -1177,7 +1177,17 @@ export default function PackingSheet() {
                               const batchKey = `${groupIndex}-${itemIndex}-${batchIndex}`;
                               const batchTiming = groupTimings[batchKey];
                               const isCompleted = batchTiming?.punchedOut;
+                              const isAlreadyApproved = batch.status === 'approved' || batch.isApproved;
                               const hasPackingLoss = (batch.packingLoss || 0) > 0;
+                              
+                              // If already approved, show approved status
+                              if (isAlreadyApproved) {
+                                return (
+                                  <span className="bg-green-100 text-green-800 px-2 py-1 rounded text-xs font-medium whitespace-nowrap">
+                                    ✅ Approved
+                                  </span>
+                                );
+                              }
                               
                               if (isCompleted) {
                                 if (hasPackingLoss) {

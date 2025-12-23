@@ -298,12 +298,12 @@ export const getDispatchDashboardData = async (req, res) => {
     .populate('company', 'name location')
     .sort({ createdAt: -1 });
 
-    // Get summary statistics
-    const totalPacked = dispatchConsoleData.reduce((sum, entry) => sum + (entry.packedQuantityReadyForDispatch || 0), 0);
-    const totalIndent = dispatchConsoleData.reduce((sum, entry) => sum + (entry.totalIndentQuantityOrdersForTheDay || 0), 0);
-    const totalAvailable = dispatchConsoleData.reduce((sum, entry) => sum + (entry.totalAvailableStock || 0), 0);
-    const totalDispatched = dispatchConsoleData.reduce((sum, entry) => sum + (entry.dispatchedQuantitySentToday || 0), 0);
-    const totalExcessShortage = dispatchConsoleData.reduce((sum, entry) => sum + (entry.excessShortage || 0), 0);
+    // Get summary statistics using calculated values
+    const totalPacked = formattedData.reduce((sum, entry) => sum + (entry.packedQuantityReadyForDispatch || 0), 0);
+    const totalIndent = formattedData.reduce((sum, entry) => sum + (entry.totalIndentQuantityOrdersForTheDay || 0), 0);
+    const totalAvailable = formattedData.reduce((sum, entry) => sum + (entry.totalAvailableStock || 0), 0);
+    const totalDispatched = formattedData.reduce((sum, entry) => sum + (entry.dispatchedQuantitySentToday || 0), 0);
+    const totalExcessShortage = formattedData.reduce((sum, entry) => sum + (entry.excessShortage || 0), 0);
 
     // Get approved packing sheets that don't have dispatch entries yet
     const PackingSheet = (await import('../models/Packing.js')).default;
@@ -327,38 +327,67 @@ export const getDispatchDashboardData = async (req, res) => {
     });
 
     // Format response data
-    const formattedData = dispatchConsoleData.map(entry => ({
-      id: entry._id,
-      packingSheetId: entry.packingSheetId?._id,
-      packingSheetSlNo: entry.packingSheetId?.slNo,
-      packingSheetBatchNo: entry.packingSheetId?.batchNo,
-      packingDate: entry.packingSheetId?.packingDate,
-      productGroup: entry.productGroup,
+    const formattedData = dispatchConsoleData.map(entry => {
+      // Calculate values on-the-fly (in case database has old 0 values)
+      const packedQty = entry.packedQuantityReadyForDispatch || 0;
+      const previousClosing = entry.previousClosingStockYesterdayBalance || 0;
+      const returns = entry.returnQuantityYesterdayReturns || 0;
+      const totalIndent = entry.totalIndentQuantityOrdersForTheDay || 0;
+      const dispatched = entry.dispatchedQuantitySentToday || 0;
+      const physicalStock = entry.physicalStockEntryManualVerification || 0;
       
-      // Main dispatch console columns
-      packedQuantityReadyForDispatch: entry.packedQuantityReadyForDispatch || 0,
-      previousClosingStockYesterdayBalance: entry.previousClosingStockYesterdayBalance || 0,
-      returnQuantityYesterdayReturns: entry.returnQuantityYesterdayReturns || 0,
-      totalAvailableStock: entry.totalAvailableStock || 0,
-      totalIndentQuantityOrdersForTheDay: entry.totalIndentQuantityOrdersForTheDay || 0,
-      excessShortage: entry.excessShortage || 0,
-      dispatchedQuantitySentToday: entry.dispatchedQuantitySentToday || 0,
-      closingStockEndOfDayBalance: entry.closingStockEndOfDayBalance || 0,
-      physicalStockEntryManualVerification: entry.physicalStockEntryManualVerification || 0,
-      overallLoss: entry.overallLoss || 0,
+      // Calculate totalAvailableStock = Packed + Previous Closing + Returns
+      const calculatedTotalAvailable = packedQty + previousClosing + returns;
       
-      // Additional tracking info
-      batchNo: entry.batchNo,
-      status: entry.status,
-      date: entry.date,
-      lastUpdatedBy: entry.lastUpdatedBy,
-      company: entry.company,
-      createdAt: entry.createdAt,
-      updatedAt: entry.updatedAt,
+      // Calculate excessShortage = Total Available - Total Indent
+      const calculatedExcessShortage = calculatedTotalAvailable - totalIndent;
       
-      // Packing sheet creator info
-      packingSheetCreator: entry.packingSheetId?.createdBy
-    }));
+      // Calculate overallLoss = Total Available - Dispatched - Physical Stock
+      const calculatedOverallLoss = calculatedTotalAvailable - dispatched - physicalStock;
+      
+      console.log(`🧮 Calculating for ${entry.productGroup}:`, {
+        packed: packedQty,
+        previousClosing: previousClosing, 
+        returns: returns,
+        calculated_total: calculatedTotalAvailable,
+        stored_total: entry.totalAvailableStock,
+        totalIndent: totalIndent,
+        excessShortage: calculatedExcessShortage
+      });
+      
+      return {
+        id: entry._id,
+        packingSheetId: entry.packingSheetId?._id,
+        packingSheetSlNo: entry.packingSheetId?.slNo,
+        packingSheetBatchNo: entry.packingSheetId?.batchNo,
+        packingDate: entry.packingSheetId?.packingDate,
+        productGroup: entry.productGroup,
+        
+        // Main dispatch console columns - use calculated values
+        packedQuantityReadyForDispatch: packedQty,
+        previousClosingStockYesterdayBalance: previousClosing,
+        returnQuantityYesterdayReturns: returns,
+        totalAvailableStock: calculatedTotalAvailable, // ✅ Now calculated!
+        totalIndentQuantityOrdersForTheDay: totalIndent,
+        excessShortage: calculatedExcessShortage, // ✅ Now calculated!
+        dispatchedQuantitySentToday: dispatched,
+        closingStockEndOfDayBalance: entry.closingStockEndOfDayBalance || 0,
+        physicalStockEntryManualVerification: physicalStock,
+        overallLoss: calculatedOverallLoss, // ✅ Now calculated!
+        
+        // Additional tracking info
+        batchNo: entry.batchNo,
+        status: entry.status,
+        date: entry.date,
+        lastUpdatedBy: entry.lastUpdatedBy,
+        company: entry.company,
+        createdAt: entry.createdAt,
+        updatedAt: entry.updatedAt,
+        
+        // Packing sheet creator info
+        packingSheetCreator: entry.packingSheetId?.createdBy
+      };
+    });
 
     res.json({
       success: true,
@@ -425,15 +454,26 @@ export const updateManualStock = async (req, res) => {
     }
 
     const today = new Date();
-    const startOfDay = new Date(today.setHours(0, 0, 0, 0));
-    const endOfDay = new Date(today.setHours(23, 59, 59, 999));
+    const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0);
+    const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
+    
+    // Get today's date string for exact day matching (YYYY-MM-DD)
+    const todayDateString = today.toISOString().split('T')[0];
 
-    // Build the query - if productId is provided, update specific product entry
+    // Build the query - ONLY look for today's entries, never update old ones
     let query = {
       packingSheetId: packingSheetId,
-      date: { $gte: startOfDay, $lte: endOfDay }
+      // Use exact date match instead of range to prevent updating old records
+      $expr: {
+        $eq: [
+          { $dateToString: { format: "%Y-%m-%d", date: "$date" } },
+          todayDateString
+        ]
+      },
+      company: req.user.companyId
     };
 
+    // If productId is provided, add it to the query
     if (productId) {
       query.productId = productId;
     }
@@ -441,7 +481,10 @@ export const updateManualStock = async (req, res) => {
     // Build the update object - only update fields that are provided
     let updateFields = {
       status: 'updated',
-      lastUpdatedBy: req.user._id
+      lastUpdatedBy: req.user._id,
+      // Always set today's date for new entries
+      date: startOfDay,
+      company: req.user.companyId
     };
 
     if (productGroup !== undefined) updateFields.productGroup = productGroup;
@@ -453,8 +496,46 @@ export const updateManualStock = async (req, res) => {
     if (closingStockEndOfDayBalance !== undefined) updateFields.closingStockEndOfDayBalance = closingStockEndOfDayBalance;
     if (physicalStockEntryManualVerification !== undefined) updateFields.physicalStockEntryManualVerification = physicalStockEntryManualVerification;
 
-    // Always set the company
-    updateFields.company = req.user.companyId;
+    console.log('📝 Query for today\'s entry only:', JSON.stringify(query, null, 2));
+    console.log('📝 Update fields:', JSON.stringify(updateFields, null, 2));
+
+    // Get existing record to merge values for calculations
+    const existingRecord = await Dispatch.findOne(query);
+    
+    // Calculate totalAvailableStock = Packed + Previous Closing + Returns
+    // Use updated values if provided, otherwise use existing values
+    const packedQty = updateFields.packedQuantityReadyForDispatch !== undefined ? 
+      updateFields.packedQuantityReadyForDispatch : (existingRecord?.packedQuantityReadyForDispatch || 0);
+    const previousClosing = updateFields.previousClosingStockYesterdayBalance !== undefined ? 
+      updateFields.previousClosingStockYesterdayBalance : (existingRecord?.previousClosingStockYesterdayBalance || 0);
+    const returns = updateFields.returnQuantityYesterdayReturns !== undefined ? 
+      updateFields.returnQuantityYesterdayReturns : (existingRecord?.returnQuantityYesterdayReturns || 0);
+    
+    updateFields.totalAvailableStock = packedQty + previousClosing + returns;
+    
+    // Calculate excessShortage = Total Available - Total Indent
+    const totalIndent = updateFields.totalIndentQuantityOrdersForTheDay !== undefined ? 
+      updateFields.totalIndentQuantityOrdersForTheDay : (existingRecord?.totalIndentQuantityOrdersForTheDay || 0);
+    updateFields.excessShortage = updateFields.totalAvailableStock - totalIndent;
+    
+    // Calculate overallLoss if needed
+    const dispatched = updateFields.dispatchedQuantitySentToday !== undefined ? 
+      updateFields.dispatchedQuantitySentToday : (existingRecord?.dispatchedQuantitySentToday || 0);
+    const physicalStock = updateFields.physicalStockEntryManualVerification !== undefined ? 
+      updateFields.physicalStockEntryManualVerification : (existingRecord?.physicalStockEntryManualVerification || 0);
+    updateFields.overallLoss = updateFields.totalAvailableStock - dispatched - physicalStock;
+
+    console.log('🧮 Calculations:', {
+      packedQty,
+      previousClosing,
+      returns,
+      totalAvailable: updateFields.totalAvailableStock,
+      totalIndent,
+      excessShortage: updateFields.excessShortage,
+      dispatched,
+      physicalStock,
+      overallLoss: updateFields.overallLoss
+    });
 
     // Update or create dispatch console entry
     const dispatchEntry = await Dispatch.findOneAndUpdate(
@@ -466,11 +547,13 @@ export const updateManualStock = async (req, res) => {
       }
     );
 
-    console.log('✅ Dispatch console updated successfully:', {
+    console.log('✅ Dispatch console updated successfully for TODAY ONLY:', {
+      todayDateString,
       query,
       updateFields,
       dispatchEntryId: dispatchEntry._id,
-      status: dispatchEntry.status
+      status: dispatchEntry.status,
+      entryDate: dispatchEntry.date
     });
 
     res.json({

@@ -14,25 +14,26 @@ export const getProductionGroupsForPacking = async (req, res) => {
       companyId: req.user?.companyId
     });
 
-    // Set today's date for filtering
-    const today = new Date();
-    today.setUTCHours(0, 0, 0, 0);
-    const endOfDay = new Date(today);
+    // Set date for filtering - allow query parameter to override
+    const targetDate = req.query.date ? new Date(req.query.date) : new Date();
+    targetDate.setUTCHours(0, 0, 0, 0);
+    const endOfDay = new Date(targetDate);
     endOfDay.setUTCHours(23, 59, 59, 999);
 
-    console.log('🗓️ Filtering for date:', today.toISOString());
+    console.log('🗓️ Filtering for date:', targetDate.toISOString(), '(query param:', req.query.date, ')');
 
     // Step 1: Get all completed ProductionBatch records for today
+    // If you want to include pending batches, change the status filter
     const completedBatches = await ProductionBatch.find({
       companyId: req.user.companyId,
       productionDate: { 
-        $gte: today, 
+        $gte: targetDate, 
         $lte: endOfDay 
       },
-      status: 'completed'  // ← Fixed: should be 'completed' not 'pending'
+      status: { $in: ['completed', 'in_progress'] }  // Include both completed and in-progress batches
     }).lean();
 
-    console.log(`🏁 Found ${completedBatches.length} completed production batches for today`);
+    console.log(`🏁 Found ${completedBatches.length} completed production batches for ${targetDate.toDateString()}`);
     
     // Debug: Log the first few batches to see their structure
     if (completedBatches.length > 0) {
@@ -46,7 +47,7 @@ export const getProductionGroupsForPacking = async (req, res) => {
     if (completedBatches.length === 0) {
       return res.json({
         success: true,
-        message: 'No completed production batches found for today',
+        message: `No completed production batches found for ${targetDate.toDateString()}`,
         data: {
           productionGroups: [],
           totalGroups: 0
@@ -114,7 +115,7 @@ export const getProductionGroupsForPacking = async (req, res) => {
             const dailySummary = await ProductDetailsDailySummary.findOne({
               productId: item._id,
               companyId: req.user.companyId,
-              date: today
+              date: targetDate
             }).lean();
 
             console.log(`📊 ${item.name} (in group ${group.name}): Completed=${itemCompletedBatches.length}, TotalAchieved=${totalAchievedQty}`);
@@ -149,7 +150,8 @@ export const getProductionGroupsForPacking = async (req, res) => {
                       { batchId: batch._id },
                       { batchNo: batch.batchNo }
                     ],
-                    company: req.user.companyId
+                    company: req.user.companyId,
+                    packingDate: { $gte: targetDate, $lte: endOfDay }
                   }).lean() || [];
 
                   return {
@@ -265,7 +267,7 @@ export const getProductionGroupsForPacking = async (req, res) => {
           const dailySummary = await ProductDetailsDailySummary.findOne({
             productId: item._id,
             companyId: req.user.companyId,
-            date: today
+            date: targetDate
           }).lean();
 
           console.log(`✨ Creating individual group for ${item.name}: ${itemCompletedBatches.length} batches, total achieved: ${totalAchievedQty}`);
@@ -304,7 +306,8 @@ export const getProductionGroupsForPacking = async (req, res) => {
                       { batchId: batch._id },
                       { batchNo: batch.batchNo }
                     ],
-                    company: req.user.companyId
+                    company: req.user.companyId,
+                    packingDate: { $gte: targetDate, $lte: endOfDay }
                   }).lean() || [];
 
                   return {
@@ -459,7 +462,7 @@ export const getProductionGroupsForPacking = async (req, res) => {
         { productionGroup: { $exists: false } }
       ],
       productionGroupName: 'Ungrouped Items',
-      packingDate: { $gte: today, $lte: endOfDay }
+      packingDate: { $gte: targetDate, $lte: endOfDay }
     })
     .select('_id slNo status packingStartTime packingEndTime totalPackedQty packingLoss items')
     .lean();
@@ -475,7 +478,7 @@ export const getProductionGroupsForPacking = async (req, res) => {
       data: {
         productionGroups: productionGroupsWithPackingSheets,
         totalGroups: productionGroupsWithPackingSheets.length,
-        dateFilter: today.toISOString(),
+        dateFilter: targetDate.toISOString(),
         totalCompletedBatches: completedBatches.length
       }
     });
