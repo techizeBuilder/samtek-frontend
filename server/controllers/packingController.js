@@ -30,7 +30,7 @@ export const getProductionGroupsForPacking = async (req, res) => {
         $gte: targetDate, 
         $lte: endOfDay 
       },
-      status: { $in: ['completed', 'in_progress'] }  // Include both completed and in-progress batches
+      status: { $in: ['completed'] }  // Include both completed and in-progress batches
     }).lean();
 
     console.log(`🏁 Found ${completedBatches.length} completed production batches for ${targetDate.toDateString()}`);
@@ -1568,10 +1568,19 @@ export const approvePackingSheet = async (req, res) => {
       const ProductDetailsDailySummary = (await import('../models/ProductDetailsDailySummary.js')).default;
       
       const today = new Date();
-      const startOfDay = new Date(today.setHours(0, 0, 0, 0));
+      const startOfDay = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate(), 0, 0, 0, 0));
       const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
       const yesterdayStart = new Date(yesterday.setHours(0, 0, 0, 0));
       const yesterdayEnd = new Date(yesterday.setHours(23, 59, 59, 999));
+
+      console.log('📅 Date debugging for dispatch entry:', {
+        todayOriginal: today.toISOString(),
+        startOfDay: startOfDay.toISOString(),
+        todayLocal: today.toLocaleDateString(),
+        startOfDayLocal: startOfDay.toLocaleDateString(),
+        todayUTC: today.toUTCString(),
+        startOfDayUTC: startOfDay.toUTCString()
+      });
 
       // Get the product group from packing sheet items to find related ProductDetailsDailySummary
       let totalPackedQuantity = packingSheet.totalPackedQty || 0;
@@ -1664,12 +1673,41 @@ export const approvePackingSheet = async (req, res) => {
                                    yesterdayItemSummary?.closingStock || 
                                    0;
           
-          const itemReturnQuantity = yesterdayItemSummary?.returnQuantity || yesterdayDispatch?.returnQuantityYesterdayReturns || 0;
+          // Calculate actual return quantity from Return table for yesterday
+          const Return = (await import('../models/Return.js')).default;
+          
+          // Get yesterday's returns for this specific product and company from all customers
+          const yesterdayReturns = await Return.aggregate([
+            {
+              $match: {
+                companyId: req.user.companyId,
+                returnDate: { $gte: yesterdayStart, $lte: yesterdayEnd },
+                status: { $in: ['approved', 'completed'] } // Only approved/completed returns
+              }
+            },
+            {
+              $unwind: '$items'
+            },
+            {
+              $match: {
+                'items.productId': item.productId
+              }
+            },
+            {
+              $group: {
+                _id: null,
+                totalReturnQuantity: { $sum: '$items.quantity' }
+              }
+            }
+          ]);
+          
+          const itemReturnQuantity = yesterdayReturns.length > 0 ? yesterdayReturns[0].totalReturnQuantity : 0;
           
           console.log(`📊 Item calculations for ${item.productName}:`, {
             packedQty: item.packedQty,
             previousStock: itemPreviousStock,
             returnQty: itemReturnQuantity,
+            returnQtyFromActualData: itemReturnQuantity,
             indentQty: itemIndentQuantity,
             expectedTotalAvailable: item.packedQty + itemPreviousStock + itemReturnQuantity
           });
@@ -1777,7 +1815,7 @@ export const approvePackingSheet = async (req, res) => {
       const ProductDetailsDailySummary = (await import('../models/ProductDetailsDailySummary.js')).default;
       
       const today = new Date();
-      const startOfDay = new Date(today.setHours(0, 0, 0, 0));
+      const startOfDay = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate(), 0, 0, 0, 0));
       
       // Update each item's packed quantity in ProductDetailsDailySummary
       for (const item of packingSheet.items) {

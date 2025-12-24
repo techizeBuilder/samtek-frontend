@@ -275,7 +275,7 @@ export default function UnitManagerReturns() {
 
   const handleUpdateReturn = async (formData) => {
     try {
-      console.log('🔄 Updating return:', selectedReturn._id, formData);
+      console.log('🔄 Updating return:', selectedReturn._id, 'with formData:', formData);
       const response = await fetch(`/api/unit-manager/update-return/${selectedReturn._id}`, {
         method: 'PUT',
         headers: {
@@ -284,8 +284,13 @@ export default function UnitManagerReturns() {
         },
         body: JSON.stringify(formData)
       });
+      
       const data = await response.json();
       console.log('✅ Update return response:', data);
+      
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to update return');
+      }
       
       toast({
         title: "Success",
@@ -573,7 +578,7 @@ export default function UnitManagerReturns() {
                         {returnItem.items ? returnItem.items.length : 0} items
                       </TableCell>
                       <TableCell>
-                        ${returnItem.items ? returnItem.items.reduce((sum, item) => 
+                        ₹{returnItem.items ? returnItem.items.reduce((sum, item) => 
                           sum + (item.pricePerUnit * item.quantity), 0
                         ).toFixed(2) : '0.00'}
                       </TableCell>
@@ -797,7 +802,7 @@ const AddReturnModal = ({ isOpen, onClose, onSubmit, salesPersons, customers, gr
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-gray-600">Add New Return/Damage</DialogTitle>
           <DialogDescription>
@@ -1045,31 +1050,141 @@ const EditReturnModal = ({ isOpen, onClose, onSubmit, returnData, salesPersons, 
   });
 
   useEffect(() => {
-    if (returnData) {
-      setFormData({
+    if (returnData && customers && customers.length > 0) {
+      console.log('🔄 EditReturnModal - Loading returnData:', returnData);
+      console.log('🔄 EditReturnModal - Customers available:', customers.length);
+      
+      // Map existing items properly
+      const mappedItems = returnData.items?.map(item => ({
+        productId: item.productId || item._id,
+        productName: item.productName || item.name,
+        categoryName: item.categoryName || item.category,
+        pricePerUnit: item.pricePerUnit || item.price || 0,
+        quantity: item.quantity || 1,
+        unit: item.unit || 'pieces'
+      })) || [];
+
+      console.log('🔄 EditReturnModal - Mapped items:', mappedItems);
+
+      // Debug customer data mapping - comprehensive logging
+      console.log('🔍 FULL RETURN DATA:', JSON.stringify(returnData, null, 2));
+      console.log('🔍 CUSTOMERS LIST:', JSON.stringify(customers, null, 2));
+
+      // Try multiple ways to find the customer ID
+      let customerId = "";
+      let customerName = "";
+
+      // Method 1: Direct customer object
+      if (returnData.customer && returnData.customer._id) {
+        customerId = typeof returnData.customer._id === 'object' ? returnData.customer._id._id || returnData.customer._id.id : returnData.customer._id;
+        customerName = typeof returnData.customer.name === 'object' ? returnData.customer.name.name : returnData.customer.name || returnData.customerName;
+        console.log('✅ Method 1 - Found customer via returnData.customer');
+      }
+      // Method 2: Direct customerId
+      else if (returnData.customerId) {
+        customerId = typeof returnData.customerId === 'object' ? returnData.customerId._id || returnData.customerId.id : returnData.customerId;
+        customerName = typeof returnData.customerName === 'object' ? returnData.customerName.name : returnData.customerName;
+        console.log('✅ Method 2 - Found customer via returnData.customerId');
+      }
+      // Method 3: Find by customerName in customers list
+      else if (returnData.customerName && customers) {
+        const customerNameStr = typeof returnData.customerName === 'object' ? returnData.customerName.name : returnData.customerName;
+        const foundCustomer = customers.find(c => 
+          c.name === customerNameStr || 
+          c.name.toLowerCase() === customerNameStr.toLowerCase()
+        );
+        if (foundCustomer) {
+          customerId = foundCustomer._id;
+          customerName = foundCustomer.name;
+          console.log('✅ Method 3 - Found customer by name match');
+        }
+      }
+      // Method 4: Try any ID field that might exist
+      else if (returnData._customer || returnData.customerData) {
+        const customerData = returnData._customer || returnData.customerData;
+        customerId = typeof customerData._id === 'object' ? customerData._id._id || customerData._id.id : customerData._id || customerData.id;
+        customerName = typeof customerData.name === 'object' ? customerData.name.name : customerData.name || returnData.customerName;
+        console.log('✅ Method 4 - Found customer via alternate field');
+      }
+
+      console.log('🔍 FINAL CUSTOMER RESULT:', {
+        customerId,
+        customerName,
+        foundInCustomersList: customers?.find(c => c._id === customerId)
+      });
+
+      const formDataToSet = {
         salesPersonId: returnData.salesPerson?._id || returnData.salesPersonId || "",
-        customerId: returnData.customerId?._id || returnData.customerId || "",
-        customerName: returnData.customerName || "",
+        customerId: customerId,
+        customerName: customerName,
         returnDate: returnData.returnDate ? new Date(returnData.returnDate).toISOString().split('T')[0] : "",
         reason: returnData.reason || "",
         type: returnData.type || "refund",
-        items: returnData.items || []
+        items: mappedItems
+      };
+
+      console.log('🔄 EditReturnModal - Setting form data:', formDataToSet);
+      console.log('🔍 Final customer mapping:', {
+        customerId: formDataToSet.customerId,
+        customerName: formDataToSet.customerName,
+        customerExists: customers?.find(c => c._id === formDataToSet.customerId)
       });
+      setFormData(formDataToSet);
+
+      // Auto-expand categories that have selected items
+      const categoriesWithItems = [...new Set(mappedItems.map(item => item.categoryName))];
+      const expansionState = {};
+      categoriesWithItems.forEach(category => {
+        if (category) expansionState[category] = true;
+      });
+      setExpandedCategories(expansionState);
     }
-  }, [returnData]);
+  }, [returnData, customers]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
     
-    if (!formData.customerId || !formData.salesPersonId || formData.items.length === 0) {
+    console.log('🔍 EditReturnModal handleSubmit - Current formData:', formData);
+    console.log('🔍 Validation check:', {
+      customerId: formData.customerId,
+      salesPersonId: formData.salesPersonId,
+      itemsLength: formData.items.length,
+      hasCustomerId: !!formData.customerId,
+      hasSalesPersonId: !!formData.salesPersonId,
+      hasItems: formData.items.length > 0
+    });
+    
+    if (!formData.customerId) {
+      console.log('❌ Customer not selected');
       toast({
         title: "Error",
-        description: "Please fill all required fields and select at least one item",
+        description: "Please select a customer",
         variant: "destructive",
       });
       return;
     }
 
+    if (!formData.salesPersonId) {
+      console.log('❌ Sales Person not selected');
+      toast({
+        title: "Error", 
+        description: "Please select a sales person",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (formData.items.length === 0) {
+      console.log('❌ No items selected');
+      toast({
+        title: "Error",
+        description: "Please select at least one item",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    console.log('✅ Validation passed, submitting...');
     onSubmit(formData);
   };
 
@@ -1079,7 +1194,7 @@ const EditReturnModal = ({ isOpen, onClose, onSubmit, returnData, salesPersons, 
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-gray-600">Edit Return/Damage</DialogTitle>
           <DialogDescription>
@@ -1093,7 +1208,10 @@ const EditReturnModal = ({ isOpen, onClose, onSubmit, returnData, salesPersons, 
               <Label htmlFor="salesPersonId">Sales Person *</Label>
               <Select 
                 value={formData.salesPersonId} 
-                onValueChange={(value) => setFormData(prev => ({ ...prev, salesPersonId: value }))}
+                onValueChange={(value) => {
+                  console.log('🔄 EditModal - Sales Person selected:', value);
+                  setFormData(prev => ({ ...prev, salesPersonId: value }));
+                }}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select sales person" />
@@ -1111,9 +1229,12 @@ const EditReturnModal = ({ isOpen, onClose, onSubmit, returnData, salesPersons, 
             <div>
               <Label htmlFor="customer">Customer *</Label>
               <Select 
-                value={formData.customerId} 
+                key={`customer-${typeof formData.customerId === 'object' ? formData.customerId?._id : formData.customerId}`}
+                value={typeof formData.customerId === 'object' ? formData.customerId?._id || "" : formData.customerId || ""} 
                 onValueChange={(value) => {
                   const customer = customers.find(c => c._id === value);
+                  console.log('🔄 Customer selected:', { value, customer });
+                  console.log('🔍 Available customers:', customers);
                   setFormData(prev => ({ 
                     ...prev, 
                     customerId: value,
@@ -1122,10 +1243,12 @@ const EditReturnModal = ({ isOpen, onClose, onSubmit, returnData, salesPersons, 
                 }}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select customer" />
+                  <SelectValue placeholder="Select customer">
+                    {typeof formData.customerName === 'object' ? formData.customerName?.name : formData.customerName || "Select customer"}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  {customers.map((customer) => (
+                  {customers?.map((customer) => (
                     <SelectItem key={customer._id} value={customer._id}>
                       {customer.name}
                     </SelectItem>
@@ -1299,7 +1422,7 @@ const EditReturnModal = ({ isOpen, onClose, onSubmit, returnData, salesPersons, 
           <div className="p-4 bg-gray-50 dark:bg-gray-900/20 rounded">
             <div className="flex justify-between items-center">
               <span className="font-semibold">Total Amount:</span>
-              <span className="font-semibold text-lg text-gray-600">${totalAmount.toFixed(2)}</span>
+              <span className="font-bold text-xl text-gray-600">₹{totalAmount.toFixed(2)}</span>
             </div>
           </div>
 
@@ -1327,7 +1450,7 @@ const ViewReturnModal = ({ isOpen, onClose, returnData }) => {
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-gray-600">Return/Damage Details</DialogTitle>
           <DialogDescription>
@@ -1389,10 +1512,10 @@ const ViewReturnModal = ({ isOpen, onClose, returnData }) => {
                 <div key={index} className="flex justify-between items-center p-2 border rounded">
                   <div>
                     <p className="font-medium">{item.productName}</p>
-                    <p className="text-sm text-gray-500">${item.pricePerUnit} × {item.quantity}</p>
+                    <p className="text-sm text-gray-500">₹{item.pricePerUnit} × {item.quantity}</p>
                   </div>
                   <span className="font-medium">
-                    ${(item.pricePerUnit * item.quantity).toFixed(2)}
+                    ₹{(item.pricePerUnit * item.quantity).toFixed(2)}
                   </span>
                 </div>
               ))}
@@ -1402,7 +1525,7 @@ const ViewReturnModal = ({ isOpen, onClose, returnData }) => {
           <div className="p-4 bg-gray-50 dark:bg-gray-900/20 rounded">
             <div className="flex justify-between items-center">
               <span className="font-semibold">Total Amount:</span>
-              <span className="font-semibold text-lg text-gray-600">${totalAmount.toFixed(2)}</span>
+              <span className="font-semibold text-lg text-gray-600">₹{totalAmount.toFixed(2)}</span>
             </div>
           </div>
         </div>
@@ -1442,7 +1565,7 @@ const StatusUpdateModal = ({ isOpen, onClose, onSubmit, returnData }) => {
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-gray-600 flex items-center gap-2">
             <Settings className="h-5 w-5" />

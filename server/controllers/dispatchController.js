@@ -298,13 +298,6 @@ export const getDispatchDashboardData = async (req, res) => {
     .populate('company', 'name location')
     .sort({ createdAt: -1 });
 
-    // Get summary statistics using calculated values
-    const totalPacked = formattedData.reduce((sum, entry) => sum + (entry.packedQuantityReadyForDispatch || 0), 0);
-    const totalIndent = formattedData.reduce((sum, entry) => sum + (entry.totalIndentQuantityOrdersForTheDay || 0), 0);
-    const totalAvailable = formattedData.reduce((sum, entry) => sum + (entry.totalAvailableStock || 0), 0);
-    const totalDispatched = formattedData.reduce((sum, entry) => sum + (entry.dispatchedQuantitySentToday || 0), 0);
-    const totalExcessShortage = formattedData.reduce((sum, entry) => sum + (entry.excessShortage || 0), 0);
-
     // Get approved packing sheets that don't have dispatch entries yet
     const PackingSheet = (await import('../models/Packing.js')).default;
     const approvedPackingSheetsWithoutDispatch = await PackingSheet.find({
@@ -319,11 +312,7 @@ export const getDispatchDashboardData = async (req, res) => {
 
     console.log('📊 Dashboard data summary:', {
       dispatchEntries: dispatchConsoleData.length,
-      orphanedPackingSheets: approvedPackingSheetsWithoutDispatch.length,
-      totalPacked,
-      totalIndent,
-      totalAvailable,
-      totalDispatched
+      orphanedPackingSheets: approvedPackingSheetsWithoutDispatch.length
     });
 
     // Format response data
@@ -387,6 +376,22 @@ export const getDispatchDashboardData = async (req, res) => {
         // Packing sheet creator info
         packingSheetCreator: entry.packingSheetId?.createdBy
       };
+    });
+
+    // Get summary statistics using calculated values from formattedData
+    const totalPacked = formattedData.reduce((sum, entry) => sum + (entry.packedQuantityReadyForDispatch || 0), 0);
+    const totalIndent = formattedData.reduce((sum, entry) => sum + (entry.totalIndentQuantityOrdersForTheDay || 0), 0);
+    const totalAvailable = formattedData.reduce((sum, entry) => sum + (entry.totalAvailableStock || 0), 0);
+    const totalDispatched = formattedData.reduce((sum, entry) => sum + (entry.dispatchedQuantitySentToday || 0), 0);
+    const totalExcessShortage = formattedData.reduce((sum, entry) => sum + (entry.excessShortage || 0), 0);
+
+    console.log('📊 Dashboard summary calculations completed:', {
+      totalPacked,
+      totalIndent,
+      totalAvailable,
+      totalDispatched,
+      totalExcessShortage,
+      entriesCount: formattedData.length
     });
 
     res.json({
@@ -456,20 +461,12 @@ export const updateManualStock = async (req, res) => {
     const today = new Date();
     const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0);
     const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
-    
-    // Get today's date string for exact day matching (YYYY-MM-DD)
-    const todayDateString = today.toISOString().split('T')[0];
 
     // Build the query - ONLY look for today's entries, never update old ones
     let query = {
       packingSheetId: packingSheetId,
-      // Use exact date match instead of range to prevent updating old records
-      $expr: {
-        $eq: [
-          { $dateToString: { format: "%Y-%m-%d", date: "$date" } },
-          todayDateString
-        ]
-      },
+      // Use date range instead of $expr to allow upsert operations
+      date: { $gte: startOfDay, $lte: endOfDay },
       company: req.user.companyId
     };
 
@@ -548,7 +545,6 @@ export const updateManualStock = async (req, res) => {
     );
 
     console.log('✅ Dispatch console updated successfully for TODAY ONLY:', {
-      todayDateString,
       query,
       updateFields,
       dispatchEntryId: dispatchEntry._id,

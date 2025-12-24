@@ -752,6 +752,23 @@ export default function PackingSheet() {
 
   // Batch-level packing loss change
   const handleBatchPackingLossChange = (groupIndex, itemIndex, batchIndex, batch, newPackingLoss) => {
+    // Check if batch is punched out before allowing packing loss entry
+    const batchKey = `${groupIndex}-${itemIndex}-${batchIndex}`;
+    const batchTiming = groupTimings[batchKey];
+    const isPunchedOut = batchTiming?.punchedOut;
+    
+    if (!isPunchedOut) {
+      toast({
+        title: "Cannot Enter Packing Loss",
+        description: "Please punch out first before entering packing loss",
+        variant: "destructive",
+      });
+      // Reset the input field to previous value
+      const input = event.target;
+      input.value = batch.packingLoss || 0;
+      return;
+    }
+
     const packingLoss = Math.max(0, Number(newPackingLoss) || 0);
     const producedQty = Number(batch.qtyAchieved) || 0;
     const newPackedQty = Math.max(0, producedQty - packingLoss);
@@ -783,6 +800,7 @@ export default function PackingSheet() {
       
       debounceTimeoutRef.current = setTimeout(async () => {
         try {
+          console.log(`🚀 API call for batch ${batch.batchNo} packing loss: ${packingLoss}`);
           const response = await fetch(`${config.baseURL}/api/packing/sheets/${batchPackingSheetId}/item`, {
             method: 'PUT',
             headers: {
@@ -797,10 +815,24 @@ export default function PackingSheet() {
           });
           
           if (response.ok) {
-            console.log('✅ Batch packing loss updated');
+            const result = await response.json();
+            console.log('✅ Batch packing loss updated:', result);
+            
+            // Show success toast
+            toast({
+              title: "Success",
+              description: `Packing loss updated for batch ${batch.batchNo}`,
+            });
+          } else {
+            throw new Error(`API call failed: ${response.status}`);
           }
         } catch (error) {
           console.error('❌ Error updating batch packing loss:', error);
+          toast({
+            title: "Error",
+            description: `Failed to update packing loss for batch ${batch.batchNo}`,
+            variant: "destructive",
+          });
         }
       }, 300);
     }
@@ -1005,7 +1037,7 @@ export default function PackingSheet() {
               <div className="min-w-[800px]"> {/* Minimum width for proper table display */}
                 <table className="w-full border-collapse">
                   <thead>
-                    <tr className="bg-yellow-300">
+                    <tr className="bg-grey-300">
                       <th className="border border-gray-900 px-2 sm:px-4 py-2 sm:py-3 text-center font-bold text-xs sm:text-sm">
                         SL NO.
                       </th>
@@ -1142,15 +1174,29 @@ export default function PackingSheet() {
                           
                           {/* Batch-level Packing loss */}
                           <td className="border border-gray-900 px-1 sm:px-2 py-2 text-center">
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.1"
-                              defaultValue={batch.packingLoss || 0}
-                              className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-center font-bold bg-yellow-50"
-                              placeholder="0"
-                              onChange={(e) => handleBatchPackingLossChange(groupIndex, itemIndex, batchIndex, batch, e.target.value)}
-                            />
+                            {(() => {
+                              const batchKey = `${groupIndex}-${itemIndex}-${batchIndex}`;
+                              const batchTiming = groupTimings[batchKey];
+                              const isPunchedOut = batchTiming?.punchedOut;
+                              
+                              return (
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.1"
+                                  defaultValue={batch.packingLoss || 0}
+                                  disabled={!isPunchedOut}
+                                  className={`w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-center font-bold ${
+                                    isPunchedOut 
+                                      ? 'bg-yellow-50 text-gray-900' 
+                                      : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                  }`}
+                                  placeholder="0"
+                                  title={!isPunchedOut ? "Punch out first to enter packing loss" : "Enter packing loss"}
+                                  onChange={(e) => handleBatchPackingLossChange(groupIndex, itemIndex, batchIndex, batch, e.target.value)}
+                                />
+                              );
+                            })()}
                           </td>
                           
                           {/* Batch-level Qty Packed */}

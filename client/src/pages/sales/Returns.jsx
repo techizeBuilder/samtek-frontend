@@ -134,10 +134,11 @@ const CreateReturnForm = ({
       grouped[categoryName].push({
         _id: item._id,
         name: item.name,
-        price: item.salePrice || item.stdCost || 0,
+        price: item.salePrice || item.price || item.stdCost || 0,
+        salePrice: item.salePrice || item.price || item.stdCost || 0,
         image: item.image || null,
         category: categoryName,
-        stock: item.qty || 0,
+        stock: item.qty || item.quantity || 0,
         unit: item.unit || "pcs",
         code: item.code || "",
       });
@@ -151,11 +152,16 @@ const CreateReturnForm = ({
       const quantities = {};
       const categoriesToExpand = {};
 
-      editData.items.forEach((item) => {
-        const apiItem = items.find((p) => p.name === item.productName);
+      editData.items.forEach((returnItem) => {
+        // Find the API item by productId or productName
+        const apiItem = items.find((p) => 
+          p._id === returnItem.productId || 
+          p.name === returnItem.productName
+        );
         if (apiItem) {
-          quantities[apiItem._id] = item.quantity || 0;
-          categoriesToExpand[apiItem.category] = true;
+          quantities[apiItem._id] = returnItem.quantity || 0;
+          const categoryName = apiItem.category || "Uncategorized";
+          categoriesToExpand[categoryName] = true;
         }
       });
 
@@ -205,8 +211,9 @@ const CreateReturnForm = ({
 
   const calculateTotal = () => {
     return getSelectedProducts().reduce((total, item) => {
-      const price = item.price || item.salePrice || item.stdCost || 0;
-      return total + item.returnQuantity * price;
+      const price = item.salePrice || item.price || item.stdCost || 0;
+      const quantity = item.returnQuantity || 0;
+      return total + (quantity * price);
     }, 0);
   };
 
@@ -263,13 +270,15 @@ const CreateReturnForm = ({
       reason: formData.reason,
       type: "refund", // Backend expects 'refund' for returns
       items: selectedProducts.map((item) => {
+        const pricePerUnit = item.salePrice || item.price || item.stdCost || 0;
         return {
           productId: item._id,
           productName: item.name,
           categoryName: item.category,
-          pricePerUnit: item.price || item.salePrice || item.stdCost || 0,
+          pricePerUnit: pricePerUnit,
           quantity: item.returnQuantity,
           unit: item.unit || "pcs",
+          totalAmount: pricePerUnit * item.returnQuantity
         };
       }),
     };
@@ -456,10 +465,10 @@ const CreateReturnForm = ({
             </div>
             <div className="text-right">
               <div className="font-bold text-lg text-blue-600 dark:text-blue-400">
-                {getSelectedUnits()}
+                ₹{calculateTotal().toFixed(2)}
               </div>
               <div className="text-xs text-blue-500 dark:text-blue-400">
-                Items to Return
+                Total Amount
               </div>
             </div>
           </div>
@@ -876,7 +885,7 @@ const Returns = () => {
       </Card>
       {/* Create Modal */}
       <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
-        <DialogContent className="w-[95vw] max-w-2xl max-h-[95vh] overflow-y-auto mx-auto">
+        <DialogContent className="w-[95vw] max-w-6xl max-h-[95vh] overflow-y-auto mx-auto">
           <DialogHeader className="pb-3">
             <DialogTitle className="text-lg">
               Create Return Entry
@@ -895,7 +904,7 @@ const Returns = () => {
 
       {/* Edit Modal */}
       <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
-        <DialogContent className="w-[95vw] max-w-2xl max-h-[95vh] overflow-y-auto mx-auto">
+        <DialogContent className="w-[95vw] max-w-6xl max-h-[95vh] overflow-y-auto mx-auto">
           <DialogHeader className="pb-3">
             <DialogTitle className="text-lg">
               Edit Return Entry
@@ -915,7 +924,7 @@ const Returns = () => {
 
       {/* View Modal */}
       <Dialog open={isViewModalOpen} onOpenChange={setIsViewModalOpen}>
-        <DialogContent className="w-[95vw] max-w-2xl max-h-[95vh] overflow-y-auto mx-auto">
+        <DialogContent className="w-[95vw] max-w-6xl max-h-[95vh] overflow-y-auto mx-auto">
           <DialogHeader className="pb-3">
             <DialogTitle className="text-lg">
               View Return Details
