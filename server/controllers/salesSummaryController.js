@@ -399,6 +399,20 @@ export const updateSalesSummary = async (req, res) => {
       }
     });
 
+    // Validate approval requirements
+    if (updates.status === 'approved') {
+      // Check if batchAdjusted is set and >= 1
+      const batchAdjusted = dailyDetails.batchAdjusted;
+      if (!batchAdjusted || batchAdjusted < 1) {
+        return res.status(400).json({
+          success: false,
+          message: 'Batch Adjusted must be at least 1 to approve the product',
+          field: 'batchAdjusted',
+          currentValue: batchAdjusted || 0
+        });
+      }
+    }
+
     // Calculate formulas using qtyPerBatch from master data
     dailyDetails.calculateFormulas(masterProduct.qtyPerBatch);
 
@@ -426,8 +440,8 @@ export const updateSalesSummary = async (req, res) => {
         
         console.log(`🗑️ Removed ${deletedBatches.deletedCount} existing non-completed ProductionBatch entries before creating new ones`);
         
-        // Fix: Use batchAdjusted field and round up decimals (1.6 → 2 batches)
-        const batchesToCreate = Math.ceil(dailyDetails.batchAdjusted || 1);
+        // Create ProductionBatch entries (batchAdjusted already validated >= 1)
+        const batchesToCreate = Math.ceil(dailyDetails.batchAdjusted);
         
         console.log(`📊 Creating ${batchesToCreate} batch(es) for approved product (from batchAdjusted: ${dailyDetails.batchAdjusted})`);
         

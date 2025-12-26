@@ -50,6 +50,7 @@ import SuperAdminSales from "@/pages/super-admin/SuperAdminSales";
 import SuperAdminCustomers from "@/pages/super-admin/SuperAdminCustomers";
 import SuperAdminSettings from "@/pages/super-admin/SuperAdminSettings";
 import SuperAdminCompanies from "@/pages/super-admin/SuperAdminCompanies";
+import SuperAdminDispatches from "@/pages/super-admin/SuperAdminDispatches";
 import ProductionDashboard from "@/pages/production/ProductionDashboard";
 import ProductionModule from "@/components/production/ProductionModule";
 import ProductionShift from "@/pages/production/ProductionShift";
@@ -223,6 +224,11 @@ function Router() {
       <Route path="/super-admin/companies">
         <ProtectedRoute requiredRole="Super Admin">
           <SuperAdminCompanies />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/super-admin/dispatches">
+        <ProtectedRoute requiredRole="Super Admin">
+          <SuperAdminDispatches />
         </ProtectedRoute>
       </Route>
       <Route path="/super-admin/inventory">

@@ -839,3 +839,181 @@ export const getSuperAdminCustomerById = async (req, res) => {
     });
   }
 };
+
+// Super Admin Dispatches - Get all dispatches with pagination
+export const getSuperAdminDispatches = async (req, res) => {
+  try {
+    const user = req.user;
+    
+    if (user.role !== 'Super Admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied - Super Admin role required'
+      });
+    }
+
+    console.log('🚚 Super Admin fetching all dispatches...');
+
+    // Import Dispatch model
+    const Dispatch = (await import('../models/Dispatch.js')).default;
+
+    // Pagination parameters
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    // Search and filter parameters
+    const search = req.query.search || '';
+    const status = req.query.status || '';
+    const companyId = req.query.companyId || '';
+    const dateFrom = req.query.dateFrom || '';
+    const dateTo = req.query.dateTo || '';
+
+    // Build filter query
+    let filter = {};
+
+    if (search) {
+      filter.$or = [
+        { batchNo: { $regex: search, $options: 'i' } },
+        { productGroup: { $regex: search, $options: 'i' } },
+        { productName: { $regex: search, $options: 'i' } },
+        { remarks: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    if (status) {
+      filter.status = status;
+    }
+
+    if (companyId) {
+      filter.company = companyId;
+    }
+
+    if (dateFrom || dateTo) {
+      filter.date = {};
+      if (dateFrom) {
+        filter.date.$gte = new Date(dateFrom);
+      }
+      if (dateTo) {
+        filter.date.$lte = new Date(dateTo);
+      }
+    }
+
+    // Get dispatches with pagination
+    const [dispatches, totalDispatches] = await Promise.all([
+      Dispatch.find(filter)
+        .populate('company', 'name city state')
+        .populate('packingSheetId', 'orderCode')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      Dispatch.countDocuments(filter)
+    ]);
+
+    // Calculate pagination metadata
+    const totalPages = Math.ceil(totalDispatches / limit);
+    const hasNextPage = page < totalPages;
+    const hasPrevPage = page > 1;
+
+    // Get dispatch statistics for dashboard
+    const dispatchStats = await Dispatch.aggregate([
+      {
+        $group: {
+          _id: null,
+          totalDispatches: { $sum: 1 },
+          totalPackedQty: { $sum: '$packedQuantityReadyForDispatch' },
+          totalReturnQty: { $sum: '$returnQuantityYesterdayReturns' },
+          totalAvailableStock: { $sum: '$totalAvailableStock' },
+          statusBreakdown: { $push: '$status' }
+        }
+      }
+    ]);
+
+    const stats = dispatchStats[0] || {
+      totalDispatches: 0,
+      totalPackedQty: 0,
+      totalReturnQty: 0,
+      totalAvailableStock: 0,
+      statusBreakdown: []
+    };
+
+    // Calculate status distribution
+    const statusCounts = {};
+    stats.statusBreakdown.forEach(status => {
+      statusCounts[status] = (statusCounts[status] || 0) + 1;
+    });
+
+    res.json({
+      success: true,
+      data: {
+        dispatches,
+        pagination: {
+          currentPage: page,
+          totalPages,
+          totalDispatches,
+          limit,
+          hasNextPage,
+          hasPrevPage
+        },
+        statistics: {
+          ...stats,
+          statusCounts
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Super Admin dispatches error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch dispatches',
+      error: error.message
+    });
+  }
+};
+
+// Super Admin Dispatch Detail - Get single dispatch by ID
+export const getSuperAdminDispatchById = async (req, res) => {
+  try {
+    const user = req.user;
+    
+    if (user.role !== 'Super Admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied - Super Admin role required'
+      });
+    }
+
+    const { id } = req.params;
+    console.log('🔍 Super Admin fetching dispatch details for ID:', id);
+
+    // Import Dispatch model
+    const Dispatch = (await import('../models/Dispatch.js')).default;
+
+    const dispatch = await Dispatch.findById(id)
+      .populate('company', 'name city state address phone')
+      .populate('packingSheetId', 'orderCode')
+      .lean();
+
+    if (!dispatch) {
+      return res.status(404).json({
+        success: false,
+        message: 'Dispatch not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: { dispatch }
+    });
+
+  } catch (error) {
+    console.error('❌ Super Admin dispatch detail error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch dispatch details',
+      error: error.message
+    });
+  }
+};

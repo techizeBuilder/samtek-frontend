@@ -1578,6 +1578,18 @@ export const approveProductSummaries = async (req, res) => {
           
           console.log(`📋 Processing ${productName} with batchAdjusted: ${batchAdjusted}`);
           
+          // Validate batchAdjusted - must be at least 1 for approval
+          if (!batchAdjusted || batchAdjusted < 1) {
+            console.log(`⚠️ ${productName} cannot be approved - batchAdjusted must be at least 1 (current: ${batchAdjusted})`);
+            approvalResults.push({
+              productId,
+              productName,
+              status: 'validation_error',
+              error: 'Batch Adjusted must be at least 1 to approve the product'
+            });
+            continue;
+          }
+          
           // Find and update the ProductDetailsDailySummary
           const updatedSummary = await ProductDetailsDailySummary.findOneAndUpdate(
             {
@@ -1598,8 +1610,8 @@ export const approveProductSummaries = async (req, res) => {
           );
 
           if (updatedSummary) {
-            // Create ProductionBatch entries based on batchAdjusted
-            const batchesToCreate = Math.ceil(batchAdjusted || 1);
+            // Create ProductionBatch entries based on batchAdjusted (already validated >= 1)
+            const batchesToCreate = Math.ceil(batchAdjusted);
             
             await createBulkProductionBatchEntries({
               productId: productId,
@@ -1639,17 +1651,34 @@ export const approveProductSummaries = async (req, res) => {
       }
       
       const successCount = approvalResults.filter(r => r.status === 'success').length;
+      const validationErrors = approvalResults.filter(r => r.status === 'validation_error').length;
       const totalBatches = approvalResults
         .filter(r => r.status === 'success')
         .reduce((sum, r) => sum + (r.batchesCreated || 0), 0);
       
+      // If there are validation errors, return appropriate response
+      if (validationErrors > 0 && successCount === 0) {
+        return res.status(400).json({
+          success: false,
+          message: `All products failed validation - Batch Adjusted must be at least 1`,
+          results: approvalResults,
+          summary: {
+            totalProcessed: productSummaries.length,
+            successful: successCount,
+            validationErrors: validationErrors,
+            totalBatchesCreated: totalBatches
+          }
+        });
+      }
+      
       return res.json({
         success: true,
-        message: `Successfully approved ${successCount} products and created ${totalBatches} ProductionBatch entries`,
+        message: `Successfully approved ${successCount} products and created ${totalBatches} ProductionBatch entries${validationErrors > 0 ? `. ${validationErrors} products failed validation.` : ''}`,
         results: approvalResults,
         summary: {
           totalProcessed: productSummaries.length,
           successful: successCount,
+          validationErrors: validationErrors,
           totalBatchesCreated: totalBatches
         }
       });

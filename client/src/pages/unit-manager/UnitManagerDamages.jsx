@@ -64,8 +64,8 @@ export default function UnitManagerDamages() {
 
   // State management
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedSalesPerson, setSelectedSalesPerson] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
+  const [selectedSalesPerson, setSelectedSalesPerson] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
@@ -103,8 +103,8 @@ export default function UnitManagerDamages() {
     queryFn: async () => {
       console.log('🔄 Fetching damages...');
       const params = new URLSearchParams();
-      if (selectedSalesPerson) params.append('salesPersonId', selectedSalesPerson);
-      if (statusFilter) params.append('status', statusFilter);
+      if (selectedSalesPerson && selectedSalesPerson !== 'all') params.append('salesPersonId', selectedSalesPerson);
+      if (statusFilter && statusFilter !== 'all') params.append('status', statusFilter);
       
       const response = await apiRequest("GET", `/api/unit-manager/damages?${params.toString()}`);
       console.log('📋 Damages response:', response);
@@ -328,7 +328,7 @@ export default function UnitManagerDamages() {
                 <SelectValue placeholder="All Sales Persons" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All Sales Persons</SelectItem>
+                <SelectItem value="all">All Sales Persons</SelectItem>
                 {salesPersonsData.map((sp) => (
                   <SelectItem key={sp._id} value={sp._id}>
                     {sp.fullName || sp.username}
@@ -342,7 +342,7 @@ export default function UnitManagerDamages() {
                 <SelectValue placeholder="All Status" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All Status</SelectItem>
+                <SelectItem value="all">All Status</SelectItem>
                 <SelectItem value="pending">Pending</SelectItem>
                 <SelectItem value="approved">Approved</SelectItem>
                 <SelectItem value="rejected">Rejected</SelectItem>
@@ -546,7 +546,7 @@ const AddDamageModal = ({ isOpen, onClose, onSubmit, salesPersons, customers, gr
     type: "damage",
     items: []
   });
-  const [selectedCategory, setSelectedCategory] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
 
   const handleSubmit = (e) => {
@@ -712,7 +712,7 @@ const AddDamageModal = ({ isOpen, onClose, onSubmit, salesPersons, customers, gr
                   <SelectValue placeholder="All Categories" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Categories</SelectItem>
+                  <SelectItem value="all">All Categories</SelectItem>
                   {Object.keys(groupedItems).map((category) => (
                     <SelectItem key={category} value={category}>
                       {category}
@@ -725,7 +725,7 @@ const AddDamageModal = ({ isOpen, onClose, onSubmit, salesPersons, customers, gr
             {/* Items Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-60 overflow-y-auto">
               {Object.entries(groupedItems)
-                .filter(([category]) => !selectedCategory || category === selectedCategory)
+                .filter(([category]) => !selectedCategory || selectedCategory === 'all' || category === selectedCategory)
                 .map(([category, items]) => (
                   <div key={category}>
                     <h4 className="font-medium text-sm text-gray-600 mb-2">{category}</h4>

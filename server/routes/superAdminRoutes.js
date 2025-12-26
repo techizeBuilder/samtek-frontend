@@ -11,7 +11,9 @@ import {
   getSuperAdminSales,
   getSalesPersonById,
   getSuperAdminCustomers,
-  getSuperAdminCustomerById
+  getSuperAdminCustomerById,
+  getSuperAdminDispatches,
+  getSuperAdminDispatchById
 } from '../controllers/superAdminController.js';
 
 // Import company management functions
@@ -182,5 +184,9 @@ router.get('/inventory/items/export', exportItemsToExcel);
 router.post('/inventory/items/import', importItemsFromExcel);
 router.get('/inventory/categories/export', exportCategoriesToExcel);
 router.get('/inventory/customer-categories/export', exportCustomerCategoriesToExcel);
+
+// Dispatch Routes
+router.get('/dispatches', getSuperAdminDispatches);
+router.get('/dispatches/:id', getSuperAdminDispatchById);
 
 export default router;
