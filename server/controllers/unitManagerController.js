@@ -1578,14 +1578,14 @@ export const approveProductSummaries = async (req, res) => {
           
           console.log(`📋 Processing ${productName} with batchAdjusted: ${batchAdjusted}`);
           
-          // Validate batchAdjusted - must be at least 1 for approval
-          if (!batchAdjusted || batchAdjusted < 1) {
-            console.log(`⚠️ ${productName} cannot be approved - batchAdjusted must be at least 1 (current: ${batchAdjusted})`);
+          // Validate batchAdjusted - must be greater than 0 for approval
+          if (!batchAdjusted || batchAdjusted <= 0) {
+            console.log(`⚠️ ${productName} cannot be approved - batchAdjusted must be greater than 0 (current: ${batchAdjusted})`);
             approvalResults.push({
               productId,
               productName,
               status: 'validation_error',
-              error: 'Batch Adjusted must be at least 1 to approve the product'
+              error: 'Batch Adjusted must be greater than 0 to approve the product'
             });
             continue;
           }
@@ -1610,27 +1610,38 @@ export const approveProductSummaries = async (req, res) => {
           );
 
           if (updatedSummary) {
-            // Create ProductionBatch entries based on batchAdjusted (already validated >= 1)
-            const batchesToCreate = Math.ceil(batchAdjusted);
+            // Create ProductionBatch entries ONLY if batchAdjusted > 0
+            const batchesToCreate = Math.max(Math.ceil(batchAdjusted), 1); // Ensure at least 1 batch
             
-            await createBulkProductionBatchEntries({
-              productId: productId,
-              companyId: user.companyId,
-              date: approvalDate,
-              qtyPerBatch: qtyPerBatch || 1,
-              produceBatches: batchesToCreate,
-              approvedBy: user.username,
-              productName: productName
-            });
-            
-            approvalResults.push({
-              productId,
-              productName,
-              status: 'success',
-              batchesCreated: batchesToCreate
-            });
-            
-            console.log(`✅ Approved ${productName} and created ${batchesToCreate} batch entries`);
+            // Double-check validation before creating batches
+            if (batchesToCreate > 0 && batchAdjusted > 0) {
+              await createBulkProductionBatchEntries({
+                productId: productId,
+                companyId: user.companyId,
+                date: approvalDate,
+                qtyPerBatch: qtyPerBatch || 1,
+                produceBatches: batchesToCreate,
+                approvedBy: user.username,
+                productName: productName
+              });
+              
+              approvalResults.push({
+                productId,
+                productName,
+                status: 'success',
+                batchesCreated: batchesToCreate
+              });
+              
+              console.log(`✅ Approved ${productName} and created ${batchesToCreate} batch entries`);
+            } else {
+              console.log(`⚠️ Skipped batch creation for ${productName} - batchAdjusted: ${batchAdjusted}`);
+              approvalResults.push({
+                productId,
+                productName,
+                status: 'approved_no_batches',
+                message: 'Product approved but no batches created due to invalid batchAdjusted value'
+              });
+            }
           } else {
             console.log(`⚠️ Product summary not found for ${productName}`);
             approvalResults.push({
@@ -1787,10 +1798,16 @@ const createBulkProductionBatchEntries = async ({
       approvedBy
     });
 
-    // Validate inputs
-    if (!produceBatches || produceBatches <= 0) {
-      console.log('⚠️ No batches to produce - skipping ProductionBatch creation');
-      return;
+    // Validate inputs - CRITICAL: Prevent creation of 0-batch entries
+    if (!produceBatches || produceBatches <= 0 || produceBatches === 0) {
+      console.log(`⚠️ Invalid produceBatches value: ${produceBatches} - skipping ProductionBatch creation for ${productName}`);
+      return [];
+    }
+
+    // Additional safety check for edge cases
+    if (isNaN(produceBatches) || !isFinite(produceBatches)) {
+      console.log(`⚠️ Invalid produceBatches value (NaN or infinite): ${produceBatches} - skipping ProductionBatch creation for ${productName}`);
+      return [];
     }
 
     // 🔒 ATOMIC DUPLICATE PREVENTION: Remove and recreate in single operation
@@ -1807,10 +1824,10 @@ const createBulkProductionBatchEntries = async ({
     
     console.log(`🗑️ Removed ${deleteResult.deletedCount} existing non-completed ProductionBatch entries for ${productName} on ${today.toDateString()}`);
 
-    // Validate inputs - if no batches to produce, return early
-    if (!produceBatches || produceBatches <= 0) {
-      console.log('⚠️ No batches to produce - ProductionBatch cleanup completed');
-      return;
+    // Re-validate inputs after cleanup - if no valid batches to produce, return early
+    if (!produceBatches || produceBatches <= 0 || isNaN(produceBatches) || !isFinite(produceBatches)) {
+      console.log(`⚠️ No valid batches to produce after cleanup - ProductionBatch creation skipped for ${productName} (produceBatches: ${produceBatches})`);
+      return [];
     }
 
     // Get the next batch number for this company and date (after cleanup)

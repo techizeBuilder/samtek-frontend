@@ -8,6 +8,7 @@ import {
   deleteDispatch,
   getDispatchStats,
   getDispatchDashboardData,
+  getDeliveryChallanData,
   updateManualStock,
   getDispatchHistory,
   checkExistingDispatch,
@@ -23,6 +24,7 @@ router.use(authenticateToken);
 router.get('/', getDispatches);                    // GET /api/dispatches
 router.get('/stats', getDispatchStats);            // GET /api/dispatches/stats
 router.get('/dashboard', getDispatchDashboardData); // GET /api/dispatches/dashboard
+router.get('/delivery-challan', getDeliveryChallanData); // GET /api/dispatches/delivery-challan
 router.get('/history', getDispatchHistory);        // GET /api/dispatches/history
 router.put('/manual-stock', updateManualStock);    // PUT /api/dispatches/manual-stock
 

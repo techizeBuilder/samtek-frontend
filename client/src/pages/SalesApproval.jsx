@@ -393,7 +393,7 @@ const SalesApproval = () => {
 
         // Get production data from either productionData or fallback to product data
         const productionInfo = productionData[productName] || {};
-        const batchAdjusted = productionInfo.batchAdjusted || product.batchAdjusted || 1;
+        const batchAdjusted = productionInfo.batchAdjusted || product.batchAdjusted || 0;  // Default to 0, not 1
         const qtyPerBatch = productionInfo.qtyPerBatch || product.qtyPerBatch || 1;
         const physicalStock = productionInfo.physicalStock || product.physicalStock || 0;
         const packing = productionInfo.packing || product.packing || 0;

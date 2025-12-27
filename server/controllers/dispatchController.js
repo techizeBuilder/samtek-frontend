@@ -923,3 +923,85 @@ export const createDispatchFromPacking = async (req, res) => {
     });
   }
 };
+
+// Get delivery challan data - simplified API for Product/Product Group and Indent Qty only
+export const getDeliveryChallanData = async (req, res) => {
+  try {
+    const today = new Date();
+    const startOfDay = new Date(today.setHours(0, 0, 0, 0));
+    const endOfDay = new Date(today.setHours(23, 59, 59, 999));
+
+    console.log('📋 Fetching delivery challan data for company:', req.user.companyId);
+
+    // Get dispatch console entries for today with minimal data needed for delivery challan
+    const deliveryChallanData = await Dispatch.find({
+      company: req.user.companyId,
+      date: { $gte: startOfDay, $lte: endOfDay }
+    })
+    .populate({
+      path: 'packingSheetId',
+      select: 'productionGroupName batchNo'
+    })
+    .populate('company', 'name')
+    .select('productGroup productName totalIndentQuantityOrdersForTheDay batchNo packingSheetId')
+    .sort({ productGroup: 1, productName: 1 });
+
+    console.log('📋 Found delivery challan entries:', deliveryChallanData.length);
+
+    // Format data to include only Product/Product Group and Indent Qty
+    const formattedData = deliveryChallanData.map(entry => ({
+      id: entry._id,
+      productGroup: entry.productGroup,
+      productName: entry.productName || entry.productGroup, // Fallback to productGroup if productName not available
+      indentQty: entry.totalIndentQuantityOrdersForTheDay || 0,
+      batchNo: entry.batchNo || entry.packingSheetId?.batchNo || 'N/A'
+    }));
+
+    // Group by product group for better organization
+    const groupedData = formattedData.reduce((acc, item) => {
+      const group = item.productGroup;
+      if (!acc[group]) {
+        acc[group] = [];
+      }
+      acc[group].push(item);
+      return acc;
+    }, {});
+
+    // Calculate totals
+    const totalIndentQty = formattedData.reduce((sum, item) => sum + item.indentQty, 0);
+    const totalProducts = formattedData.length;
+    const totalGroups = Object.keys(groupedData).length;
+
+    console.log('📋 Delivery challan summary:', {
+      totalProducts,
+      totalGroups,
+      totalIndentQty
+    });
+
+    res.json({
+      success: true,
+      data: {
+        products: formattedData,
+        groupedProducts: groupedData,
+        summary: {
+          totalProducts,
+          totalGroups,
+          totalIndentQty
+        },
+        meta: {
+          date: today.toISOString().split('T')[0],
+          companyId: req.user.companyId,
+          generatedAt: new Date().toISOString()
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching delivery challan data:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch delivery challan data',
+      error: error.message
+    });
+  }
+};

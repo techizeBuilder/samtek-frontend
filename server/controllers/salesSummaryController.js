@@ -401,12 +401,12 @@ export const updateSalesSummary = async (req, res) => {
 
     // Validate approval requirements
     if (updates.status === 'approved') {
-      // Check if batchAdjusted is set and >= 1
+      // Check if batchAdjusted is set and > 0
       const batchAdjusted = dailyDetails.batchAdjusted;
-      if (!batchAdjusted || batchAdjusted < 1) {
+      if (!batchAdjusted || batchAdjusted <= 0) {
         return res.status(400).json({
           success: false,
-          message: 'Batch Adjusted must be at least 1 to approve the product',
+          message: 'Batch Adjusted must be greater than 0 to approve the product',
           field: 'batchAdjusted',
           currentValue: batchAdjusted || 0
         });
@@ -441,18 +441,23 @@ export const updateSalesSummary = async (req, res) => {
         console.log(`🗑️ Removed ${deletedBatches.deletedCount} existing non-completed ProductionBatch entries before creating new ones`);
         
         // Create ProductionBatch entries (batchAdjusted already validated >= 1)
-        const batchesToCreate = Math.ceil(dailyDetails.batchAdjusted);
+        const batchesToCreate = Math.max(Math.ceil(dailyDetails.batchAdjusted), 1); // Ensure at least 1 batch
         
-        console.log(`📊 Creating ${batchesToCreate} batch(es) for approved product (from batchAdjusted: ${dailyDetails.batchAdjusted})`);
-        
-        await createProductionBatchEntries({
-          productId: actualProductId,
-          companyId: masterProduct.companyId._id,
-          date: summaryDate,
-          qtyPerBatch: masterProduct.qtyPerBatch,
-          produceBatches: batchesToCreate,
-          approvedBy: req.user.username
-        });
+        // Double-check validation before creating batches
+        if (batchesToCreate > 0 && dailyDetails.batchAdjusted > 0) {
+          console.log(`📊 Creating ${batchesToCreate} batch(es) for approved product (from batchAdjusted: ${dailyDetails.batchAdjusted})`);
+          
+          await createProductionBatchEntries({
+            productId: actualProductId,
+            companyId: masterProduct.companyId._id,
+            date: summaryDate,
+            qtyPerBatch: masterProduct.qtyPerBatch,
+            produceBatches: batchesToCreate,
+            approvedBy: req.user.username
+          });
+        } else {
+          console.log(`⚠️ Skipped batch creation - invalid batchAdjusted value: ${dailyDetails.batchAdjusted}`);
+        }
       } else if (updates.status === 'pending') {
         console.log('⚠️ Unit Manager moved product back to pending - removing ProductionBatch entries...');
         
@@ -536,10 +541,16 @@ const createProductionBatchEntries = async ({
       approvedBy
     });
 
-    // Validate inputs
-    if (!produceBatches || produceBatches <= 0) {
-      console.log('⚠️ No batches to produce - skipping ProductionBatch creation');
-      return;
+    // Validate inputs - CRITICAL: Prevent creation of 0-batch entries
+    if (!produceBatches || produceBatches <= 0 || produceBatches === 0) {
+      console.log(`⚠️ Invalid produceBatches value: ${produceBatches} - skipping ProductionBatch creation`);
+      return [];
+    }
+
+    // Additional safety check for edge cases
+    if (isNaN(produceBatches) || !isFinite(produceBatches)) {
+      console.log(`⚠️ Invalid produceBatches value (NaN or infinite): ${produceBatches} - skipping ProductionBatch creation`);
+      return [];
     }
 
     // Get the next batch number for this company and date

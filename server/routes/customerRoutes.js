@@ -10,7 +10,10 @@ import {
   exportCustomersToExcel,
   importCustomersFromExcel,
   validateCustomer,
-  validateCustomerQuery
+  validateCustomerQuery,
+  getSalespeople,
+  getCustomerDropdownList,
+  getCustomersBySalesperson
 } from '../controllers/customerController.js';
 import { resetCustomerCollectionRoute } from '../utils/resetCustomerCollection.js';
 import { inspectDatabaseRoute } from '../utils/inspectDatabase.js';
@@ -24,6 +27,11 @@ router.post('/customers/seed', auth, seedCustomersRoute);
 router.get('/customers/stats', auth, getCustomerStats);
 router.get('/customers/export', auth, exportCustomersToExcel);
 router.post('/customers/import', auth, importCustomersFromExcel);
+
+// New dropdown and salesperson-customer APIs
+router.get('/customers/dropdown/list', auth, getCustomerDropdownList);
+router.get('/customers/salespeople', auth, getSalespeople);
+router.get('/customers/salesperson/:salespersonId', auth, getCustomersBySalesperson);
 
 // Customer CRUD routes
 router.get('/customers', auth, getCustomers);

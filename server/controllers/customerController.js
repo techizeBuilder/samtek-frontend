@@ -720,3 +720,94 @@ export const importCustomersFromExcel = [upload.single('file'), async (req, res)
     });
   }
 }];
+
+// Get all salespeople for dropdown
+export const getSalespeople = async (req, res) => {
+  try {
+    console.log('👥 Getting salespeople list for dropdown');
+    
+    const salespeople = await User.find({
+      role: 'Sales'
+    }).select('_id fullName username email').sort({ fullName: 1 });
+
+    console.log(`📋 Found ${salespeople.length} salespeople`);
+
+    res.status(200).json({
+      success: true,
+      data: salespeople,
+      count: salespeople.length
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching salespeople:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Error fetching salespeople', 
+      error: error.message
+    });
+  }
+};
+
+// Get customer list for dropdown
+export const getCustomerDropdownList = async (req, res) => {
+  try {
+    console.log('📋 Getting customer dropdown list');
+    
+    const customers = await Customer.find({
+      active: 'Yes'
+    }).select('_id name customerCode category').sort({ name: 1 });
+
+    console.log(`👥 Found ${customers.length} active customers`);
+
+    res.status(200).json({
+      success: true,
+      data: customers,
+      count: customers.length
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching customer dropdown list:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Error fetching customer dropdown list', 
+      error: error.message
+    });
+  }
+};
+
+// Get customers assigned to specific salesperson
+export const getCustomersBySalesperson = async (req, res) => {
+  try {
+    const { salespersonId } = req.params;
+    console.log(`🎯 Getting customers for salesperson: ${salespersonId}`);
+    
+    if (!salespersonId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Salesperson ID is required'
+      });
+    }
+
+    const customers = await Customer.find({
+      salesContact: salespersonId,
+      active: 'Yes'
+    }).select('_id name customerCode category').sort({ name: 1 });
+
+    console.log(`👥 Found ${customers.length} customers for salesperson ${salespersonId}`);
+
+    res.status(200).json({
+      success: true,
+      data: customers,
+      count: customers.length,
+      salespersonId
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching customers by salesperson:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Error fetching customers by salesperson', 
+      error: error.message
+    });
+  }
+};
