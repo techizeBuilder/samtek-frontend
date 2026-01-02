@@ -226,21 +226,21 @@ export default function ProductionPage() {
 
   const getPriorityColor = (priority) => {
     switch (priority) {
-      case 'High': return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
-      case 'Medium': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
-      case 'Low': return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
-      default: return 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200';
+      case 'High': return 'bg-red-100 text-red-800';
+      case 'Medium': return 'bg-yellow-100 text-yellow-800';
+      case 'Low': return 'bg-green-100 text-green-800';
+      default: return 'bg-gray-100 text-gray-800';
     }
   };
 
   const getStatusColor = (status) => {
     switch (status) {
-      case 'Completed': return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
-      case 'In Progress': return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
-      case 'Pending': return 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200';
-      case 'Approved': return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
-      case 'Rejected': return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
-      default: return 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200';
+      case 'Completed': return 'bg-green-100 text-green-800';
+      case 'In Progress': return 'bg-blue-100 text-blue-800';
+      case 'Pending': return 'bg-orange-100 text-orange-800';
+      case 'Approved': return 'bg-green-100 text-green-800';
+      case 'Rejected': return 'bg-red-100 text-red-800';
+      default: return 'bg-gray-100 text-gray-800';
     }
   };
 
@@ -265,11 +265,11 @@ export default function ProductionPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+          <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
             <Factory className="h-8 w-8 text-blue-600" />
             My Production
           </h1>
-          <p className="text-gray-600 dark:text-gray-400">
+          <p className="text-gray-600">
             Manage your daily production tasks and submissions
           </p>
         </div>
@@ -289,7 +289,7 @@ export default function ProductionPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Card className="border-l-4 border-l-blue-500">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600 dark:text-gray-400">
+            <CardTitle className="text-sm font-medium text-gray-600">
               Total Produced Today
             </CardTitle>
           </CardHeader>
@@ -297,10 +297,10 @@ export default function ProductionPage() {
             <div className="flex items-center gap-2">
               <Package className="h-8 w-8 text-blue-600" />
               <div>
-                <div className="text-2xl font-bold text-gray-900 dark:text-white">
+                <div className="text-2xl font-bold text-gray-900">
                   {totalProduced.toLocaleString()}
                 </div>
-                <p className="text-sm text-gray-600 dark:text-gray-400">Units</p>
+                <p className="text-sm text-gray-600">Units</p>
               </div>
             </div>
           </CardContent>
@@ -308,7 +308,7 @@ export default function ProductionPage() {
 
         <Card className="border-l-4 border-l-red-500">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600 dark:text-gray-400">
+            <CardTitle className="text-sm font-medium text-gray-600">
               Total Damaged
             </CardTitle>
           </CardHeader>
@@ -316,10 +316,10 @@ export default function ProductionPage() {
             <div className="flex items-center gap-2">
               <AlertTriangle className="h-8 w-8 text-red-600" />
               <div>
-                <div className="text-2xl font-bold text-gray-900 dark:text-white">
+                <div className="text-2xl font-bold text-gray-900">
                   47
                 </div>
-                <p className="text-sm text-gray-600 dark:text-gray-400">Units</p>
+                <p className="text-sm text-gray-600">Units</p>
               </div>
             </div>
           </CardContent>

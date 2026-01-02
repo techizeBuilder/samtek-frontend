@@ -292,10 +292,10 @@ export default function MyCustomers() {
         <Card className="max-w-md mx-auto">
           <CardContent className="pt-6">
             <div className="text-center">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
                 Access Denied
               </h3>
-              <p className="text-gray-600 dark:text-gray-400">
+              <p className="text-gray-600">
                 You don't have permission to view My Customers module.
               </p>
             </div>
@@ -1012,33 +1012,33 @@ export default function MyCustomers() {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4 lg:gap-6 px-0 sm:px-0">
-        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg sm:rounded-lg p-3 sm:p-6">
+        <div className="bg-white border border-gray-200 rounded-lg sm:rounded-lg p-3 sm:p-6">
           <div className="flex items-center justify-between">
             <div className="flex-1">
-              <p className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-400">Total Customers</p>
-              <p className="text-sm sm:text-2xl font-bold text-gray-900 dark:text-gray-100">{stats.total}</p>
+              <p className="text-xs sm:text-sm font-medium text-gray-600">Total Customers</p>
+              <p className="text-sm sm:text-2xl font-bold text-gray-900">{stats.total}</p>
             </div>
             <div className="flex-shrink-0 flex items-center justify-center">
               <Users className="h-3 w-3 sm:h-8 sm:w-8 text-gray-500" />
             </div>
           </div>
         </div>
-        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg sm:rounded-lg p-3 sm:p-6">
+        <div className="bg-white border border-gray-200 rounded-lg sm:rounded-lg p-3 sm:p-6">
           <div className="flex items-center justify-between">
             <div className="flex-1">
-              <p className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-400">Active</p>
-              <p className="text-sm sm:text-2xl font-bold text-gray-900 dark:text-gray-100">{stats.active}</p>
+              <p className="text-xs sm:text-sm font-medium text-gray-600">Active</p>
+              <p className="text-sm sm:text-2xl font-bold text-gray-900">{stats.active}</p>
             </div>
             <div className="flex-shrink-0 flex items-center justify-center">
               <UserCheck className="h-3 w-3 sm:h-8 sm:w-8 text-gray-500" />
             </div>
           </div>
         </div>
-        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg sm:rounded-lg p-3 sm:p-6">
+        <div className="bg-white border border-gray-200 rounded-lg sm:rounded-lg p-3 sm:p-6">
           <div className="flex items-center justify-between">
             <div className="flex-1">
-              <p className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-400">Premium</p>
-              <p className="text-sm sm:text-2xl font-bold text-gray-900 dark:text-gray-100">{stats.premium}</p>
+              <p className="text-xs sm:text-sm font-medium text-gray-600">Premium</p>
+              <p className="text-sm sm:text-2xl font-bold text-gray-900">{stats.premium}</p>
             </div>
             <div className="flex-shrink-0 flex items-center justify-center">
               <TrendingUp className="h-3 w-3 sm:h-8 sm:w-8 text-gray-500" />
@@ -1048,7 +1048,7 @@ export default function MyCustomers() {
       </div>
 
       {/* Filters */}
-      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg sm:rounded-lg p-3 sm:p-6 mx-0 sm:mx-0">
+      <div className="bg-white border border-gray-200 rounded-lg sm:rounded-lg p-3 sm:p-6 mx-0 sm:mx-0">
         <div className="flex flex-col sm:flex-row gap-4">
           <div className="flex-1">
             <div className="relative">
@@ -1086,31 +1086,31 @@ export default function MyCustomers() {
       </div>
 
       {/* Table */}
-      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg sm:rounded-lg p-3 sm:p-6 mx-0 sm:mx-0">
+      <div className="bg-white border border-gray-200 rounded-lg sm:rounded-lg p-3 sm:p-6 mx-0 sm:mx-0">
         <h3 className="text-lg font-medium mb-3 sm:mb-4 px-0 sm:px-0">Customer List</h3>
         
         {/* Mobile Card View */}
         <div className="block sm:hidden">
           {/* Mobile Table Header */}
-          <div className="flex items-center justify-between p-2 bg-gray-100 dark:bg-gray-700 rounded-t-lg border-b border-gray-200 dark:border-gray-600 text-xs font-medium text-gray-600 dark:text-gray-400">
+          <div className="flex items-center justify-between p-2 bg-gray-100 rounded-t-lg border-b border-gray-200 text-xs font-medium text-gray-600">
             <span className="flex-1">CUSTOMER</span>
             <span className="w-20 text-center">STATUS</span>
             <span className="w-24 text-center">ACTIONS</span>
           </div>
           
           {/* Mobile Cards */}
-          <div className="space-y-0 border border-gray-200 dark:border-gray-700 border-t-0 rounded-b-lg overflow-hidden">
+          <div className="space-y-0 border border-gray-200 border-t-0 rounded-b-lg overflow-hidden">
             {filteredCustomers.map((customer, index) => (
-              <div key={customer.id} className={`p-2 ${index !== filteredCustomers.length - 1 ? 'border-b border-gray-200 dark:border-gray-600' : ''} bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700`}>
+              <div key={customer.id} className={`p-2 ${index !== filteredCustomers.length - 1 ? 'border-b border-gray-200' : ''} bg-white hover:bg-gray-50:bg-gray-700`}>
                 <div className="flex justify-between items-center">
                   <div className="flex-1 min-w-0 pr-2">
-                    <div className="font-medium text-sm text-gray-900 dark:text-gray-100 mb-1">
+                    <div className="font-medium text-sm text-gray-900 mb-1">
                       {customer.name}
                     </div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                    <div className="text-xs text-gray-500 mb-1">
                       {customer.contactPerson} • {customer.phone}
                     </div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400">
+                    <div className="text-xs text-gray-500">
                       {customer.city}, {customer.state}
                     </div>
                   </div>
@@ -1177,7 +1177,7 @@ export default function MyCustomers() {
               </TableHeader>
               <TableBody>
                 {filteredCustomers.map((customer) => (
-                  <TableRow key={customer.id} className="hover:bg-gray-50 dark:hover:bg-gray-800">
+                  <TableRow key={customer.id} className="hover:bg-gray-50:bg-gray-800">
                     <TableCell>
                       <div>
                         <div className="font-medium">{customer.name}</div>

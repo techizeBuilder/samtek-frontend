@@ -22,7 +22,7 @@ export default function RecentOrders() {
       case 'Dispatched':
         return 'status-dispatched';
       default:
-        return 'bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400';
+        return 'bg-gray-100 text-gray-800';
     }
   };
 

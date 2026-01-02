@@ -101,8 +101,8 @@ export default function Customers() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Customers</h1>
-          <p className="text-gray-600 dark:text-gray-400 mt-2">
+          <h1 className="text-3xl font-bold text-gray-900">Customers</h1>
+          <p className="text-gray-600 mt-2">
             Manage your customer relationships
           </p>
         </div>
@@ -113,10 +113,10 @@ export default function Customers() {
         <Card>
           <CardContent className="flex items-center p-6">
             <div className="flex-1">
-              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">
+              <p className="text-sm font-medium text-gray-600">
                 Total Customers
               </p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">
+              <p className="text-2xl font-bold text-gray-900">
                 {totalCustomers}
               </p>
             </div>
@@ -127,10 +127,10 @@ export default function Customers() {
         <Card>
           <CardContent className="flex items-center p-6">
             <div className="flex-1">
-              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">
+              <p className="text-sm font-medium text-gray-600">
                 Active Customers
               </p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">
+              <p className="text-2xl font-bold text-gray-900">
                 {activeCustomers}
               </p>
             </div>
@@ -141,10 +141,10 @@ export default function Customers() {
         <Card>
           <CardContent className="flex items-center p-6">
             <div className="flex-1">
-              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">
+              <p className="text-sm font-medium text-gray-600">
                 Distributors
               </p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">
+              <p className="text-2xl font-bold text-gray-900">
                 {distributorCustomers}
               </p>
             </div>
@@ -155,10 +155,10 @@ export default function Customers() {
         <Card>
           <CardContent className="flex items-center p-6">
             <div className="flex-1">
-              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">
+              <p className="text-sm font-medium text-gray-600">
                 Retailers
               </p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">
+              <p className="text-2xl font-bold text-gray-900">
                 {retailerCustomers}
               </p>
             </div>
@@ -262,11 +262,11 @@ export default function Customers() {
                         <div>
                           <div className="font-medium">{customer.name}</div>
                           <div className="sm:hidden space-y-1 mt-1">
-                            <div className="flex items-center gap-1 text-xs text-gray-600 dark:text-gray-400">
+                            <div className="flex items-center gap-1 text-xs text-gray-600">
                               <Mail className="h-3 w-3" />
                               <span className="truncate">{customer.email}</span>
                             </div>
-                            <div className="flex items-center gap-1 text-xs text-gray-600 dark:text-gray-400">
+                            <div className="flex items-center gap-1 text-xs text-gray-600">
                               <Phone className="h-3 w-3" />
                               <span>{customer.mobile}</span>
                             </div>
@@ -332,7 +332,7 @@ export default function Customers() {
           {/* Pagination */}
           {pagination.pages > 1 && (
             <div className="flex items-center justify-between mt-4">
-              <div className="text-sm text-gray-600 dark:text-gray-400">
+              <div className="text-sm text-gray-600">
                 Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, pagination.total)} of {pagination.total} customers
               </div>
               <div className="flex items-center gap-2">
@@ -366,7 +366,7 @@ export default function Customers() {
       {/* Customer Details Modal */}
       {viewingCustomer && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-xl font-semibold">Customer Details</h3>
               <Button 
@@ -388,27 +388,27 @@ export default function Customers() {
                 </h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Customer Name</p>
+                    <p className="text-sm font-medium text-gray-700">Customer Name</p>
                     <p className="text-base font-semibold">{viewingCustomer.name}</p>
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Contact Person</p>
+                    <p className="text-sm font-medium text-gray-700">Contact Person</p>
                     <p className="text-base">{viewingCustomer.contactPerson || 'Not specified'}</p>
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Designation</p>
+                    <p className="text-sm font-medium text-gray-700">Designation</p>
                     <p className="text-base">{viewingCustomer.designation || 'Not specified'}</p>
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Category</p>
+                    <p className="text-sm font-medium text-gray-700">Category</p>
                     <p className="text-base">{viewingCustomer.category}</p>
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Status</p>
+                    <p className="text-sm font-medium text-gray-700">Status</p>
                     <p className="text-base">{viewingCustomer.active === 'Yes' ? 'Active' : 'Inactive'}</p>
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Sales Contact</p>
+                    <p className="text-sm font-medium text-gray-700">Sales Contact</p>
                     <p className="text-base">{viewingCustomer.salesContact?.username || viewingCustomer.salesContact || 'Not assigned'}</p>
                   </div>
                 </div>
@@ -422,14 +422,14 @@ export default function Customers() {
                 </h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Mobile Number</p>
+                    <p className="text-sm font-medium text-gray-700">Mobile Number</p>
                     <p className="text-base flex items-center">
                       <Phone className="h-4 w-4 mr-2" />
                       {viewingCustomer.mobile}
                     </p>
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Email Address</p>
+                    <p className="text-sm font-medium text-gray-700">Email Address</p>
                     <p className="text-base flex items-center">
                       <Mail className="h-4 w-4 mr-2" />
                       {viewingCustomer.email}
@@ -446,27 +446,27 @@ export default function Customers() {
                 </h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="md:col-span-2">
-                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Address</p>
+                    <p className="text-sm font-medium text-gray-700">Address</p>
                     <p className="text-base">{viewingCustomer.address1 || 'No address provided'}</p>
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">City</p>
+                    <p className="text-sm font-medium text-gray-700">City</p>
                     <p className="text-base">{viewingCustomer.city || 'Not specified'}</p>
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">State</p>
+                    <p className="text-sm font-medium text-gray-700">State</p>
                     <p className="text-base">{viewingCustomer.state || 'Not specified'}</p>
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">PIN Code</p>
+                    <p className="text-sm font-medium text-gray-700">PIN Code</p>
                     <p className="text-base">{viewingCustomer.pin || 'Not specified'}</p>
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Country</p>
+                    <p className="text-sm font-medium text-gray-700">Country</p>
                     <p className="text-base">{viewingCustomer.country || 'India'}</p>
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Google Pin Location</p>
+                    <p className="text-sm font-medium text-gray-700">Google Pin Location</p>
                     <p className="text-base">{viewingCustomer.googlePin || 'Not provided'}</p>
                   </div>
                 </div>
@@ -480,11 +480,11 @@ export default function Customers() {
                 </h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">GSTIN</p>
+                    <p className="text-sm font-medium text-gray-700">GSTIN</p>
                     <p className="text-base font-mono">{viewingCustomer.gstin || 'Not provided'}</p>
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Category Note</p>
+                    <p className="text-sm font-medium text-gray-700">Category Note</p>
                     <p className="text-base">{viewingCustomer.categoryNote || 'No notes'}</p>
                   </div>
                 </div>
@@ -495,11 +495,11 @@ export default function Customers() {
                 <h4 className="font-semibold text-lg mb-3">System Information</h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                   <div>
-                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Customer ID</p>
+                    <p className="text-sm font-medium text-gray-700">Customer ID</p>
                     <p className="text-base font-mono">{viewingCustomer._id}</p>
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Created Date</p>
+                    <p className="text-sm font-medium text-gray-700">Created Date</p>
                     <p className="text-base">
                       {viewingCustomer.createdAt ? new Date(viewingCustomer.createdAt).toLocaleDateString() : 'Not available'}
                     </p>

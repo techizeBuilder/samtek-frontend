@@ -12,7 +12,12 @@ import {
   updateManualStock,
   getDispatchHistory,
   checkExistingDispatch,
-  createDispatchFromPacking
+  createDispatchFromPacking,
+  updateQtyIssued,
+  approveProduct,
+  generateInvoice,
+  getNextDCNumber,
+  createDispatchOrder
 } from '../controllers/dispatchController.js';
 
 const router = express.Router();
@@ -31,6 +36,13 @@ router.put('/manual-stock', updateManualStock);    // PUT /api/dispatches/manual
 // New routes for packing integration
 router.post('/check-existing', checkExistingDispatch);     // POST /api/dispatches/check-existing
 router.post('/create-from-packing', createDispatchFromPacking); // POST /api/dispatches/create-from-packing
+
+// Delivery Challan specific routes
+router.get('/next-dc-number', getNextDCNumber);           // GET /api/dispatches/next-dc-number
+router.post('/create-dispatch-order', createDispatchOrder); // POST /api/dispatches/create-dispatch-order
+router.put('/update-qty-issued', updateQtyIssued);         // PUT /api/dispatches/update-qty-issued
+router.post('/approve-product', approveProduct);           // POST /api/dispatches/approve-product
+router.post('/generate-invoice', generateInvoice);         // POST /api/dispatches/generate-invoice
 
 router.get('/:id', getDispatchById);                   // GET /api/dispatches/:id
 router.post('/', createDispatch);                  // POST /api/dispatches

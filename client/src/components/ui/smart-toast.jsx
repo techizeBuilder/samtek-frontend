@@ -14,11 +14,11 @@ export const SmartToast = React.forwardRef(({ className, variant, children, onDi
         variant === "destructive" &&
           "destructive group border-destructive bg-destructive text-destructive-foreground",
         variant === "success" &&
-          "border-green-500 bg-green-50 text-green-800 dark:border-green-400 dark:bg-green-900/20 dark:text-green-200",
+          "border-green-500 bg-green-50 text-green-800",
         variant === "warning" &&
-          "border-orange-500 bg-orange-50 text-orange-800 dark:border-orange-400 dark:bg-orange-900/20 dark:text-orange-200",
+          "border-orange-500 bg-orange-50 text-orange-800",
         variant === "info" &&
-          "border-blue-500 bg-blue-50 text-blue-800 dark:border-blue-400 dark:bg-blue-900/20 dark:text-blue-200",
+          "border-blue-500 bg-blue-50 text-blue-800",
         className
       )}
       {...props}

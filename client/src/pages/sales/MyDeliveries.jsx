@@ -344,10 +344,10 @@ export default function MyDeliveries() {
         <Card className="max-w-md mx-auto">
           <CardContent className="pt-6">
             <div className="text-center">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
                 Access Denied
               </h3>
-              <p className="text-gray-600 dark:text-gray-400">
+              <p className="text-gray-600">
                 You don't have permission to view My Deliveries module.
               </p>
             </div>
@@ -807,44 +807,44 @@ export default function MyDeliveries() {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4 lg:gap-6 px-0 sm:px-0">
-        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg sm:rounded-lg p-3 sm:p-6">
+        <div className="bg-white border border-gray-200 rounded-lg sm:rounded-lg p-3 sm:p-6">
           <div className="flex items-center justify-between">
             <div className="flex-1">
-              <p className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-400">Total Deliveries</p>
-              <p className="text-sm sm:text-2xl font-bold text-gray-900 dark:text-gray-100">{stats.total}</p>
+              <p className="text-xs sm:text-sm font-medium text-gray-600">Total Deliveries</p>
+              <p className="text-sm sm:text-2xl font-bold text-gray-900">{stats.total}</p>
             </div>
             <div className="flex-shrink-0 flex items-center justify-center">
               <Package className="h-3 w-3 sm:h-8 sm:w-8 text-gray-500" />
             </div>
           </div>
         </div>
-        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg sm:rounded-lg p-3 sm:p-6">
+        <div className="bg-white border border-gray-200 rounded-lg sm:rounded-lg p-3 sm:p-6">
           <div className="flex items-center justify-between">
             <div className="flex-1">
-              <p className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-400">Scheduled</p>
-              <p className="text-sm sm:text-2xl font-bold text-gray-900 dark:text-gray-100">{stats.scheduled}</p>
+              <p className="text-xs sm:text-sm font-medium text-gray-600">Scheduled</p>
+              <p className="text-sm sm:text-2xl font-bold text-gray-900">{stats.scheduled}</p>
             </div>
             <div className="flex-shrink-0 flex items-center justify-center">
               <Clock className="h-3 w-3 sm:h-8 sm:w-8 text-gray-500" />
             </div>
           </div>
         </div>
-        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg sm:rounded-lg p-3 sm:p-6">
+        <div className="bg-white border border-gray-200 rounded-lg sm:rounded-lg p-3 sm:p-6">
           <div className="flex items-center justify-between">
             <div className="flex-1">
-              <p className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-400">In Transit</p>
-              <p className="text-sm sm:text-2xl font-bold text-gray-900 dark:text-gray-100">{stats.inTransit}</p>
+              <p className="text-xs sm:text-sm font-medium text-gray-600">In Transit</p>
+              <p className="text-sm sm:text-2xl font-bold text-gray-900">{stats.inTransit}</p>
             </div>
             <div className="flex-shrink-0 flex items-center justify-center">
               <Truck className="h-3 w-3 sm:h-8 sm:w-8 text-gray-500" />
             </div>
           </div>
         </div>
-        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg sm:rounded-lg p-3 sm:p-6">
+        <div className="bg-white border border-gray-200 rounded-lg sm:rounded-lg p-3 sm:p-6">
           <div className="flex items-center justify-between">
             <div className="flex-1">
-              <p className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-400">Delivered</p>
-              <p className="text-sm sm:text-2xl font-bold text-gray-900 dark:text-gray-100">{stats.delivered}</p>
+              <p className="text-xs sm:text-sm font-medium text-gray-600">Delivered</p>
+              <p className="text-sm sm:text-2xl font-bold text-gray-900">{stats.delivered}</p>
             </div>
             <div className="flex-shrink-0 flex items-center justify-center">
               <CheckCircle className="h-3 w-3 sm:h-8 sm:w-8 text-gray-500" />
@@ -854,7 +854,7 @@ export default function MyDeliveries() {
       </div>
 
       {/* Filters */}
-      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg sm:rounded-lg p-3 sm:p-6 mx-0 sm:mx-0">
+      <div className="bg-white border border-gray-200 rounded-lg sm:rounded-lg p-3 sm:p-6 mx-0 sm:mx-0">
         <div className="flex flex-col sm:flex-row gap-4">
           <div className="flex-1">
             <div className="relative">
@@ -893,7 +893,7 @@ export default function MyDeliveries() {
         </div>
       </div>
       {/* Deliveries Table */}
-      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg sm:rounded-lg overflow-hidden mx-0 sm:mx-0">
+      <div className="bg-white border border-gray-200 rounded-lg sm:rounded-lg overflow-hidden mx-0 sm:mx-0">
         <div className="overflow-x-auto">
           <Table>
             <TableHeader>
@@ -932,7 +932,7 @@ export default function MyDeliveries() {
                 </TableRow>
               ) : (
                 filteredDeliveries.map((delivery) => (
-                  <TableRow key={delivery.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                  <TableRow key={delivery.id} className="hover:bg-gray-50:bg-gray-700">
                     <TableCell className="hidden sm:table-cell font-medium">{delivery.id}</TableCell>
                     <TableCell className="hidden sm:table-cell">{delivery.orderNo}</TableCell>
                     <TableCell>

@@ -413,10 +413,10 @@ const UnitHeadProductionGroup = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
             Production Groups
           </h1>
-          <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400">
+          <p className="text-sm sm:text-base text-gray-600">
             Manage production groups and assign inventory items
           </p>
         </div>

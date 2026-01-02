@@ -1562,6 +1562,9 @@ export const approvePackingSheet = async (req, res) => {
 
     console.log('✅ Packing sheet approved successfully');
 
+    // Initialize dispatchEntries array outside try-catch block
+    let dispatchEntries = [];
+
     // Create dispatch console entry automatically with proper data calculation
     try {
       const Dispatch = (await import('../models/Dispatch.js')).default;
@@ -1623,7 +1626,7 @@ export const approvePackingSheet = async (req, res) => {
       }
       
       // Create separate dispatch console entries for each item in the packing sheet
-      const dispatchEntries = [];
+      // dispatchEntries array already declared above
       
       for (const item of packingSheet.items) {
         if (item.packedQty > 0) { // Only create entries for items with packed quantity
@@ -1725,10 +1728,21 @@ export const approvePackingSheet = async (req, res) => {
           if (existingDispatchEntry) {
             // Update existing entry
             console.log(`🔄 Updating existing dispatch entry for ${item.productName} (ID: ${existingDispatchEntry._id})`);
+            
+            // Generate DCno if the existing entry doesn't have one (for old entries)
+            let dcnoToSet = existingDispatchEntry.dcno;
+            if (!dcnoToSet) {
+              dcnoToSet = await Dispatch.generateNextDCno();
+              console.log(`📋 Generated DCno for existing entry: ${dcnoToSet} for ${item.productName}`);
+            } else {
+              console.log(`📋 Preserving existing DCno: ${dcnoToSet} for ${item.productName}`);
+            }
+            
             dispatchEntry = await Dispatch.findByIdAndUpdate(
               existingDispatchEntry._id,
               {
                 $set: {
+                  dcno: dcnoToSet, // Set or preserve DCno
                   productGroup: `${packingSheet.productionGroupName || 'Unknown Group'} - ${item.productName}`,
                   productName: item.productName,
                   packedQuantityReadyForDispatch: item.packedQty,
@@ -1749,6 +1763,10 @@ export const approvePackingSheet = async (req, res) => {
           } else {
             // Create new dispatch entry
             console.log(`✨ Creating new dispatch entry for ${item.productName}`);
+            
+            // Generate unique DCno for this dispatch entry
+            const dcno = await Dispatch.generateNextDCno();
+            console.log(`📋 Generated DCno: ${dcno} for ${item.productName}`);
        
             dispatchEntry = await Dispatch.create({
               packingSheetId: packingSheet._id,
@@ -1757,6 +1775,7 @@ export const approvePackingSheet = async (req, res) => {
               date: startOfDay,
               productGroup: `${packingSheet.productionGroupName || 'Unknown Group'} - ${item.productName}`,
               company: req.user.companyId,
+              dcno: dcno, // Add the auto-generated DCno
               packedQuantityReadyForDispatch: item.packedQty,
               previousClosingStockYesterdayBalance: itemPreviousStock,
               returnQuantityYesterdayReturns: itemReturnQuantity,
@@ -1777,6 +1796,7 @@ export const approvePackingSheet = async (req, res) => {
           
           // Log the final calculated values after model auto-calculation
           console.log(`📈 Final dispatch calculations for ${item.productName}:`, {
+            dcno: dispatchEntry.dcno,
             packedQty: dispatchEntry.packedQuantityReadyForDispatch,
             previousStock: dispatchEntry.previousClosingStockYesterdayBalance,
             returns: dispatchEntry.returnQuantityYesterdayReturns,
@@ -1795,6 +1815,7 @@ export const approvePackingSheet = async (req, res) => {
         productGroup: packingSheet.productionGroupName,
         entries: dispatchEntries.map(entry => ({
           dispatchId: entry._id,
+          dcno: entry.dcno,
           productName: entry.productName,
           packedQuantity: entry.packedQuantityReadyForDispatch,
           totalAvailableStock: entry.totalAvailableStock,
@@ -1861,6 +1882,13 @@ export const approvePackingSheet = async (req, res) => {
         totalPackedQty: packingSheet.totalPackedQty,
         productGroup: packingSheet.productionGroupName,
         dispatchConsoleCreated: true,
+        dispatchEntries: dispatchEntries.map(entry => ({
+          dispatchId: entry._id,
+          dcno: entry.dcno,
+          productName: entry.productName,
+          packedQuantity: entry.packedQuantityReadyForDispatch,
+          totalAvailableStock: entry.totalAvailableStock
+        })),
         // Include updated sheet data for frontend state management
         packingSheet: {
           _id: packingSheet._id,

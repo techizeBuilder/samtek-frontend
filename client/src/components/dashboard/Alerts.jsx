@@ -23,11 +23,11 @@ export default function Alerts() {
   const getAlertClass = (type) => {
     switch (type) {
       case 'warning':
-        return 'border-orange-200 bg-orange-50 dark:border-orange-900/50 dark:bg-orange-900/20';
+        return 'border-orange-200 bg-orange-50';
       case 'error':
-        return 'border-red-200 bg-red-50 dark:border-red-900/50 dark:bg-red-900/20';
+        return 'border-red-200 bg-red-50';
       default:
-        return 'border-blue-200 bg-blue-50 dark:border-blue-900/50 dark:bg-blue-900/20';
+        return 'border-blue-200 bg-blue-50';
     }
   };
 

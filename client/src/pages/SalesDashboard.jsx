@@ -176,45 +176,45 @@ const SalesDashboard = () => {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card>
             <CardContent className="p-6 text-center">
-              <div className="w-12 h-12 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-2">
-                <span className="text-2xl font-bold text-gray-600 dark:text-gray-300">
+              <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                <span className="text-2xl font-bold text-gray-600">
                   {isLoading ? '...' : orderSummary.totalOrders}
                 </span>
               </div>
-              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Orders</p>
+              <p className="text-sm font-medium text-gray-600">Total Orders</p>
             </CardContent>
           </Card>
 
           <Card>
             <CardContent className="p-6 text-center">
-              <div className="w-12 h-12 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-2">
-                <span className="text-2xl font-bold text-green-600 dark:text-green-400">
+              <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                <span className="text-2xl font-bold text-green-600">
                   {isLoading ? '...' : orderSummary.delivered}
                 </span>
               </div>
-              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Delivered</p>
+              <p className="text-sm font-medium text-gray-600">Delivered</p>
             </CardContent>
           </Card>
 
           <Card>
             <CardContent className="p-6 text-center">
-              <div className="w-12 h-12 bg-orange-100 dark:bg-orange-900/30 rounded-full flex items-center justify-center mx-auto mb-2">
-                <span className="text-2xl font-bold text-orange-600 dark:text-orange-400">
+              <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                <span className="text-2xl font-bold text-orange-600">
                   {isLoading ? '...' : orderSummary.inProgress}
                 </span>
               </div>
-              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">In Progress</p>
+              <p className="text-sm font-medium text-gray-600">In Progress</p>
             </CardContent>
           </Card>
 
           <Card>
             <CardContent className="p-6 text-center">
-              <div className="w-12 h-12 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center mx-auto mb-2">
-                <span className="text-2xl font-bold text-red-600 dark:text-red-400">
+              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                <span className="text-2xl font-bold text-red-600">
                   {isLoading ? '...' : orderSummary.preparation}
                 </span>
               </div>
-              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Preparation</p>
+              <p className="text-sm font-medium text-gray-600">Preparation</p>
             </CardContent>
           </Card>
         </div>

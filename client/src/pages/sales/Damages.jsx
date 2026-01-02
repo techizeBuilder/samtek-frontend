@@ -327,12 +327,12 @@ const CreateDamageForm = ({
       {/* Products Section */}
       <div className="space-y-3">
         <div className="flex items-center gap-2 mb-4">
-          <ShoppingCart className="h-4 w-4 text-gray-600 dark:text-gray-400" />
-          <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">
+          <ShoppingCart className="h-4 w-4 text-gray-600" />
+          <h3 className="text-sm font-medium text-gray-700">
             Select Products for Damage
           </h3>
           {getSelectedUnits() > 0 && (
-            <span className="text-xs bg-orange-100 dark:bg-orange-800 text-orange-600 dark:text-orange-300 px-2 py-1 rounded-full">
+            <span className="text-xs bg-orange-100 text-orange-600 px-2 py-1 rounded-full">
               {getSelectedUnits()} units
             </span>
           )}
@@ -361,12 +361,12 @@ const CreateDamageForm = ({
             return (
               <div
                 key={category}
-                className="border border-gray-200 dark:border-gray-700 rounded-lg"
+                className="border border-gray-200 rounded-lg"
               >
                 <button
                   type="button"
                   onClick={() => toggleCategory(category)}
-                  className="w-full flex items-center justify-between p-3 text-left hover:bg-gray-50 dark:hover:bg-gray-800 rounded-t-lg"
+                  className="w-full flex items-center justify-between p-3 text-left hover:bg-gray-50:bg-gray-800 rounded-t-lg"
                 >
                   <div className="flex items-center gap-2">
                     {isExpanded ? (
@@ -374,7 +374,7 @@ const CreateDamageForm = ({
                     ) : (
                       <ChevronRight className="h-4 w-4 text-gray-500" />
                     )}
-                    <h4 className="font-semibold text-gray-900 dark:text-gray-100">
+                    <h4 className="font-semibold text-gray-900">
                       {category}
                     </h4>
                     <span className="text-xs text-gray-500">
@@ -384,8 +384,8 @@ const CreateDamageForm = ({
                 </button>
 
                 {isExpanded && (
-                  <div className="border-t border-gray-200 dark:border-gray-700">
-                    <div className="divide-y divide-gray-200 dark:divide-gray-700">
+                  <div className="border-t border-gray-200">
+                    <div className="divide-y divide-gray-200">
                       {categoryItems.map((item) => (
                         <div key={item._id} className="p-3">
                           <div className="flex items-center gap-3">
@@ -401,7 +401,7 @@ const CreateDamageForm = ({
                               />
                             ) : null}
                             <div 
-                              className={`w-12 h-12 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center flex-shrink-0 ${item.image ? 'hidden' : 'flex'}`}
+                              className={`w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0 ${item.image ? 'hidden' : 'flex'}`}
                               style={{ display: item.image ? 'none' : 'flex' }}
                             >
                               <Package className="h-6 w-6 text-gray-400" />
@@ -443,22 +443,22 @@ const CreateDamageForm = ({
 
       {/* Damage Summary */}
       {getSelectedProducts().length > 0 && (
-        <div className="mt-6 p-4 bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-900/20 dark:to-red-900/20 rounded-lg border border-orange-200 dark:border-orange-800">
+        <div className="mt-6 p-4 bg-gradient-to-r from-orange-50 to-red-50 rounded-lg border border-orange-200">
           <div className="flex justify-between items-center">
             <div>
-              <h4 className="font-semibold text-sm text-orange-700 dark:text-orange-300">
+              <h4 className="font-semibold text-sm text-orange-700">
                 Damage Summary
               </h4>
-              <p className="text-xs text-orange-500 dark:text-orange-400">
+              <p className="text-xs text-orange-500">
                 {getSelectedProducts().length} product types •{" "}
                 {getSelectedUnits()} total units
               </p>
             </div>
             <div className="text-right">
-              <div className="font-bold text-lg text-orange-600 dark:text-orange-400">
+              <div className="font-bold text-lg text-orange-600">
                 {getSelectedUnits()}
               </div>
-              <div className="text-xs text-orange-500 dark:text-orange-400">
+              <div className="text-xs text-orange-500">
                 Damaged Items
               </div>
             </div>
@@ -516,10 +516,10 @@ const Damages = () => {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">
             Access Denied
           </h2>
-          <p className="text-gray-600 dark:text-gray-400">
+          <p className="text-gray-600">
             You don't have permission to view Damages.
           </p>
         </div>
@@ -627,14 +627,14 @@ const Damages = () => {
       {/* Header Section */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="flex items-center gap-2">
-          <div className="p-2 bg-orange-100 dark:bg-orange-900/20 rounded-lg">
-            <AlertTriangle className="h-6 w-6 text-orange-600 dark:text-orange-400" />
+          <div className="p-2 bg-orange-100 rounded-lg">
+            <AlertTriangle className="h-6 w-6 text-orange-600" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+            <h1 className="text-2xl font-bold text-gray-900">
               Damages
             </h1>
-            <p className="text-sm text-gray-600 dark:text-gray-400">
+            <p className="text-sm text-gray-600">
               Manage product damages
             </p>
           </div>
@@ -720,10 +720,10 @@ const Damages = () => {
           ) : damagesError ? (
             <div className="text-center py-8">
               <AlertCircle className="h-12 w-12 mx-auto text-red-500 mb-4" />
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
                 Error Loading Damages
               </h3>
-              <p className="text-gray-600 dark:text-gray-400 mb-4">
+              <p className="text-gray-600 mb-4">
                 {damagesError.message || "Failed to load damages data"}
               </p>
               <Button onClick={refetchDamages} variant="outline">
@@ -734,10 +734,10 @@ const Damages = () => {
           ) : damages.length === 0 ? (
             <div className="text-center py-8">
               <Package className="h-12 w-12 mx-auto text-gray-400 mb-4" />
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
                 No damages found
               </h3>
-              <p className="text-gray-600 dark:text-gray-400">
+              <p className="text-gray-600">
                 Try adjusting your search or filters
               </p>
             </div>

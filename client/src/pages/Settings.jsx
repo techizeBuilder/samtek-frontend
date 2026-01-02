@@ -315,10 +315,10 @@ export default function Settings() {
     <div className="p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center space-x-3">
-        <div className="p-2 bg-blue-100 dark:bg-blue-900 rounded-lg">
-          <SettingsIcon className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+        <div className="p-2 bg-blue-100 rounded-lg">
+          <SettingsIcon className="w-6 h-6 text-blue-600" />
         </div>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Settings</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
       </div>
 
       {/* Settings Tabs */}
@@ -361,7 +361,7 @@ export default function Settings() {
                 <Label>Company Logo</Label>
                 <div className="flex items-center gap-4">
                   {logoPreview && (
-                    <div className="w-16 h-16 rounded border overflow-hidden border-slate-200 dark:border-slate-600">
+                    <div className="w-16 h-16 rounded border overflow-hidden border-slate-200">
                       <img 
                         src={logoPreview} 
                         alt="Company Logo" 
@@ -370,7 +370,7 @@ export default function Settings() {
                           console.log('Settings logo preview error:', e);
                           e.target.style.display = 'none';
                           e.target.parentElement.innerHTML = `
-                            <div class="w-full h-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
+                            <div class="w-full h-full bg-gray-100 flex items-center justify-center">
                               <span class="text-gray-400 text-xs">No Preview</span>
                             </div>
                           `;

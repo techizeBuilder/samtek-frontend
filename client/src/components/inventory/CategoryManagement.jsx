@@ -75,10 +75,10 @@ function SubcategoryInput({ subcategories, setSubcategories }) {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+          <Label className="text-sm font-medium text-gray-700">
             Subcategories
           </Label>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+          <p className="text-xs text-gray-500 mt-1">
             Add subcategories to organize your products better
           </p>
         </div>
@@ -87,7 +87,7 @@ function SubcategoryInput({ subcategories, setSubcategories }) {
           onClick={addSubcategory}
           size="sm"
           variant="outline"
-          className="h-8 px-3 text-xs border-blue-300 text-blue-700 hover:bg-blue-50 dark:border-blue-600 dark:text-blue-300"
+          className="h-8 px-3 text-xs border-blue-300 text-blue-700 hover:bg-blue-50"
         >
           <Plus className="h-3 w-3 mr-1" />
           Add Subcategory
@@ -103,7 +103,7 @@ function SubcategoryInput({ subcategories, setSubcategories }) {
                   value={subcategory}
                   onChange={(e) => updateSubcategory(index, e.target.value)}
                   placeholder={`Subcategory ${index + 1} name`}
-                  className="h-8 text-sm border-gray-300 dark:border-gray-600"
+                  className="h-8 text-sm border-gray-300"
                 />
               </div>
               <Button
@@ -111,7 +111,7 @@ function SubcategoryInput({ subcategories, setSubcategories }) {
                 onClick={() => removeSubcategory(index)}
                 size="sm"
                 variant="ghost"
-                className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30"
+                className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50:bg-red-950/30"
                 title="Remove subcategory"
               >
                 <X className="h-3 w-3" />
@@ -120,7 +120,7 @@ function SubcategoryInput({ subcategories, setSubcategories }) {
           ))}
         </div>
       ) : (
-        <div className="text-center py-4 text-gray-500 dark:text-gray-400 text-sm border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-lg">
+        <div className="text-center py-4 text-gray-500 text-sm border-2 border-dashed border-gray-200 rounded-lg">
           No subcategories added yet. Click "Add Subcategory" to start.
         </div>
       )}
@@ -157,20 +157,20 @@ function SubcategoryFormModal({ isOpen, onClose, categories, selectedCategory, o
     <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader className="text-center space-y-3">
-          <div className="mx-auto w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center">
-            <Package className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+          <div className="mx-auto w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+            <Package className="h-6 w-6 text-blue-600" />
           </div>
-          <DialogTitle className="text-xl font-semibold text-gray-900 dark:text-gray-100">
+          <DialogTitle className="text-xl font-semibold text-gray-900">
             Add Subcategories
           </DialogTitle>
-          <DialogDescription className="text-gray-600 dark:text-gray-400">
+          <DialogDescription className="text-gray-600">
             Select a category and add new subcategories to it
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="space-y-4">
             <div>
-              <Label htmlFor="categorySelect" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              <Label htmlFor="categorySelect" className="text-sm font-medium text-gray-700">
                 Select Category *
               </Label>
               <Select onValueChange={(value) => {
@@ -193,34 +193,34 @@ function SubcategoryFormModal({ isOpen, onClose, categories, selectedCategory, o
             {selectedCategory && (
               <>
                 <div>
-                  <Label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
+                  <Label className="text-sm font-medium text-gray-700 mb-2 block">
                     Existing Subcategories
                   </Label>
-                  <div className="flex flex-wrap gap-2 p-3 bg-gray-50 dark:bg-gray-800 rounded-md min-h-[40px]">
+                  <div className="flex flex-wrap gap-2 p-3 bg-gray-50 rounded-md min-h-[40px]">
                     {selectedCategory.subcategories?.length > 0 ? (
                       selectedCategory.subcategories.map((sub, index) => (
-                        <span key={index} className="px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200 rounded text-sm">
+                        <span key={index} className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-sm">
                           {sub}
                         </span>
                       ))
                     ) : (
-                      <span className="text-gray-500 dark:text-gray-400 text-sm italic">No existing subcategories</span>
+                      <span className="text-gray-500 text-sm italic">No existing subcategories</span>
                     )}
                   </div>
                 </div>
                 
-                <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+                <div className="border-t border-gray-200 pt-4">
                   <SubcategoryInput subcategories={subcategories} setSubcategories={setSubcategories} />
                 </div>
               </>
             )}
           </div>
-          <div className="flex justify-end gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
+          <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
             <Button 
               type="button" 
               variant="outline" 
               onClick={handleClose}
-              className="border-gray-300 dark:border-gray-600"
+              className="border-gray-300"
             >
               Cancel
             </Button>
@@ -277,17 +277,17 @@ function CategoryFormModal({ isOpen, onClose, editingCategory, onSubmit, isLoadi
     <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader className="text-center space-y-3">
-          <div className="mx-auto w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center">
-            <Tag className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+          <div className="mx-auto w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+            <Tag className="h-6 w-6 text-blue-600" />
           </div>
-          <DialogTitle className="text-xl font-semibold text-gray-900 dark:text-gray-100">
+          <DialogTitle className="text-xl font-semibold text-gray-900">
             {editingCategory ? 'Edit Category' : 'Add New Category'}
           </DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="space-y-4">
             <div>
-              <Label htmlFor="name" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              <Label htmlFor="name" className="text-sm font-medium text-gray-700">
                 Category Name *
               </Label>
               <Input
@@ -296,11 +296,11 @@ function CategoryFormModal({ isOpen, onClose, editingCategory, onSubmit, isLoadi
                 required
                 defaultValue={editingCategory?.name || ''}
                 placeholder="Enter category name"
-                className="mt-1 border-gray-300 dark:border-gray-600 focus:border-blue-500 dark:focus:border-blue-400"
+                className="mt-1 border-gray-300 focus:border-blue-500:border-blue-400"
               />
             </div>
             <div>
-              <Label htmlFor="description" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              <Label htmlFor="description" className="text-sm font-medium text-gray-700">
                 Description
               </Label>
               <Textarea
@@ -309,19 +309,19 @@ function CategoryFormModal({ isOpen, onClose, editingCategory, onSubmit, isLoadi
                 defaultValue={editingCategory?.description || ''}
                 placeholder="Enter category description"
                 rows={3}
-                className="mt-1 border-gray-300 dark:border-gray-600 focus:border-blue-500 dark:focus:border-blue-400"
+                className="mt-1 border-gray-300 focus:border-blue-500:border-blue-400"
               />
             </div>
-            <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+            <div className="border-t border-gray-200 pt-4">
               <SubcategoryInput subcategories={subcategories} setSubcategories={setSubcategories} />
             </div>
           </div>
-          <div className="flex justify-end gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
+          <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
             <Button 
               type="button" 
               variant="outline" 
               onClick={handleClose}
-              className="border-gray-300 dark:border-gray-600"
+              className="border-gray-300"
             >
               Cancel
             </Button>
@@ -355,17 +355,17 @@ function CustomerCategoryFormModal({ isOpen, onClose, editingCategory, onSubmit,
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader className="text-center space-y-3">
-          <div className="mx-auto w-12 h-12 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center">
-            <Users className="h-6 w-6 text-green-600 dark:text-green-400" />
+          <div className="mx-auto w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
+            <Users className="h-6 w-6 text-green-600" />
           </div>
-          <DialogTitle className="text-xl font-semibold text-gray-900 dark:text-gray-100">
+          <DialogTitle className="text-xl font-semibold text-gray-900">
             {editingCategory ? 'Edit Customer Category' : 'Add Customer Category'}
           </DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="space-y-4">
             <div>
-              <Label htmlFor="customerName" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              <Label htmlFor="customerName" className="text-sm font-medium text-gray-700">
                 Customer Category Name *
               </Label>
               <Input
@@ -374,11 +374,11 @@ function CustomerCategoryFormModal({ isOpen, onClose, editingCategory, onSubmit,
                 required
                 defaultValue={editingCategory?.name || ''}
                 placeholder="Enter customer category name"
-                className="mt-1 border-gray-300 dark:border-gray-600 focus:border-green-500 dark:focus:border-green-400"
+                className="mt-1 border-gray-300 focus:border-green-500:border-green-400"
               />
             </div>
             <div>
-              <Label htmlFor="customerDescription" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              <Label htmlFor="customerDescription" className="text-sm font-medium text-gray-700">
                 Description
               </Label>
               <Textarea
@@ -387,16 +387,16 @@ function CustomerCategoryFormModal({ isOpen, onClose, editingCategory, onSubmit,
                 defaultValue={editingCategory?.description || ''}
                 placeholder="Enter customer category description"
                 rows={3}
-                className="mt-1 border-gray-300 dark:border-gray-600 focus:border-green-500 dark:focus:border-green-400"
+                className="mt-1 border-gray-300 focus:border-green-500:border-green-400"
               />
             </div>
           </div>
-          <div className="flex justify-end gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
+          <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
             <Button 
               type="button" 
               variant="outline" 
               onClick={onClose}
-              className="border-gray-300 dark:border-gray-600"
+              className="border-gray-300"
             >
               Cancel
             </Button>
@@ -424,23 +424,23 @@ function DeleteConfirmationModal({ isOpen, onClose, onConfirm, title, descriptio
         <DialogHeader className="text-center space-y-3">
           <div className={`mx-auto w-12 h-12 rounded-full flex items-center justify-center ${
             hasProducts 
-              ? 'bg-yellow-100 dark:bg-yellow-900/30' 
-              : 'bg-red-100 dark:bg-red-900/30'
+              ? 'bg-yellow-100' 
+              : 'bg-red-100'
           }`}>
             <AlertTriangle className={`h-6 w-6 ${
               hasProducts 
-                ? 'text-yellow-600 dark:text-yellow-400' 
-                : 'text-red-600 dark:text-red-400'
+                ? 'text-yellow-600' 
+                : 'text-red-600'
             }`} />
           </div>
-          <DialogTitle className="text-xl font-semibold text-gray-900 dark:text-gray-100">
+          <DialogTitle className="text-xl font-semibold text-gray-900">
             {title}
           </DialogTitle>
         </DialogHeader>
         <div className="py-4">
           <p className="text-sm text-muted-foreground text-center">{description}</p>
         </div>
-        <div className="flex justify-end gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
+        <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
           <Button variant="outline" onClick={onClose} disabled={isLoading}>
             {hasProducts ? 'Close' : 'Cancel'}
           </Button>
@@ -623,12 +623,12 @@ function CategoryManagementModal({ isOpen, onClose }) {
           
           <div className="space-y-6">
             {/* Header with Add Button */}
-            <div className="flex justify-between items-center pb-4 border-b border-gray-200 dark:border-gray-700">
+            <div className="flex justify-between items-center pb-4 border-b border-gray-200">
               <div>
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                <h3 className="text-lg font-semibold text-gray-900">
                   Existing Categories
                 </h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
+                <p className="text-sm text-gray-500">
                   Manage your product categories and subcategories
                 </p>
               </div>
@@ -643,7 +643,7 @@ function CategoryManagementModal({ isOpen, onClose }) {
                 <Button 
                   onClick={() => setShowSubcategoryForm(true)}
                   variant="outline"
-                  className="border-blue-500 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                  className="border-blue-500 text-blue-600 hover:bg-blue-50:bg-blue-900/20"
                 >
                   <Package className="h-4 w-4 mr-2" />
                   Add Subcategory
@@ -660,44 +660,44 @@ function CategoryManagementModal({ isOpen, onClose }) {
                   </div>
                 ) : categories.length === 0 ? (
                   <div className="text-center py-8">
-                    <FolderPlus className="h-12 w-12 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
-                    <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">
+                    <FolderPlus className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">
                       No categories found
                     </h3>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                    <p className="text-sm text-gray-500">
                       Get started by creating your first category
                     </p>
                   </div>
                 ) : (
-                  <div className="rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+                  <div className="rounded-lg border border-gray-200 overflow-hidden">
                     <Table>
                       <TableHeader>
-                        <TableRow className="bg-gray-50 dark:bg-gray-800/50">
-                          <TableHead className="font-semibold text-gray-900 dark:text-gray-100">Category Name</TableHead>
-                          <TableHead className="font-semibold text-gray-900 dark:text-gray-100">Description</TableHead>
-                          <TableHead className="font-semibold text-gray-900 dark:text-gray-100">Subcategories</TableHead>
-                          <TableHead className="font-semibold text-gray-900 dark:text-gray-100 text-center">Products</TableHead>
-                          <TableHead className="w-[120px] font-semibold text-gray-900 dark:text-gray-100">Actions</TableHead>
+                        <TableRow className="bg-gray-50">
+                          <TableHead className="font-semibold text-gray-900">Category Name</TableHead>
+                          <TableHead className="font-semibold text-gray-900">Description</TableHead>
+                          <TableHead className="font-semibold text-gray-900">Subcategories</TableHead>
+                          <TableHead className="font-semibold text-gray-900 text-center">Products</TableHead>
+                          <TableHead className="w-[120px] font-semibold text-gray-900">Actions</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {categories.map((category, index) => (
                           <TableRow 
                             key={category._id}
-                            className={`hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors ${
-                              index % 2 === 0 ? 'bg-white dark:bg-gray-900' : 'bg-gray-50/50 dark:bg-gray-800/20'
+                            className={`hover:bg-gray-50:bg-gray-800/50 transition-colors ${
+                              index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
                             }`}
                           >
                             <TableCell className="py-4">
                               <div className="flex items-center gap-2">
-                                <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/30 dark:text-blue-300 dark:border-blue-800">
+                                <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
                                   <Tag className="h-3 w-3 mr-1" />
                                   {category.name}
                                 </Badge>
                               </div>
                             </TableCell>
                             <TableCell className="py-4">
-                              <span className="text-sm text-gray-600 dark:text-gray-400">
+                              <span className="text-sm text-gray-600">
                                 {category.description || 'No description'}
                               </span>
                             </TableCell>
@@ -708,13 +708,13 @@ function CategoryManagementModal({ isOpen, onClose }) {
                                     <Badge 
                                       key={index} 
                                       variant="secondary" 
-                                      className="text-xs bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"
+                                      className="text-xs bg-gray-100 text-gray-700"
                                     >
                                       {sub}
                                     </Badge>
                                   ))}
                                   {category.subcategories.length > 3 && (
-                                    <Badge variant="secondary" className="text-xs bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+                                    <Badge variant="secondary" className="text-xs bg-gray-100 text-gray-500">
                                       +{category.subcategories.length - 3} more
                                     </Badge>
                                   )}
@@ -729,8 +729,8 @@ function CategoryManagementModal({ isOpen, onClose }) {
                                   variant={category.productCount > 0 ? "default" : "secondary"}
                                   className={`
                                     ${category.productCount > 0 
-                                      ? 'bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-950/30 dark:text-blue-300 dark:border-blue-800' 
-                                      : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
+                                      ? 'bg-blue-100 text-blue-800 border-blue-200' 
+                                      : 'bg-gray-100 text-gray-600'
                                     }
                                   `}
                                 >
@@ -745,7 +745,7 @@ function CategoryManagementModal({ isOpen, onClose }) {
                                   size="sm"
                                   variant="ghost"
                                   onClick={() => handleAddSubcategory(category)}
-                                  className="h-8 w-8 p-0 text-green-600 hover:text-green-700 hover:bg-green-50 dark:text-green-400 dark:hover:bg-green-900/30"
+                                  className="h-8 w-8 p-0 text-green-600 hover:text-green-700 hover:bg-green-50:bg-green-900/30"
                                   title="Add Subcategory"
                                 >
                                   <Plus className="h-4 w-4" />
@@ -754,7 +754,7 @@ function CategoryManagementModal({ isOpen, onClose }) {
                                   size="sm"
                                   variant="ghost"
                                   onClick={() => handleEdit(category)}
-                                  className="h-8 w-8 p-0 hover:bg-blue-50 dark:hover:bg-blue-950/30"
+                                  className="h-8 w-8 p-0 hover:bg-blue-50:bg-blue-950/30"
                                   title="Edit Category"
                                 >
                                   <Edit className="h-4 w-4 text-blue-600" />
@@ -763,7 +763,7 @@ function CategoryManagementModal({ isOpen, onClose }) {
                                   size="sm"
                                   variant="ghost"
                                   onClick={() => handleDelete(category)}
-                                  className="h-8 w-8 p-0 hover:bg-red-50 dark:hover:bg-red-950/30"
+                                  className="h-8 w-8 p-0 hover:bg-red-50:bg-red-950/30"
                                   title="Delete Category"
                                 >
                                   <Trash2 className="h-4 w-4 text-red-600" />
@@ -920,12 +920,12 @@ function CustomerCategoryManagementModal({ isOpen, onClose }) {
           
           <div className="space-y-6">
             {/* Header with Add Button */}
-            <div className="flex justify-between items-center pb-4 border-b border-gray-200 dark:border-gray-700">
+            <div className="flex justify-between items-center pb-4 border-b border-gray-200">
               <div>
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                <h3 className="text-lg font-semibold text-gray-900">
                   Existing Customer Categories
                 </h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
+                <p className="text-sm text-gray-500">
                   Manage your customer category classifications
                 </p>
               </div>
@@ -946,40 +946,40 @@ function CustomerCategoryManagementModal({ isOpen, onClose }) {
                 </div>
               ) : customerCategories.length === 0 ? (
                 <div className="text-center py-8">
-                  <Users className="h-12 w-12 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
-                  <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">
+                  <Users className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">
                     No customer categories found
                   </h3>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                  <p className="text-sm text-gray-500">
                     Get started by creating your first customer category
                   </p>
                 </div>
               ) : (
-                <div className="rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+                <div className="rounded-lg border border-gray-200 overflow-hidden">
                   <Table>
                     <TableHeader>
-                      <TableRow className="bg-gray-50 dark:bg-gray-800/50">
-                        <TableHead className="font-semibold text-gray-900 dark:text-gray-100">Category Name</TableHead>
-                        <TableHead className="font-semibold text-gray-900 dark:text-gray-100">Description</TableHead>
-                        <TableHead className="w-[120px] font-semibold text-gray-900 dark:text-gray-100">Actions</TableHead>
+                      <TableRow className="bg-gray-50">
+                        <TableHead className="font-semibold text-gray-900">Category Name</TableHead>
+                        <TableHead className="font-semibold text-gray-900">Description</TableHead>
+                        <TableHead className="w-[120px] font-semibold text-gray-900">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {customerCategories.map((category, index) => (
                         <TableRow 
                           key={category._id}
-                          className={`hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors ${
-                            index % 2 === 0 ? 'bg-white dark:bg-gray-900' : 'bg-gray-50/50 dark:bg-gray-800/20'
+                          className={`hover:bg-gray-50:bg-gray-800/50 transition-colors ${
+                            index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
                           }`}
                         >
                           <TableCell className="py-4">
-                            <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 dark:bg-green-950/30 dark:text-green-300 dark:border-green-800">
+                            <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
                               <Users className="h-3 w-3 mr-1" />
                               {category.name}
                             </Badge>
                           </TableCell>
                           <TableCell className="py-4">
-                            <span className="text-sm text-gray-600 dark:text-gray-400">
+                            <span className="text-sm text-gray-600">
                               {category.description || 'No description'}
                             </span>
                           </TableCell>
@@ -989,7 +989,7 @@ function CustomerCategoryManagementModal({ isOpen, onClose }) {
                                 size="sm"
                                 variant="ghost"
                                 onClick={() => handleEdit(category)}
-                                className="h-8 w-8 p-0 hover:bg-green-50 dark:hover:bg-green-950/30"
+                                className="h-8 w-8 p-0 hover:bg-green-50:bg-green-950/30"
                                 title="Edit Customer Category"
                               >
                                 <Edit className="h-4 w-4 text-green-600" />
@@ -998,7 +998,7 @@ function CustomerCategoryManagementModal({ isOpen, onClose }) {
                                 size="sm"
                                 variant="ghost"
                                 onClick={() => handleDelete(category)}
-                                className="h-8 w-8 p-0 hover:bg-red-50 dark:hover:bg-red-950/30"
+                                className="h-8 w-8 p-0 hover:bg-red-50:bg-red-950/30"
                                 title="Delete Customer Category"
                               >
                                 <Trash2 className="h-4 w-4 text-red-600" />

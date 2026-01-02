@@ -349,10 +349,10 @@ export default function MyInvoices() {
         <Card className="max-w-md mx-auto">
           <CardContent className="pt-6">
             <div className="text-center">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
                 Access Denied
               </h3>
-              <p className="text-gray-600 dark:text-gray-400">
+              <p className="text-gray-600">
                 You don't have permission to view My Invoices module.
               </p>
             </div>

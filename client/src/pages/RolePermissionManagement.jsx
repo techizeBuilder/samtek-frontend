@@ -1012,7 +1012,7 @@ export default function RolePermissionManagement() {
                                   </div>
                                   
                                   {/* Mobile Layout */}
-                                  <div className="lg:hidden border border-gray-200 dark:border-gray-700 rounded-lg p-3 mb-3">
+                                  <div className="lg:hidden border border-gray-200 rounded-lg p-3 mb-3">
                                     <div className="font-medium text-sm mb-2">{feature.label}</div>
                                     <div className="grid grid-cols-2 gap-3">
                                       {PERMISSION_ACTIONS.map((action) => (
@@ -1235,14 +1235,14 @@ export default function RolePermissionManagement() {
               </thead>
               <tbody>
                 {users.map((user) => (
-                  <tr key={user._id} className="border-b hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                  <tr key={user._id} className="border-b hover:bg-gray-50:bg-gray-800/50">
                     <td className="py-3 sm:py-4 px-2 sm:px-4">
                       <div className="flex flex-col">
                         <div className="font-medium text-xs sm:text-sm break-words">
                           <span className="text-gray-500 text-xs mr-1">@</span>{user.username}
                         </div>
                         {user.fullName && user.fullName.trim() && !user.fullName.includes('No full name') && (
-                          <div className="text-xs text-gray-600 dark:text-gray-400 break-words">
+                          <div className="text-xs text-gray-600 break-words">
                             <span className="text-gray-400 mr-1">Name:</span>{user.fullName}
                           </div>
                         )}
@@ -1329,20 +1329,20 @@ export default function RolePermissionManagement() {
           {/* Mobile Cards */}
           <div className="sm:hidden space-y-3">
             {users.map((user) => (
-              <div key={user._id} className="border border-gray-200 dark:border-gray-700 rounded-lg p-3 bg-white dark:bg-gray-800">
+              <div key={user._id} className="border border-gray-200 rounded-lg p-3 bg-white">
                 <div className="space-y-3">
                   {/* User Info */}
                   <div className="flex items-start justify-between">
                     <div className="flex-1 min-w-0 pr-2">
-                      <div className="font-medium text-sm text-gray-900 dark:text-gray-100 break-words">
+                      <div className="font-medium text-sm text-gray-900 break-words">
                         <span className="text-gray-500 text-xs mr-1">@</span>{user.username}
                       </div>
                       {user.fullName && user.fullName.trim() && !user.fullName.includes('No full name') && (
-                        <div className="text-xs text-gray-600 dark:text-gray-400 break-words mt-1">
+                        <div className="text-xs text-gray-600 break-words mt-1">
                           <span className="text-gray-400 mr-1">Name:</span>{user.fullName}
                         </div>
                       )}
-                      <div className="text-xs text-gray-500 dark:text-gray-400 break-words mt-1">
+                      <div className="text-xs text-gray-500 break-words mt-1">
                         {user.email}
                       </div>
                     </div>
@@ -1351,7 +1351,7 @@ export default function RolePermissionManagement() {
                         variant="ghost"
                         size="sm"
                         onClick={() => handlePasswordUpdate(user)}
-                        className="h-7 w-7 p-0 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                        className="h-7 w-7 p-0 text-blue-600 hover:bg-blue-50:bg-blue-900/20"
                         title="Update Password"
                       >
                         <Lock className="h-3 w-3" />
@@ -1360,7 +1360,7 @@ export default function RolePermissionManagement() {
                         variant="ghost"
                         size="sm"
                         onClick={() => handleEditUser(user)}
-                        className="h-7 w-7 p-0 text-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
+                        className="h-7 w-7 p-0 text-gray-600 hover:bg-gray-50:bg-gray-700"
                         title="Edit User"
                       >
                         <Edit className="h-3 w-3" />
@@ -1369,7 +1369,7 @@ export default function RolePermissionManagement() {
                         variant="ghost"
                         size="sm"
                         onClick={() => handleDeleteUser(user)}
-                        className="h-7 w-7 p-0 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+                        className="h-7 w-7 p-0 text-red-600 hover:bg-red-50:bg-red-900/20"
                         title="Delete User"
                       >
                         <Trash2 className="h-3 w-3" />
@@ -1389,7 +1389,7 @@ export default function RolePermissionManagement() {
                   
                   {/* Module Permissions */}
                   <div>
-                    <div className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    <div className="text-xs font-medium text-gray-700 mb-2">
                       Module Permissions
                     </div>
                     <div className="flex flex-wrap gap-1">
@@ -1400,7 +1400,7 @@ export default function RolePermissionManagement() {
                           </Badge>
                         ))
                       ) : (
-                        <span className="text-xs text-gray-500 dark:text-gray-400">
+                        <span className="text-xs text-gray-500">
                           Role-based permissions
                         </span>
                       )}
@@ -1668,7 +1668,7 @@ export default function RolePermissionManagement() {
                                 </div>
                                 
                                 {/* Mobile Layout */}
-                                <div className="lg:hidden border border-gray-200 dark:border-gray-700 rounded-lg p-3 mb-3">
+                                <div className="lg:hidden border border-gray-200 rounded-lg p-3 mb-3">
                                   <div className="font-medium text-sm mb-2">{feature.label}</div>
                                   <div className="grid grid-cols-2 gap-3">
                                     {PERMISSION_ACTIONS.map((action) => (

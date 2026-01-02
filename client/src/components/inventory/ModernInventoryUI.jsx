@@ -109,7 +109,7 @@ function ModernStats({ stats, isLoading }) {
       value: stats?.stats?.totalItems || 0,
       icon: Package2,
       color: 'text-blue-600',
-      bgColor: 'bg-blue-50 dark:bg-blue-900/20',
+      bgColor: 'bg-blue-50',
       change: '+12%'
     },
     {
@@ -117,7 +117,7 @@ function ModernStats({ stats, isLoading }) {
       value: `₹${stats?.stats?.totalValue?.toLocaleString() || 0}`,
       icon: TrendingUp,
       color: 'text-green-600',
-      bgColor: 'bg-green-50 dark:bg-green-900/20',
+      bgColor: 'bg-green-50',
       change: '+8%'
     },
     {
@@ -125,7 +125,7 @@ function ModernStats({ stats, isLoading }) {
       value: stats?.stats?.lowStockCount || 0,
       icon: AlertTriangle,
       color: 'text-red-600',
-      bgColor: 'bg-red-50 dark:bg-red-900/20',
+      bgColor: 'bg-red-50',
       change: '-3%'
     },
     {
@@ -133,7 +133,7 @@ function ModernStats({ stats, isLoading }) {
       value: stats?.stats?.totalCategories || 0,
       icon: BarChart3,
       color: 'text-purple-600',
-      bgColor: 'bg-purple-50 dark:bg-purple-900/20',
+      bgColor: 'bg-purple-50',
       change: '+2%'
     }
   ];
@@ -151,7 +151,7 @@ function ModernStats({ stats, isLoading }) {
                 <div className="text-sm font-medium text-muted-foreground">{stat.title}</div>
                 <div className="text-2xl font-bold">
                   {isLoading ? (
-                    <div className="h-6 w-16 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+                    <div className="h-6 w-16 bg-gray-200 rounded animate-pulse" />
                   ) : (
                     stat.value
                   )}
@@ -492,14 +492,14 @@ export default function ModernInventoryUI() {
       <ModernStats stats={stats} isLoading={statsLoading} />
       
       {/* Modern Action Bar */}
-      <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 border-blue-200 dark:border-blue-800">
+      <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
         <CardContent className="p-6">
           <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
             <div className="flex flex-col">
-              <h2 className="text-xl font-semibold text-blue-900 dark:text-blue-100">
+              <h2 className="text-xl font-semibold text-blue-900">
                 {!inventoryPermissions.canAdd && !inventoryPermissions.canEdit && !inventoryPermissions.canDelete ? 'Inventory Monitoring' : 'Quick Actions'}
               </h2>
-              <p className="text-sm text-blue-600 dark:text-blue-300">
+              <p className="text-sm text-blue-600">
                 {!inventoryPermissions.canAdd && !inventoryPermissions.canEdit && !inventoryPermissions.canDelete 
                   ? 'Monitor inventory levels, view item details and track stock status'
                   : 'Manage your inventory efficiently with these actions'
@@ -521,7 +521,7 @@ export default function ModernInventoryUI() {
                   <Button 
                     onClick={() => setCategoryManagementOpen(true)}
                     variant="outline"
-                    className="border-purple-300 text-purple-700 hover:bg-purple-50 dark:border-purple-600 dark:text-purple-300 dark:hover:bg-purple-950/30"
+                    className="border-purple-300 text-purple-700 hover:bg-purple-50:bg-purple-950/30"
                   >
                     <Tag className="h-4 w-4 mr-2" />
                     Categories
@@ -529,7 +529,7 @@ export default function ModernInventoryUI() {
                   <Button 
                     onClick={() => setShowCustomerCategoryModal(true)}
                     variant="outline"
-                    className="border-green-300 text-green-700 hover:bg-green-50 dark:border-green-600 dark:text-green-300 dark:hover:bg-green-950/30"
+                    className="border-green-300 text-green-700 hover:bg-green-50:bg-green-950/30"
                   >
                     <Users className="h-4 w-4 mr-2" />
                     Customer Category
@@ -547,9 +547,9 @@ export default function ModernInventoryUI() {
       </Card>
 
       {/* Main Content Area */}
-      <Card className="shadow-sm border-gray-200 dark:border-gray-700">
-        <CardHeader className="bg-gray-50 dark:bg-gray-800/50">
-          <CardTitle className="flex items-center gap-2 text-gray-800 dark:text-gray-200">
+      <Card className="shadow-sm border-gray-200">
+        <CardHeader className="bg-gray-50">
+          <CardTitle className="flex items-center gap-2 text-gray-800">
             <Package className="h-5 w-5" />
             Inventory Management
           </CardTitle>
@@ -563,12 +563,12 @@ export default function ModernInventoryUI() {
                   placeholder="Search items by name, code, or description..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10 w-full border-gray-300 dark:border-gray-600 focus:border-blue-500 dark:focus:border-blue-400"
+                  className="pl-10 w-full border-gray-300 focus:border-blue-500:border-blue-400"
                 />
               </div>
               <div className="flex flex-col sm:flex-row gap-3">
                 <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-                  <SelectTrigger className="w-full sm:w-[200px] border-gray-300 dark:border-gray-600 focus:border-blue-500 dark:focus:border-blue-400">
+                  <SelectTrigger className="w-full sm:w-[200px] border-gray-300 focus:border-blue-500:border-blue-400">
                     <Filter className="h-4 w-4 mr-2 text-gray-400" />
                     <SelectValue placeholder="All Categories" />
                   </SelectTrigger>
@@ -590,7 +590,7 @@ export default function ModernInventoryUI() {
                   </SelectContent>
                 </Select>
                 <Select value={selectedType} onValueChange={setSelectedType}>
-                  <SelectTrigger className="w-full sm:w-[180px] border-gray-300 dark:border-gray-600 focus:border-blue-500 dark:focus:border-blue-400">
+                  <SelectTrigger className="w-full sm:w-[180px] border-gray-300 focus:border-blue-500:border-blue-400">
                     <Package className="h-4 w-4 mr-2 text-gray-400" />
                     <SelectValue placeholder="All Types" />
                   </SelectTrigger>
@@ -628,7 +628,7 @@ export default function ModernInventoryUI() {
                   </SelectContent>
                 </Select>
                 <Select value={selectedLocation} onValueChange={setSelectedLocation}>
-                  <SelectTrigger className="w-full sm:w-[280px] border-gray-300 dark:border-gray-600 focus:border-blue-500 dark:focus:border-blue-400">
+                  <SelectTrigger className="w-full sm:w-[280px] border-gray-300 focus:border-blue-500:border-blue-400">
                     <Building2 className="h-4 w-4 mr-2 text-gray-400" />
                     <SelectValue placeholder="All Locations" />
                   </SelectTrigger>
@@ -652,7 +652,7 @@ export default function ModernInventoryUI() {
                   </SelectContent>
                 </Select>
                 <Select value={sortBy} onValueChange={setSortBy}>
-                  <SelectTrigger className="w-full sm:w-[150px] border-gray-300 dark:border-gray-600 focus:border-blue-500 dark:focus:border-blue-400">
+                  <SelectTrigger className="w-full sm:w-[150px] border-gray-300 focus:border-blue-500:border-blue-400">
                     <BarChart3 className="h-4 w-4 mr-2 text-gray-400" />
                     <SelectValue placeholder="Sort by" />
                   </SelectTrigger>
@@ -669,10 +669,10 @@ export default function ModernInventoryUI() {
 
             {/* Bulk Actions Bar */}
             {selectedItems.size > 0 && inventoryPermissions.canDelete && (
-              <div className="mb-4 p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+              <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4">
-                    <span className="text-sm font-medium text-blue-900 dark:text-blue-100">
+                    <span className="text-sm font-medium text-blue-900">
                       {selectedItems.size} item{selectedItems.size === 1 ? '' : 's'} selected
                     </span>
                     <Button
@@ -700,26 +700,26 @@ export default function ModernInventoryUI() {
               </div>
             )}
 
-            <div className="rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+            <div className="rounded-lg border border-gray-200 overflow-hidden">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-gray-50 dark:bg-gray-800/50">
+                  <TableRow className="bg-gray-50">
                     {inventoryPermissions.canDelete && (
-                      <TableHead className="w-[50px] font-semibold text-gray-900 dark:text-gray-100">
+                      <TableHead className="w-[50px] font-semibold text-gray-900">
                         <Checkbox
                           checked={paginatedItems.length > 0 && paginatedItems.every(item => selectedItems.has(item._id))}
                           onCheckedChange={handleSelectAll}
                         />
                       </TableHead>
                     )}
-                    <TableHead className="font-semibold text-gray-900 dark:text-gray-100">Image</TableHead>
-                    <TableHead className="font-semibold text-gray-900 dark:text-gray-100">Name</TableHead>
-                    <TableHead className="font-semibold text-gray-900 dark:text-gray-100">Category</TableHead>
-                    <TableHead className="font-semibold text-gray-900 dark:text-gray-100">Store Location</TableHead>
-                    <TableHead className="font-semibold text-gray-900 dark:text-gray-100">Stock</TableHead>
-                    <TableHead className="font-semibold text-gray-900 dark:text-gray-100">Price</TableHead>
-                    <TableHead className="font-semibold text-gray-900 dark:text-gray-100">Status</TableHead>
-                    <TableHead className="w-[100px] font-semibold text-gray-900 dark:text-gray-100">Actions</TableHead>
+                    <TableHead className="font-semibold text-gray-900">Image</TableHead>
+                    <TableHead className="font-semibold text-gray-900">Name</TableHead>
+                    <TableHead className="font-semibold text-gray-900">Category</TableHead>
+                    <TableHead className="font-semibold text-gray-900">Store Location</TableHead>
+                    <TableHead className="font-semibold text-gray-900">Stock</TableHead>
+                    <TableHead className="font-semibold text-gray-900">Price</TableHead>
+                    <TableHead className="font-semibold text-gray-900">Status</TableHead>
+                    <TableHead className="w-[100px] font-semibold text-gray-900">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -739,9 +739,9 @@ export default function ModernInventoryUI() {
                     paginatedItems.map((item, index) => (
                       <TableRow 
                         key={item._id} 
-                        className={`hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors ${
-                          index % 2 === 0 ? 'bg-white dark:bg-gray-900' : 'bg-gray-50/50 dark:bg-gray-800/20'
-                        } ${selectedItems.has(item._id) ? 'bg-blue-50 dark:bg-blue-950/30' : ''}`}
+                        className={`hover:bg-gray-50:bg-gray-800/50 transition-colors ${
+                          index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
+                        } ${selectedItems.has(item._id) ? 'bg-blue-50' : ''}`}
                       >
                         {inventoryPermissions.canDelete && (
                           <TableCell className="py-4">
@@ -752,7 +752,7 @@ export default function ModernInventoryUI() {
                           </TableCell>
                         )}
                         <TableCell className="py-4">
-                          <div className="w-12 h-12 rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
+                          <div className="w-12 h-12 rounded-lg overflow-hidden bg-gray-100 flex items-center justify-center">
                             {item.image ? (
                               <img 
                                 src={item.image} 
@@ -769,37 +769,37 @@ export default function ModernInventoryUI() {
                         </TableCell>
                         <TableCell className="py-4">
                           <div>
-                            <div className="font-medium text-gray-900 dark:text-gray-100">{item.name}</div>
-                            <div className="text-sm text-gray-500 dark:text-gray-400">{item.type}</div>
+                            <div className="font-medium text-gray-900">{item.name}</div>
+                            <div className="text-sm text-gray-500">{item.type}</div>
                           </div>
                         </TableCell>
                         <TableCell className="py-4">
                           <div>
-                            <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/30 dark:text-blue-300 dark:border-blue-800">
+                            <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
                               {item.category}
                             </Badge>
                             {item.subCategory && (
-                              <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                              <div className="text-xs text-gray-500 mt-1">
                                 {item.subCategory}
                               </div>
                             )}
                           </div>
                         </TableCell>
                         <TableCell className="py-4">
-                          <Badge variant="secondary" className="bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/30 dark:text-purple-300 dark:border-purple-800">
+                          <Badge variant="secondary" className="bg-purple-50 text-purple-700 border-purple-200">
                             {item.storeLocation || item.store || 'No location'}
                           </Badge>
                         </TableCell>
                         <TableCell className="py-4">
                           <div>
-                            <div className="font-medium text-gray-900 dark:text-gray-100">{item.qty} {item.unit}</div>
-                            <div className="text-xs text-gray-500 dark:text-gray-400">
+                            <div className="font-medium text-gray-900">{item.qty} {item.unit}</div>
+                            <div className="text-xs text-gray-500">
                               Min: {item.minStock} {item.unit}
                             </div>
                           </div>
                         </TableCell>
                         <TableCell className="py-4">
-                          <span className="font-medium text-green-600 dark:text-green-400">
+                          <span className="font-medium text-green-600">
                             ₹{item.salePrice?.toLocaleString() || 0}
                           </span>
                         </TableCell>
@@ -808,8 +808,8 @@ export default function ModernInventoryUI() {
                             variant={(item.qty || 0) <= (item.minStock || 0) ? 'destructive' : 'default'}
                             className={
                               (item.qty || 0) <= (item.minStock || 0) 
-                                ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300' 
-                                : 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
+                                ? 'bg-red-100 text-red-800' 
+                                : 'bg-green-100 text-green-800'
                             }
                           >
                             {(item.qty || 0) <= (item.minStock || 0) ? 'Low Stock' : 'In Stock'}
@@ -821,7 +821,7 @@ export default function ModernInventoryUI() {
                               variant="ghost" 
                               size="sm" 
                               onClick={() => handleView(item)}
-                              className="h-8 w-8 p-0 hover:bg-blue-50 dark:hover:bg-blue-900/30"
+                              className="h-8 w-8 p-0 hover:bg-blue-50:bg-blue-900/30"
                               title="View Details"
                             >
                               <Eye className="h-4 w-4 text-blue-600" />
@@ -833,7 +833,7 @@ export default function ModernInventoryUI() {
                                     variant="ghost" 
                                     size="sm" 
                                     onClick={() => handleEdit(item)}
-                                    className="h-8 w-8 p-0 hover:bg-green-50 dark:hover:bg-green-900/30"
+                                    className="h-8 w-8 p-0 hover:bg-green-50:bg-green-900/30"
                                     title="Edit Item"
                                   >
                                     <Edit className="h-4 w-4 text-green-600" />
@@ -844,7 +844,7 @@ export default function ModernInventoryUI() {
                                     variant="ghost" 
                                     size="sm" 
                                     onClick={() => handleDelete(item)}
-                                    className="h-8 w-8 p-0 hover:bg-red-50 dark:hover:bg-red-900/30"
+                                    className="h-8 w-8 p-0 hover:bg-red-50:bg-red-900/30"
                                     title="Delete Item"
                                 >
                                   <Trash2 className="h-4 w-4 text-red-600" />

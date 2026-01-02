@@ -714,7 +714,7 @@ const CompanyForm = ({ company, onSubmit, isLoading, onCancel }) => {
       <div className="grid gap-4 py-4">
         {/* Company Information Section */}
         <div className="space-y-4">
-          <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100">Company Information</h4>
+          <h4 className="text-sm font-medium text-gray-900">Company Information</h4>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="unitName">Unit Name *</Label>
@@ -805,7 +805,7 @@ const CompanyForm = ({ company, onSubmit, isLoading, onCancel }) => {
 
         {/* Location Information Section */}
         <div className="space-y-4">
-          <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100">Location Information</h4>
+          <h4 className="text-sm font-medium text-gray-900">Location Information</h4>
           <div className="space-y-2">
             <Label htmlFor="address">Address</Label>
             <Input
@@ -859,7 +859,7 @@ const CompanyForm = ({ company, onSubmit, isLoading, onCancel }) => {
 
         {/* Legal Information Section */}
         <div className="space-y-4">
-          <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100">Legal Information</h4>
+          <h4 className="text-sm font-medium text-gray-900">Legal Information</h4>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="pan">PAN Number</Label>

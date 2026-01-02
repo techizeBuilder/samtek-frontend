@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useSettings } from '@/hooks/useSettings';
 import { Button } from '@/components/ui/button';
-import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { Badge } from '@/components/ui/badge';
 import {
   DropdownMenu,
@@ -38,7 +37,7 @@ export default function NavBar({ onSidebarToggle }) {
 
 
   return (
-    <nav className="h-16 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-b border-slate-200 dark:border-slate-700 px-6">
+    <nav className="h-16 bg-white/80 backdrop-blur-sm border-b border-slate-200 px-6">
       <div className="flex items-center justify-between h-full">
         {/* Left Section */}
         <div className="flex items-center space-x-4">
@@ -46,14 +45,14 @@ export default function NavBar({ onSidebarToggle }) {
             variant="ghost"
             size="sm"
             onClick={onSidebarToggle}
-            className="md:hidden text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+            className="md:hidden text-slate-600 hover:bg-slate-100:bg-slate-800"
           >
             <Menu className="h-5 w-5" />
           </Button>
           
           <div className="hidden md:flex items-center gap-3">
             {companyLogo ? (
-              <div className="w-8 h-8 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-600">
+              <div className="w-8 h-8 rounded-lg overflow-hidden border border-slate-200">
                 <img 
                   src={companyLogo} 
                   alt="Company Logo" 
@@ -62,8 +61,8 @@ export default function NavBar({ onSidebarToggle }) {
                     console.log('Logo load error:', e);
                     e.target.style.display = 'none';
                     e.target.parentElement.innerHTML = `
-                      <div class="w-full h-full bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center">
-                        <svg class="w-4 h-4 text-blue-600 dark:text-blue-400" fill="currentColor" viewBox="0 0 24 24">
+                      <div class="w-full h-full bg-blue-100 rounded-lg flex items-center justify-center">
+                        <svg class="w-4 h-4 text-blue-600" fill="currentColor" viewBox="0 0 24 24">
                           <path d="M12 2L2 7L12 12L22 7L12 2Z"></path>
                           <path d="M2 17L12 22L22 17"></path>
                           <path d="M2 12L12 17L22 12"></path>
@@ -74,11 +73,11 @@ export default function NavBar({ onSidebarToggle }) {
                 />
               </div>
             ) : (
-              <div className="w-8 h-8 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center">
-                <Building className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+              <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                <Building className="w-4 h-4 text-blue-600" />
               </div>
             )}
-            <h1 className="text-lg font-medium text-slate-900 dark:text-slate-100">
+            <h1 className="text-lg font-medium text-slate-900">
               {companyName}
             </h1>
           </div>
@@ -89,13 +88,10 @@ export default function NavBar({ onSidebarToggle }) {
           {/* Notifications */}
           <NotificationBell />
 
-          {/* Theme Toggle */}
-          <ThemeToggle />
-
           {/* User Menu */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="flex items-center space-x-2 px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800">
+              <Button variant="ghost" className="flex items-center space-x-2 px-3 py-2 rounded-lg hover:bg-slate-100:bg-slate-800">
                 <Avatar className="h-8 w-8">
                   <AvatarImage src={getProfileImageUrl(user?.profilePicture)} alt={user?.fullName || user?.username} />
                   <AvatarFallback className="bg-gradient-to-r from-blue-500 to-purple-600 text-white text-sm font-medium">
@@ -106,11 +102,11 @@ export default function NavBar({ onSidebarToggle }) {
                   </AvatarFallback>
                 </Avatar>
                 <div className="hidden md:block text-left">
-                  <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                  <p className="text-sm font-medium text-slate-900">
                     {user?.fullName || user?.username}
                   </p>
                 </div>
-                <ChevronDown className="h-4 w-4 text-slate-500 dark:text-slate-400" />
+                <ChevronDown className="h-4 w-4 text-slate-500" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent className="w-56" align="end" forceMount>
@@ -142,7 +138,7 @@ export default function NavBar({ onSidebarToggle }) {
               <DropdownMenuSeparator />
               <DropdownMenuItem 
                 onClick={logout} 
-                className="text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300"
+                className="text-red-600 hover:text-red-700:text-red-300"
               >
                 <LogOut className="mr-2 h-4 w-4" />
                 <span>Log out</span>

@@ -71,28 +71,28 @@ function UnitHeadStats({ stats, isLoading }) {
       value: totalItems,
       icon: Package2,
       color: 'text-blue-600',
-      bgColor: 'bg-blue-50 dark:bg-blue-900/20',
+      bgColor: 'bg-blue-50',
     },
     {
       title: 'Total Value',
       value: `₹${totalValue.toLocaleString()}`,
       icon: TrendingUp,
       color: 'text-green-600',
-      bgColor: 'bg-green-50 dark:bg-green-900/20',
+      bgColor: 'bg-green-50',
     },
     {
       title: 'Low Stock Items',
       value: lowStockItems,
       icon: AlertTriangle,
       color: 'text-red-600',
-      bgColor: 'bg-red-50 dark:bg-red-900/20',
+      bgColor: 'bg-red-50',
     },
     {
       title: 'Categories',
       value: totalCategories,
       icon: BarChart3,
       color: 'text-purple-600',
-      bgColor: 'bg-purple-50 dark:bg-purple-900/20',
+      bgColor: 'bg-purple-50',
     }
   ];
 
@@ -102,7 +102,7 @@ function UnitHeadStats({ stats, isLoading }) {
         {[...Array(4)].map((_, i) => (
           <Card key={i} className="animate-pulse">
             <CardContent className="p-4 sm:p-6">
-              <div className="h-12 sm:h-16 bg-gray-200 dark:bg-gray-700 rounded"></div>
+              <div className="h-12 sm:h-16 bg-gray-200 rounded"></div>
             </CardContent>
           </Card>
         ))}
@@ -289,17 +289,17 @@ export default function UnitHeadInventoryView() {
   };
 
   return (
-    <div className="w-full min-h-screen bg-gray-50/50 dark:bg-gray-900/50">
+    <div className="w-full min-h-screen bg-gray-50/50">
       <div className="w-full px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8 space-y-6">
         {/* Header */}
         <div className="flex flex-col space-y-4">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
           <div className="flex-1">
-            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2 sm:gap-3">
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 flex items-center gap-2 sm:gap-3">
               <Package className="h-6 w-6 sm:h-8 sm:w-8 text-blue-600 flex-shrink-0" />
               <span className="break-words">Inventory Monitor</span>
             </h1>
-            <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400 mt-2">
+            <p className="text-sm sm:text-base text-gray-600 mt-2">
               Monitor and view inventory items across all store locations (Read-only access)
             </p>
           </div>
@@ -307,7 +307,7 @@ export default function UnitHeadInventoryView() {
             <Button 
               onClick={handleRefresh} 
               variant="outline"
-              className="border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800"
+              className="border-gray-300 hover:bg-gray-50:bg-gray-800"
             >
               <RefreshCw className="h-4 w-4 mr-2" />
               Refresh
@@ -319,7 +319,7 @@ export default function UnitHeadInventoryView() {
         <UnitHeadStats stats={stats} isLoading={statsLoading} />
 
         {/* Search and Filters */}
-        <Card className="border-gray-200 dark:border-gray-700 shadow-sm">
+        <Card className="border-gray-200 shadow-sm">
           <CardContent className="p-4 sm:p-6">
             <div className="flex flex-col gap-4">
               <div className="w-full relative">
@@ -328,12 +328,12 @@ export default function UnitHeadInventoryView() {
                   placeholder="Search items by name, description, or store location..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10 border-gray-300 dark:border-gray-600 focus:border-blue-500 dark:focus:border-blue-400 text-sm sm:text-base"
+                  className="pl-10 border-gray-300 focus:border-blue-500:border-blue-400 text-sm sm:text-base"
                 />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 w-full">
                 <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-                  <SelectTrigger className="border-gray-300 dark:border-gray-600 focus:border-blue-500 dark:focus:border-blue-400">
+                  <SelectTrigger className="border-gray-300 focus:border-blue-500:border-blue-400">
                     <Filter className="h-4 w-4 mr-2 text-gray-400" />
                     <SelectValue placeholder="All Categories" />
                   </SelectTrigger>
@@ -355,7 +355,7 @@ export default function UnitHeadInventoryView() {
                   </SelectContent>
                 </Select>
                 <Select value={selectedStore} onValueChange={setSelectedStore}>
-                  <SelectTrigger className="border-gray-300 dark:border-gray-600 focus:border-blue-500 dark:focus:border-blue-400">
+                  <SelectTrigger className="border-gray-300 focus:border-blue-500:border-blue-400">
                     <Package2 className="h-4 w-4 mr-2 text-gray-400" />
                     <SelectValue placeholder="All Stores" />
                   </SelectTrigger>
@@ -387,7 +387,7 @@ export default function UnitHeadInventoryView() {
                   </SelectContent>
                 </Select>
                 <Select value={sortBy} onValueChange={setSortBy}>
-                  <SelectTrigger className="border-gray-300 dark:border-gray-600 focus:border-blue-500 dark:focus:border-blue-400">
+                  <SelectTrigger className="border-gray-300 focus:border-blue-500:border-blue-400">
                     <BarChart3 className="h-4 w-4 mr-2 text-gray-400" />
                     <SelectValue placeholder="Sort by" />
                   </SelectTrigger>
@@ -405,7 +405,7 @@ export default function UnitHeadInventoryView() {
         </Card>
 
         {/* Results Summary */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-sm text-gray-600 dark:text-gray-400">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-sm text-gray-600">
           <p className="text-xs sm:text-sm">
             Showing all {totalItems} items
             {searchTerm && ` for "${String(searchTerm)}"`}
@@ -413,20 +413,20 @@ export default function UnitHeadInventoryView() {
         </div>
 
         {/* Items Table */}
-        <Card className="border-gray-200 dark:border-gray-700 shadow-sm">
+        <Card className="border-gray-200 shadow-sm">
           <CardContent className="p-0">
             <div className="overflow-x-auto">
               <Table className="min-w-[800px] w-full">
                 <TableHeader>
-                  <TableRow className="bg-gray-50 dark:bg-gray-800/50">
-                    <TableHead className="font-semibold text-gray-900 dark:text-gray-100 w-16 sm:w-20">Image</TableHead>
-                    <TableHead className="font-semibold text-gray-900 dark:text-gray-100 min-w-[120px]">Name</TableHead>
-                    <TableHead className="font-semibold text-gray-900 dark:text-gray-100 min-w-[100px]">Category</TableHead>
-                    <TableHead className="font-semibold text-gray-900 dark:text-gray-100 min-w-[140px]">Store Location</TableHead>
-                    <TableHead className="font-semibold text-gray-900 dark:text-gray-100 min-w-[80px]">Stock</TableHead>
-                    <TableHead className="font-semibold text-gray-900 dark:text-gray-100 min-w-[80px]">Price</TableHead>
-                    <TableHead className="font-semibold text-gray-900 dark:text-gray-100 min-w-[80px]">Status</TableHead>
-                    <TableHead className="font-semibold text-gray-900 dark:text-gray-100 w-16">Action</TableHead>
+                  <TableRow className="bg-gray-50">
+                    <TableHead className="font-semibold text-gray-900 w-16 sm:w-20">Image</TableHead>
+                    <TableHead className="font-semibold text-gray-900 min-w-[120px]">Name</TableHead>
+                    <TableHead className="font-semibold text-gray-900 min-w-[100px]">Category</TableHead>
+                    <TableHead className="font-semibold text-gray-900 min-w-[140px]">Store Location</TableHead>
+                    <TableHead className="font-semibold text-gray-900 min-w-[80px]">Stock</TableHead>
+                    <TableHead className="font-semibold text-gray-900 min-w-[80px]">Price</TableHead>
+                    <TableHead className="font-semibold text-gray-900 min-w-[80px]">Status</TableHead>
+                    <TableHead className="font-semibold text-gray-900 w-16">Action</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -456,12 +456,12 @@ export default function UnitHeadInventoryView() {
                     (paginatedItems || []).map((item, index) => (
                       <TableRow 
                         key={item._id || `item-${index}`} 
-                        className={`hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors ${
-                          index % 2 === 0 ? 'bg-white dark:bg-gray-900' : 'bg-gray-50/50 dark:bg-gray-800/20'
+                        className={`hover:bg-gray-50:bg-gray-800/50 transition-colors ${
+                          index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
                         }`}
                       >
                         <TableCell className="py-3 px-2 sm:px-4">
-                          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-800 flex items-center justify-center flex-shrink-0">
+                          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg overflow-hidden bg-gray-100 flex items-center justify-center flex-shrink-0">
                             {item.image ? (
                               <img 
                                 src={item.image} 
@@ -478,37 +478,37 @@ export default function UnitHeadInventoryView() {
                         </TableCell>
                         <TableCell className="py-3 px-2 sm:px-4">
                           <div>
-                            <div className="font-medium text-gray-900 dark:text-gray-100 text-sm sm:text-base truncate max-w-[120px] sm:max-w-none">{item.name || 'Unknown Item'}</div>
-                            <div className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 truncate">{item.type || 'No type'}</div>
+                            <div className="font-medium text-gray-900 text-sm sm:text-base truncate max-w-[120px] sm:max-w-none">{item.name || 'Unknown Item'}</div>
+                            <div className="text-xs sm:text-sm text-gray-500 truncate">{item.type || 'No type'}</div>
                           </div>
                         </TableCell>
                         <TableCell className="py-3 px-2 sm:px-4">
                           <div>
-                            <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/30 dark:text-blue-300 dark:border-blue-800 text-xs">
+                            <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-xs">
                               {(item.category || 'Uncategorized').length > 12 ? (item.category || 'Uncategorized').substring(0, 12) + '...' : (item.category || 'Uncategorized')}
                             </Badge>
                             {item.subCategory && (
-                              <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">
+                              <div className="text-xs text-gray-500 mt-1 truncate">
                                 {item.subCategory.length > 15 ? item.subCategory.substring(0, 15) + '...' : item.subCategory}
                               </div>
                             )}
                           </div>
                         </TableCell>
                         <TableCell className="py-3 px-2 sm:px-4">
-                          <Badge variant="secondary" className="bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/30 dark:text-purple-300 dark:border-purple-800 text-xs max-w-[140px] truncate">
+                          <Badge variant="secondary" className="bg-purple-50 text-purple-700 border-purple-200 text-xs max-w-[140px] truncate">
                             {(item.storeLocation || item.store || 'No location').length > 20 ? (item.storeLocation || item.store || 'No location').substring(0, 20) + '...' : (item.storeLocation || item.store || 'No location')}
                           </Badge>
                         </TableCell>
                         <TableCell className="py-3 px-2 sm:px-4">
                           <div>
-                            <div className="font-medium text-gray-900 dark:text-gray-100 text-sm">{item.qty || 0} {(item.unit || 'units').substring(0, 4)}</div>
-                            <div className="text-xs text-gray-500 dark:text-gray-400">
+                            <div className="font-medium text-gray-900 text-sm">{item.qty || 0} {(item.unit || 'units').substring(0, 4)}</div>
+                            <div className="text-xs text-gray-500">
                               Min: {item.minStock || 0}
                             </div>
                           </div>
                         </TableCell>
                         <TableCell className="py-3 px-2 sm:px-4">
-                          <span className="font-medium text-green-600 dark:text-green-400 text-sm">
+                          <span className="font-medium text-green-600 text-sm">
                             ₹{typeof item.salePrice === 'number' ? (item.salePrice > 999 ? (item.salePrice/1000).toFixed(1) + 'K' : item.salePrice.toString()) : (item.salePrice || 0)}
                           </span>
                         </TableCell>
@@ -518,8 +518,8 @@ export default function UnitHeadInventoryView() {
                             className={
                               `text-xs ${
                                 (item.qty || 0) <= (item.minStock || 0) 
-                                  ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300' 
-                                  : 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
+                                  ? 'bg-red-100 text-red-800' 
+                                  : 'bg-green-100 text-green-800'
                               }`
                             }
                           >
@@ -531,7 +531,7 @@ export default function UnitHeadInventoryView() {
                             variant="ghost" 
                             size="sm" 
                             onClick={() => handleView(item)}
-                            className="h-6 w-6 sm:h-8 sm:w-8 p-0 hover:bg-blue-50 dark:hover:bg-blue-900/30"
+                            className="h-6 w-6 sm:h-8 sm:w-8 p-0 hover:bg-blue-50:bg-blue-900/30"
                             title="View Details"
                           >
                             <Eye className="h-3 w-3 sm:h-4 sm:w-4 text-blue-600" />

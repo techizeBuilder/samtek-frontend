@@ -97,6 +97,14 @@ const dispatchConsoleSchema = new mongoose.Schema({
   },
   
   // Additional tracking fields
+  dcno: {
+    type: String,
+    trim: true,
+    unique: true,
+    index: true,
+    match: /^DC\d{3,}$/,
+    uppercase: true
+  },
   batchNo: {
     type: String,
     trim: true
@@ -114,10 +122,58 @@ const dispatchConsoleSchema = new mongoose.Schema({
     type: Date
   },
   
+  // Delivery Challan specific fields
+  customerId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Customer'
+  },
+  orderId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Order'
+  },
+  indentQty: {
+    type: Number,
+    default: 0
+  },
+  qtyIssued: {
+    type: Number,
+    default: 0
+  },
+  approvedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  approvedAt: {
+    type: Date
+  },
+  invoiceGenerated: {
+    type: Boolean,
+    default: false
+  },
+  invoiceGeneratedAt: {
+    type: Date
+  },
+  vehicleNumber: {
+    type: String,
+    trim: true
+  },
+  transporterName: {
+    type: String,
+    trim: true
+  },
+  notes: {
+    type: String,
+    trim: true
+  },
+  unit: {
+    type: String,
+    trim: true
+  },
+  
   // Status and tracking
   status: {
     type: String,
-    enum: ['pending', 'updated', 'verified', 'dispatched', 'completed'],
+    enum: ['pending', 'updated', 'verified', 'dispatched', 'completed', 'approved'],
     default: 'pending',
     index: true
   },
@@ -212,6 +268,35 @@ dispatchConsoleSchema.pre('findOneAndUpdate', function(next) {
   
   next();
 });
+
+// Static method to generate next DCno
+dispatchConsoleSchema.statics.generateNextDCno = async function() {
+  try {
+    // Find the highest DCno in the database
+    const lastDispatch = await this.findOne(
+      { dcno: { $regex: /^DC\d+$/ } }, 
+      { dcno: 1 }
+    ).sort({ dcno: -1 });
+    
+    if (!lastDispatch || !lastDispatch.dcno) {
+      return 'DC001'; // First DCno
+    }
+    
+    // Extract number from DCno (e.g., "DC003" -> 3)
+    const lastNumber = parseInt(lastDispatch.dcno.substring(2));
+    
+    // Generate next number with zero padding
+    const nextNumber = lastNumber + 1;
+    const nextDCno = `DC${nextNumber.toString().padStart(3, '0')}`;
+    
+    return nextDCno;
+  } catch (error) {
+    console.error('Error generating DCno:', error);
+    // Fallback to timestamp-based DCno in case of error
+    const timestamp = Date.now().toString().slice(-6);
+    return `DC${timestamp}`;
+  }
+};
 
 // Static method to get dispatch summary for a date range
 dispatchConsoleSchema.statics.getDispatchSummary = async function(companyId, startDate, endDate) {

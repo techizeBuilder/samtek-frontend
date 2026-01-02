@@ -943,17 +943,20 @@ export const getDeliveryChallanData = async (req, res) => {
       select: 'productionGroupName batchNo'
     })
     .populate('company', 'name')
-    .select('productGroup productName totalIndentQuantityOrdersForTheDay batchNo packingSheetId')
+    .select('productGroup productName totalIndentQuantityOrdersForTheDay batchNo packingSheetId dcno qtyIssued status indentQty')
     .sort({ productGroup: 1, productName: 1 });
 
     console.log('📋 Found delivery challan entries:', deliveryChallanData.length);
 
-    // Format data to include only Product/Product Group and Indent Qty
+    // Format data to include DCno, Product/Product Group, Indent Qty and Qty Issued
     const formattedData = deliveryChallanData.map(entry => ({
       id: entry._id,
+      dcno: entry.dcno || 'N/A',
       productGroup: entry.productGroup,
       productName: entry.productName || entry.productGroup, // Fallback to productGroup if productName not available
-      indentQty: entry.totalIndentQuantityOrdersForTheDay || 0,
+      indentQty: entry.indentQty || entry.totalIndentQuantityOrdersForTheDay || 0,
+      qtyIssued: entry.qtyIssued || 0,
+      status: entry.status || 'pending',
       batchNo: entry.batchNo || entry.packingSheetId?.batchNo || 'N/A'
     }));
 
@@ -1002,6 +1005,604 @@ export const getDeliveryChallanData = async (req, res) => {
       success: false,
       message: 'Failed to fetch delivery challan data',
       error: error.message
+    });
+  }
+};
+
+// Update Qty Issued for Delivery Challan
+export const updateQtyIssued = async (req, res) => {
+  try {
+    const { dcNo, qtyIssued } = req.body;
+
+    if (!dcNo || qtyIssued === undefined) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'DC No and Qty Issued are required' 
+      });
+    }
+
+    // Find and update the dispatch record by DC No (note: field name is 'dcno' in DB)
+    const dispatch = await Dispatch.findOne({ dcno: dcNo });
+
+    if (!dispatch) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Delivery challan not found with DC No: ' + dcNo 
+      });
+    }
+
+    // Update qty issued
+    dispatch.qtyIssued = qtyIssued;
+    dispatch.updatedAt = new Date();
+    const updatedDispatch = await dispatch.save();
+
+    // Populate related data
+    await updatedDispatch.populate('productId', 'name code category unit');
+    await updatedDispatch.populate('customerId', 'name address phone email');
+
+    res.status(200).json({ 
+      success: true, 
+      message: 'Qty issued updated successfully',
+      data: updatedDispatch
+    });
+  } catch (error) {
+    console.error('Error in updateQtyIssued:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Internal server error',
+      error: error.message 
+    });
+  }
+};
+
+// Approve Product in Delivery Challan
+export const approveProduct = async (req, res) => {
+  try {
+    const { dcNo } = req.body;
+
+    if (!dcNo) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'DC No is required' 
+      });
+    }
+
+    // Find the dispatch record by DC No (note: field name is 'dcno' in DB)
+    const dispatch = await Dispatch.findOne({ dcno: dcNo });
+
+    if (!dispatch) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Delivery challan not found with DC No: ' + dcNo 
+      });
+    }
+
+    // Update status to approved
+    dispatch.status = 'approved';
+    dispatch.approvedAt = new Date();
+    dispatch.approvedBy = req.user?._id;
+    dispatch.updatedAt = new Date();
+    const updatedDispatch = await dispatch.save();
+
+    // Populate related data
+    await updatedDispatch.populate('productId', 'name code category unit');
+    await updatedDispatch.populate('customerId', 'name address phone email');
+
+    res.status(200).json({ 
+      success: true, 
+      message: 'Product approved successfully',
+      data: updatedDispatch
+    });
+  } catch (error) {
+    console.error('Error in approveProduct:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Internal server error',
+      error: error.message 
+    });
+  }
+};
+
+// Generate Invoice PDF for Delivery Challan
+export const generateInvoice = async (req, res) => {
+  try {
+    const { dcNo } = req.body;
+
+    if (!dcNo) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'DC No is required' 
+      });
+    }
+
+    // Import PDFKit dynamically
+    const PDFDocument = (await import('pdfkit')).default;
+
+    // Fetch delivery challan details with related data (note: field name is 'dcno' in DB)
+    const dispatch = await Dispatch.findOne({ dcno: dcNo })
+      .populate('productId', 'name code category unit')
+      .populate('company', 'name address phone email');
+
+    if (!dispatch) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Delivery challan not found with DC No: ' + dcNo 
+      });
+    }
+
+    // Check if approved
+    if (dispatch.status !== 'approved') {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Please approve the product before generating invoice' 
+      });
+    }
+
+    // Fetch customer and order information based on company and today's date
+    const Order = (await import('../models/Order.js')).default;
+    const Customer = (await import('../models/Customer.js')).default;
+    
+    // Find orders for today with this company and product
+    const today = new Date(dispatch.date);
+    const startOfDay = new Date(today.setHours(0, 0, 0, 0));
+    const endOfDay = new Date(today.setHours(23, 59, 59, 999));
+    
+    const orders = await Order.find({
+      companyId: dispatch.company,
+      orderDate: { $gte: startOfDay, $lte: endOfDay },
+      'products.product': dispatch.productId
+    })
+    .populate('customer', 'name address phone email customerCode')
+    .populate('salesPerson', 'fullName username')
+    .sort({ createdAt: -1 })
+    .limit(5);
+
+    // Get customer info from first order or use company info
+    let customerInfo = null;
+    let orderCount = 0;
+    let orderDetails = null;
+    
+    if (orders.length > 0) {
+      customerInfo = orders[0].customer;
+      orderDetails = orders[0];
+      // Count total orders for this customer
+      if (customerInfo) {
+        orderCount = await Order.countDocuments({ customer: customerInfo._id });
+      }
+    }
+    
+    // If no customer found, try to get any customer associated with this company
+    if (!customerInfo) {
+      const anyCustomer = await Customer.findOne({ companyId: dispatch.company });
+      if (anyCustomer) {
+        customerInfo = anyCustomer;
+      }
+    }
+
+    // Create PDF document
+    const doc = new PDFDocument({ margin: 50, size: 'A4' });
+    
+    // Set response headers for PDF download
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename=invoice-${dcNo}.pdf`);
+    
+    // Pipe PDF to response
+    doc.pipe(res);
+
+    // Add company header
+    doc.fontSize(22)
+       .font('Helvetica-Bold')
+       .text(dispatch.company?.name || 'SUNRISE BAKERY', { align: 'center' })
+       .fontSize(10)
+       .font('Helvetica')
+       .text('Premium Quality Bakery Products', { align: 'center' });
+    
+    if (dispatch.company?.address) {
+      doc.text(`Address: ${dispatch.company.address}`, { align: 'center' });
+    } else {
+      doc.text('Address: Your Company Address, City, State - PIN', { align: 'center' });
+    }
+    
+    if (dispatch.company?.phone) {
+      doc.text(`Phone: ${dispatch.company.phone} | Email: ${dispatch.company.email || 'info@sunrise.com'}`, { align: 'center' });
+    } else {
+      doc.text('Phone: +91 XXXXXXXXXX | Email: info@sunrise.com', { align: 'center' });
+    }
+    
+    doc.text('GSTIN: XXXXXXXXXXXX', { align: 'center' })
+       .moveDown(0.5);
+
+    // Add invoice title
+    doc.fontSize(18)
+       .font('Helvetica-Bold')
+       .text('DELIVERY INVOICE', { align: 'center' })
+       .moveDown(0.5);
+
+    // Add horizontal line
+    doc.moveTo(50, doc.y)
+       .lineTo(550, doc.y)
+       .stroke()
+       .moveDown(0.5);
+
+    // Invoice details - Left side
+    const leftColumn = 50;
+    const rightColumn = 320;
+    let yPosition = doc.y;
+
+    doc.fontSize(11)
+       .font('Helvetica-Bold')
+       .text('Invoice Details:', leftColumn, yPosition);
+    
+    yPosition += 18;
+    doc.font('Helvetica')
+       .text(`DC No: `, leftColumn, yPosition, { continued: true })
+       .font('Helvetica-Bold')
+       .text(`${dispatch.dcNo || dcNo}`);
+    
+    yPosition += 15;
+    doc.font('Helvetica')
+       .text(`Invoice Date: ${new Date().toLocaleDateString('en-IN')}`, leftColumn, yPosition);
+    
+    yPosition += 15;
+    doc.text(`Dispatch Date: ${new Date(dispatch.createdAt).toLocaleDateString('en-IN')}`, leftColumn, yPosition);
+    
+    yPosition += 15;
+    doc.font('Helvetica-Bold')
+       .fillColor('#228B22')
+       .text(`Status: ${dispatch.status.toUpperCase()}`, leftColumn, yPosition)
+       .fillColor('#000000');
+
+    if (dispatch.orderId?.orderNo) {
+      yPosition += 15;
+      doc.font('Helvetica')
+         .text(`Order No: ${dispatch.orderId.orderNo}`, leftColumn, yPosition);
+    } else if (orderDetails?.orderCode) {
+      yPosition += 15;
+      doc.font('Helvetica')
+         .text(`Order No: ${orderDetails.orderCode}`, leftColumn, yPosition);
+    }
+
+    // Customer details - Right side
+    yPosition = doc.y - 90;
+    doc.font('Helvetica-Bold')
+       .text('Bill To:', rightColumn, yPosition);
+    
+    yPosition += 18;
+    doc.font('Helvetica-Bold')
+       .fontSize(11)
+       .text(`${customerInfo?.name || dispatch.company?.name || 'Walk-in Customer'}`, rightColumn, yPosition);
+    
+    yPosition += 15;
+    doc.font('Helvetica')
+       .fontSize(10);
+    
+    if (customerInfo?.customerCode) {
+      doc.text(`Customer Code: ${customerInfo.customerCode}`, rightColumn, yPosition);
+      yPosition += 15;
+    }
+    
+    if (customerInfo?.address) {
+      doc.text(`Address: ${customerInfo.address}`, rightColumn, yPosition, { width: 230 });
+      yPosition += 25;
+    }
+    
+    if (customerInfo?.phone) {
+      doc.text(`Phone: ${customerInfo.phone}`, rightColumn, yPosition);
+      yPosition += 15;
+    }
+
+    if (customerInfo?.email) {
+      doc.text(`Email: ${customerInfo.email}`, rightColumn, yPosition);
+      yPosition += 15;
+    }
+
+    // Order information
+    if (orderCount > 0) {
+      doc.font('Helvetica-Bold')
+         .text(`Total Orders: ${orderCount}`, rightColumn, yPosition);
+      yPosition += 15;
+    }
+
+    if (orders.length > 0) {
+      doc.font('Helvetica')
+         .text(`Today's Orders: ${orders.length}`, rightColumn, yPosition);
+    }
+
+    doc.moveDown(1);
+
+    // Add horizontal line
+    doc.moveTo(50, doc.y)
+       .lineTo(550, doc.y)
+       .stroke()
+       .moveDown(0.5);
+
+    // Product table header
+    const tableTop = doc.y;
+    doc.fontSize(10)
+       .font('Helvetica-Bold')
+       .fillColor('#000000');
+
+    // Table headers with borders
+    doc.rect(50, tableTop - 5, 500, 20).stroke();
+    
+    doc.text('S.No', 55, tableTop, { width: 30 });
+    doc.text('Product Name / Group', 100, tableTop, { width: 180 });
+    doc.text('Batch No', 290, tableTop, { width: 70 });
+    doc.text('Indent Qty', 370, tableTop, { width: 80, align: 'center' });
+    doc.text('Issued Qty', 460, tableTop, { width: 80, align: 'center' });
+
+    // Product details
+    let productY = tableTop + 25;
+    doc.fontSize(10)
+       .font('Helvetica');
+
+    // Draw row border
+    doc.rect(50, productY - 5, 500, 45).stroke();
+
+    doc.text('1', 55, productY, { width: 30 });
+    
+    const productName = dispatch.productId?.name || dispatch.productName || 'N/A';
+    const productGroup = dispatch.productGroup || '';
+    
+    doc.text(productName, 100, productY, { width: 180 });
+    if (productGroup) {
+      doc.fontSize(8)
+         .fillColor('#666666')
+         .text(productGroup, 100, productY + 12, { width: 180 })
+         .fillColor('#000000')
+         .fontSize(10);
+    }
+    
+    doc.text(dispatch.batchNo || 'N/A', 290, productY, { width: 70 });
+    doc.text((dispatch.indentQty || dispatch.totalIndentQuantityOrdersForTheDay || 0).toString(), 370, productY, { width: 80, align: 'center' });
+    doc.font('Helvetica-Bold')
+       .text((dispatch.qtyIssued || 0).toString(), 460, productY, { width: 80, align: 'center' });
+
+    doc.font('Helvetica');
+    productY += 45;
+
+    doc.moveDown(0.5);
+
+    // Summary section
+    const summaryY = productY + 10;
+    doc.fontSize(10)
+       .font('Helvetica-Bold')
+       .text('Summary:', leftColumn, summaryY);
+    
+    doc.font('Helvetica')
+       .text(`Total Indent Quantity: ${dispatch.indentQty || dispatch.totalIndentQuantityOrdersForTheDay || 0}`, leftColumn, summaryY + 20);
+    
+    doc.font('Helvetica-Bold')
+       .text(`Total Issued Quantity: ${dispatch.qtyIssued || 0}`, leftColumn, summaryY + 35);
+
+    // Additional information
+    doc.moveDown(1);
+    doc.fontSize(9)
+       .font('Helvetica')
+       .text('Additional Information:', leftColumn, doc.y);
+    
+    doc.moveDown(0.3);
+    
+    if (dispatch.unit) {
+      doc.text(`Unit: ${dispatch.unit}`, leftColumn);
+    }
+    
+    if (dispatch.vehicleNumber) {
+      doc.moveDown(0.3);
+      doc.text(`Vehicle Number: ${dispatch.vehicleNumber}`, leftColumn);
+    }
+
+    if (dispatch.transporterName) {
+      doc.moveDown(0.3);
+      doc.text(`Transporter: ${dispatch.transporterName}`, leftColumn);
+    }
+    
+    if (dispatch.notes) {
+      doc.moveDown(0.5);
+      doc.text(`Notes: ${dispatch.notes}`, leftColumn, doc.y, { width: 500 });
+    }
+
+    // Terms and conditions
+    doc.moveDown(1);
+    doc.fontSize(8)
+       .font('Helvetica-Bold')
+       .text('Terms & Conditions:', leftColumn, doc.y);
+    
+    doc.font('Helvetica')
+       .fontSize(7)
+       .text('1. All goods once sold are not returnable.', leftColumn, doc.y + 8)
+       .text('2. Delivery subject to availability.', leftColumn, doc.y + 13)
+       .text('3. Disputes if any subject to local jurisdiction.', leftColumn, doc.y + 18);
+
+    // Footer with signature
+    doc.moveDown(1.5);
+    
+    const footerY = doc.y;
+    
+    // Authorized Signature - Left
+    doc.fontSize(9)
+       .font('Helvetica')
+       .text('Received By:', leftColumn, footerY)
+       .moveTo(leftColumn, footerY + 50)
+       .lineTo(leftColumn + 150, footerY + 50)
+       .stroke()
+       .text('Customer Signature', leftColumn, footerY + 55);
+
+    // Company Signature - Right
+    doc.text('For Sunrise Bakery:', rightColumn + 80, footerY)
+       .moveTo(rightColumn + 80, footerY + 50)
+       .lineTo(rightColumn + 230, footerY + 50)
+       .stroke()
+       .text('Authorized Signatory', rightColumn + 80, footerY + 55);
+
+    // Bottom border line
+    doc.moveDown(1);
+    doc.moveTo(50, doc.y)
+       .lineTo(550, doc.y)
+       .stroke();
+
+    // Computer generated invoice note
+    doc.moveDown(0.5);
+    doc.fontSize(7)
+       .font('Helvetica-Oblique')
+       .fillColor('#666666')
+       .text(`This is a computer generated invoice and does not require a signature. Generated on: ${new Date().toLocaleString('en-IN')}`, { align: 'center' });
+
+    // Finalize PDF
+    doc.end();
+
+    // Update invoice generated status in database
+    dispatch.invoiceGenerated = true;
+    dispatch.invoiceGeneratedAt = new Date();
+    dispatch.updatedAt = new Date();
+    await dispatch.save();
+
+  } catch (error) {
+    console.error('Error in generateInvoice:', error);
+    
+    // Check if response headers are already sent
+    if (!res.headersSent) {
+      res.status(500).json({ 
+        success: false, 
+        message: 'Failed to generate invoice',
+        error: error.message 
+      });
+    }
+  }
+};
+
+// Get Next DC Number
+export const getNextDCNumber = async (req, res) => {
+  try {
+    // Use the static method from Dispatch model to generate next DCno
+    const nextDCno = await Dispatch.generateNextDCno();
+
+    res.status(200).json({ 
+      success: true, 
+      dcNo: nextDCno
+    });
+  } catch (error) {
+    console.error('Error getting next DC number:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to generate DC number',
+      error: error.message 
+    });
+  }
+};
+
+// Create Dispatch Order from Delivery Challan
+export const createDispatchOrder = async (req, res) => {
+  try {
+    const { dcNo, salesmanId, customerId, by, to } = req.body;
+
+    // Validate required fields
+    if (!salesmanId || !customerId) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Salesman and customer are required' 
+      });
+    }
+
+    // Import required models
+    const User = (await import('../models/User.js')).default;
+    const Company = (await import('../models/Company.js')).default;
+
+    // Verify salesman exists
+    const salesman = await User.findById(salesmanId);
+    if (!salesman) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Salesman not found' 
+      });
+    }
+
+    // Verify customer exists
+    const customer = await Customer.findById(customerId);
+    if (!customer) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Customer not found' 
+      });
+    }
+
+    // Get today's date range
+    const today = new Date();
+    const startOfDay = new Date(today.setHours(0, 0, 0, 0));
+    const endOfDay = new Date(today.setHours(23, 59, 59, 999));
+
+    // Find today's orders for this customer
+    const orders = await Order.find({
+      customer: customerId,
+      orderDate: { $gte: startOfDay, $lte: endOfDay }
+    })
+    .populate('products.product', 'name code category productGroup')
+    .populate('companyId', 'name');
+
+    if (!orders || orders.length === 0) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'No orders found for this customer today' 
+      });
+    }
+
+    // Generate DC number if not provided
+    const finalDCNo = dcNo || await Dispatch.generateNextDCno();
+
+    // Create dispatch entries for each product in the orders
+    const dispatchEntries = [];
+    for (const order of orders) {
+      for (const productItem of order.products) {
+        const existingDispatch = await Dispatch.findOne({
+          dcno: finalDCNo,
+          productId: productItem.product._id,
+          company: order.companyId
+        });
+
+        if (!existingDispatch) {
+          const dispatchEntry = new Dispatch({
+            dcno: finalDCNo,
+            dcNo: finalDCNo,
+            orderId: order._id,
+            productId: productItem.product._id,
+            productName: productItem.product.name,
+            productGroup: productItem.product.productGroup || productItem.product.category,
+            company: order.companyId,
+            indentQty: productItem.quantity,
+            totalIndentQuantityOrdersForTheDay: productItem.quantity,
+            qtyIssued: 0,
+            status: 'pending',
+            date: new Date(),
+            salesPerson: salesmanId,
+            customer: customerId,
+            by: by || salesman.fullName || salesman.username,
+            to: to || customer.name,
+            createdBy: req.user.id,
+            lastUpdatedBy: req.user.id,
+            createdAt: new Date(),
+            updatedAt: new Date()
+          });
+
+          await dispatchEntry.save();
+          dispatchEntries.push(dispatchEntry);
+        }
+      }
+    }
+
+    res.status(201).json({ 
+      success: true, 
+      message: `Dispatch order created successfully with DC No: ${finalDCNo}`,
+      dcNo: finalDCNo,
+      dispatchCount: dispatchEntries.length,
+      dispatches: dispatchEntries
+    });
+
+  } catch (error) {
+    console.error('Error creating dispatch order:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to create dispatch order',
+      error: error.message 
     });
   }
 };

@@ -49,10 +49,10 @@ export default function DeleteConfirmModal({ isOpen, onClose, user, onDelete }) 
             <p>
               Are you sure you want to delete <strong>{user?.fullName || user?.username}</strong>?
             </p>
-            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3 mt-3">
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3 mt-3">
               <div className="flex items-start space-x-2">
                 <AlertTriangle className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" />
-                <div className="text-sm text-red-700 dark:text-red-400">
+                <div className="text-sm text-red-700">
                   <p className="font-medium">This action cannot be undone.</p>
                   <p>All user data, permissions, and access will be permanently removed.</p>
                 </div>

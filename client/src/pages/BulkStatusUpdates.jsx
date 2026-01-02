@@ -5,7 +5,7 @@ export default function BulkStatusUpdates() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">
+        <h1 className="text-3xl font-bold text-gray-900">
           Bulk Status Updates
         </h1>
       </div>
@@ -15,7 +15,7 @@ export default function BulkStatusUpdates() {
           <CardTitle>Bulk Status Updates</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-gray-600 dark:text-gray-400">
+          <p className="text-gray-600">
             Perform bulk status updates on multiple records from this page.
           </p>
         </CardContent>

@@ -61,11 +61,14 @@ export default function DeliveryChallan() {
     to: '',
     by: ''
   });
+  const [nextDCNumber, setNextDCNumber] = useState('');
+  const [loadingDCNumber, setLoadingDCNumber] = useState(false);
 
   useEffect(() => {
     fetchDeliveryChallanData();
     fetchSalespeople();
     fetchCustomers();
+    fetchNextDCNumber();
   }, []);
 
   // Fetch customers when salesperson changes
@@ -229,6 +232,246 @@ export default function DeliveryChallan() {
     }
   };
 
+  const fetchNextDCNumber = async () => {
+    try {
+      setLoadingDCNumber(true);
+      const response = await fetch(`${config.baseURL}/api/dispatches/next-dc-number`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch next DC number');
+      }
+
+      const result = await response.json();
+      
+      if (result.success) {
+        setNextDCNumber(result.dcNo);
+        setFormData(prev => ({ ...prev, manualEntryNo: result.dcNo }));
+      }
+    } catch (error) {
+      console.error('Error fetching next DC number:', error);
+      toast({
+        title: "Error",
+        description: "Failed to fetch next DC number",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingDCNumber(false);
+    }
+  };
+
+  // Handle Qty Issued change
+  const handleQtyIssuedChange = (dcNo, value) => {
+    setDeliveryData(prev => prev.map(item => 
+      item.dcno === dcNo ? { ...item, qtyIssued: value } : item
+    ));
+  };
+
+  // Update Qty Issued API call
+  const updateQtyIssued = async (dcNo, qtyIssued) => {
+    try {
+      if (!qtyIssued || qtyIssued <= 0) {
+        return;
+      }
+
+      const response = await fetch(`${config.baseURL}/api/dispatches/update-qty-issued`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ dcNo, qtyIssued: Number(qtyIssued) })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update qty issued');
+      }
+
+      const result = await response.json();
+      
+      if (result.success) {
+        toast({
+          title: "Updated",
+          description: "Qty issued updated successfully",
+        });
+        
+        // Auto-refresh the entire list to show updated data
+        await fetchDeliveryChallanData();
+      }
+    } catch (error) {
+      console.error('Error updating qty issued:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update qty issued",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Handle Approve
+  const handleApprove = async (dcNo) => {
+    try {
+      const response = await fetch(`${config.baseURL}/api/dispatches/approve-product`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ dcNo })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to approve product');
+      }
+
+      const result = await response.json();
+      
+      if (result.success) {
+        toast({
+          title: "Approved",
+          description: "Product approved successfully",
+        });
+        
+        // Auto-refresh the entire list to show updated data
+        await fetchDeliveryChallanData();
+      }
+    } catch (error) {
+      console.error('Error approving product:', error);
+      toast({
+        title: "Error",
+        description: "Failed to approve product",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Handle Generate Invoice
+  const handleGenerateInvoice = async (dcNo) => {
+    try {
+      const response = await fetch(`${config.baseURL}/api/dispatches/generate-invoice`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ dcNo })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate invoice');
+      }
+
+      // Get the PDF blob
+      const blob = await response.blob();
+      
+      // Create a download link
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `invoice-${dcNo}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+
+      toast({
+        title: "Invoice Generated",
+        description: "Invoice PDF downloaded successfully",
+      });
+
+      // Auto-refresh the entire list to show updated data
+      await fetchDeliveryChallanData();
+    } catch (error) {
+      console.error('Error generating invoice:', error);
+      toast({
+        title: "Error",
+        description: "Failed to generate invoice",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Handle Dispatch Order
+  const handleDispatchOrder = async () => {
+    try {
+      // Validate form data
+      if (!formData.salesmanName) {
+        toast({
+          title: "Validation Error",
+          description: "Please select a salesman",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (!formData.customerName) {
+        toast({
+          title: "Validation Error",
+          description: "Please select a customer",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      setLoading(true);
+
+      const response = await fetch(`${config.baseURL}/api/dispatches/create-dispatch-order`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          dcNo: nextDCNumber,
+          salesmanId: formData.salesmanName,
+          customerId: formData.customerName,
+          by: formData.by,
+          to: formData.to
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to create dispatch order');
+      }
+
+      const result = await response.json();
+      
+      if (result.success) {
+        toast({
+          title: "Dispatch Created",
+          description: "Dispatch order created successfully",
+        });
+        
+        // Reset form and fetch new data
+        setFormData({
+          manualEntryNo: '',
+          customerName: '',
+          salesmanName: '',
+          dcNo: '',
+          to: '',
+          by: ''
+        });
+        setCustomerSearchTerm('');
+        setSalesmanSearchTerm('');
+        await fetchNextDCNumber();
+        await fetchDeliveryChallanData();
+      }
+    } catch (error) {
+      console.error('Error creating dispatch order:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create dispatch order",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="p-6 max-w-8xl mx-auto space-y-6">
       {/* Header with Statistics */}
@@ -249,15 +492,21 @@ export default function DeliveryChallan() {
         {/* First Row - Manual Entry Section */}
         <div className="grid grid-cols-5 border-b border-gray-800">
           <div className="border-r border-gray-800 p-3 bg-gray-50">
-            <div className="text-center font-medium text-sm">
-             DC Number
+            <div className="text-center font-medium text-sm mb-2">
+              DC Number
             </div>
-            <Input
-              className="mt-2"
-              placeholder="Enter entry number"
-              value={formData.manualEntryNo}
-              onChange={(e) => setFormData(prev => ({ ...prev, manualEntryNo: e.target.value }))}
-            />
+            <div className="relative">
+              <Input
+                className="text-center bg-blue-50 font-semibold cursor-not-allowed"
+                value={loadingDCNumber ? 'Loading...' : nextDCNumber}
+                readOnly
+                disabled
+                title="Auto-generated DC Number (Cannot be edited)"
+              />
+              <div className="text-xs text-gray-500 text-center mt-1">
+                Auto-generated DCno will be used
+              </div>
+            </div>
           </div>
           
        <div className="border-r border-gray-800 p-3 bg-gray-50">
@@ -366,11 +615,15 @@ export default function DeliveryChallan() {
 
           <div className="border-r border-gray-800 p-3 bg-gray-50">
             <div className="text-center font-medium text-sm mb-2">
-              give button Option
+              Dispatch Action
             </div>
-            <Button className="w-full bg-blue-600 hover:bg-blue-700 text-sm">
+            <Button 
+              className="w-full bg-blue-600 hover:bg-blue-700 text-sm"
+              onClick={handleDispatchOrder}
+              disabled={loading || !formData.salesmanName || !formData.customerName}
+            >
               <Truck className="h-4 w-4 mr-2" />
-              Dispatch
+              {loading ? 'Processing...' : 'Dispatch'}
             </Button>
           </div>
 
@@ -389,7 +642,7 @@ export default function DeliveryChallan() {
           {/* Table Header */}
           <div className="grid grid-cols-5 bg-yellow-300 border-b border-gray-800">
             <div className="border-r border-gray-800 p-3 text-center font-medium">
-              DV No
+              DC No
             </div>
             <div className="border-r border-gray-800 p-3 text-center font-medium">
               Product Name / Product Group
@@ -419,7 +672,11 @@ export default function DeliveryChallan() {
           ) : (
             deliveryData.map((item) => (
               <div key={item.id} className="grid grid-cols-5 border-b border-gray-800 hover:bg-gray-50">
-                <div className="border-r border-gray-800 p-3 text-center text-gray-600">{item.batchNo}</div>
+                <div className="border-r border-gray-800 p-3 text-center">
+                  <Badge variant="outline" className="bg-blue-50 text-blue-700 font-mono">
+                    {item.dcno || 'N/A'}
+                  </Badge>
+                </div>
                 <div className="border-r border-gray-800 p-3">
                   <div className="font-medium">{item.productName}</div>
                   <div className="text-sm text-blue-600 mt-1">
@@ -440,6 +697,9 @@ export default function DeliveryChallan() {
                     className="text-center"
                     min="0"
                     max={item.indentQty}
+                    value={item.qtyIssued || ''}
+                    onChange={(e) => handleQtyIssuedChange(item.dcno, e.target.value)}
+                    onBlur={(e) => updateQtyIssued(item.dcno, e.target.value)}
                   />
                 </div>
                 <div className="p-3">
@@ -447,25 +707,17 @@ export default function DeliveryChallan() {
                     <Button 
                       size="sm" 
                       className="bg-green-600 hover:bg-green-700 text-xs px-2 py-1"
-                      onClick={() => {
-                        toast({
-                          title: "Approved",
-                          description: `${item.productName} approved successfully`,
-                        });
-                      }}
+                      onClick={() => handleApprove(item.dcno)}
+                      disabled={!item.qtyIssued || item.status === 'approved'}
                     >
-                      Approve
+                      {item.status === 'approved' ? 'Approved' : 'Approve'}
                     </Button>
                     <Button 
                       size="sm" 
                       variant="outline"
                       className="border-blue-600 text-blue-600 hover:bg-blue-50 text-xs px-2 py-1"
-                      onClick={() => {
-                        toast({
-                          title: "Invoice Generated",
-                          description: `Invoice created for ${item.productName}`,
-                        });
-                      }}
+                      onClick={() => handleGenerateInvoice(item.dcno)}
+                      disabled={item.status !== 'approved'}
                     >
                       Invoice
                     </Button>

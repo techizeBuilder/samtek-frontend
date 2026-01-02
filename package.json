@@ -72,6 +72,7 @@
     "openid-client": "^6.6.2",
     "passport": "^0.7.0",
     "passport-local": "^1.0.0",
+    "pdfkit": "^0.17.2",
     "pusher": "^5.2.0",
     "pusher-js": "^8.4.0",
     "react": "^18.3.1",

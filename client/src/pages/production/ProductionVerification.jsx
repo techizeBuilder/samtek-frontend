@@ -192,8 +192,8 @@ export default function ProductionVerification() {
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Production Verification & Approval</h1>
-          <p className="text-gray-600 dark:text-gray-400">Verify and approve completed production batches</p>
+          <h1 className="text-3xl font-bold text-gray-900">Production Verification & Approval</h1>
+          <p className="text-gray-600">Verify and approve completed production batches</p>
         </div>
       </div>
 

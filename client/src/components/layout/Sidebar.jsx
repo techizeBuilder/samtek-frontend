@@ -8,7 +8,6 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
-import { ThemeToggle } from '@/components/ui/theme-toggle';
 import {
   LayoutDashboard,
   Cog,
@@ -516,16 +515,16 @@ export default function Sidebar({ isOpen, onClose }) {
 
       {/* Sidebar */}
       <aside className={cn(
-        "fixed inset-y-0 left-0 z-50 w-80 sm:w-72 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm shadow-xl border-r border-slate-200 dark:border-slate-700 transition-all duration-300 ease-in-out md:translate-x-0",
+        "fixed inset-y-0 left-0 z-50 w-80 sm:w-72 bg-white/95 backdrop-blur-sm shadow-xl border-r border-slate-200 transition-all duration-300 ease-in-out md:translate-x-0",
         isOpen ? "translate-x-0" : "-translate-x-full"
       )}>
         <div className="flex flex-col h-full">
           {/* Logo and Company Name */}
-          <div className="flex items-center justify-between h-16 px-4 sm:px-6 border-b border-slate-200 dark:border-slate-700">
+          <div className="flex items-center justify-between h-16 px-4 sm:px-6 border-b border-slate-200">
             <div className="flex items-center space-x-2 sm:space-x-3 min-w-0">
               <div className="relative flex-shrink-0">
                 {companyLogo ? (
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl overflow-hidden shadow-lg transform hover:scale-110 transition-transform duration-200 border border-slate-200 dark:border-slate-600">
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl overflow-hidden shadow-lg transform hover:scale-110 transition-transform duration-200 border border-slate-200">
                     <img 
                       src={companyLogo} 
                       alt="Company Logo" 
@@ -556,13 +555,13 @@ export default function Sidebar({ isOpen, onClose }) {
                 <span className="text-lg sm:text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent truncate block">
                   {companyName}
                 </span>
-                <p className="text-xs text-slate-500 dark:text-slate-400 hidden sm:block">Enterprise Suite</p>
+                <p className="text-xs text-slate-500 hidden sm:block">Enterprise Suite</p>
               </div>
             </div>
             <Button
               variant="ghost"
               size="sm"
-              className="md:hidden text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full w-8 h-8"
+              className="md:hidden text-slate-600 hover:bg-slate-100:bg-slate-800 rounded-full w-8 h-8"
               onClick={onClose}
             >
               ×
@@ -594,7 +593,7 @@ export default function Sidebar({ isOpen, onClose }) {
                           variant="ghost"
                           className={cn(
                             "w-full justify-start h-12 sm:h-12 px-3 sm:px-4 transition-all duration-200 group relative overflow-hidden",
-                            "text-slate-700 dark:text-slate-300 hover:bg-gradient-to-r hover:from-blue-50 hover:to-purple-50 dark:hover:from-blue-900/20 dark:hover:to-purple-900/20 hover:text-slate-900 dark:hover:text-slate-100"
+                            "text-slate-700 hover:bg-gradient-to-r hover:from-blue-50 hover:to-purple-50:from-blue-900/20:to-purple-900/20 hover:text-slate-900:text-slate-100"
                           )}
                           onClick={(e) => {
                             e.preventDefault();
@@ -623,7 +622,7 @@ export default function Sidebar({ isOpen, onClose }) {
                                 "w-full justify-start h-12 sm:h-12 px-3 sm:px-4 transition-all duration-200 group relative overflow-hidden",
                                 isActive
                                   ? "bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg hover:shadow-xl transform hover:scale-[1.02]"
-                                  : "text-slate-700 dark:text-slate-300 hover:bg-gradient-to-r hover:from-blue-50 hover:to-purple-50 dark:hover:from-blue-900/20 dark:hover:to-purple-900/20 hover:text-slate-900 dark:hover:text-slate-100"
+                                  : "text-slate-700 hover:bg-gradient-to-r hover:from-blue-50 hover:to-purple-50:from-blue-900/20:to-purple-900/20 hover:text-slate-900:text-slate-100"
                               )}
                               onClick={onClose}
                             >
@@ -676,8 +675,8 @@ export default function Sidebar({ isOpen, onClose }) {
                                   className={cn(
                                     "w-full justify-start h-9 sm:h-9 px-2 sm:px-3 transition-all duration-200",
                                     isSubActive
-                                      ? "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
-                                      : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+                                      ? "bg-blue-100 text-blue-800"
+                                      : "text-slate-600 hover:bg-slate-100:bg-slate-800"
                                   )}
                                   onClick={onClose}
                                 >
@@ -701,7 +700,7 @@ export default function Sidebar({ isOpen, onClose }) {
                     "w-full justify-start h-12 px-4 transition-all duration-200 group relative overflow-hidden",
                     location === '/profile'
                       ? "bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg hover:shadow-xl transform hover:scale-[1.02]"
-                      : "text-slate-700 dark:text-slate-300 hover:bg-gradient-to-r hover:from-blue-50 hover:to-purple-50 dark:hover:from-blue-900/20 dark:hover:to-purple-900/20 hover:text-slate-900 dark:hover:text-slate-100"
+                      : "text-slate-700 hover:bg-gradient-to-r hover:from-blue-50 hover:to-purple-50:from-blue-900/20:to-purple-900/20 hover:text-slate-900:text-slate-100"
                   )}
                   onClick={onClose}
                 >
@@ -719,10 +718,10 @@ export default function Sidebar({ isOpen, onClose }) {
           </ScrollArea>
 
           {/* Logout */}
-          <div className="p-4 border-t border-slate-200 dark:border-slate-700">
+          <div className="p-4 border-t border-slate-200">
             <Button
               variant="ghost"
-              className="w-full justify-start text-slate-700 dark:text-slate-300 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400 transition-colors duration-200"
+              className="w-full justify-start text-slate-700 hover:bg-red-50 hover:text-red-600:bg-red-900/20:text-red-400 transition-colors duration-200"
               onClick={handleLogout}
             >
               <LogOut className="w-5 h-5 mr-3" />

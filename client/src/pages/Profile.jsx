@@ -219,13 +219,13 @@ export default function Profile() {
 
   const getRoleColor = (role) => {
     switch (role) {
-      case 'Super User': return 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200';
-      case 'Unit Head': return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
-      case 'Production': return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
-      case 'Packing': return 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200';
-      case 'Dispatch': return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
-      case 'Accounts': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
-      default: return 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200';
+      case 'Super User': return 'bg-purple-100 text-purple-800';
+      case 'Unit Head': return 'bg-blue-100 text-blue-800';
+      case 'Production': return 'bg-green-100 text-green-800';
+      case 'Packing': return 'bg-orange-100 text-orange-800';
+      case 'Dispatch': return 'bg-red-100 text-red-800';
+      case 'Accounts': return 'bg-yellow-100 text-yellow-800';
+      default: return 'bg-gray-100 text-gray-800';
     }
   };
 
@@ -241,8 +241,8 @@ export default function Profile() {
     <div className="max-w-4xl mx-auto space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Profile Settings</h1>
-        <p className="text-gray-600 dark:text-gray-400">Manage your account settings and preferences</p>
+        <h1 className="text-3xl font-bold text-gray-900">Profile Settings</h1>
+        <p className="text-gray-600">Manage your account settings and preferences</p>
       </div>
 
       {/* Profile Information Card */}
@@ -283,7 +283,7 @@ export default function Profile() {
             </div>
             <div>
               <h3 className="text-lg font-semibold">{profile?.fullName || user?.fullName || profile?.username || user?.username}</h3>
-              <p className="text-gray-600 dark:text-gray-400">{profile?.email || user?.email}</p>
+              <p className="text-gray-600">{profile?.email || user?.email}</p>
               <div className="flex items-center gap-2 mt-2">
                 <Badge className={getRoleColor(profile?.role || user?.role)}>
                   {profile?.role || user?.role}

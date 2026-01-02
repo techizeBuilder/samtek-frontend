@@ -267,15 +267,15 @@ export default function Companies() {
                     <TableRow key={company._id}>
                       <TableCell>
                         <div>
-                          <div className="font-medium text-gray-900 dark:text-gray-100">
+                          <div className="font-medium text-gray-900">
                             {company.name}
                           </div>
                           {company.legalName && (
-                            <div className="text-xs text-gray-500 dark:text-gray-400">
+                            <div className="text-xs text-gray-500">
                               Legal: {company.legalName}
                             </div>
                           )}
-                          <div className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-1">
+                          <div className="text-sm text-gray-500 flex items-center gap-1">
                             <MapPin className="h-3 w-3" />
                             {company.address}
                           </div>
@@ -291,7 +291,7 @@ export default function Companies() {
                           <Badge variant="outline" className="mb-1">
                             {company.unitName}
                           </Badge>
-                          <div className="text-sm text-gray-600 dark:text-gray-400">
+                          <div className="text-sm text-gray-600">
                             {company.city}, {company.state}
                           </div>
                           <div className="text-xs text-gray-500">

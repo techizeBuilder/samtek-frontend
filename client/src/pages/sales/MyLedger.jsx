@@ -333,10 +333,10 @@ export default function MyLedger() {
         <Card className="max-w-md mx-auto">
           <CardContent className="pt-6">
             <div className="text-center">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
                 Access Denied
               </h3>
-              <p className="text-gray-600 dark:text-gray-400">
+              <p className="text-gray-600">
                 You don't have permission to view My Ledger module.
               </p>
             </div>
@@ -818,7 +818,7 @@ export default function MyLedger() {
           <CardContent className="pt-4 sm:pt-6 px-4 sm:px-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Entries</p>
+                <p className="text-sm font-medium text-gray-600">Total Entries</p>
                 <p className="text-xl sm:text-2xl font-bold text-blue-600">{stats.total}</p>
               </div>
               <BookOpen className="h-6 w-6 sm:h-8 sm:w-8 text-blue-500" />
@@ -829,7 +829,7 @@ export default function MyLedger() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Debit</p>
+                <p className="text-sm font-medium text-gray-600">Total Debit</p>
                 <p className="text-2xl font-bold text-red-600">₹{(stats.totalDebit / 100000).toFixed(1)}L</p>
               </div>
               <TrendingUp className="h-8 w-8 text-red-500" />
@@ -840,7 +840,7 @@ export default function MyLedger() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Credit</p>
+                <p className="text-sm font-medium text-gray-600">Total Credit</p>
                 <p className="text-2xl font-bold text-green-600">₹{(stats.totalCredit / 100000).toFixed(1)}L</p>
               </div>
               <TrendingDown className="h-8 w-8 text-green-500" />
@@ -851,7 +851,7 @@ export default function MyLedger() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Pending</p>
+                <p className="text-sm font-medium text-gray-600">Pending</p>
                 <p className="text-2xl font-bold text-orange-600">₹{(stats.pendingAmount / 100000).toFixed(1)}L</p>
               </div>
               <CreditCard className="h-8 w-8 text-orange-500" />
@@ -862,7 +862,7 @@ export default function MyLedger() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Overdue</p>
+                <p className="text-sm font-medium text-gray-600">Overdue</p>
                 <p className="text-2xl font-bold text-purple-600">₹{(stats.overdueAmount / 100000).toFixed(1)}L</p>
               </div>
               <DollarSign className="h-8 w-8 text-purple-500" />
@@ -959,7 +959,7 @@ export default function MyLedger() {
               </TableHeader>
               <TableBody>
                 {filteredEntries.map((entry) => (
-                  <TableRow key={entry.id} className="hover:bg-gray-50 dark:hover:bg-gray-800">
+                  <TableRow key={entry.id} className="hover:bg-gray-50:bg-gray-800">
                     <TableCell>
                       <div>
                         <div className="font-medium flex items-center">

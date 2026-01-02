@@ -273,10 +273,10 @@ export default function UnitManagerDamages() {
       <div className="flex items-center justify-center h-64">
         <div className="text-center">
           <AlertCircle className="h-12 w-12 mx-auto text-red-500 mb-4" />
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">
             Access Denied
           </h3>
-          <p className="text-gray-600 dark:text-gray-400">
+          <p className="text-gray-600">
             You don't have permission to view damages
           </p>
         </div>
@@ -289,10 +289,10 @@ export default function UnitManagerDamages() {
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold text-orange-600 dark:text-orange-400">
+          <h1 className="text-2xl font-bold text-orange-600">
             Damages Management
           </h1>
-          <p className="text-gray-600 dark:text-gray-400">
+          <p className="text-gray-600">
             Manage and approve damages from sales persons
           </p>
         </div>
@@ -369,10 +369,10 @@ export default function UnitManagerDamages() {
           ) : damagesError ? (
             <div className="text-center py-8">
               <AlertTriangle className="h-12 w-12 mx-auto text-red-500 mb-4" />
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
                 Error Loading Damages
               </h3>
-              <p className="text-gray-600 dark:text-gray-400 mb-4">
+              <p className="text-gray-600 mb-4">
                 {damagesError.message || "Failed to load damages data"}
               </p>
               <Button onClick={refetchDamages} variant="outline">
@@ -383,10 +383,10 @@ export default function UnitManagerDamages() {
           ) : filteredDamages.length === 0 ? (
             <div className="text-center py-8">
               <AlertTriangle className="h-12 w-12 mx-auto text-gray-400 mb-4" />
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
                 No damages found
               </h3>
-              <p className="text-gray-600 dark:text-gray-400">
+              <p className="text-gray-600">
                 Try adjusting your search or filters
               </p>
             </div>
@@ -744,7 +744,7 @@ const AddDamageModal = ({ isOpen, onClose, onSubmit, salesPersons, customers, gr
                                 className="w-10 h-10 rounded object-cover"
                               />
                             ) : (
-                              <div className="w-10 h-10 rounded bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
+                              <div className="w-10 h-10 rounded bg-gray-100 flex items-center justify-center">
                                 <Package className="h-5 w-5 text-gray-400" />
                               </div>
                             )}
@@ -813,7 +813,7 @@ const AddDamageModal = ({ isOpen, onClose, onSubmit, salesPersons, customers, gr
                 ))}
               </div>
               
-              <div className="mt-4 p-4 bg-orange-50 dark:bg-orange-900/20 rounded">
+              <div className="mt-4 p-4 bg-orange-50 rounded">
                 <div className="flex justify-between items-center">
                   <span className="font-semibold">Total Amount:</span>
                   <span className="font-semibold text-lg text-orange-600">${totalAmount.toFixed(2)}</span>
@@ -961,7 +961,7 @@ const EditDamageModal = ({ isOpen, onClose, onSubmit, damageData, salesPersons, 
             />
           </div>
 
-          <div className="p-4 bg-orange-50 dark:bg-orange-900/20 rounded">
+          <div className="p-4 bg-orange-50 rounded">
             <div className="flex justify-between items-center">
               <span className="font-semibold">Total Amount:</span>
               <span className="font-semibold text-lg text-orange-600">${totalAmount.toFixed(2)}</span>
@@ -1057,7 +1057,7 @@ const ViewDamageModal = ({ isOpen, onClose, damageData }) => {
             </div>
           </div>
 
-          <div className="p-4 bg-orange-50 dark:bg-orange-900/20 rounded">
+          <div className="p-4 bg-orange-50 rounded">
             <div className="flex justify-between items-center">
               <span className="font-semibold">Total Amount:</span>
               <span className="font-semibold text-lg text-orange-600">${totalAmount.toFixed(2)}</span>

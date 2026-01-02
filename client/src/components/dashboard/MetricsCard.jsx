@@ -13,10 +13,10 @@ export default function MetricsCard({
   const isPositive = changeType === 'increase';
   
   const colorClasses = {
-    blue: 'bg-blue-100 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400',
-    green: 'bg-green-100 dark:bg-green-900/20 text-green-600 dark:text-green-400',
-    orange: 'bg-orange-100 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400',
-    purple: 'bg-purple-100 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400'
+    blue: 'bg-blue-100 text-blue-600',
+    green: 'bg-green-100 text-green-600',
+    orange: 'bg-orange-100 text-orange-600',
+    purple: 'bg-purple-100 text-purple-600'
   };
 
   return (
@@ -33,7 +33,7 @@ export default function MetricsCard({
             {change && (
               <p className={cn(
                 "text-sm mt-1 flex items-center gap-1",
-                isPositive ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"
+                isPositive ? "text-green-600" : "text-red-600"
               )}>
                 {isPositive ? (
                   <TrendingUp className="w-4 h-4" />

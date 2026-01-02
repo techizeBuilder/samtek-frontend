@@ -5,7 +5,7 @@ export default function SalesGridManagement() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">
+        <h1 className="text-3xl font-bold text-gray-900">
           Sales Grid Management
         </h1>
       </div>
@@ -15,7 +15,7 @@ export default function SalesGridManagement() {
           <CardTitle>Sales Grid Management</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-gray-600 dark:text-gray-400">
+          <p className="text-gray-600">
             Manage sales data grids and configurations from this page.
           </p>
         </CardContent>

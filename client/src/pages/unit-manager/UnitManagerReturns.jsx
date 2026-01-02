@@ -408,10 +408,10 @@ export default function UnitManagerReturns() {
       <div className="flex items-center justify-center h-64">
         <div className="text-center">
           <AlertCircle className="h-12 w-12 mx-auto text-red-500 mb-4" />
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">
             Access Denied
           </h3>
-          <p className="text-gray-600 dark:text-gray-400">
+          <p className="text-gray-600">
             You don't have permission to view returns & damage
           </p>
         </div>
@@ -424,10 +424,10 @@ export default function UnitManagerReturns() {
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold text-gray-600 dark:text-gray-400">
+          <h1 className="text-2xl font-bold text-gray-600">
             Returns & Damage Management
           </h1>
-          <p className="text-gray-600 dark:text-gray-400">
+          <p className="text-gray-600">
             Manage and approve returns and damage from sales persons
           </p>
         </div>
@@ -515,10 +515,10 @@ export default function UnitManagerReturns() {
           ) : returnsError ? (
             <div className="text-center py-8">
               <AlertCircle className="h-12 w-12 mx-auto text-red-500 mb-4" />
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
                 Error Loading Returns
               </h3>
-              <p className="text-gray-600 dark:text-gray-400 mb-4">
+              <p className="text-gray-600 mb-4">
                 {returnsError.message || "Failed to load returns data"}
               </p>
               <Button onClick={refetchReturns} variant="outline">
@@ -529,10 +529,10 @@ export default function UnitManagerReturns() {
           ) : filteredReturns.length === 0 ? (
             <div className="text-center py-8">
               <RotateCcw className="h-12 w-12 mx-auto text-gray-400 mb-4" />
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
                 No returns found
               </h3>
-              <p className="text-gray-600 dark:text-gray-400">
+              <p className="text-gray-600">
                 Try adjusting your search or filters
               </p>
             </div>
@@ -914,7 +914,7 @@ const AddReturnModal = ({ isOpen, onClose, onSubmit, salesPersons, customers, gr
                     <button
                       type="button"
                       onClick={toggleCategory}
-                      className="w-full flex items-center justify-between p-3 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                      className="w-full flex items-center justify-between p-3 hover:bg-gray-50:bg-gray-800 transition-colors"
                     >
                       <div className="flex items-center gap-2">
                         {isExpanded ? (
@@ -922,7 +922,7 @@ const AddReturnModal = ({ isOpen, onClose, onSubmit, salesPersons, customers, gr
                         ) : (
                           <ChevronRight className="h-4 w-4" />
                         )}
-                        <span className="font-medium text-gray-900 dark:text-gray-100">
+                        <span className="font-medium text-gray-900">
                           {category} ({items.length} items)
                         </span>
                       </div>
@@ -935,13 +935,13 @@ const AddReturnModal = ({ isOpen, onClose, onSubmit, salesPersons, customers, gr
                           const quantity = selectedItem?.quantity || 0;
                           
                           return (
-                            <div key={item._id} className="flex items-center gap-3 p-3 hover:bg-gray-50 dark:hover:bg-gray-800 border-t">
-                              <div className="w-10 h-10 bg-gray-100 dark:bg-gray-700 rounded flex items-center justify-center flex-shrink-0">
+                            <div key={item._id} className="flex items-center gap-3 p-3 hover:bg-gray-50:bg-gray-800 border-t">
+                              <div className="w-10 h-10 bg-gray-100 rounded flex items-center justify-center flex-shrink-0">
                                 <Package className="h-5 w-5 text-gray-400" />
                               </div>
                               
                               <div className="flex-1 min-w-0">
-                                <h4 className="font-medium text-gray-900 dark:text-gray-100 truncate">
+                                <h4 className="font-medium text-gray-900 truncate">
                                   {item.name}
                                 </h4>
                                 <p className="text-sm text-gray-500">
@@ -1009,7 +1009,7 @@ const AddReturnModal = ({ isOpen, onClose, onSubmit, salesPersons, customers, gr
 
           {/* Summary */}
           {formData.items.length > 0 && (
-            <div className="mt-6 p-4 bg-gray-50 dark:bg-gray-900/20 rounded-lg">
+            <div className="mt-6 p-4 bg-gray-50 rounded-lg">
               <div className="flex justify-between items-center">
                 <span className="font-semibold text-lg">Total Items: {formData.items.length}</span>
                 <span className="font-bold text-xl text-gray-600">₹{totalAmount.toFixed(2)}</span>
@@ -1316,7 +1316,7 @@ const EditReturnModal = ({ isOpen, onClose, onSubmit, returnData, salesPersons, 
                     <button
                       type="button"
                       onClick={toggleCategory}
-                      className="w-full flex items-center justify-between p-3 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                      className="w-full flex items-center justify-between p-3 hover:bg-gray-50:bg-gray-800 transition-colors"
                     >
                       <div className="flex items-center gap-2">
                         {isExpanded ? (
@@ -1324,7 +1324,7 @@ const EditReturnModal = ({ isOpen, onClose, onSubmit, returnData, salesPersons, 
                         ) : (
                           <ChevronRight className="h-4 w-4" />
                         )}
-                        <span className="font-medium text-gray-900 dark:text-gray-100">
+                        <span className="font-medium text-gray-900">
                           {category} ({items.length} items)
                         </span>
                       </div>
@@ -1337,13 +1337,13 @@ const EditReturnModal = ({ isOpen, onClose, onSubmit, returnData, salesPersons, 
                           const quantity = selectedItem?.quantity || 0;
                           
                           return (
-                            <div key={item._id} className="flex items-center gap-3 p-3 hover:bg-gray-50 dark:hover:bg-gray-800 border-t">
-                              <div className="w-10 h-10 bg-gray-100 dark:bg-gray-700 rounded flex items-center justify-center flex-shrink-0">
+                            <div key={item._id} className="flex items-center gap-3 p-3 hover:bg-gray-50:bg-gray-800 border-t">
+                              <div className="w-10 h-10 bg-gray-100 rounded flex items-center justify-center flex-shrink-0">
                                 <Package className="h-5 w-5 text-gray-400" />
                               </div>
                               
                               <div className="flex-1 min-w-0">
-                                <h4 className="font-medium text-gray-900 dark:text-gray-100 truncate">
+                                <h4 className="font-medium text-gray-900 truncate">
                                   {item.name}
                                 </h4>
                                 <p className="text-sm text-gray-500">
@@ -1411,7 +1411,7 @@ const EditReturnModal = ({ isOpen, onClose, onSubmit, returnData, salesPersons, 
 
           {/* Summary */}
           {formData.items.length > 0 && (
-            <div className="mt-6 p-4 bg-gray-50 dark:bg-gray-900/20 rounded-lg">
+            <div className="mt-6 p-4 bg-gray-50 rounded-lg">
               <div className="flex justify-between items-center">
                 <span className="font-semibold text-lg">Total Items: {formData.items.length}</span>
                 <span className="font-bold text-xl text-gray-600">₹{totalAmount.toFixed(2)}</span>
@@ -1419,7 +1419,7 @@ const EditReturnModal = ({ isOpen, onClose, onSubmit, returnData, salesPersons, 
             </div>
           )}
 
-          <div className="p-4 bg-gray-50 dark:bg-gray-900/20 rounded">
+          <div className="p-4 bg-gray-50 rounded">
             <div className="flex justify-between items-center">
               <span className="font-semibold">Total Amount:</span>
               <span className="font-bold text-xl text-gray-600">₹{totalAmount.toFixed(2)}</span>
@@ -1522,7 +1522,7 @@ const ViewReturnModal = ({ isOpen, onClose, returnData }) => {
             </div>
           </div>
 
-          <div className="p-4 bg-gray-50 dark:bg-gray-900/20 rounded">
+          <div className="p-4 bg-gray-50 rounded">
             <div className="flex justify-between items-center">
               <span className="font-semibold">Total Amount:</span>
               <span className="font-semibold text-lg text-gray-600">₹{totalAmount.toFixed(2)}</span>
@@ -1616,9 +1616,9 @@ const StatusUpdateModal = ({ isOpen, onClose, onSubmit, returnData }) => {
             </div>
           </div>
 
-          <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg">
+          <div className="bg-gray-50 p-4 rounded-lg">
             <h4 className="font-medium mb-2">Return Details:</h4>
-            <div className="text-sm text-gray-600 dark:text-gray-400 space-y-1">
+            <div className="text-sm text-gray-600 space-y-1">
               <p><strong>Customer:</strong> {returnData?.customerName}</p>
               <p><strong>Sales Person:</strong> {returnData?.salesPersonName}</p>
               <p><strong>Date:</strong> {returnData?.returnDate ? new Date(returnData.returnDate).toLocaleDateString() : 'N/A'}</p>

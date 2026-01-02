@@ -427,7 +427,7 @@ const ProductSelector = React.memo(({
         {isSalesUser && priorityProducts.length > 0 && (
           <div className="mb-6 w-full overflow-hidden">
             <div className="border rounded-lg w-full overflow-hidden">
-              <div className="flex items-center justify-between p-2 bg-yellow-50 dark:bg-yellow-900/20 border-b">
+              <div className="flex items-center justify-between p-2 bg-yellow-50 border-b">
                 <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
                   <Star className="h-3 w-3 sm:h-4 sm:w-4 text-yellow-500" />
                   <Badge variant="default" className="bg-yellow-500 text-xs">
@@ -449,7 +449,7 @@ const ProductSelector = React.memo(({
               {showPriorityProducts && (
                 <div className="border-t w-full overflow-hidden">
                   {/* Header Row */}
-                  <div className="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-800 text-xs font-medium text-gray-600 dark:text-gray-400 w-full">
+                  <div className="flex items-center justify-between p-2 bg-gray-50 text-xs font-medium text-gray-600 w-full">
                     <span className="text-xs flex-1 min-w-0">ITEM NAME</span>
                     <span className="w-12 text-center text-xs flex-shrink-0">QTY</span>
                   </div>
@@ -475,7 +475,7 @@ const ProductSelector = React.memo(({
                         <div
                           key={priorityProduct.id}
                           className={`flex items-center justify-between p-2 transition-colors w-full ${
-                            isSelected ? 'bg-blue-50 border-blue-200 dark:bg-blue-900/20' : 'hover:bg-gray-50 dark:hover:bg-gray-800'
+                            isSelected ? 'bg-blue-50 border-blue-200' : 'hover:bg-gray-50:bg-gray-800'
                           }`}
                         >
                           <div className="flex items-center gap-2 flex-1 min-w-0 pr-2 overflow-hidden">
@@ -491,7 +491,7 @@ const ProductSelector = React.memo(({
                               />
                             ) : null}
                             <div 
-                              className={`w-8 h-8 rounded bg-gray-200 dark:bg-gray-700 flex items-center justify-center flex-shrink-0 ${product.image ? 'hidden' : 'flex'}`}
+                              className={`w-8 h-8 rounded bg-gray-200 flex items-center justify-center flex-shrink-0 ${product.image ? 'hidden' : 'flex'}`}
                             >
                               <Package className="w-4 h-4 text-gray-400" />
                             </div>
@@ -595,8 +595,8 @@ const ProductSelector = React.memo(({
                   }}
                   className={`w-full flex items-center justify-between p-2 transition-colors ${
                     hasQuantities && isExpanded 
-                      ? 'bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30' 
-                      : 'hover:bg-gray-50 dark:hover:bg-gray-800'
+                      ? 'bg-blue-50 hover:bg-blue-100:bg-blue-900/30' 
+                      : 'hover:bg-gray-50:bg-gray-800'
                   }`}
                   type="button"
                 >
@@ -623,7 +623,7 @@ const ProductSelector = React.memo(({
                 {expandedBrands[brandName] && (
                   <div className="border-t w-full overflow-hidden">
                     {/* Header Row */}
-                    <div className="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-800 text-xs font-medium text-gray-600 dark:text-gray-400 w-full">
+                    <div className="flex items-center justify-between p-2 bg-gray-50 text-xs font-medium text-gray-600 w-full">
                       <span className="text-xs flex-1 min-w-0">ITEM NAME</span>
                       <span className="w-12 text-center text-xs flex-shrink-0">QTY</span>
                     </div>
@@ -638,7 +638,7 @@ const ProductSelector = React.memo(({
                         <div
                           key={product._id}
                           className={`flex items-center justify-between p-2 transition-colors w-full ${
-                            isSelected ? 'bg-blue-50 border-blue-200 dark:bg-blue-900/20' : 'hover:bg-gray-50 dark:hover:bg-gray-800'
+                            isSelected ? 'bg-blue-50 border-blue-200' : 'hover:bg-gray-50:bg-gray-800'
                           }`}
                         >
                           <div className="flex items-center gap-2 flex-1 min-w-0 pr-2 overflow-hidden">
@@ -654,7 +654,7 @@ const ProductSelector = React.memo(({
                               />
                             ) : null}
                             <div 
-                              className={`w-8 h-8 rounded bg-gray-200 dark:bg-gray-700 flex items-center justify-center flex-shrink-0 ${product.image ? 'hidden' : 'flex'}`}
+                              className={`w-8 h-8 rounded bg-gray-200 flex items-center justify-center flex-shrink-0 ${product.image ? 'hidden' : 'flex'}`}
                             >
                               <Package className="w-4 h-4 text-gray-400" />
                             </div>

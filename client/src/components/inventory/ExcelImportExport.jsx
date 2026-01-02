@@ -454,7 +454,7 @@ export default function ExcelImportExport({ type = 'items' }) {
         onClick={handleExport}
         variant="outline"
         size="sm"
-        className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border-green-200 dark:border-green-800 hover:from-green-100 hover:to-emerald-100 dark:hover:from-green-900/30 dark:hover:to-emerald-900/30 text-green-700 dark:text-green-300"
+        className="bg-gradient-to-r from-green-50 to-emerald-50 border-green-200 hover:from-green-100 hover:to-emerald-100:from-green-900/30:to-emerald-900/30 text-green-700"
       >
         <Download className="h-4 w-4 mr-2" />
         Export Excel
@@ -465,7 +465,7 @@ export default function ExcelImportExport({ type = 'items' }) {
         onClick={downloadTemplate}
         variant="outline"
         size="sm"
-        className="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20 border-amber-200 dark:border-amber-800 hover:from-amber-100 hover:to-orange-100 dark:hover:from-amber-900/30 dark:hover:to-orange-900/30 text-amber-700 dark:text-amber-300"
+        className="bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200 hover:from-amber-100 hover:to-orange-100:from-amber-900/30:to-orange-900/30 text-amber-700"
       >
         <FileText className="h-4 w-4 mr-2" />
         Template
@@ -484,7 +484,7 @@ export default function ExcelImportExport({ type = 'items' }) {
             <Button
               variant="outline"
               size="sm"
-              className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border-blue-200 dark:border-blue-800 hover:from-blue-100 hover:to-indigo-100 dark:hover:from-blue-900/30 dark:hover:to-indigo-900/30 text-blue-700 dark:text-blue-300"
+              className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200 hover:from-blue-100 hover:to-indigo-100:from-blue-900/30:to-indigo-900/30 text-blue-700"
             >
               <Upload className="h-4 w-4 mr-2" />
               Import Excel
@@ -515,7 +515,7 @@ export default function ExcelImportExport({ type = 'items' }) {
                       onClick={downloadTemplate}
                       variant="outline"
                       size="sm"
-                      className="bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300"
+                      className="bg-amber-50 border-amber-200 text-amber-700"
                     >
                       <FileText className="h-4 w-4 mr-2" />
                       Download Template
@@ -532,7 +532,7 @@ export default function ExcelImportExport({ type = 'items' }) {
                     />
                     <Button
                       onClick={() => fileInputRef.current?.click()}
-                      className="h-12 border-2 border-dashed border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30 text-blue-700 dark:text-blue-300"
+                      className="h-12 border-2 border-dashed border-blue-300 bg-blue-50 hover:bg-blue-100:bg-blue-900/30 text-blue-700"
                       variant="outline"
                     >
                       <FileSpreadsheet className="h-5 w-5 mr-2" />
@@ -555,7 +555,7 @@ export default function ExcelImportExport({ type = 'items' }) {
 
               {importResult && (
                 <div className="space-y-4">
-                  <Alert className={importResult.success ? "border-green-200 dark:border-green-800" : "border-red-200 dark:border-red-800"}>
+                  <Alert className={importResult.success ? "border-green-200" : "border-red-200"}>
                     {importResult.success ? (
                       <CheckCircle className="h-4 w-4 text-green-600" />
                     ) : (

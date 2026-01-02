@@ -336,12 +336,12 @@ const CreateReturnForm = ({
       {/* Products Section */}
       <div className="space-y-3">
         <div className="flex items-center gap-2 mb-4">
-          <ShoppingCart className="h-4 w-4 text-gray-600 dark:text-gray-400" />
-          <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">
+          <ShoppingCart className="h-4 w-4 text-gray-600" />
+          <h3 className="text-sm font-medium text-gray-700">
             Select Products for Return
           </h3>
           {getSelectedUnits() > 0 && (
-            <span className="text-xs bg-blue-100 dark:bg-blue-800 text-blue-600 dark:text-blue-300 px-2 py-1 rounded-full">
+            <span className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded-full">
               {getSelectedUnits()} units
             </span>
           )}
@@ -370,12 +370,12 @@ const CreateReturnForm = ({
             return (
               <div
                 key={category}
-                className="border border-gray-200 dark:border-gray-700 rounded-lg"
+                className="border border-gray-200 rounded-lg"
               >
                 <button
                   type="button"
                   onClick={() => toggleCategory(category)}
-                  className="w-full flex items-center justify-between p-3 text-left hover:bg-gray-50 dark:hover:bg-gray-800 rounded-t-lg"
+                  className="w-full flex items-center justify-between p-3 text-left hover:bg-gray-50:bg-gray-800 rounded-t-lg"
                 >
                   <div className="flex items-center gap-2">
                     {isExpanded ? (
@@ -383,7 +383,7 @@ const CreateReturnForm = ({
                     ) : (
                       <ChevronRight className="h-4 w-4 text-gray-500" />
                     )}
-                    <h4 className="font-semibold text-gray-900 dark:text-gray-100">
+                    <h4 className="font-semibold text-gray-900">
                       {category}
                     </h4>
                     <span className="text-xs text-gray-500">
@@ -393,8 +393,8 @@ const CreateReturnForm = ({
                 </button>
 
                 {isExpanded && (
-                  <div className="border-t border-gray-200 dark:border-gray-700">
-                    <div className="divide-y divide-gray-200 dark:divide-gray-700">
+                  <div className="border-t border-gray-200">
+                    <div className="divide-y divide-gray-200">
                       {categoryItems.map((item) => (
                         <div key={item._id} className="p-3">
                           <div className="flex items-center gap-3">
@@ -410,7 +410,7 @@ const CreateReturnForm = ({
                               />
                             ) : null}
                             <div 
-                              className={`w-12 h-12 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center flex-shrink-0 ${item.image ? 'hidden' : 'flex'}`}
+                              className={`w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0 ${item.image ? 'hidden' : 'flex'}`}
                               style={{ display: item.image ? 'none' : 'flex' }}
                             >
                               <Package className="h-6 w-6 text-gray-400" />
@@ -452,22 +452,22 @@ const CreateReturnForm = ({
 
       {/* Return Summary */}
       {getSelectedProducts().length > 0 && (
-        <div className="mt-6 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+        <div className="mt-6 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
           <div className="flex justify-between items-center">
             <div>
-              <h4 className="font-semibold text-sm text-blue-700 dark:text-blue-300">
+              <h4 className="font-semibold text-sm text-blue-700">
                 Return Summary
               </h4>
-              <p className="text-xs text-blue-500 dark:text-blue-400">
+              <p className="text-xs text-blue-500">
                 {getSelectedProducts().length} product types •{" "}
                 {getSelectedUnits()} total units
               </p>
             </div>
             <div className="text-right">
-              <div className="font-bold text-lg text-blue-600 dark:text-blue-400">
+              <div className="font-bold text-lg text-blue-600">
                 ₹{calculateTotal().toFixed(2)}
               </div>
-              <div className="text-xs text-blue-500 dark:text-blue-400">
+              <div className="text-xs text-blue-500">
                 Total Amount
               </div>
             </div>
@@ -525,10 +525,10 @@ const Returns = () => {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">
             Access Denied
           </h2>
-          <p className="text-gray-600 dark:text-gray-400">
+          <p className="text-gray-600">
             You don't have permission to view Returns.
           </p>
         </div>
@@ -636,14 +636,14 @@ const Returns = () => {
       {/* Header Section */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="flex items-center gap-2">
-          <div className="p-2 bg-blue-100 dark:bg-blue-900/20 rounded-lg">
-            <RotateCcw className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+          <div className="p-2 bg-blue-100 rounded-lg">
+            <RotateCcw className="h-6 w-6 text-blue-600" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+            <h1 className="text-2xl font-bold text-gray-900">
               Returns
             </h1>
-            <p className="text-sm text-gray-600 dark:text-gray-400">
+            <p className="text-sm text-gray-600">
               Manage product returns
             </p>
           </div>
@@ -729,10 +729,10 @@ const Returns = () => {
           ) : returnsError ? (
             <div className="text-center py-8">
               <AlertCircle className="h-12 w-12 mx-auto text-red-500 mb-4" />
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
                 Error Loading Returns
               </h3>
-              <p className="text-gray-600 dark:text-gray-400 mb-4">
+              <p className="text-gray-600 mb-4">
                 {returnsError.message || "Failed to load returns data"}
               </p>
               <Button onClick={refetchReturns} variant="outline">
@@ -743,10 +743,10 @@ const Returns = () => {
           ) : returns.length === 0 ? (
             <div className="text-center py-8">
               <Package className="h-12 w-12 mx-auto text-gray-400 mb-4" />
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
                 No returns found
               </h3>
-              <p className="text-gray-600 dark:text-gray-400">
+              <p className="text-gray-600">
                 Try adjusting your search or filters
               </p>
             </div>

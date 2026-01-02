@@ -33,8 +33,8 @@ export default function CompanyDetails({ isOpen, onClose, company }) {
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader className="text-center space-y-3">
-          <div className="mx-auto w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center">
-            <Building2 className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+          <div className="mx-auto w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+            <Building2 className="h-6 w-6 text-blue-600" />
           </div>
           <DialogTitle className="text-xl font-semibold">
             Company Details
@@ -44,11 +44,11 @@ export default function CompanyDetails({ isOpen, onClose, company }) {
         <div className="space-y-6">
           {/* Company Header */}
           <div className="text-center space-y-2">
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+            <h2 className="text-2xl font-bold text-gray-900">
               {company.name}
             </h2>
             {company.legalName && (
-              <p className="text-gray-600 dark:text-gray-400">{company.legalName}</p>
+              <p className="text-gray-600">{company.legalName}</p>
             )}
             <div className="flex gap-2 justify-center">
               <Badge variant="outline" className="text-sm">
@@ -77,15 +77,15 @@ export default function CompanyDetails({ isOpen, onClose, company }) {
                 <div className="flex items-start gap-3">
                   <Phone className="h-5 w-5 text-green-600 mt-0.5" />
                   <div>
-                    <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Mobile</p>
-                    <p className="text-gray-900 dark:text-gray-100">{company.mobile}</p>
+                    <p className="text-sm font-medium text-gray-500">Mobile</p>
+                    <p className="text-gray-900">{company.mobile}</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-3">
                   <Mail className="h-5 w-5 text-blue-600 mt-0.5" />
                   <div>
-                    <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Email</p>
-                    <p className="text-gray-900 dark:text-gray-100">{company.email}</p>
+                    <p className="text-sm font-medium text-gray-500">Email</p>
+                    <p className="text-gray-900">{company.email}</p>
                   </div>
                 </div>
               </div>
@@ -93,8 +93,8 @@ export default function CompanyDetails({ isOpen, onClose, company }) {
                 <div className="flex items-start gap-3">
                   <Calendar className="h-5 w-5 text-purple-600 mt-0.5" />
                   <div>
-                    <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Created</p>
-                    <p className="text-gray-900 dark:text-gray-100">
+                    <p className="text-sm font-medium text-gray-500">Created</p>
+                    <p className="text-gray-900">
                       {formatDate(company.createdAt)}
                     </p>
                   </div>
@@ -115,8 +115,8 @@ export default function CompanyDetails({ isOpen, onClose, company }) {
               <div className="flex items-start gap-3">
                 <MapPin className="h-5 w-5 text-green-600 mt-0.5" />
                 <div className="flex-1">
-                  <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Address</p>
-                  <p className="text-gray-900 dark:text-gray-100">{company.address}</p>
+                  <p className="text-sm font-medium text-gray-500">Address</p>
+                  <p className="text-gray-900">{company.address}</p>
                 </div>
               </div>
               
@@ -124,22 +124,22 @@ export default function CompanyDetails({ isOpen, onClose, company }) {
                 <div className="flex items-start gap-3">
                   <Hash className="h-5 w-5 text-gray-600 mt-0.5" />
                   <div>
-                    <p className="text-sm font-medium text-gray-500 dark:text-gray-400">PIN Code</p>
-                    <p className="text-gray-900 dark:text-gray-100">{company.locationPin}</p>
+                    <p className="text-sm font-medium text-gray-500">PIN Code</p>
+                    <p className="text-gray-900">{company.locationPin}</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-3">
                   <Building2 className="h-5 w-5 text-gray-600 mt-0.5" />
                   <div>
-                    <p className="text-sm font-medium text-gray-500 dark:text-gray-400">City</p>
-                    <p className="text-gray-900 dark:text-gray-100">{company.city}</p>
+                    <p className="text-sm font-medium text-gray-500">City</p>
+                    <p className="text-gray-900">{company.city}</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-3">
                   <Globe className="h-5 w-5 text-gray-600 mt-0.5" />
                   <div>
-                    <p className="text-sm font-medium text-gray-500 dark:text-gray-400">State</p>
-                    <p className="text-gray-900 dark:text-gray-100">{company.state}</p>
+                    <p className="text-sm font-medium text-gray-500">State</p>
+                    <p className="text-gray-900">{company.state}</p>
                   </div>
                 </div>
               </div>
@@ -159,16 +159,16 @@ export default function CompanyDetails({ isOpen, onClose, company }) {
                 <div className="flex items-start gap-3">
                   <FileText className="h-5 w-5 text-red-600 mt-0.5" />
                   <div>
-                    <p className="text-sm font-medium text-gray-500 dark:text-gray-400">PAN Number</p>
-                    <p className="text-gray-900 dark:text-gray-100 font-mono">{company.pan}</p>
+                    <p className="text-sm font-medium text-gray-500">PAN Number</p>
+                    <p className="text-gray-900 font-mono">{company.pan}</p>
                   </div>
                 </div>
               )}
               <div className="flex items-start gap-3">
                 <FileText className="h-5 w-5 text-purple-600 mt-0.5" />
                 <div>
-                  <p className="text-sm font-medium text-gray-500 dark:text-gray-400">GST Number</p>
-                  <p className="text-gray-900 dark:text-gray-100 font-mono">{company.gst}</p>
+                  <p className="text-sm font-medium text-gray-500">GST Number</p>
+                  <p className="text-gray-900 font-mono">{company.gst}</p>
                 </div>
               </div>
             </CardContent>
@@ -186,8 +186,8 @@ export default function CompanyDetails({ isOpen, onClose, company }) {
               <div className="flex items-start gap-3">
                 <Calendar className="h-5 w-5 text-green-600 mt-0.5" />
                 <div>
-                  <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Created At</p>
-                  <p className="text-gray-900 dark:text-gray-100">
+                  <p className="text-sm font-medium text-gray-500">Created At</p>
+                  <p className="text-gray-900">
                     {formatDate(company.createdAt)}
                   </p>
                 </div>
@@ -195,8 +195,8 @@ export default function CompanyDetails({ isOpen, onClose, company }) {
               <div className="flex items-start gap-3">
                 <Calendar className="h-5 w-5 text-blue-600 mt-0.5" />
                 <div>
-                  <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Last Updated</p>
-                  <p className="text-gray-900 dark:text-gray-100">
+                  <p className="text-sm font-medium text-gray-500">Last Updated</p>
+                  <p className="text-gray-900">
                     {formatDate(company.updatedAt)}
                   </p>
                 </div>
