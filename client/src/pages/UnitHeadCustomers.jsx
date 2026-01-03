@@ -540,12 +540,12 @@ export default function UnitHeadCustomers() {
   const getStatusBadge = (isActive) => {
     const active = isActive === 'Yes' || isActive === true;
     return active ? (
-      <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300">
+      <Badge className="bg-green-100 text-green-800">
         <UserCheck className="h-3 w-3 mr-1" />
         Active
       </Badge>
     ) : (
-      <Badge className="bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300">
+      <Badge className="bg-gray-100 text-gray-800">
         <UserX className="h-3 w-3 mr-1" />
         Inactive
       </Badge>

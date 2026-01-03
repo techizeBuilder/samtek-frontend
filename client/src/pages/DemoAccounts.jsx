@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -107,7 +107,7 @@ export default function DemoAccounts() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-900 dark:via-blue-900 dark:to-indigo-900 p-4 md:p-8 relative overflow-hidden">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 p-4 md:p-8 relative overflow-hidden">
       {/* Animated Background Elements */}
       <div className="absolute inset-0 overflow-hidden">
         <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-400/10 rounded-full blur-3xl animate-pulse"></div>
@@ -129,7 +129,7 @@ export default function DemoAccounts() {
           <h1 className="text-5xl md:text-6xl font-bold bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 bg-clip-text text-transparent mb-6 animate-fade-in">
             Manufacturing ERP Demo
           </h1>
-          <p className="text-xl text-slate-600 dark:text-slate-300 max-w-3xl mx-auto leading-relaxed">
+          <p className="text-xl text-slate-600 max-w-3xl mx-auto leading-relaxed">
             Experience our comprehensive ERP system with role-based access control. 
             Choose a demo account below to explore different user perspectives and capabilities.
           </p>
@@ -149,7 +149,7 @@ export default function DemoAccounts() {
             return (
               <Card 
                 key={account.username} 
-                className="group hover:shadow-2xl hover:-translate-y-2 transition-all duration-500 border-0 bg-white/90 dark:bg-slate-800/90 backdrop-blur-md relative overflow-hidden"
+                className="group hover:shadow-2xl hover:-translate-y-2 transition-all duration-500 border-0 bg-white/90 backdrop-blur-md relative overflow-hidden"
                 onMouseEnter={() => setHoveredCard(account.username)}
                 onMouseLeave={() => setHoveredCard(null)}
               >
@@ -167,28 +167,28 @@ export default function DemoAccounts() {
                     )}>
                       <Icon className="w-7 h-7 text-white" />
                     </div>
-                    <Badge variant="secondary" className="text-xs font-medium bg-white/70 dark:bg-slate-700/70 backdrop-blur-sm">
+                    <Badge variant="secondary" className="text-xs font-medium bg-white/70 backdrop-blur-sm">
                       {account.role}
                     </Badge>
                   </div>
-                  <CardTitle className="text-xl font-semibold text-slate-800 dark:text-slate-100">
+                  <CardTitle className="text-xl font-semibold text-slate-800">
                     {account.username}
                   </CardTitle>
-                  <CardDescription className="text-slate-600 dark:text-slate-300">
+                  <CardDescription className="text-slate-600">
                     {account.description}
                   </CardDescription>
                 </CardHeader>
                 
                 <CardContent className="pt-0">
                   <div className="space-y-4">
-                    <div className="p-4 bg-gradient-to-r from-slate-50 to-blue-50 dark:from-slate-700/50 dark:to-blue-900/20 rounded-xl border border-slate-200/50 dark:border-slate-600/50">
+                    <div className="p-4 bg-gradient-to-r from-slate-50 to-blue-50 rounded-xl border border-slate-200/50">
                       <div className="flex items-center gap-2 mb-3">
                         <Eye className="w-4 h-4 text-blue-500" />
-                        <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                        <span className="text-sm font-semibold text-slate-700">
                           Module Access
                         </span>
                       </div>
-                      <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                      <p className="text-xs text-slate-600 leading-relaxed">
                         {account.permissions}
                       </p>
                     </div>
@@ -224,9 +224,9 @@ export default function DemoAccounts() {
         </div>
 
         {/* Features Section */}
-        <Card className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm border-0 shadow-xl">
+        <Card className="bg-white/60 backdrop-blur-sm border-0 shadow-xl">
           <CardHeader>
-            <CardTitle className="text-2xl font-bold text-center text-slate-800 dark:text-slate-100">
+            <CardTitle className="text-2xl font-bold text-center text-slate-800">
               System Features
             </CardTitle>
             <CardDescription className="text-center">
@@ -236,41 +236,41 @@ export default function DemoAccounts() {
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               <div className="text-center p-4">
-                <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center mx-auto mb-3">
-                  <User className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+                <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mx-auto mb-3">
+                  <User className="w-6 h-6 text-blue-600" />
                 </div>
-                <h3 className="font-semibold text-slate-800 dark:text-slate-100 mb-2">User Management</h3>
-                <p className="text-sm text-slate-600 dark:text-slate-300">
+                <h3 className="font-semibold text-slate-800 mb-2">User Management</h3>
+                <p className="text-sm text-slate-600">
                   Complete user and permission management system
                 </p>
               </div>
               
               <div className="text-center p-4">
-                <div className="w-12 h-12 bg-green-100 dark:bg-green-900/30 rounded-lg flex items-center justify-center mx-auto mb-3">
-                  <Factory className="w-6 h-6 text-green-600 dark:text-green-400" />
+                <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mx-auto mb-3">
+                  <Factory className="w-6 h-6 text-green-600" />
                 </div>
-                <h3 className="font-semibold text-slate-800 dark:text-slate-100 mb-2">Manufacturing</h3>
-                <p className="text-sm text-slate-600 dark:text-slate-300">
+                <h3 className="font-semibold text-slate-800 mb-2">Manufacturing</h3>
+                <p className="text-sm text-slate-600">
                   Production planning and execution management
                 </p>
               </div>
               
               <div className="text-center p-4">
-                <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900/30 rounded-lg flex items-center justify-center mx-auto mb-3">
-                  <Package className="w-6 h-6 text-purple-600 dark:text-purple-400" />
+                <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mx-auto mb-3">
+                  <Package className="w-6 h-6 text-purple-600" />
                 </div>
-                <h3 className="font-semibold text-slate-800 dark:text-slate-100 mb-2">Inventory</h3>
-                <p className="text-sm text-slate-600 dark:text-slate-300">
+                <h3 className="font-semibold text-slate-800 mb-2">Inventory</h3>
+                <p className="text-sm text-slate-600">
                   Real-time inventory tracking and management
                 </p>
               </div>
               
               <div className="text-center p-4">
-                <div className="w-12 h-12 bg-orange-100 dark:bg-orange-900/30 rounded-lg flex items-center justify-center mx-auto mb-3">
-                  <Calculator className="w-6 h-6 text-orange-600 dark:text-orange-400" />
+                <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center mx-auto mb-3">
+                  <Calculator className="w-6 h-6 text-orange-600" />
                 </div>
-                <h3 className="font-semibold text-slate-800 dark:text-slate-100 mb-2">Accounting</h3>
-                <p className="text-sm text-slate-600 dark:text-slate-300">
+                <h3 className="font-semibold text-slate-800 mb-2">Accounting</h3>
+                <p className="text-sm text-slate-600">
                   Financial management and reporting tools
                 </p>
               </div>

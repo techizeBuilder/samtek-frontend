@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { toast } from '@/hooks/use-toast';
 import { ToastAction } from '@/components/ui/toast';
 
@@ -174,7 +174,7 @@ export const showSmartToast = (errorOrSuccess, context = '') => {
       toast({
         title: "✅ Success",
         description: contextualMessage,
-        className: "border-green-200 bg-green-50 text-green-800 dark:border-green-800 dark:bg-green-900/20 dark:text-green-200",
+        className: "border-green-200 bg-green-50 text-green-800",
         duration: 4000
       });
       return;
@@ -267,7 +267,7 @@ export const showSuccessToast = (title, description, options = {}) => {
     description,
     variant: 'default',
     duration: options.duration || 3000,
-    className: 'border-green-500 bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-200'
+    className: 'border-green-500 bg-green-50 text-green-800'
   });
 };
 
@@ -278,7 +278,7 @@ export const showWarningToast = (title, description, options = {}) => {
     description,
     variant: 'default',
     duration: options.duration || 4000,
-    className: 'border-orange-500 bg-orange-50 dark:bg-orange-900/20 text-orange-800 dark:text-orange-200'
+    className: 'border-orange-500 bg-orange-50 text-orange-800'
   });
 };
 
@@ -289,7 +289,7 @@ export const showInfoToast = (title, description, options = {}) => {
     description,
     variant: 'default',
     duration: options.duration || 4000,
-    className: 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-800 dark:text-blue-200'
+    className: 'border-blue-500 bg-blue-50 text-blue-800'
   });
 };
 
@@ -299,7 +299,7 @@ export const showLoadingToast = (title, description) => {
     title: `⏳ ${title}`,
     description,
     duration: 0, // Manual dismiss
-    className: 'border-gray-500 bg-gray-50 dark:bg-gray-900/20'
+    className: 'border-gray-500 bg-gray-50'
   });
 };
 

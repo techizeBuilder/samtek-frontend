@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -239,8 +239,8 @@ export default function ProductionExecution() {
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Production Execution</h1>
-          <p className="text-gray-600 dark:text-gray-400">Execute and monitor batch production processes</p>
+          <h1 className="text-3xl font-bold text-gray-900">Production Execution</h1>
+          <p className="text-gray-600">Execute and monitor batch production processes</p>
         </div>
         <div className="flex gap-3">
           <Button variant="outline">

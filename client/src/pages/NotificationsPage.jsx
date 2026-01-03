@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { Bell, Volume2, VolumeX, Search, Filter, Check, Trash2, AlertCircle, Package, ShoppingCart, UserPlus, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,10 +25,10 @@ const getNotificationIcon = (type) => {
 // Priority color and styling
 const getPriorityColor = (priority) => {
   const colorMap = {
-    'low': 'text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800',
-    'medium': 'text-blue-500 dark:text-blue-400 bg-blue-100 dark:bg-blue-900',
-    'high': 'text-orange-500 dark:text-orange-400 bg-orange-100 dark:bg-orange-900',
-    'urgent': 'text-red-500 dark:text-red-400 bg-red-100 dark:bg-red-900'
+    'low': 'text-slate-500 bg-slate-100',
+    'medium': 'text-blue-500 bg-blue-100',
+    'high': 'text-orange-500 bg-orange-100',
+    'urgent': 'text-red-500 bg-red-100'
   };
   
   return colorMap[priority] || colorMap.medium;
@@ -49,8 +49,8 @@ const NotificationItem = ({ notification, onMarkAsRead, onNotificationClick }) =
     <Card 
       className={`cursor-pointer transition-all hover:shadow-md ${
         !notification.isReadByUser 
-          ? 'border-l-4 border-l-blue-500 bg-blue-50/50 dark:bg-blue-950/20' 
-          : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'
+          ? 'border-l-4 border-l-blue-500 bg-blue-50/50' 
+          : 'hover:bg-slate-50'
       }`}
       onClick={handleClick}
     >
@@ -65,15 +65,15 @@ const NotificationItem = ({ notification, onMarkAsRead, onNotificationClick }) =
               <div className="flex-1">
                 <h3 className={`font-medium text-sm leading-tight ${
                   !notification.isReadByUser 
-                    ? 'text-slate-900 dark:text-slate-100' 
-                    : 'text-slate-700 dark:text-slate-300'
+                    ? 'text-slate-900' 
+                    : 'text-slate-700'
                 }`}>
                   {notification.title}
                 </h3>
                 <p className={`text-sm mt-1 leading-relaxed ${
                   !notification.isReadByUser
-                    ? 'text-slate-600 dark:text-slate-400'
-                    : 'text-slate-500 dark:text-slate-500'
+                    ? 'text-slate-600'
+                    : 'text-slate-500'
                 }`}>
                   {notification.message}
                 </p>
@@ -93,7 +93,7 @@ const NotificationItem = ({ notification, onMarkAsRead, onNotificationClick }) =
             </div>
             
             <div className="flex items-center justify-between mt-3">
-              <div className="flex items-center gap-2 text-xs text-slate-400 dark:text-slate-600">
+              <div className="flex items-center gap-2 text-xs text-slate-400">
                 <Badge variant="secondary" className="text-xs">
                   {notification.type}
                 </Badge>
@@ -101,7 +101,7 @@ const NotificationItem = ({ notification, onMarkAsRead, onNotificationClick }) =
                 <span>{formatDistanceToNow(new Date(notification.createdAt), { addSuffix: true })}</span>
               </div>
               
-              <span className="text-xs text-slate-400 dark:text-slate-600">
+              <span className="text-xs text-slate-400">
                 {format(new Date(notification.createdAt), 'MMM dd, yyyy HH:mm')}
               </span>
             </div>
@@ -157,13 +157,13 @@ export default function NotificationsPage() {
   });
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
+    <div className="min-h-screen bg-slate-50">
       <div className="max-w-4xl mx-auto p-6">
         {/* Header */}
         <div className="mb-6">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+              <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
                 <Bell className="h-6 w-6" />
                 Notifications
                 {unreadCount > 0 && (
@@ -172,7 +172,7 @@ export default function NotificationsPage() {
                   </Badge>
                 )}
               </h1>
-              <p className="text-slate-600 dark:text-slate-400 mt-1">
+              <p className="text-slate-600 mt-1">
                 Stay updated with real-time system notifications
                 {!isConnected && (
                   <span className="text-red-500 ml-2">• Disconnected</span>
@@ -288,10 +288,10 @@ export default function NotificationsPage() {
             <Card>
               <CardContent className="p-8 text-center">
                 <Bell className="h-12 w-12 text-slate-400 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-slate-900 dark:text-slate-100 mb-2">
+                <h3 className="text-lg font-medium text-slate-900 mb-2">
                   {activeTab === 'unread' ? 'No unread notifications' : 'No notifications found'}
                 </h3>
-                <p className="text-slate-600 dark:text-slate-400">
+                <p className="text-slate-600">
                   {searchQuery || typeFilter !== 'all' || priorityFilter !== 'all'
                     ? 'Try adjusting your filters to see more results.'
                     : 'You\'re all caught up! New notifications will appear here.'

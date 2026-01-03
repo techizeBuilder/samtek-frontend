@@ -148,12 +148,18 @@ const createOrder = async (req, res) => {
     // Populate order with customer details for notification
     await order.populate('customer', 'name email');
 
-    // Trigger notification for new order
+    // Trigger notification for new order - Sales to Unit Manager + Unit Head
     try {
-      await notificationService.triggerOrderNotification({
-        _id: order._id,
-        orderCode: order.orderCode,
-        customerName: order.customer.name
+      await notificationService.triggerSalesNotification({
+        action: 'order_created',
+        orderData: {
+          _id: order._id,
+          orderCode: order.orderCode,
+          customerName: order.customer.name
+        },
+        targetUnit: req.user.unit || null,
+        targetCompanyId: req.user.companyId || null,
+        userId: req.user._id || req.user.id
       });
     } catch (notificationError) {
       console.error('Failed to send order notification:', notificationError);

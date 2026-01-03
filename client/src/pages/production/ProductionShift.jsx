@@ -488,8 +488,8 @@ export default function ProductionShift() {
           {!batch.mouldingTime ? (
             <Button
               onClick={() => {
-                const now = new Date().toISOString().slice(0, 16);
-                handleBatchDataChange(batchKey, 'mouldingTime', now);
+                const now = new Date();
+                handleBatchDataChange(batchKey, 'mouldingTime', now.toISOString());
               }}
               className="w-full bg-green-600 hover:bg-green-700 text-white h-10"
             >
@@ -500,8 +500,8 @@ export default function ProductionShift() {
               <div className="p-3 bg-green-50 rounded-lg border">
                 <div className="text-sm font-medium text-green-700">Started</div>
                 <div className="text-xs text-gray-600">
-                  {new Date(batch.mouldingTime).toLocaleDateString()} at{' '}
-                  {new Date(batch.mouldingTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                  {new Date(batch.mouldingTime).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })} at{' '}
+                  {new Date(batch.mouldingTime).toLocaleTimeString('en-IN', {hour: '2-digit', minute:'2-digit', hour12: true})}
                 </div>
               </div>
             </div>
@@ -513,8 +513,8 @@ export default function ProductionShift() {
           {!batch.unloadingTime ? (
             <Button
               onClick={() => {
-                const now = new Date().toISOString().slice(0, 16);
-                handleBatchDataChange(batchKey, 'unloadingTime', now);
+                const now = new Date();
+                handleBatchDataChange(batchKey, 'unloadingTime', now.toISOString());
               }}
               disabled={!batch.mouldingTime}
               className="w-full bg-blue-600 hover:bg-blue-700 text-white disabled:bg-gray-300 disabled:text-gray-500 h-10"
@@ -527,8 +527,8 @@ export default function ProductionShift() {
               <div className="p-3 bg-blue-50 rounded-lg border">
                 <div className="text-sm font-medium text-blue-700">Ended</div>
                 <div className="text-xs text-gray-600">
-                  {new Date(batch.unloadingTime).toLocaleDateString()} at{' '}
-                  {new Date(batch.unloadingTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                  {new Date(batch.unloadingTime).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })} at{' '}
+                  {new Date(batch.unloadingTime).toLocaleTimeString('en-IN', {hour: '2-digit', minute:'2-digit', hour12: true})}
                 </div>
               </div>
             </div>
@@ -810,8 +810,8 @@ export default function ProductionShift() {
                               <div className="p-2 bg-green-50 rounded-lg border">
                                 <div className="text-xs font-medium text-green-700">Started</div>
                                 <div className="text-xs text-gray-600">
-                                  {new Date(batch.mouldingTime).toLocaleDateString()} at{' '}
-                                  {new Date(batch.mouldingTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                  {new Date(batch.mouldingTime).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })} at{' '}
+                                  {new Date(batch.mouldingTime).toLocaleTimeString('en-IN', {hour: '2-digit', minute:'2-digit', hour12: true})}
                                 </div>
                               </div>
                             </div>
@@ -837,8 +837,8 @@ export default function ProductionShift() {
                               <div className="p-2 bg-blue-50 rounded-lg border">
                                 <div className="text-xs font-medium text-blue-700">Ended</div>
                                 <div className="text-xs text-gray-600">
-                                  {new Date(batch.unloadingTime).toLocaleDateString()} at{' '}
-                                  {new Date(batch.unloadingTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                  {new Date(batch.unloadingTime).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })} at{' '}
+                                  {new Date(batch.unloadingTime).toLocaleTimeString('en-IN', {hour: '2-digit', minute:'2-digit', hour12: true})}
                                 </div>
                               </div>
                             </div>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -101,8 +101,8 @@ export default function ProductionDashboard() {
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Production Dashboard</h1>
-          <p className="text-gray-600 dark:text-gray-400">Monitor and manage production activities</p>
+          <h1 className="text-3xl font-bold text-gray-900">Production Dashboard</h1>
+          <p className="text-gray-600">Monitor and manage production activities</p>
         </div>
         <Button onClick={() => refetch()} variant="outline" disabled={isLoading}>
           <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
@@ -112,40 +112,40 @@ export default function ProductionDashboard() {
 
       {/* Stats Cards - Production Groups, Total Items, and Ungrouped Items */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20">
+        <Card className="bg-gradient-to-r from-blue-50 to-indigo-50">
           <CardContent className="p-6">
             <div className="flex items-center space-x-4">
-              <div className="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
-                <Factory className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+              <div className="p-3 bg-blue-100 rounded-lg">
+                <Factory className="h-6 w-6 text-blue-600" />
               </div>
               <div>
-                <p className="text-2xl font-bold text-blue-900 dark:text-blue-100">
+                <p className="text-2xl font-bold text-blue-900">
                   {isLoading ? '...' : stats.totalGroups}
                 </p>
-                <p className="text-sm text-blue-600 dark:text-blue-300">Total Production Groups</p>
+                <p className="text-sm text-blue-600">Total Production Groups</p>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950/20 dark:to-emerald-950/20">
+        <Card className="bg-gradient-to-r from-green-50 to-emerald-50">
           <CardContent className="p-6">
             <div className="flex items-center space-x-4">
-              <div className="p-3 bg-green-100 dark:bg-green-900/30 rounded-lg">
-                <Package className="h-6 w-6 text-green-600 dark:text-green-400" />
+              <div className="p-3 bg-green-100 rounded-lg">
+                <Package className="h-6 w-6 text-green-600" />
               </div>
               <div>
-                <p className="text-2xl font-bold text-green-900 dark:text-green-100">
+                <p className="text-2xl font-bold text-green-900">
                   {isLoading ? '...' : stats.totalItems}
                 </p>
-                <p className="text-sm text-green-600 dark:text-green-300">Total Items in Production</p>
+                <p className="text-sm text-green-600">Total Items in Production</p>
               </div>
             </div>
           </CardContent>
         </Card>
 
         <Card 
-          className="bg-gradient-to-r from-orange-50 to-amber-50 dark:from-orange-950/20 dark:to-amber-950/20 cursor-pointer hover:shadow-lg transition-all border-2 border-orange-200 hover:border-orange-300"
+          className="bg-gradient-to-r from-orange-50 to-amber-50 cursor-pointer hover:shadow-lg transition-all border-2 border-orange-200 hover:border-orange-300"
           onClick={() => {
             console.log('🔄 CARD CLICKED! Current state:', showUngroupedItems);
             console.log('🔄 About to toggle state...');
@@ -158,14 +158,14 @@ export default function ProductionDashboard() {
         >
           <CardContent className="p-6">
             <div className="flex items-center space-x-4">
-              <div className="p-3 bg-orange-100 dark:bg-orange-900/30 rounded-lg">
-                <Package className="h-6 w-6 text-orange-600 dark:text-orange-400" />
+              <div className="p-3 bg-orange-100 rounded-lg">
+                <Package className="h-6 w-6 text-orange-600" />
               </div>
               <div>
-                <p className="text-2xl font-bold text-orange-900 dark:text-orange-100">
+                <p className="text-2xl font-bold text-orange-900">
                   {ungroupedLoading ? '...' : ungroupedStats.ungroupedItemsCount}
                 </p>
-                <p className="text-sm text-orange-600 dark:text-orange-300">Ungrouped Items</p>
+                <p className="text-sm text-orange-600">Ungrouped Items</p>
               </div>
             </div>
           </CardContent>

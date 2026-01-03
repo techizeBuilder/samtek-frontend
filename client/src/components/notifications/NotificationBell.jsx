@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { Bell, Volume2, VolumeX, Check, Trash2, AlertCircle, Package, ShoppingCart, UserPlus } from 'lucide-react';
 import { testNotificationSound } from '../../utils/soundUtils';
 import { Button } from '@/components/ui/button';
@@ -34,10 +34,10 @@ const getNotificationIcon = (type, icon) => {
 // Priority color mapping
 const getPriorityColor = (priority) => {
   const colorMap = {
-    'low': 'text-slate-500 dark:text-slate-400',
-    'medium': 'text-blue-500 dark:text-blue-400',
-    'high': 'text-orange-500 dark:text-orange-400',
-    'urgent': 'text-red-500 dark:text-red-400'
+    'low': 'text-slate-500',
+    'medium': 'text-blue-500',
+    'high': 'text-orange-500',
+    'urgent': 'text-red-500'
   };
   
   return colorMap[priority] || colorMap.medium;
@@ -126,7 +126,7 @@ export const NotificationBell = () => {
         <Button
           variant="ghost"
           size="sm"
-          className="relative text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+          className="relative text-slate-500 hover:text-slate-700"
         >
           <Bell className="h-5 w-5" />
           {unreadCount > 0 && (
@@ -197,7 +197,7 @@ export const NotificationBell = () => {
                   <DropdownMenuItem
                     className={`flex items-start gap-3 p-3 cursor-pointer ${
                       !notification.isReadByUser 
-                        ? 'bg-blue-50 dark:bg-blue-950/30 border-l-2 border-l-blue-500' 
+                        ? 'bg-blue-50 border-l-2 border-l-blue-500' 
                         : ''
                     }`}
                     onClick={() => handleNotificationClick(notification)}
@@ -211,15 +211,15 @@ export const NotificationBell = () => {
                         <div className="flex-1 min-w-0">
                           <p className={`text-sm font-medium leading-tight ${
                             !notification.isReadByUser 
-                              ? 'text-slate-900 dark:text-slate-100' 
-                              : 'text-slate-700 dark:text-slate-300'
+                              ? 'text-slate-900' 
+                              : 'text-slate-700'
                           }`}>
                             {notification.title}
                           </p>
                           <p className={`text-xs mt-1 leading-tight ${
                             !notification.isReadByUser
-                              ? 'text-slate-600 dark:text-slate-400'
-                              : 'text-slate-500 dark:text-slate-500'
+                              ? 'text-slate-600'
+                              : 'text-slate-500'
                           }`}>
                             {notification.message}
                           </p>
@@ -230,7 +230,7 @@ export const NotificationBell = () => {
                         )}
                       </div>
                       
-                      <p className="text-xs text-slate-400 dark:text-slate-600 mt-2">
+                      <p className="text-xs text-slate-400 mt-2">
                         {formatDistanceToNow(new Date(notification.createdAt), { addSuffix: true })}
                       </p>
                     </div>
@@ -248,7 +248,7 @@ export const NotificationBell = () => {
         <DropdownMenuItem asChild>
           <a 
             href="/notifications" 
-            className="flex items-center justify-center text-sm text-blue-600 dark:text-blue-400 cursor-pointer"
+            className="flex items-center justify-center text-sm text-blue-600 cursor-pointer"
           >
             View all notifications
           </a>

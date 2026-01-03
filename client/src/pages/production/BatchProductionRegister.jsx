@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -235,8 +235,8 @@ export default function BatchProductionRegister() {
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Batch Production Register</h1>
-          <p className="text-gray-600 dark:text-gray-400">Official record of all production activities</p>
+          <h1 className="text-3xl font-bold text-gray-900">Batch Production Register</h1>
+          <p className="text-gray-600">Official record of all production activities</p>
         </div>
         <div className="flex gap-3">
           <Button variant="outline" onClick={downloadExcelReport}>

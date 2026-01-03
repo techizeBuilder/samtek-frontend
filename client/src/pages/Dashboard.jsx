@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+﻿import React, { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -85,39 +85,39 @@ export default function Dashboard() {
 
         {/* Date & Time Section - 3 columns */}
         <div className="col-span-12 md:col-span-4">
-          <Card className="h-full bg-gradient-to-br from-indigo-50 to-blue-50 dark:from-indigo-900/20 dark:to-blue-900/20 border-indigo-200 dark:border-indigo-800">
+          <Card className="h-full bg-gradient-to-br from-indigo-50 to-blue-50 border-indigo-200">
             <CardHeader className="pb-4">
-              <CardTitle className="flex items-center text-lg text-indigo-700 dark:text-indigo-300">
+              <CardTitle className="flex items-center text-lg text-indigo-700">
                 <Calendar className="w-5 h-5 mr-2" />
                 Live Date & Time
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                <div className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+                <div className="text-2xl font-bold text-slate-900">
                   {currentTime.toLocaleDateString("en-US", {
                     month: "short",
                     day: "numeric",
                   })}
                 </div>
-                <div className="text-lg font-mono text-indigo-600 dark:text-indigo-400">
+                <div className="text-lg font-mono text-indigo-600">
                   {currentTime.toLocaleTimeString("en-US", {
                     hour: "2-digit",
                     minute: "2-digit",
                     second: "2-digit",
                   })}
                 </div>
-                <div className="text-sm text-slate-600 dark:text-slate-400">
+                <div className="text-sm text-slate-600">
                   {currentTime.toLocaleDateString("en-US", { weekday: "long" })}
                 </div>
-                <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+                <div className="flex items-center justify-between text-xs text-slate-500">
                   <span>
                     Week{" "}
                     {Math.ceil(
                       (currentTime.getDate() + currentTime.getDay()) / 7,
                     )}
                   </span>
-                  <span className="px-2 py-1 bg-indigo-100 dark:bg-indigo-800 rounded-full">
+                  <span className="px-2 py-1 bg-indigo-100 rounded-full">
                     {currentTime.toLocaleDateString("en-US", {
                       year: "numeric",
                     })}
@@ -131,7 +131,7 @@ export default function Dashboard() {
 
       {/* Analytics Overview */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-0">
-        <h2 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100">
+        <h2 className="text-xl sm:text-2xl font-bold text-slate-900">
           Analytics Overview
         </h2>
         <Button variant="outline" size="sm" className="w-fit">

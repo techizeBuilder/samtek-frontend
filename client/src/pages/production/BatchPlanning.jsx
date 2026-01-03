@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -241,8 +241,8 @@ export default function BatchPlanning() {
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Batch Planning</h1>
-          <p className="text-gray-600 dark:text-gray-400">Plan batch production based on approved indents</p>
+          <h1 className="text-3xl font-bold text-gray-900">Batch Planning</h1>
+          <p className="text-gray-600">Plan batch production based on approved indents</p>
         </div>
         <div className="flex gap-3">
           <Dialog open={showCreateForm} onOpenChange={setShowCreateForm}>

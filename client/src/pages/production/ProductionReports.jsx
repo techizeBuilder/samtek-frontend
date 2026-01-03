@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -191,10 +191,10 @@ export default function ProductionReports() {
       <div className="flex items-center justify-center min-h-64">
         <div className="text-center">
           <AlertTriangle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">
             Error Loading Production Reports
           </h3>
-          <p className="text-gray-600 dark:text-gray-400 mb-4">
+          <p className="text-gray-600 mb-4">
             {error.message || 'Failed to load production data'}
           </p>
           <Button onClick={() => refetch()}>
@@ -211,8 +211,8 @@ export default function ProductionReports() {
       {/* Header */}
       <div className="flex justify-between items-start">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Production Reports</h1>
-          <p className="text-gray-600 dark:text-gray-400">View and analyze all production data history</p>
+          <h1 className="text-3xl font-bold text-gray-900">Production Reports</h1>
+          <p className="text-gray-600">View and analyze all production data history</p>
         </div>
         <div className="flex space-x-2">
           <Button onClick={() => refetch()} variant="outline">

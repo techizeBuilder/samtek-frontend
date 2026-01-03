@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+﻿import React, { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import {
@@ -455,26 +455,26 @@ export default function NewProductionPage() {
   const getStatusColor = (status) => {
     switch (status) {
       case "Completed":
-        return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200";
+        return "bg-green-100 text-green-800";
       case "In Progress":
-        return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200";
+        return "bg-blue-100 text-blue-800";
       case "Pending":
-        return "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200";
+        return "bg-orange-100 text-orange-800";
       default:
-        return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200";
+        return "bg-gray-100 text-gray-800";
     }
   };
 
   const getQualityColor = (quality) => {
     switch (quality) {
       case "A-Grade":
-        return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200";
+        return "bg-green-100 text-green-800";
       case "B-Grade":
-        return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200";
+        return "bg-yellow-100 text-yellow-800";
       case "C-Grade":
-        return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200";
+        return "bg-red-100 text-red-800";
       default:
-        return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200";
+        return "bg-gray-100 text-gray-800";
     }
   };
 
@@ -537,18 +537,18 @@ export default function NewProductionPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         <Card className="border-l-4 border-l-green-500">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600 dark:text-gray-400">
+            <CardTitle className="text-sm font-medium text-gray-600">
               Total Produced
             </CardTitle>
-            <div className="p-2 bg-green-100 rounded-lg dark:bg-green-900">
-              <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
+            <div className="p-2 bg-green-100 rounded-lg">
+              <CheckCircle className="h-5 w-5 text-green-600" />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-green-600 dark:text-green-400">
+            <div className="text-3xl font-bold text-green-600">
               {totalProduced.toLocaleString()}
             </div>
-            <p className="text-xs text-green-600 dark:text-green-400 font-medium">
+            <p className="text-xs text-green-600 font-medium">
               ↗ +12% from last month
             </p>
           </CardContent>
@@ -556,18 +556,18 @@ export default function NewProductionPage() {
 
         <Card className="border-l-4 border-l-red-500">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600 dark:text-gray-400">
+            <CardTitle className="text-sm font-medium text-gray-600">
               Total Damaged
             </CardTitle>
-            <div className="p-2 bg-red-100 rounded-lg dark:bg-red-900">
-              <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400" />
+            <div className="p-2 bg-red-100 rounded-lg">
+              <AlertTriangle className="h-5 w-5 text-red-600" />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-red-600 dark:text-red-400">
+            <div className="text-3xl font-bold text-red-600">
               {totalDamaged}
             </div>
-            <p className="text-xs text-red-600 dark:text-red-400 font-medium">
+            <p className="text-xs text-red-600 font-medium">
               ↘ -5% from last month
             </p>
           </CardContent>
@@ -575,18 +575,18 @@ export default function NewProductionPage() {
 
         <Card className="border-l-4 border-l-blue-500">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600 dark:text-gray-400">
+            <CardTitle className="text-sm font-medium text-gray-600">
               Completed Items
             </CardTitle>
-            <div className="p-2 bg-blue-100 rounded-lg dark:bg-blue-900">
-              <Package className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+            <div className="p-2 bg-blue-100 rounded-lg">
+              <Package className="h-5 w-5 text-blue-600" />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-blue-600 dark:text-blue-400">
+            <div className="text-3xl font-bold text-blue-600">
               {completedItems}
             </div>
-            <p className="text-xs text-blue-600 dark:text-blue-400 font-medium">
+            <p className="text-xs text-blue-600 font-medium">
               {inProgressItems} in progress
             </p>
           </CardContent>
@@ -594,15 +594,15 @@ export default function NewProductionPage() {
 
         <Card className="border-l-4 border-l-purple-500">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600 dark:text-gray-400">
+            <CardTitle className="text-sm font-medium text-gray-600">
               Efficiency Rate
             </CardTitle>
-            <div className="p-2 bg-purple-100 rounded-lg dark:bg-purple-900">
-              <TrendingUp className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+            <div className="p-2 bg-purple-100 rounded-lg">
+              <TrendingUp className="h-5 w-5 text-purple-600" />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-purple-600 dark:text-purple-400">
+            <div className="text-3xl font-bold text-purple-600">
               {totalProduced > 0
                 ? (
                     ((totalProduced - totalDamaged) / totalProduced) *
@@ -611,7 +611,7 @@ export default function NewProductionPage() {
                 : 0}
               %
             </div>
-            <p className="text-xs text-purple-600 dark:text-purple-400 font-medium">
+            <p className="text-xs text-purple-600 font-medium">
               Quality performance
             </p>
           </CardContent>
@@ -665,7 +665,7 @@ export default function NewProductionPage() {
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
-                <TableRow className="bg-gray-50 dark:bg-gray-800">
+                <TableRow className="bg-gray-50">
                   <TableHead className="font-semibold whitespace-nowrap">
                     Production ID
                   </TableHead>
@@ -699,7 +699,7 @@ export default function NewProductionPage() {
                 {filteredData.map((item) => (
                   <TableRow
                     key={item.id}
-                    className="hover:bg-gray-50 dark:hover:bg-gray-800"
+                    className="hover:bg-gray-50"
                   >
                     <TableCell className="font-medium text-blue-600">
                       {item.id}

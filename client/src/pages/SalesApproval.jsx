@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+﻿import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -1851,9 +1851,9 @@ const SalesApproval = () => {
               {/* Right Side - Filter Controls and Actions */}
               <div className="flex flex-col lg:flex-row items-start lg:items-center gap-3 lg:gap-4">
                 {/* Bulk Actions - Always show */}
-                <div className="flex items-center gap-2 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                <div className="flex items-center gap-2 p-2 bg-blue-50 rounded-lg border border-blue-200">
                   <CheckCircle className="h-4 w-4 text-blue-600" />
-                  <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
+                  <span className="text-sm font-medium text-blue-700">
                     {selectedProducts.size} selected
                   </span>
                   <Button

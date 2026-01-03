@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+﻿import React, { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -470,7 +470,7 @@ export default function ProductionHistoryPage() {
           {filteredSubmissions.length === 0 ? (
             <div className="text-center py-12">
               <AlertTriangle className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
                 No Submissions Found
               </h3>
               <p className="text-gray-500 max-w-sm mx-auto">
@@ -483,7 +483,7 @@ export default function ProductionHistoryPage() {
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
-                    <TableRow className="bg-gray-50 dark:bg-gray-800">
+                    <TableRow className="bg-gray-50">
                       <TableHead className="font-semibold whitespace-nowrap">
                         Submission ID
                       </TableHead>
@@ -520,7 +520,7 @@ export default function ProductionHistoryPage() {
                     {paginatedSubmissions.map((submission) => (
                       <TableRow
                         key={submission.id}
-                        className="hover:bg-gray-50 dark:hover:bg-gray-800"
+                        className="hover:bg-gray-50"
                       >
                         <TableCell className="font-medium text-blue-600">
                           {submission.id}

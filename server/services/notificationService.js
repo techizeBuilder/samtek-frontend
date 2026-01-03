@@ -333,18 +333,276 @@ class NotificationService {
     }
   }
 
-  // Trigger specific notification types with optional unit/company targeting
-  async triggerOrderNotification(orderData, targetUnit = null, targetCompanyId = null) {
-    return this.createNotification({
-      title: 'New Order Created',
-      message: `Order ${orderData.orderCode} has been created by ${orderData.customerName}`,
+  // ========================================
+  // WORKFLOW-BASED NOTIFICATION SYSTEM
+  // ========================================
+  
+  // 1. SALES -> Unit Manager + Unit Head
+  async triggerSalesNotification({ action, orderData, customerData, targetUnit, targetCompanyId, userId }) {
+    const notifications = [];
+    
+    if (action === 'order_created' || action === 'order_updated' || action === 'order_deleted') {
+      const actionText = action === 'order_created' ? 'created' : action === 'order_updated' ? 'updated' : 'deleted';
+      
+      // Notify Unit Manager
+      notifications.push(this.createNotification({
+        title: `Order ${actionText.charAt(0).toUpperCase() + actionText.slice(1)}`,
+        message: `Order ${orderData.orderCode} has been ${actionText} by Sales`,
+        type: 'order',
+        icon: 'shopping-cart',
+        targetRole: 'Unit Manager',
+        targetUnit,
+        targetCompanyId,
+        data: { orderId: orderData._id, orderCode: orderData.orderCode, action },
+        priority: 'high'
+      }));
+      
+      // Notify Unit Head
+      notifications.push(this.createNotification({
+        title: `Order ${actionText.charAt(0).toUpperCase() + actionText.slice(1)}`,
+        message: `Order ${orderData.orderCode} has been ${actionText} by Sales`,
+        type: 'order',
+        icon: 'shopping-cart',
+        targetRole: 'Unit Head',
+        targetUnit,
+        targetCompanyId,
+        data: { orderId: orderData._id, orderCode: orderData.orderCode, action },
+        priority: 'high'
+      }));
+      
+      // Always notify Super Admin
+      notifications.push(this.createNotification({
+        title: `Order ${actionText.charAt(0).toUpperCase() + actionText.slice(1)}`,
+        message: `Order ${orderData.orderCode} has been ${actionText}`,
+        type: 'order',
+        icon: 'shopping-cart',
+        targetRole: 'Super Admin',
+        data: { orderId: orderData._id, orderCode: orderData.orderCode, action },
+        priority: 'medium'
+      }));
+    }
+    
+    if (action === 'customer_added') {
+      // Notify Unit Manager
+      notifications.push(this.createNotification({
+        title: 'New Customer Added',
+        message: `${customerData.name} has been registered by Sales`,
+        type: 'customer',
+        icon: 'user-plus',
+        targetRole: 'Unit Manager',
+        targetUnit,
+        targetCompanyId,
+        data: { customerId: customerData._id, customerName: customerData.name },
+        priority: 'medium'
+      }));
+      
+      // Notify Unit Head
+      notifications.push(this.createNotification({
+        title: 'New Customer Added',
+        message: `${customerData.name} has been registered by Sales`,
+        type: 'customer',
+        icon: 'user-plus',
+        targetRole: 'Unit Head',
+        targetUnit,
+        targetCompanyId,
+        data: { customerId: customerData._id, customerName: customerData.name },
+        priority: 'medium'
+      }));
+    }
+    
+    return Promise.all(notifications);
+  }
+  
+  // 2. UNIT MANAGER -> Production
+  async triggerUnitManagerToProduction({ action, orderData, productionData, targetUnit, targetCompanyId }) {
+    const notifications = [];
+    
+    // Notify Production
+    notifications.push(this.createNotification({
+      title: 'Production Request',
+      message: `Unit Manager has sent order ${orderData?.orderCode || 'N/A'} for production`,
       type: 'order',
-      icon: 'shopping-cart',
-      targetRole: 'all',
+      icon: 'factory',
+      targetRole: 'Production',
       targetUnit,
       targetCompanyId,
-      data: { orderId: orderData._id, orderCode: orderData.orderCode },
+      data: { 
+        orderId: orderData?._id, 
+        orderCode: orderData?.orderCode,
+        productionId: productionData?._id,
+        action: 'production_request'
+      },
       priority: 'high'
+    }));
+    
+    // Notify Super Admin
+    notifications.push(this.createNotification({
+      title: 'Production Request Sent',
+      message: `Unit Manager sent order for production`,
+      type: 'order',
+      icon: 'factory',
+      targetRole: 'Super Admin',
+      data: { orderId: orderData?._id, action: 'production_request' },
+      priority: 'low'
+    }));
+    
+    return Promise.all(notifications);
+  }
+  
+  // 3. PRODUCTION (Approve) -> Unit Manager + Package
+  async triggerProductionApproval({ productionData, orderData, targetUnit, targetCompanyId }) {
+    const notifications = [];
+    
+    // Notify Unit Manager
+    notifications.push(this.createNotification({
+      title: 'Production Approved',
+      message: `Production has approved batch ${productionData.batchNo || 'N/A'}`,
+      type: 'order',
+      icon: 'check-circle',
+      targetRole: 'Unit Manager',
+      targetUnit,
+      targetCompanyId,
+      data: { 
+        productionId: productionData._id, 
+        batchNo: productionData.batchNo,
+        orderId: orderData?._id,
+        action: 'production_approved'
+      },
+      priority: 'high'
+    }));
+    
+    // Notify Package (Packing)
+    notifications.push(this.createNotification({
+      title: 'Ready for Packing',
+      message: `Batch ${productionData.batchNo || 'N/A'} is ready for packing`,
+      type: 'order',
+      icon: 'package',
+      targetRole: 'Packing',
+      targetUnit,
+      targetCompanyId,
+      data: { 
+        productionId: productionData._id, 
+        batchNo: productionData.batchNo,
+        action: 'ready_for_packing'
+      },
+      priority: 'high'
+    }));
+    
+    // Notify Super Admin
+    notifications.push(this.createNotification({
+      title: 'Production Approved',
+      message: `Production approved batch ${productionData.batchNo || 'N/A'}`,
+      type: 'order',
+      icon: 'check-circle',
+      targetRole: 'Super Admin',
+      data: { productionId: productionData._id, action: 'production_approved' },
+      priority: 'low'
+    }));
+    
+    return Promise.all(notifications);
+  }
+  
+  // 4. PACKAGE -> Dispatch
+  async triggerPackageToDispatch({ packageData, targetUnit, targetCompanyId }) {
+    const notifications = [];
+    
+    // Notify Dispatch
+    notifications.push(this.createNotification({
+      title: 'Package Ready for Dispatch',
+      message: `Packing completed for ${packageData.dcno || 'N/A'}. Ready for dispatch`,
+      type: 'order',
+      icon: 'truck',
+      targetRole: 'Dispatch',
+      targetUnit,
+      targetCompanyId,
+      data: { 
+        packageId: packageData._id, 
+        dcno: packageData.dcno,
+        action: 'ready_for_dispatch'
+      },
+      priority: 'high'
+    }));
+    
+    // Notify Unit Manager
+    notifications.push(this.createNotification({
+      title: 'Package Completed',
+      message: `Packing completed for ${packageData.dcno || 'N/A'}`,
+      type: 'order',
+      icon: 'package',
+      targetRole: 'Unit Manager',
+      targetUnit,
+      targetCompanyId,
+      data: { packageId: packageData._id, dcno: packageData.dcno, action: 'packing_completed' },
+      priority: 'medium'
+    }));
+    
+    // Notify Super Admin
+    notifications.push(this.createNotification({
+      title: 'Package Ready',
+      message: `Package ${packageData.dcno || 'N/A'} ready for dispatch`,
+      type: 'order',
+      icon: 'truck',
+      targetRole: 'Super Admin',
+      data: { packageId: packageData._id, action: 'ready_for_dispatch' },
+      priority: 'low'
+    }));
+    
+    return Promise.all(notifications);
+  }
+  
+  // 5. PRODUCTION GROUP (Return/Damage) -> Unit Manager + Unit Head
+  async triggerProductionGroupUpdate({ action, groupData, targetUnit, targetCompanyId }) {
+    const notifications = [];
+    
+    const actionText = action === 'return' ? 'Return' : 'Damage';
+    
+    // Notify Unit Manager
+    notifications.push(this.createNotification({
+      title: `Production ${actionText} Recorded`,
+      message: `${actionText} recorded for production group ${groupData.name}`,
+      type: 'inventory',
+      icon: 'alert-triangle',
+      targetRole: 'Unit Manager',
+      targetUnit,
+      targetCompanyId,
+      data: { groupId: groupData._id, groupName: groupData.name, action },
+      priority: 'high'
+    }));
+    
+    // Notify Unit Head
+    notifications.push(this.createNotification({
+      title: `Production ${actionText} Recorded`,
+      message: `${actionText} recorded for production group ${groupData.name}`,
+      type: 'inventory',
+      icon: 'alert-triangle',
+      targetRole: 'Unit Head',
+      targetUnit,
+      targetCompanyId,
+      data: { groupId: groupData._id, groupName: groupData.name, action },
+      priority: 'high'
+    }));
+    
+    // Notify Super Admin
+    notifications.push(this.createNotification({
+      title: `Production ${actionText}`,
+      message: `${actionText} recorded in production`,
+      type: 'inventory',
+      icon: 'alert-triangle',
+      targetRole: 'Super Admin',
+      data: { groupId: groupData._id, action },
+      priority: 'medium'
+    }));
+    
+    return Promise.all(notifications);
+  }
+  
+  // Legacy methods (kept for backward compatibility)
+  async triggerOrderNotification(orderData, targetUnit = null, targetCompanyId = null) {
+    return this.triggerSalesNotification({
+      action: 'order_created',
+      orderData,
+      targetUnit,
+      targetCompanyId
     });
   }
 
@@ -355,7 +613,7 @@ class NotificationService {
       message: `Item "${itemData.name}" has been ${actionText}`,
       type: 'inventory',
       icon: 'package',
-      targetRole: 'all',
+      targetRole: 'Unit Manager',
       targetUnit,
       targetCompanyId,
       data: { itemId: itemData._id, itemName: itemData.name, action },
@@ -364,16 +622,11 @@ class NotificationService {
   }
 
   async triggerCustomerNotification(customerData, targetUnit = null, targetCompanyId = null) {
-    return this.createNotification({
-      title: 'New Customer Registered',
-      message: `${customerData.name} has been registered as a new customer`,
-      type: 'customer',
-      icon: 'user-plus',
-      targetRole: 'Sales',
+    return this.triggerSalesNotification({
+      action: 'customer_added',
+      customerData,
       targetUnit,
-      targetCompanyId,
-      data: { customerId: customerData._id, customerName: customerData.name },
-      priority: 'medium'
+      targetCompanyId
     });
   }
 

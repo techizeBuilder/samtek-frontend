@@ -294,9 +294,18 @@ export const createCustomer = [
       const customer = new Customer(customerData);
       await customer.save();
 
-      // Trigger notification for new customer
+      // Trigger notification for new customer - Sales to Unit Manager + Unit Head
       try {
-        await notificationService.triggerCustomerNotification(customer);
+        await notificationService.triggerSalesNotification({
+          action: 'customer_added',
+          customerData: {
+            _id: customer._id,
+            name: customer.name
+          },
+          targetUnit: req.user.unit || null,
+          targetCompanyId: req.user.companyId || null,
+          userId: req.user._id || req.user.id
+        });
       } catch (notificationError) {
         console.error('Failed to send customer notification:', notificationError);
       }
