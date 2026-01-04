@@ -266,12 +266,19 @@ const SalesApproval = () => {
       // Get selected date for the update (not current date)
       console.log('📅 Using selected date for update:', selectedDate);
       
+      // Extract orderIds from salesBreakdown
+      const orderIds = product.salesBreakdown && product.salesBreakdown.length > 0
+        ? product.salesBreakdown.flatMap(sb => sb.orderIds || [])
+        : [];
+      
       const requestBody = {
         date: selectedDate,
         productId: actualProductId,
         updates: {
           status: 'approved'
-        }
+        },
+        orderIds: orderIds,
+        dailyDetailsId: product.dailyDetailsId || null
       };
       console.log('📤 Request body:', JSON.stringify(requestBody, null, 2));
       
@@ -400,13 +407,20 @@ const SalesApproval = () => {
         const toBeProducedDay = productionInfo.toBeProducedDay || product.toBeProducedDay || 0;
         const produceBatches = productionInfo.produceBatches || product.produceBatches || 0;
         
+        // Extract orderIds from salesBreakdown
+        const orderIds = product.salesBreakdown && product.salesBreakdown.length > 0
+          ? product.salesBreakdown.flatMap(sb => sb.orderIds || [])
+          : [];
+        
         console.log(`📦 Bulk approve ${productName} with production data:`, {
           batchAdjusted,
           qtyPerBatch,
           physicalStock,
           packing,
           toBeProducedDay,
-          produceBatches
+          produceBatches,
+          dailyDetailsId: product.dailyDetailsId,
+          orderIds
         });
 
         return {
@@ -417,7 +431,9 @@ const SalesApproval = () => {
           physicalStock: physicalStock,
           packing: packing,
           toBeProducedDay: toBeProducedDay,
-          produceBatches: produceBatches
+          produceBatches: produceBatches,
+          orderIds: orderIds,
+          dailyDetailsId: product.dailyDetailsId || null
         };
       });
 
@@ -539,6 +555,11 @@ const SalesApproval = () => {
       const toBeProducedDay = Math.max(0, totalIndentSalesman - physicalStock);
       const produceBatches = parseFloat((toBeProducedDay / qtyPerBatch).toFixed(2));
 
+      // Extract orderIds from salesBreakdown
+      const orderIds = product.salesBreakdown && product.salesBreakdown.length > 0
+        ? product.salesBreakdown.flatMap(sb => sb.orderIds || [])
+        : [];
+
       const apiPayload = {
         date: selectedDate,
         productId: product.productId || product._id,
@@ -550,7 +571,8 @@ const SalesApproval = () => {
           toBeProducedDay: toBeProducedDay,
           produceBatches: produceBatches,
           status: 'pending'  // Auto-reset status to pending when any field changes
-        }
+        },
+        orderIds: orderIds
       };
       
       console.log(`🔥 EXACT API PAYLOAD:`, JSON.stringify(apiPayload, null, 2));
@@ -678,6 +700,11 @@ const SalesApproval = () => {
       // Auto-calculate dependent values
       const produceBatches = parseFloat((toBeProducedDay / qtyPerBatch).toFixed(2));
 
+      // Extract orderIds from salesBreakdown
+      const orderIds = product.salesBreakdown && product.salesBreakdown.length > 0
+        ? product.salesBreakdown.flatMap(sb => sb.orderIds || [])
+        : [];
+
       const apiPayload = {
         date: selectedDate,
         productId: product.productId || product._id,
@@ -689,7 +716,8 @@ const SalesApproval = () => {
           toBeProducedDay: toBeProducedDay,
           produceBatches: produceBatches,
           status: 'pending'  // Auto-reset status to pending when any field changes
-        }
+        },
+        orderIds: orderIds
       };
       
       console.log(`🚀 API Payload for ${productName}:`, apiPayload);
@@ -1317,6 +1345,7 @@ const SalesApproval = () => {
               productCode: product.productCode || '',
               totalOrders: hasSalesData ? product.salesBreakdown.reduce((sum, sp) => sum + sp.orderCount, 0) : 0,
               totalQuantity: hasSalesData ? product.salesBreakdown.reduce((sum, sp) => sum + sp.totalQuantity, 0) : 0, // Calculate total from salesBreakdown
+              salesBreakdown: product.salesBreakdown || [], // ✅ PRESERVE salesBreakdown with orderIds
               salesPersons: hasSalesData ? product.salesBreakdown.map(sp => ({
                 _id: sp.salesPersonId,
                 fullName: sp.salesPersonName,

@@ -1572,6 +1572,7 @@ export const approvePackingSheet = async (req, res) => {
       
       const today = new Date();
       const startOfDay = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate(), 0, 0, 0, 0));
+      const endOfDay = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate(), 23, 59, 59, 999));
       const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
       const yesterdayStart = new Date(yesterday.setHours(0, 0, 0, 0));
       const yesterdayEnd = new Date(yesterday.setHours(23, 59, 59, 999));
@@ -1644,15 +1645,50 @@ export const approvePackingSheet = async (req, res) => {
           console.log('🔍 Processing item:', {
             productId: item.productId,
             productName: item.productName,
-            packedQty: item.packedQty
+            packedQty: item.packedQty,
+            packingSheetBatchId: packingSheet.batchId
           });
           
-          // Get individual item data from ProductDetailsDailySummary
-          const todayItemSummary = await ProductDetailsDailySummary.findOne({
-            productId: item.productId,
-            companyId: req.user.companyId,
-            date: { $gte: startOfDay, $lte: new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000) }
-          });
+          // STEP 1: Get ProductionBatch using batchId from PackingSheet
+          const ProductionBatch = (await import('../models/ProductionBatch.js')).default;
+          let todayItemSummary = null;
+          let dailyProductionId = null;
+          
+          if (packingSheet.batchId) {
+            const productionBatch = await ProductionBatch.findById(packingSheet.batchId);
+            
+            if (productionBatch) {
+              dailyProductionId = productionBatch.DailyProductionId;
+              console.log('📦 Found ProductionBatch:', {
+                batchId: packingSheet.batchId,
+                batchNo: productionBatch.batchNo,
+                DailyProductionId: dailyProductionId
+              });
+              
+              // STEP 2: Get ProductDetailsDailySummary using DailyProductionId
+              if (dailyProductionId) {
+                todayItemSummary = await ProductDetailsDailySummary.findById(dailyProductionId);
+                
+                if (todayItemSummary) {
+                  console.log('📋 Found ProductDetailsDailySummary:', {
+                    _id: todayItemSummary._id,
+                    productId: todayItemSummary.productId,
+                    orderIds: todayItemSummary.orderIds?.length || 0
+                  });
+                }
+              }
+            }
+          }
+          
+          // Fallback: If no batchId or DailyProductionId, try direct lookup by productId and date
+          if (!todayItemSummary) {
+            console.log('⚠️ Fallback: Looking up ProductDetailsDailySummary by productId and date');
+            todayItemSummary = await ProductDetailsDailySummary.findOne({
+              productId: item.productId,
+              companyId: req.user.companyId,
+              date: { $gte: startOfDay, $lte: new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000) }
+            });
+          }
 
           const yesterdayItemSummary = await ProductDetailsDailySummary.findOne({
             productId: item.productId,
@@ -1715,12 +1751,93 @@ export const approvePackingSheet = async (req, res) => {
             expectedTotalAvailable: item.packedQty + itemPreviousStock + itemReturnQuantity
           });
          
+          // STEP 3: Get customer and salesPerson from Orders using orderIds from ProductDetailsDailySummary
+          const Order = (await import('../models/Order.js')).default;
+          let salesPersonId = null;
+          let customerId = null;
+          
+          // Get from ProductDetailsDailySummary orderIds
+          if (todayItemSummary && todayItemSummary.orderIds && todayItemSummary.orderIds.length > 0) {
+            console.log(`📋 Found ${todayItemSummary.orderIds.length} orderIds in ProductDetailsDailySummary for ${item.productName}`);
+            
+            // Get ALL orders from the orderIds array and find one with customer and salesPerson
+            const orders = await Order.find({
+              _id: { $in: todayItemSummary.orderIds },
+              companyId: req.user.companyId
+            })
+              .select('salesPerson customer orderCode')
+              .populate('salesPerson', 'username')
+              .populate('customer', 'name');
+            
+            console.log(`📦 Retrieved ${orders.length} orders from ProductDetailsDailySummary`);
+            
+            // Find first order with both customer and salesPerson
+            for (const order of orders) {
+              if (order.customer && order.salesPerson) {
+                salesPersonId = order.salesPerson._id || order.salesPerson;
+                customerId = order.customer._id || order.customer;
+                
+                console.log(`✅ Retrieved from order ${order.orderCode}:`, {
+                  salesPerson: order.salesPerson.username || salesPersonId,
+                  customer: order.customer.name || customerId
+                });
+                break; // Found valid order, exit loop
+              }
+            }
+            
+            // If no order has both, try to get at least one of them
+            if (!salesPersonId || !customerId) {
+              for (const order of orders) {
+                if (!salesPersonId && order.salesPerson) {
+                  salesPersonId = order.salesPerson._id || order.salesPerson;
+                }
+                if (!customerId && order.customer) {
+                  customerId = order.customer._id || order.customer;
+                }
+                if (salesPersonId && customerId) break;
+              }
+            }
+          }
+          
+          // Fallback: Search orders directly by productId if not found via ProductDetailsDailySummary
+          if (!salesPersonId || !customerId) {
+            console.log(`🔍 Fallback: Searching for orders directly for product ${item.productName}`);
+            const todayOrders = await Order.find({
+              orderDate: { $gte: startOfDay, $lte: endOfDay },
+              companyId: req.user.companyId,
+              status: { $in: ['approved', 'confirmed'] },
+              'products.product': item.productId
+            }).populate('salesPerson', 'username').populate('customer', 'name');
 
-          // Check if dispatch entry already exists for this combination
+            console.log(`📦 Found ${todayOrders.length} orders for product ${item.productName}`);
+
+            // Get salesperson and customer from first valid order
+            for (const order of todayOrders) {
+              if (!salesPersonId && order.salesPerson) {
+                salesPersonId = order.salesPerson._id || order.salesPerson;
+              }
+              if (!customerId && order.customer) {
+                customerId = order.customer._id || order.customer;
+              }
+              if (salesPersonId && customerId) {
+                console.log(`✅ Retrieved from fallback order ${order.orderCode}`);
+                break;
+              }
+            }
+          }
+          
+          console.log(`🎯 Final customer and salesPerson for ${item.productName}:`, {
+            customerId: customerId,
+            salesPersonId: salesPersonId
+          });
+
+          // Check if dispatch entry already exists for this product
           const existingDispatchEntry = await Dispatch.findOne({
             packingSheetId: packingSheet._id,
+            date: startOfDay,
             productId: item.productId,
-            date: startOfDay
+            company: req.user.companyId,
+            batchNo: packingSheet.batchNo
           });
 
           let dispatchEntry;
@@ -1729,29 +1846,20 @@ export const approvePackingSheet = async (req, res) => {
             // Update existing entry
             console.log(`🔄 Updating existing dispatch entry for ${item.productName} (ID: ${existingDispatchEntry._id})`);
             
-            // Generate DCno if the existing entry doesn't have one (for old entries)
-            let dcnoToSet = existingDispatchEntry.dcno;
-            if (!dcnoToSet) {
-              dcnoToSet = await Dispatch.generateNextDCno();
-              console.log(`📋 Generated DCno for existing entry: ${dcnoToSet} for ${item.productName}`);
-            } else {
-              console.log(`📋 Preserving existing DCno: ${dcnoToSet} for ${item.productName}`);
-            }
-            
             dispatchEntry = await Dispatch.findByIdAndUpdate(
               existingDispatchEntry._id,
               {
                 $set: {
-                  dcno: dcnoToSet, // Set or preserve DCno
+                  dcno: null,
+                  salesPerson: salesPersonId,
+                  customer: customerId,
                   productGroup: `${packingSheet.productionGroupName || 'Unknown Group'} - ${item.productName}`,
                   productName: item.productName,
                   packedQuantityReadyForDispatch: item.packedQty,
                   previousClosingStockYesterdayBalance: itemPreviousStock,
                   returnQuantityYesterdayReturns: itemReturnQuantity,
                   totalIndentQuantityOrdersForTheDay: itemIndentQuantity,
-                  // Calculate totalAvailableStock = packing + closing + returns
                   totalAvailableStock: item.packedQty + itemPreviousStock + itemReturnQuantity,
-                  // Calculate excessShortage = available - indent
                   excessShortage: (item.packedQty + itemPreviousStock + itemReturnQuantity) - itemIndentQuantity,
                   closingStockEndOfDayBalance: item.packedQty + itemPreviousStock + itemReturnQuantity,
                   status: 'updated',
@@ -1763,51 +1871,35 @@ export const approvePackingSheet = async (req, res) => {
           } else {
             // Create new dispatch entry
             console.log(`✨ Creating new dispatch entry for ${item.productName}`);
-            
-            // Generate unique DCno for this dispatch entry
-            const dcno = await Dispatch.generateNextDCno();
-            console.log(`📋 Generated DCno: ${dcno} for ${item.productName}`);
        
             dispatchEntry = await Dispatch.create({
               packingSheetId: packingSheet._id,
               productId: item.productId,
               productName: item.productName,
+              salesPerson: salesPersonId,
+              customer: customerId,
               date: startOfDay,
               productGroup: `${packingSheet.productionGroupName || 'Unknown Group'} - ${item.productName}`,
               company: req.user.companyId,
-              dcno: dcno, // Add the auto-generated DCno
+              dcno: null,
               packedQuantityReadyForDispatch: item.packedQty,
               previousClosingStockYesterdayBalance: itemPreviousStock,
               returnQuantityYesterdayReturns: itemReturnQuantity,
               totalIndentQuantityOrdersForTheDay: itemIndentQuantity,
-              // Calculate totalAvailableStock = packing + closing + returns                                  
               totalAvailableStock: item.packedQty + itemPreviousStock + itemReturnQuantity,
-              // Calculate excessShortage = available - indent
               excessShortage: (item.packedQty + itemPreviousStock + itemReturnQuantity) - itemIndentQuantity,
               dispatchedQuantitySentToday: 0,
-              closingStockEndOfDayBalance: item.packedQty + itemPreviousStock + itemReturnQuantity, // Initial closing = total available
+              closingStockEndOfDayBalance: item.packedQty + itemPreviousStock + itemReturnQuantity,
               physicalStockEntryManualVerification: 0,
               batchNo: packingSheet.batchNo,
               status: 'updated',
               lastUpdatedBy: req.user._id || req.user.id
             });
           }
-          console.log(`✨ Creating new dispatch entry for ${dispatchEntry}`);
-          
-          // Log the final calculated values after model auto-calculation
-          console.log(`📈 Final dispatch calculations for ${item.productName}:`, {
-            dcno: dispatchEntry.dcno,
-            packedQty: dispatchEntry.packedQuantityReadyForDispatch,
-            previousStock: dispatchEntry.previousClosingStockYesterdayBalance,
-            returns: dispatchEntry.returnQuantityYesterdayReturns,
-            totalAvailable: dispatchEntry.totalAvailableStock,
-            excessShortage: dispatchEntry.excessShortage,
-            dispatchId: dispatchEntry._id
-          });
           
           dispatchEntries.push(dispatchEntry);
-        }
-      }
+        } // End of if (item.packedQty > 0)
+      } // End of for (const item of packingSheet.items)
 
       console.log('✅ Dispatch console entries created:', {
         totalEntries: dispatchEntries.length,

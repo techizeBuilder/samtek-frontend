@@ -163,7 +163,8 @@ export const getSalesBreakdown = async (productIds, date, companyId) => {
             } 
           },
           totalQuantity: { $sum: '$products.quantity' },
-          orderCount: { $sum: 1 }
+          orderCount: { $sum: 1 },
+          orderIds: { $push: '$_id' }
         }
       },
       // Group by product to collect all salesperson data for each product
@@ -176,7 +177,8 @@ export const getSalesBreakdown = async (productIds, date, companyId) => {
               salesPersonId: '$salesPersonId',
               salesPersonName: '$salesPersonName',
               totalQuantity: '$totalQuantity',
-              orderCount: '$orderCount'
+              orderCount: '$orderCount',
+              orderIds: '$orderIds'
             }
           },
           totalIndent: { $sum: '$totalQuantity' },

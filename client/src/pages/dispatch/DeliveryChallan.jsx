@@ -5,90 +5,69 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
   Package,
   FileText,
   RefreshCw,
-  Download,
-  Calendar,
-  Building,
-  Hash,
   Truck,
-  Receipt
+  Receipt,
+  AlertCircle
 } from 'lucide-react';
 import { config } from '@/config/environment';
 
 export default function DeliveryChallan() {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
-  const [deliveryData, setDeliveryData] = useState([]);
-  const [summary, setSummary] = useState({});
-  const [meta, setMeta] = useState({});
-  const [customers, setCustomers] = useState([]);
+  const [products, setProducts] = useState([]);
   const [salespeople, setSalespeople] = useState([]);
-  const [filteredCustomers, setFilteredCustomers] = useState([]);
-  const [customerSearchTerm, setCustomerSearchTerm] = useState('');
-  const [isCustomerDropdownOpen, setIsCustomerDropdownOpen] = useState(false);
+  const [customers, setCustomers] = useState([]);
+  const [dcPrefix] = useState('DC-');
+  const [dcNumber, setDcNumber] = useState('');
+  const [selectedSalesman, setSelectedSalesman] = useState(null);
+  const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [salesmanSearchTerm, setSalesmanSearchTerm] = useState('');
+  const [customerSearchTerm, setCustomerSearchTerm] = useState('');
   const [isSalesmanDropdownOpen, setIsSalesmanDropdownOpen] = useState(false);
-
-  // Sample data for dropdowns - will be replaced by API data
-  const [sampleCustomers] = useState([
-    'ABC Retail Store',
-    'XYZ Supermarket', 
-    'Quick Mart',
-    'Daily Needs Store'
-  ]);
-
-  const [sampleSalesmen] = useState([
-    'Rajesh Kumar',
-    'Priya Sharma',
-    'Amit Singh', 
-    'Neha Gupta'
-  ]);
-
-  const [formData, setFormData] = useState({
-    manualEntryNo: '',
-    customerName: '',
-    salesmanName: '',
-    dcNo: '',
-    to: '',
-    by: ''
-  });
-  const [nextDCNumber, setNextDCNumber] = useState('');
-  const [loadingDCNumber, setLoadingDCNumber] = useState(false);
+  const [isCustomerDropdownOpen, setIsCustomerDropdownOpen] = useState(false);
+  const [qtyIssuedMap, setQtyIssuedMap] = useState({});
+  const [isDispatched, setIsDispatched] = useState(false);
+  const [currentDCId, setCurrentDCId] = useState(null);
 
   useEffect(() => {
-    fetchDeliveryChallanData();
     fetchSalespeople();
-    fetchCustomers();
-    fetchNextDCNumber();
+    fetchTodaysProducts(); // Load all today's products on mount
   }, []);
 
-  // Fetch customers when salesperson changes
+  // Fetch customers when salesperson is selected
   useEffect(() => {
-    if (formData.salesmanName) {
-      fetchCustomersBySalesperson(formData.salesmanName);
+    if (selectedSalesman) {
+      fetchCustomersBySalesperson(selectedSalesman._id);
+      // Reset customer when salesman changes
+      setSelectedCustomer(null);
+      setCustomerSearchTerm('');
+      setProducts([]);
+      setQtyIssuedMap({});
     } else {
-      setFilteredCustomers(customers);
+      setCustomers([]);
+      setSelectedCustomer(null);
+      setCustomerSearchTerm('');
+      setProducts([]);
+      setQtyIssuedMap({});
     }
-    // Reset customer search when salesperson changes
-    setCustomerSearchTerm('');
-    setFormData(prev => ({ ...prev, customerName: '' }));
-  }, [formData.salesmanName, customers]);
+  }, [selectedSalesman]);
+
+  // Fetch products when customer is selected (optional filter)
+  useEffect(() => {
+    if (selectedSalesman || selectedCustomer) {
+      fetchTodaysProducts(); // Re-fetch with filters
+    }
+  }, [selectedCustomer]);
 
   // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (!event.target.closest('.relative')) {
-        setIsCustomerDropdownOpen(false);
+      if (!event.target.closest('.dropdown-container')) {
         setIsSalesmanDropdownOpen(false);
+        setIsCustomerDropdownOpen(false);
       }
     };
 
@@ -97,42 +76,6 @@ export default function DeliveryChallan() {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, []);
-
-  const fetchDeliveryChallanData = async () => {
-    try {
-      setLoading(true);
-      console.log('🚚 Fetching delivery challan data...');
-      
-      const response = await fetch(`${config.baseURL}/api/dispatches/delivery-challan`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const result = await response.json();
-      console.log('📦 Delivery challan response:', result);
-      
-      if (result.success) {
-        setDeliveryData(result.data.products);
-        setSummary(result.data.summary);
-        setMeta(result.data.meta);
-      }
-    } catch (error) {
-      console.error('❌ Error fetching delivery challan data:', error);
-      toast({
-        title: "Error",
-        description: "Failed to fetch delivery challan data",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const fetchSalespeople = async () => {
     try {
@@ -165,38 +108,6 @@ export default function DeliveryChallan() {
     }
   };
 
-  const fetchCustomers = async () => {
-    try {
-      console.log('👥 Fetching customers...');
-      
-      const response = await fetch(`${config.baseURL}/api/customers/dropdown/list`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const result = await response.json();
-      console.log('📋 Customers response:', result);
-      
-      if (result.success) {
-        setCustomers(result.data);
-        setFilteredCustomers(result.data);
-      }
-    } catch (error) {
-      console.error('❌ Error fetching customers:', error);
-      toast({
-        title: "Error",
-        description: "Failed to fetch customers list",
-        variant: "destructive",
-      });
-    }
-  };
-
   const fetchCustomersBySalesperson = async (salespersonId) => {
     try {
       console.log(`🎯 Fetching customers for salesperson: ${salespersonId}`);
@@ -216,11 +127,7 @@ export default function DeliveryChallan() {
       console.log('👥 Salesperson customers response:', result);
       
       if (result.success) {
-        setFilteredCustomers(result.data);
-        // Reset customer selection and search when salesperson changes
-        setCustomerSearchTerm('');
-        setFormData(prev => ({ ...prev, customerName: '' }));
-        setIsCustomerDropdownOpen(false);
+        setCustomers(result.data);
       }
     } catch (error) {
       console.error('❌ Error fetching customers by salesperson:', error);
@@ -232,51 +139,91 @@ export default function DeliveryChallan() {
     }
   };
 
-  const fetchNextDCNumber = async () => {
+  const fetchTodaysProducts = async () => {
     try {
-      setLoadingDCNumber(true);
-      const response = await fetch(`${config.baseURL}/api/dispatches/next-dc-number`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json'
+      setLoading(true);
+      console.log('📦 Fetching today\'s products...');
+      console.log('Salesman:', selectedSalesman);
+      console.log('Customer:', selectedCustomer);
+      
+      // Build query params - make salesman and customer optional
+      const params = new URLSearchParams();
+      if (selectedSalesman?._id) params.append('salesmanId', selectedSalesman._id);
+      if (selectedCustomer?._id) params.append('customerId', selectedCustomer._id);
+      
+      const response = await fetch(
+        `${config.baseURL}/api/dispatches/todays-products?${params.toString()}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`,
+            'Content-Type': 'application/json'
+          }
         }
-      });
+      );
 
       if (!response.ok) {
-        throw new Error('Failed to fetch next DC number');
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
 
       const result = await response.json();
+      console.log('📊 Today\'s products response:', result);
       
       if (result.success) {
-        setNextDCNumber(result.dcNo);
-        setFormData(prev => ({ ...prev, manualEntryNo: result.dcNo }));
+        setProducts(result.data.products || []);
+        // Initialize qtyIssued map with existing values from API
+        const initialQtyMap = {};
+        (result.data.products || []).forEach(product => {
+          initialQtyMap[product._id] = product.qtyIssued || '';
+        });
+        setQtyIssuedMap(initialQtyMap);
+        
+        console.log('✅ Products loaded:', result.data.products.length);
+        console.log('📊 Initial qty map:', initialQtyMap);
       }
     } catch (error) {
-      console.error('Error fetching next DC number:', error);
+      console.error('❌ Error fetching today\'s products:', error);
       toast({
         title: "Error",
-        description: "Failed to fetch next DC number",
+        description: "Failed to fetch today's products",
         variant: "destructive",
       });
     } finally {
-      setLoadingDCNumber(false);
+      setLoading(false);
     }
   };
 
-  // Handle Qty Issued change
-  const handleQtyIssuedChange = (dcNo, value) => {
-    setDeliveryData(prev => prev.map(item => 
-      item.dcno === dcNo ? { ...item, qtyIssued: value } : item
-    ));
+  const handleQtyIssuedChange = (productId, value) => {
+    const product = products.find(p => p._id === productId);
+    const numValue = Number(value);
+    
+    // Validate against indent qty
+    if (product && numValue > product.indentQty) {
+      toast({
+        title: "Validation Error",
+        description: `Qty issued cannot exceed indent qty (${product.indentQty})`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Update local state immediately
+    setQtyIssuedMap(prev => ({
+      ...prev,
+      [productId]: value
+    }));
   };
 
-  // Update Qty Issued API call
-  const updateQtyIssued = async (dcNo, qtyIssued) => {
+  // Auto-save qty issued to API when user finishes entering
+  const handleQtyIssuedBlur = async (productId, value) => {
     try {
-      if (!qtyIssued || qtyIssued <= 0) {
-        return;
+      if (!value || value === '' || Number(value) <= 0) {
+        return; // Don't save empty or zero values
       }
+
+      const product = products.find(p => p._id === productId);
+      if (!product) return;
+
+      console.log('💾 Auto-saving qty issued:', { productId, value });
 
       const response = await fetch(`${config.baseURL}/api/dispatches/update-qty-issued`, {
         method: 'PUT',
@@ -284,7 +231,10 @@ export default function DeliveryChallan() {
           'Authorization': `Bearer ${localStorage.getItem('token')}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ dcNo, qtyIssued: Number(qtyIssued) })
+        body: JSON.stringify({
+          dispatchId: productId,
+          qtyIssued: Number(value)
+        })
       });
 
       if (!response.ok) {
@@ -292,114 +242,71 @@ export default function DeliveryChallan() {
       }
 
       const result = await response.json();
-      
+
       if (result.success) {
         toast({
-          title: "Updated",
+          title: "Saved",
           description: "Qty issued updated successfully",
+          duration: 2000
         });
-        
-        // Auto-refresh the entire list to show updated data
-        await fetchDeliveryChallanData();
       }
     } catch (error) {
-      console.error('Error updating qty issued:', error);
+      console.error('❌ Error saving qty issued:', error);
       toast({
         title: "Error",
-        description: "Failed to update qty issued",
+        description: "Failed to save qty issued",
         variant: "destructive",
       });
     }
   };
 
-  // Handle Approve
-  const handleApprove = async (dcNo) => {
+  const validateDCNumber = async (dcNo) => {
     try {
-      const response = await fetch(`${config.baseURL}/api/dispatches/approve-product`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ dcNo })
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to approve product');
-      }
+      const response = await fetch(
+        `${config.baseURL}/api/dispatches/validate-dc-number?dcNo=${dcNo}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
 
       const result = await response.json();
-      
-      if (result.success) {
+      return result.isUnique;
+    } catch (error) {
+      console.error('Error validating DC number:', error);
+      return false;
+    }
+  };
+
+  const handleDispatch = async () => {
+    try {
+      // Step 1: Validate DC Number
+      if (!dcNumber || dcNumber.trim() === '') {
         toast({
-          title: "Approved",
-          description: "Product approved successfully",
+          title: "Validation Error",
+          description: "Please enter DC number",
+          variant: "destructive",
         });
-        
-        // Auto-refresh the entire list to show updated data
-        await fetchDeliveryChallanData();
-      }
-    } catch (error) {
-      console.error('Error approving product:', error);
-      toast({
-        title: "Error",
-        description: "Failed to approve product",
-        variant: "destructive",
-      });
-    }
-  };
-
-  // Handle Generate Invoice
-  const handleGenerateInvoice = async (dcNo) => {
-    try {
-      const response = await fetch(`${config.baseURL}/api/dispatches/generate-invoice`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ dcNo })
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to generate invoice');
+        return;
       }
 
-      // Get the PDF blob
-      const blob = await response.blob();
-      
-      // Create a download link
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `invoice-${dcNo}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
+      const fullDCNumber = `${dcPrefix}${dcNumber}`;
 
-      toast({
-        title: "Invoice Generated",
-        description: "Invoice PDF downloaded successfully",
-      });
+      // Check DC number uniqueness
+      const isUnique = await validateDCNumber(fullDCNumber);
+      if (!isUnique) {
+        toast({
+          title: "Validation Error",
+          description: "DC number already exists. Please use a different number.",
+          variant: "destructive",
+        });
+        return;
+      }
 
-      // Auto-refresh the entire list to show updated data
-      await fetchDeliveryChallanData();
-    } catch (error) {
-      console.error('Error generating invoice:', error);
-      toast({
-        title: "Error",
-        description: "Failed to generate invoice",
-        variant: "destructive",
-      });
-    }
-  };
-
-  // Handle Dispatch Order
-  const handleDispatchOrder = async () => {
-    try {
-      // Validate form data
-      if (!formData.salesmanName) {
+      // Step 2: Validate Salesman
+      if (!selectedSalesman) {
         toast({
           title: "Validation Error",
           description: "Please select a salesman",
@@ -408,7 +315,8 @@ export default function DeliveryChallan() {
         return;
       }
 
-      if (!formData.customerName) {
+      // Step 3: Validate Customer
+      if (!selectedCustomer) {
         toast({
           title: "Validation Error",
           description: "Please select a customer",
@@ -417,54 +325,86 @@ export default function DeliveryChallan() {
         return;
       }
 
+      // Step 4: Validate All Qty Issued Fields
+      const items = [];
+      let hasError = false;
+
+      for (const product of products) {
+        const qtyIssued = qtyIssuedMap[product._id];
+        
+        if (!qtyIssued || qtyIssued === '' || Number(qtyIssued) <= 0) {
+          toast({
+            title: "Validation Error",
+            description: `Please enter qty issued for ${product.productName}`,
+            variant: "destructive",
+          });
+          hasError = true;
+          break;
+        }
+
+        const numQtyIssued = Number(qtyIssued);
+        if (numQtyIssued > product.indentQty) {
+          toast({
+            title: "Validation Error",
+            description: `Qty issued for ${product.productName} cannot exceed indent qty (${product.indentQty})`,
+            variant: "destructive",
+          });
+          hasError = true;
+          break;
+        }
+
+        items.push({
+          productId: product.productId || product._id,
+          productName: product.productName,
+          productGroup: product.productGroup,
+          indentQty: product.indentQty,
+          qtyIssued: numQtyIssued
+        });
+      }
+
+      if (hasError) return;
+
+      // Step 5: Create Delivery Challan
       setLoading(true);
 
-      const response = await fetch(`${config.baseURL}/api/dispatches/create-dispatch-order`, {
+      const response = await fetch(`${config.baseURL}/api/dispatches/create-delivery-challan`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          dcNo: nextDCNumber,
-          salesmanId: formData.salesmanName,
-          customerId: formData.customerName,
-          by: formData.by,
-          to: formData.to
+          dcNo: fullDCNumber,
+          salesmanId: selectedSalesman._id,
+          customerId: selectedCustomer._id,
+          items: items
         })
       });
 
       if (!response.ok) {
-        throw new Error('Failed to create dispatch order');
+        const errorResult = await response.json();
+        throw new Error(errorResult.message || 'Failed to create delivery challan');
       }
 
       const result = await response.json();
       
       if (result.success) {
-        toast({
-          title: "Dispatch Created",
-          description: "Dispatch order created successfully",
-        });
+        setCurrentDCId(result.data.dcId);
+        setIsDispatched(true);
         
-        // Reset form and fetch new data
-        setFormData({
-          manualEntryNo: '',
-          customerName: '',
-          salesmanName: '',
-          dcNo: '',
-          to: '',
-          by: ''
+        toast({
+          title: "Dispatch Successful",
+          description: `Delivery challan ${fullDCNumber} created successfully`,
         });
-        setCustomerSearchTerm('');
-        setSalesmanSearchTerm('');
-        await fetchNextDCNumber();
-        await fetchDeliveryChallanData();
+
+        // Lock all fields
+        console.log('✅ Dispatch completed. All fields locked.');
       }
     } catch (error) {
-      console.error('Error creating dispatch order:', error);
+      console.error('❌ Error creating delivery challan:', error);
       toast({
         title: "Error",
-        description: error.message || "Failed to create dispatch order",
+        description: error.message || "Failed to create delivery challan",
         variant: "destructive",
       });
     } finally {
@@ -472,48 +412,157 @@ export default function DeliveryChallan() {
     }
   };
 
+  const handleGenerateInvoice = async () => {
+    try {
+      if (!currentDCId) {
+        toast({
+          title: "Error",
+          description: "No delivery challan found to generate invoice",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      setLoading(true);
+
+      const response = await fetch(`${config.baseURL}/api/dispatches/generate-invoice/${currentDCId}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        const errorResult = await response.json();
+        throw new Error(errorResult.message || 'Failed to generate invoice');
+      }
+
+      // Check if response is JSON or PDF
+      const contentType = response.headers.get('content-type');
+      
+      if (contentType && contentType.includes('application/pdf')) {
+        // Handle PDF download
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `invoice-${dcPrefix}${dcNumber}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+
+        toast({
+          title: "Invoice Generated",
+          description: "Invoice PDF downloaded successfully",
+        });
+      } else {
+        // Handle JSON response
+        const result = await response.json();
+        
+        if (result.success) {
+          toast({
+            title: "Invoice Generated",
+            description: result.message || "Invoice created successfully",
+          });
+        }
+      }
+    } catch (error) {
+      console.error('❌ Error generating invoice:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to generate invoice",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleReset = () => {
+    setDcNumber('');
+    setSelectedSalesman(null);
+    setSelectedCustomer(null);
+    setSalesmanSearchTerm('');
+    setCustomerSearchTerm('');
+    setProducts([]);
+    setQtyIssuedMap({});
+    setIsDispatched(false);
+    setCurrentDCId(null);
+  };
+
+  const filteredSalespeople = salespeople.filter(salesman =>
+    (salesman.fullName && salesman.fullName.toLowerCase().includes(salesmanSearchTerm.toLowerCase())) ||
+    (salesman.username && salesman.username.toLowerCase().includes(salesmanSearchTerm.toLowerCase()))
+  );
+
+  const filteredCustomers = customers.filter(customer =>
+    customer.name.toLowerCase().includes(customerSearchTerm.toLowerCase()) ||
+    (customer.customerCode && customer.customerCode.toLowerCase().includes(customerSearchTerm.toLowerCase()))
+  );
+
+  // Debug: Log current state
+  console.log('🔍 Current State:', {
+    selectedSalesman: selectedSalesman?._id,
+    selectedCustomer: selectedCustomer?._id,
+    productsCount: products.length,
+    qtyIssuedMapKeys: Object.keys(qtyIssuedMap).length,
+    loading
+  });
+
   return (
     <div className="p-6 max-w-8xl mx-auto space-y-6">
-      {/* Header with Statistics */}
+      {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Delivery Challan</h1>
           <p className="text-gray-600 mt-1">Product Groups and Indent Quantities for Today</p>
         </div>
-        <Button onClick={fetchDeliveryChallanData} disabled={loading}>
-          <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-          Refresh Data
+        <Button onClick={handleReset} variant="outline" disabled={loading}>
+          <RefreshCw className="h-4 w-4 mr-2" />
+          Reset Form
         </Button>
       </div>
 
-      {/* Main Table Structure */}
+      {/* Main Form Container */}
       <div className="border border-gray-800">
         
-        {/* First Row - Manual Entry Section */}
+        {/* Control Row - DC Number, Salesman, Customer, Dispatch, Invoice */}
         <div className="grid grid-cols-5 border-b border-gray-800">
+          
+          {/* DC Number */}
           <div className="border-r border-gray-800 p-3 bg-gray-50">
             <div className="text-center font-medium text-sm mb-2">
               DC Number
             </div>
-            <div className="relative">
+            <div className="flex items-center gap-1">
               <Input
-                className="text-center bg-blue-50 font-semibold cursor-not-allowed"
-                value={loadingDCNumber ? 'Loading...' : nextDCNumber}
+                className="w-16 text-center bg-gray-100 font-semibold cursor-not-allowed"
+                value={dcPrefix}
                 readOnly
                 disabled
-                title="Auto-generated DC Number (Cannot be edited)"
               />
-              <div className="text-xs text-gray-500 text-center mt-1">
-                Auto-generated DCno will be used
-              </div>
+              <Input
+                type="number"
+                placeholder="016"
+                className="flex-1 text-center font-semibold"
+                value={dcNumber}
+                onChange={(e) => setDcNumber(e.target.value)}
+                disabled={isDispatched}
+              />
+            </div>
+            <div className="text-xs text-gray-500 text-center mt-1">
+              Enter numeric DC number
             </div>
           </div>
           
-       <div className="border-r border-gray-800 p-3 bg-gray-50">
+          {/* Salesman Dropdown */}
+          <div className="border-r border-gray-800 p-3 bg-gray-50">
             <div className="text-center font-medium text-sm mb-2">
               Salesman Name by Dropdown
             </div>
-            <div className="relative">
+            <div className="relative dropdown-container">
               <Input
                 placeholder="Search and select salesman"
                 value={salesmanSearchTerm}
@@ -523,34 +572,28 @@ export default function DeliveryChallan() {
                 }}
                 onFocus={() => setIsSalesmanDropdownOpen(true)}
                 className="cursor-pointer"
+                disabled={isDispatched}
               />
-              {isSalesmanDropdownOpen && (
+              {isSalesmanDropdownOpen && !isDispatched && (
                 <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
-                  {salespeople
-                    .filter(salesman => 
-                      (salesman.fullName && salesman.fullName.toLowerCase().includes(salesmanSearchTerm.toLowerCase())) ||
-                      (salesman.username && salesman.username.toLowerCase().includes(salesmanSearchTerm.toLowerCase()))
-                    )
-                    .map((salesman) => (
+                  {filteredSalespeople.length > 0 ? (
+                    filteredSalespeople.map((salesman) => (
                       <div
                         key={salesman._id}
                         className="p-2 hover:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-b-0"
                         onClick={() => {
-                          setFormData(prev => ({ ...prev, salesmanName: salesman._id }));
+                          setSelectedSalesman(salesman);
                           setSalesmanSearchTerm(salesman.fullName || salesman.username);
                           setIsSalesmanDropdownOpen(false);
                         }}
                       >
                         <div className="font-medium">{salesman.fullName || salesman.username}</div>
                         {salesman.email && (
-                          <div className="text-xs text-gray-500">Email: {salesman.email}</div>
+                          <div className="text-xs text-gray-500">{salesman.email}</div>
                         )}
                       </div>
-                    ))}
-                  {salespeople.filter(salesman => 
-                    (salesman.fullName && salesman.fullName.toLowerCase().includes(salesmanSearchTerm.toLowerCase())) ||
-                    (salesman.username && salesman.username.toLowerCase().includes(salesmanSearchTerm.toLowerCase()))
-                  ).length === 0 && (
+                    ))
+                  ) : (
                     <div className="p-2 text-gray-500 text-center">
                       No salespeople found
                     </div>
@@ -560,13 +603,14 @@ export default function DeliveryChallan() {
             </div>
           </div>
 
+          {/* Customer Dropdown */}
           <div className="border-r border-gray-800 p-3 bg-gray-50">
             <div className="text-center font-medium text-sm mb-2">
               Customer Name by dropdown search
             </div>
-            <div className="relative">
+            <div className="relative dropdown-container">
               <Input
-                placeholder="Search and select customer"
+                placeholder="Select customer"
                 value={customerSearchTerm}
                 onChange={(e) => {
                   setCustomerSearchTerm(e.target.value);
@@ -574,20 +618,17 @@ export default function DeliveryChallan() {
                 }}
                 onFocus={() => setIsCustomerDropdownOpen(true)}
                 className="cursor-pointer"
+                disabled={!selectedSalesman || isDispatched}
               />
-              {isCustomerDropdownOpen && (
+              {isCustomerDropdownOpen && !isDispatched && selectedSalesman && (
                 <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
-                  {filteredCustomers
-                    .filter(customer => 
-                      customer.name.toLowerCase().includes(customerSearchTerm.toLowerCase()) ||
-                      (customer.customerCode && customer.customerCode.toLowerCase().includes(customerSearchTerm.toLowerCase()))
-                    )
-                    .map((customer) => (
+                  {filteredCustomers.length > 0 ? (
+                    filteredCustomers.map((customer) => (
                       <div
                         key={customer._id}
                         className="p-2 hover:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-b-0"
                         onClick={() => {
-                          setFormData(prev => ({ ...prev, customerName: customer._id }));
+                          setSelectedCustomer(customer);
                           setCustomerSearchTerm(`${customer.name} ${customer.customerCode ? `(${customer.customerCode})` : ''}`);
                           setIsCustomerDropdownOpen(false);
                         }}
@@ -597,11 +638,8 @@ export default function DeliveryChallan() {
                           <div className="text-xs text-gray-500">Code: {customer.customerCode}</div>
                         )}
                       </div>
-                    ))}
-                  {filteredCustomers.filter(customer => 
-                    customer.name.toLowerCase().includes(customerSearchTerm.toLowerCase()) ||
-                    (customer.customerCode && customer.customerCode.toLowerCase().includes(customerSearchTerm.toLowerCase()))
-                  ).length === 0 && (
+                    ))
+                  ) : (
                     <div className="p-2 text-gray-500 text-center">
                       No customers found
                     </div>
@@ -611,50 +649,49 @@ export default function DeliveryChallan() {
             </div>
           </div>
 
-   
-
+          {/* Dispatch Button */}
           <div className="border-r border-gray-800 p-3 bg-gray-50">
             <div className="text-center font-medium text-sm mb-2">
               Dispatch Action
             </div>
             <Button 
               className="w-full bg-blue-600 hover:bg-blue-700 text-sm"
-              onClick={handleDispatchOrder}
-              disabled={loading || !formData.salesmanName || !formData.customerName}
+              onClick={handleDispatch}
+              disabled={loading || isDispatched || !dcNumber || !selectedSalesman || !selectedCustomer || products.length === 0}
             >
               <Truck className="h-4 w-4 mr-2" />
-              {loading ? 'Processing...' : 'Dispatch'}
+              {loading ? 'Processing...' : isDispatched ? 'Dispatched' : 'Dispatch'}
             </Button>
           </div>
 
+          {/* Invoice Button */}
           <div className="p-3 bg-gray-50">
             <div className="text-center font-medium text-sm mb-2">
-              give button Option
+              Generate Invoice
             </div>
-            <Button className="w-full bg-green-600 hover:bg-green-700 text-sm">
+            <Button 
+              className="w-full bg-green-600 hover:bg-green-700 text-sm"
+              onClick={handleGenerateInvoice}
+              disabled={loading || !isDispatched}
+            >
               <Receipt className="h-4 w-4 mr-2" />
-              Invoice
+              {loading ? 'Generating...' : 'Invoice'}
             </Button>
           </div>
         </div>
+
         {/* Product Table */}
         <div>
           {/* Table Header */}
-          <div className="grid grid-cols-5 bg-yellow-300 border-b border-gray-800">
-            <div className="border-r border-gray-800 p-3 text-center font-medium">
-              DC No
-            </div>
+          <div className="grid grid-cols-3 bg-yellow-300 border-b border-gray-800">
             <div className="border-r border-gray-800 p-3 text-center font-medium">
               Product Name / Product Group
             </div>
             <div className="border-r border-gray-800 p-3 text-center font-medium">
               Indent Qty
             </div>
-            <div className="border-r border-gray-800 p-3 text-center font-medium">
-              Qty issued
-            </div>
             <div className="p-3 text-center font-medium">
-              Action
+              Qty Issued
             </div>
           </div>
 
@@ -662,66 +699,48 @@ export default function DeliveryChallan() {
           {loading ? (
             <div className="p-8 text-center">
               <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-2" />
-              <div>Loading delivery data...</div>
+              <div>Loading products...</div>
             </div>
-          ) : deliveryData.length === 0 ? (
+          ) : products.length === 0 ? (
             <div className="p-8 text-center text-gray-500">
               <Package className="h-8 w-8 mx-auto mb-2" />
-              <div>No delivery items found for today</div>
+              <div>No products found for today</div>
             </div>
           ) : (
-            deliveryData.map((item) => (
-              <div key={item.id} className="grid grid-cols-5 border-b border-gray-800 hover:bg-gray-50">
-                <div className="border-r border-gray-800 p-3 text-center">
-                  <Badge variant="outline" className="bg-blue-50 text-blue-700 font-mono">
-                    {item.dcno || 'N/A'}
-                  </Badge>
-                </div>
+            products.map((product) => (
+              <div key={product._id} className="grid grid-cols-3 border-b border-gray-800 hover:bg-gray-50">
                 <div className="border-r border-gray-800 p-3">
-                  <div className="font-medium">{item.productName}</div>
+                  <div className="font-medium">{product.productName}</div>
                   <div className="text-sm text-blue-600 mt-1">
-                    <Badge variant="outline" className="bg-blue-50 text-blue-700">
-                      {item.productGroup}
-                    </Badge>
+                    {product.productGroup && (
+                      <Badge variant="outline" className="bg-blue-50 text-blue-700">
+                        {product.productGroup}
+                      </Badge>
+                    )}
                   </div>
                 </div>
-                <div className="border-r border-gray-800 p-3 text-center">
-                  <Badge variant="outline" className="bg-green-50 text-green-700">
-                    {item.indentQty}
+                <div className="border-r border-gray-800 p-3 text-center flex items-center justify-center">
+                  <Badge variant="outline" className="bg-green-50 text-green-700 text-lg">
+                    {product.indentQty}
                   </Badge>
                 </div>
-                <div className="border-r border-gray-800 p-3">
+                <div className="p-3">
                   <Input
                     type="number"
                     placeholder="Enter qty"
                     className="text-center"
                     min="0"
-                    max={item.indentQty}
-                    value={item.qtyIssued || ''}
-                    onChange={(e) => handleQtyIssuedChange(item.dcno, e.target.value)}
-                    onBlur={(e) => updateQtyIssued(item.dcno, e.target.value)}
+                    max={product.indentQty}
+                    value={qtyIssuedMap[product._id] || ''}
+                    onChange={(e) => handleQtyIssuedChange(product._id, e.target.value)}
+                    onBlur={(e) => handleQtyIssuedBlur(product._id, e.target.value)}
+                    disabled={isDispatched}
                   />
-                </div>
-                <div className="p-3">
-                  <div className="flex flex-col space-y-2">
-                    <Button 
-                      size="sm" 
-                      className="bg-green-600 hover:bg-green-700 text-xs px-2 py-1"
-                      onClick={() => handleApprove(item.dcno)}
-                      disabled={!item.qtyIssued || item.status === 'approved'}
-                    >
-                      {item.status === 'approved' ? 'Approved' : 'Approve'}
-                    </Button>
-                    <Button 
-                      size="sm" 
-                      variant="outline"
-                      className="border-blue-600 text-blue-600 hover:bg-blue-50 text-xs px-2 py-1"
-                      onClick={() => handleGenerateInvoice(item.dcno)}
-                      disabled={item.status !== 'approved'}
-                    >
-                      Invoice
-                    </Button>
-                  </div>
+                  {qtyIssuedMap[product._id] && Number(qtyIssuedMap[product._id]) > product.indentQty && (
+                    <div className="text-xs text-red-600 mt-1 text-center">
+                      Cannot exceed indent qty
+                    </div>
+                  )}
                 </div>
               </div>
             ))

@@ -123,9 +123,15 @@ const dispatchConsoleSchema = new mongoose.Schema({
   },
   
   // Delivery Challan specific fields
-  customerId: {
+  salesPerson: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Customer'
+    ref: 'User',
+    index: true
+  },
+  customer: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Customer',
+    index: true
   },
   orderId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -186,10 +192,12 @@ const dispatchConsoleSchema = new mongoose.Schema({
 });
 
 // Indexes for performance optimization
-dispatchConsoleSchema.index({ packingSheetId: 1, date: 1 }, { unique: true, name: 'unique_packing_sheet_per_day' });
+// Removed unique constraint to allow multiple dispatch entries per product (for different salesperson-customer combinations)
+dispatchConsoleSchema.index({ packingSheetId: 1, productId: 1, date: 1 }, { name: 'packingSheetId_productId_date' });
 dispatchConsoleSchema.index({ company: 1, date: 1 }, { name: 'company_date_index' });
 dispatchConsoleSchema.index({ productGroup: 1, date: 1 }, { name: 'product_group_date_index' });
 dispatchConsoleSchema.index({ status: 1, date: 1 }, { name: 'status_date_index' });
+dispatchConsoleSchema.index({ salesPerson: 1, customer: 1, date: 1 }, { name: 'salesperson_customer_date_index' });
 
 // Virtual field to check if entry is editable
 dispatchConsoleSchema.virtual('isEditable').get(function() {

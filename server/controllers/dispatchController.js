@@ -3,6 +3,7 @@ import Order from '../models/Order.js';
 import Customer from '../models/Customer.js';
 import PackingSheet from '../models/Packing.js';
 import { USER_ROLES } from '../../shared/schema.js';
+import mongoose from 'mongoose';
 
 export const getDispatches = async (req, res) => {
   try {
@@ -1012,22 +1013,28 @@ export const getDeliveryChallanData = async (req, res) => {
 // Update Qty Issued for Delivery Challan
 export const updateQtyIssued = async (req, res) => {
   try {
-    const { dcNo, qtyIssued } = req.body;
+    const { dcNo, qtyIssued, dispatchId } = req.body;
 
-    if (!dcNo || qtyIssued === undefined) {
+    if ((!dcNo && !dispatchId) || qtyIssued === undefined) {
       return res.status(400).json({ 
         success: false, 
-        message: 'DC No and Qty Issued are required' 
+        message: 'DC No or Dispatch ID and Qty Issued are required' 
       });
     }
 
-    // Find and update the dispatch record by DC No (note: field name is 'dcno' in DB)
-    const dispatch = await Dispatch.findOne({ dcno: dcNo });
+    let dispatch;
+
+    // Find dispatch by ID or DC No
+    if (dispatchId) {
+      dispatch = await Dispatch.findById(dispatchId);
+    } else if (dcNo) {
+      dispatch = await Dispatch.findOne({ dcno: dcNo });
+    }
 
     if (!dispatch) {
       return res.status(404).json({ 
         success: false, 
-        message: 'Delivery challan not found with DC No: ' + dcNo 
+        message: 'Delivery challan not found' 
       });
     }
 
@@ -1038,7 +1045,6 @@ export const updateQtyIssued = async (req, res) => {
 
     // Populate related data
     await updatedDispatch.populate('productId', 'name code category unit');
-    await updatedDispatch.populate('customerId', 'name address phone email');
 
     res.status(200).json({ 
       success: true, 
@@ -1603,6 +1609,368 @@ export const createDispatchOrder = async (req, res) => {
       success: false, 
       message: 'Failed to create dispatch order',
       error: error.message 
+    });
+  }
+};
+
+// Get today's products for a specific salesman and customer
+export const getTodaysProducts = async (req, res) => {
+  try {
+    const { salesmanId, customerId } = req.query;
+
+    console.log('📦 Fetching today\'s products for:', { salesmanId, customerId });
+
+    // Get today's date range (start and end of day)
+    const today = new Date();
+    const startOfDay = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate(), 0, 0, 0, 0));
+    const endOfDay = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate(), 23, 59, 59, 999));
+
+    console.log('📅 Date range:', { startOfDay, endOfDay });
+
+    // Build query with optional filters
+    const query = {
+      date: {
+        $gte: startOfDay,
+        $lte: endOfDay
+      },
+      company: req.user.companyId,
+      status: { $in: ['pending', 'updated', 'approved', 'dispatched'] }
+    };
+
+    // Add optional filters if provided
+    if (salesmanId) {
+      query.salesPerson = new mongoose.Types.ObjectId(salesmanId);
+    }
+    if (customerId) {
+      query.customer = new mongoose.Types.ObjectId(customerId);
+    }
+
+    // Find dispatch entries for today
+    const dispatchProducts = await Dispatch.find(query)
+    .sort({ createdAt: -1 });
+
+    console.log(`✅ Found ${dispatchProducts.length} dispatch products for today`);
+
+    // Format the response
+    const products = dispatchProducts.map(dispatch => ({
+      _id: dispatch._id,
+      productId: dispatch.productId?._id || dispatch.productId,
+      productName: dispatch.productName,
+      productGroup: dispatch.productGroup,
+      indentQty: dispatch.totalIndentQuantityOrdersForTheDay || dispatch.indentQty || 0,
+      qtyIssued: dispatch.qtyIssued || 0,
+      dcno: dispatch.dcno,
+      status: dispatch.status
+    }));
+
+    res.json({
+      success: true,
+      data: {
+        products: products,
+        count: products.length
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching today\'s products:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch today\'s products',
+      error: error.message
+    });
+  }
+};
+
+// Validate DC number uniqueness
+export const validateDCNumber = async (req, res) => {
+  try {
+    const { dcNo } = req.query;
+
+    console.log('🔍 Validating DC number:', dcNo);
+
+    if (!dcNo) {
+      return res.status(400).json({
+        success: false,
+        isUnique: false,
+        message: 'DC number is required'
+      });
+    }
+
+    // Check if DC number already exists
+    const existingDC = await Dispatch.findOne({
+      dcno: dcNo,
+      company: req.user.companyId
+    });
+
+    const isUnique = !existingDC;
+
+    console.log(`${isUnique ? '✅' : '❌'} DC number ${dcNo} is ${isUnique ? 'unique' : 'already in use'}`);
+
+    res.json({
+      success: true,
+      isUnique: isUnique,
+      message: isUnique ? 'DC number is available' : 'DC number already exists'
+    });
+
+  } catch (error) {
+    console.error('❌ Error validating DC number:', error);
+    res.status(500).json({
+      success: false,
+      isUnique: false,
+      message: 'Failed to validate DC number',
+      error: error.message
+    });
+  }
+};
+
+// Create a new delivery challan with all items
+export const createDeliveryChallan = async (req, res) => {
+  try {
+    let { dcNo, salesmanId, customerId, items } = req.body;
+
+    // Clean dcNo - remove hyphens and spaces
+    if (dcNo) {
+      dcNo = dcNo.toString().replace(/[-\s]/g, '').toUpperCase();
+    }
+
+    console.log('📋 Creating delivery challan:', { dcNo, salesmanId, customerId, itemsCount: items?.length });
+
+    // Validate required fields
+    if (!dcNo || !salesmanId || !customerId || !items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'DC number, salesman, customer, and items are required'
+      });
+    }
+
+    // Validate DC number uniqueness
+    const existingDC = await Dispatch.findOne({
+      dcno: dcNo,
+      company: req.user.companyId
+    });
+
+    if (existingDC) {
+      return res.status(400).json({
+        success: false,
+        message: 'DC number already exists. Please use a different number.'
+      });
+    }
+
+    // Get salesman and customer details
+    const User = (await import('../models/User.js')).default;
+    const Customer = (await import('../models/Customer.js')).default;
+    
+    const salesman = await User.findById(salesmanId).select('fullName username email');
+    const customer = await Customer.findById(customerId).select('name customerCode');
+
+    console.log('👤 Salesman lookup:', { salesmanId, found: !!salesman });
+    console.log('🏢 Customer lookup:', { customerId, found: !!customer });
+
+    if (!salesman || !customer) {
+      return res.status(404).json({
+        success: false,
+        message: 'Salesman or customer not found',
+        details: {
+          salesmanFound: !!salesman,
+          customerFound: !!customer
+        }
+      });
+    }
+
+    // Create dispatch entries for all items with the same DC number
+    const dispatchEntries = [];
+    const today = new Date();
+    const startOfDay = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate(), 0, 0, 0, 0));
+
+    for (const item of items) {
+      // PRIMARY METHOD: Frontend should pass dispatchId (_id from dispatch table)
+      // This is the expected and preferred way
+      let existingDispatch = null;
+      
+      if (item.dispatchId || item._id || item.id) {
+        // Use dispatchId from frontend (primary method)
+        const dispatchIdToUse = item.dispatchId || item._id || item.id;
+        
+        console.log(`🎯 PRIMARY: Looking for dispatch by _id: ${dispatchIdToUse}`);
+        
+        existingDispatch = await Dispatch.findOne({
+          _id: dispatchIdToUse,
+          company: req.user.companyId
+        });
+        
+        if (existingDispatch) {
+          console.log(`✅ Found dispatch record by _id: ${existingDispatch._id}`);
+        } else {
+          console.log(`⚠️ Dispatch _id ${dispatchIdToUse} not found in company ${req.user.companyId}`);
+        }
+      } else {
+        // FALLBACK: If dispatchId not provided, try to find by productId and today's date
+        console.log(`⚠️ No dispatchId provided for ${item.productName}, using fallback search by productId`);
+        
+        existingDispatch = await Dispatch.findOne({
+          productId: item.productId,
+          company: req.user.companyId,
+          date: startOfDay
+        });
+        
+        if (existingDispatch) {
+          console.log(`✅ FALLBACK: Found dispatch by productId: ${item.productId}`);
+        } else {
+          console.log(`❌ FALLBACK: No dispatch found for productId: ${item.productId}`);
+        }
+      }
+
+      if (existingDispatch) {
+        // Update existing dispatch entry with delivery challan details
+        console.log(`🔄 Updating dispatch entry ${existingDispatch._id} with DC details`);
+        
+        existingDispatch.dcno = dcNo;
+        existingDispatch.qtyIssued = item.qtyIssued;
+        existingDispatch.dispatchedQuantitySentToday = item.qtyIssued;
+        existingDispatch.salesPerson = salesmanId;
+        existingDispatch.customer = customerId;
+        existingDispatch.status = 'dispatched';
+        existingDispatch.lastUpdatedBy = req.user.id;
+        existingDispatch.updatedAt = new Date();
+
+        await existingDispatch.save();
+        dispatchEntries.push(existingDispatch);
+        
+        console.log(`✅ Successfully updated dispatch ${existingDispatch._id} with DC ${dcNo}`);
+      } else {
+        // Create new dispatch entry only if no existing record found
+        console.log(`✨ Creating NEW dispatch entry for product: ${item.productName}`);
+        
+        const dispatchEntry = new Dispatch({
+          dcno: dcNo,
+          productId: item.productId,
+          productName: item.productName,
+          productGroup: item.productGroup,
+          company: req.user.companyId,
+          date: startOfDay,
+          totalIndentQuantityOrdersForTheDay: item.indentQty || 0,
+          indentQty: item.indentQty || 0,
+          qtyIssued: item.qtyIssued || 0,
+          dispatchedQuantitySentToday: item.qtyIssued || 0,
+          packedQuantityReadyForDispatch: item.qtyIssued || 0,
+          salesPerson: salesmanId,
+          customer: customerId,
+          status: 'dispatched',
+          lastUpdatedBy: req.user.id
+        });
+
+        await dispatchEntry.save();
+        dispatchEntries.push(dispatchEntry);
+        
+        console.log(`✅ Created new dispatch entry with _id: ${dispatchEntry._id}`);
+      }
+    }
+
+    console.log(`✅ Created delivery challan ${dcNo} with ${dispatchEntries.length} items`);
+
+    res.status(201).json({
+      success: true,
+      message: `Delivery challan ${dcNo} created successfully`,
+      data: {
+        dcId: dispatchEntries[0]._id, // Return first entry ID for invoice generation
+        dcNo: dcNo,
+        itemsCount: dispatchEntries.length,
+        dispatches: dispatchEntries
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error creating delivery challan:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create delivery challan',
+      error: error.message
+    });
+  }
+};
+
+// Generate invoice for a delivery challan
+export const generateInvoiceForDC = async (req, res) => {
+  try {
+    const { dcId } = req.params;
+
+    console.log('🧾 Generating invoice for DC ID:', dcId);
+
+    // Find the dispatch entry
+    const dispatch = await Dispatch.findById(dcId)
+      .populate('productId', 'name code category unit')
+      .populate('salesPerson', 'fullName username email')
+      .populate('customer', 'name customerCode address phone email');
+
+    if (!dispatch) {
+      return res.status(404).json({
+        success: false,
+        message: 'Delivery challan not found'
+      });
+    }
+
+    console.log('📋 Dispatch status:', dispatch.status);
+
+    // Allow invoice generation for dispatched, approved, or completed status
+    const allowedStatuses = ['dispatched', 'approved', 'completed', 'updated'];
+    if (!allowedStatuses.includes(dispatch.status)) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot generate invoice. Current status: ${dispatch.status}. Allowed statuses: ${allowedStatuses.join(', ')}`,
+        currentStatus: dispatch.status
+      });
+    }
+
+    // Find all items with the same DC number
+    const allDCItems = await Dispatch.find({
+      dcno: dispatch.dcno,
+      company: req.user.companyId
+    })
+    .populate('productId', 'name code category unit price')
+    .populate('salesPerson', 'fullName username email')
+    .populate('customer', 'name customerCode address phone email');
+
+    // Mark as invoiced
+    await Dispatch.updateMany(
+      { dcno: dispatch.dcno, company: req.user.companyId },
+      { 
+        $set: { 
+          status: 'invoiced',
+          invoiceGeneratedAt: new Date(),
+          lastUpdatedBy: req.user.id
+        } 
+      }
+    );
+
+    console.log(`✅ Invoice generated for DC ${dispatch.dcno} with ${allDCItems.length} items`);
+
+    // Here you would generate the actual PDF invoice
+    // For now, return JSON response
+    res.json({
+      success: true,
+      message: 'Invoice generated successfully',
+      data: {
+        dcNo: dispatch.dcno,
+        customer: dispatch.customer,
+        salesman: dispatch.salesPerson,
+        items: allDCItems.map(item => ({
+          productName: item.productName,
+          productGroup: item.productGroup,
+          indentQty: item.indentQty,
+          qtyIssued: item.qtyIssued,
+          qtyDispatched: item.qtyIssued
+        })),
+        totalItems: allDCItems.length,
+        invoiceDate: new Date()
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error generating invoice:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to generate invoice',
+      error: error.message
     });
   }
 };

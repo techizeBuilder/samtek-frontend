@@ -34,6 +34,7 @@ export default function ProductionShift() {
   const [ungroupedItems, setUngroupedItems] = useState([]);
   const [ungroupedLoading, setUngroupedLoading] = useState(false);
   const [ungroupedBatchData, setUngroupedBatchData] = useState({});
+  const [actionLoading, setActionLoading] = useState({}); // Track loading state for individual batch/item actions
 
   useEffect(() => {
     console.log('🎯 ProductionShift component mounted, calling fetchProductionShiftData');
@@ -155,31 +156,43 @@ export default function ProductionShift() {
 
   // Handle batch data changes with auto-save
   const handleBatchDataChange = async (batchKey, field, value) => {
-    // Update local state immediately
-    setBatchData(prev => ({
-      ...prev,
-      [batchKey]: {
-        ...prev[batchKey],
-        [field]: value
-      }
-    }));
+    // Set loading state for this specific action
+    setActionLoading(prev => ({ ...prev, [batchKey]: true }));
+    
+    try {
+      // Update local state immediately
+      setBatchData(prev => ({
+        ...prev,
+        [batchKey]: {
+          ...prev[batchKey],
+          [field]: value
+        }
+      }));
 
-    // Auto-save to API
-    await handleAutoSave(batchKey, field, value);
+      // Auto-save to API
+      await handleAutoSave(batchKey, field, value);
+    } finally {
+      // Clear loading state after action completes
+      setActionLoading(prev => ({ ...prev, [batchKey]: false }));
+    }
   };
 
   // Handle ungrouped batch data changes (save to API)
   const handleUngroupedBatchDataChange = async (itemKey, field, value) => {
-    // Update local state immediately for better UX
-    setUngroupedBatchData(prev => ({
-      ...prev,
-      [itemKey]: {
-        ...prev[itemKey],
-        [field]: value
-      }
-    }));
-
+    // Set loading state for this specific action
+    setActionLoading(prev => ({ ...prev, [itemKey]: true }));
+    
     try {
+      // Update local state immediately for better UX
+      setUngroupedBatchData(prev => ({
+        ...prev,
+        [itemKey]: {
+          ...prev[itemKey],
+          [field]: value
+        }
+      }));
+
+
       // Extract the full item ID from key (includes batch info like _batch_1)
       const fullItemId = itemKey.replace('ungrouped_', '');
       
@@ -297,6 +310,9 @@ export default function ProductionShift() {
       
       // Revert local state on error
       await fetchProductionShiftData();
+    } finally {
+      // Clear loading state after action completes
+      setActionLoading(prev => ({ ...prev, [itemKey]: false }));
     }
   };
 
@@ -491,9 +507,17 @@ export default function ProductionShift() {
                 const now = new Date();
                 handleBatchDataChange(batchKey, 'mouldingTime', now.toISOString());
               }}
-              className="w-full bg-green-600 hover:bg-green-700 text-white h-10"
+              disabled={actionLoading[batchKey]}
+              className="w-full bg-green-600 hover:bg-green-700 text-white h-10 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Start Moulding
+              {actionLoading[batchKey] ? (
+                <span className="flex items-center gap-2">
+                  <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></span>
+                  Starting...
+                </span>
+              ) : (
+                'Start Moulding'
+              )}
             </Button>
           ) : (
             <div className="text-center">
@@ -516,11 +540,18 @@ export default function ProductionShift() {
                 const now = new Date();
                 handleBatchDataChange(batchKey, 'unloadingTime', now.toISOString());
               }}
-              disabled={!batch.mouldingTime}
+              disabled={!batch.mouldingTime || actionLoading[batchKey]}
               className="w-full bg-blue-600 hover:bg-blue-700 text-white disabled:bg-gray-300 disabled:text-gray-500 h-10"
               title={!batch.mouldingTime ? "Please start moulding first" : "Click to end and record current time"}
             >
-              End Moulding
+              {actionLoading[batchKey] ? (
+                <span className="flex items-center gap-2">
+                  <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></span>
+                  Ending...
+                </span>
+              ) : (
+                'End Moulding'
+              )}
             </Button>
           ) : (
             <div className="text-center">
@@ -543,7 +574,7 @@ export default function ProductionShift() {
             step="0.01"
             placeholder="Enter loss amount"
             value={batch.productionLoss !== undefined && batch.productionLoss !== null ? batch.productionLoss : ''}
-            disabled={!batch.mouldingTime || !batch.unloadingTime}
+            disabled={!batch.mouldingTime || !batch.unloadingTime || actionLoading[batchKey]}
             onChange={(e) => {
               // Update local state immediately for typing
               const value = e.target.value;
@@ -682,9 +713,7 @@ export default function ProductionShift() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {loading ? (
-            <div className="text-center py-8">Loading production data...</div>
-          ) : productionGroups.length === 0 ? (
+          {productionGroups.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
               No production groups found
             </div>
@@ -726,9 +755,7 @@ export default function ProductionShift() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {ungroupedLoading ? (
-            <div className="text-center py-8">Loading ungrouped items...</div>
-          ) : ungroupedItems.length === 0 ? (
+          {ungroupedItems.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
               No ungrouped items found
             </div>
@@ -801,9 +828,17 @@ export default function ProductionShift() {
                                 const now = new Date().toISOString();
                                 handleUngroupedBatchDataChange(itemKey, 'mouldingTime', now);
                               }}
-                              className="w-full bg-green-600 hover:bg-green-700 text-white h-8 text-xs"
+                              disabled={actionLoading[itemKey]}
+                              className="w-full bg-green-600 hover:bg-green-700 text-white h-8 text-xs disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                              Start Moulding
+                              {actionLoading[itemKey] ? (
+                                <span className="flex items-center gap-1">
+                                  <span className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></span>
+                                  Starting...
+                                </span>
+                              ) : (
+                                'Start Moulding'
+                              )}
                             </Button>
                           ) : (
                             <div className="text-center">
@@ -826,11 +861,18 @@ export default function ProductionShift() {
                                 const now = new Date().toISOString();
                                 handleUngroupedBatchDataChange(itemKey, 'unloadingTime', now);
                               }}
-                              disabled={!batch.mouldingTime}
+                              disabled={!batch.mouldingTime || actionLoading[itemKey]}
                               className="w-full bg-blue-600 hover:bg-blue-700 text-white disabled:bg-gray-300 disabled:text-gray-500 h-8 text-xs"
                               title={!batch.mouldingTime ? "Please start moulding first" : "Click to end and record current time"}
                             >
-                              End Moulding
+                              {actionLoading[itemKey] ? (
+                                <span className="flex items-center gap-1">
+                                  <span className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></span>
+                                  Ending...
+                                </span>
+                              ) : (
+                                'End Moulding'
+                              )}
                             </Button>
                           ) : (
                             <div className="text-center">
@@ -853,12 +895,12 @@ export default function ProductionShift() {
                             step="0.01"
                             placeholder="0"
                             value={batch.productionLoss || ''}
-                            disabled={!batch.mouldingTime || !batch.unloadingTime}
+                            disabled={!batch.mouldingTime || !batch.unloadingTime || actionLoading[itemKey]}
                             onChange={(e) => {
                               const value = e.target.value;
                               handleUngroupedBatchDataChange(itemKey, 'productionLoss', value);
                             }}
-                            className={`w-20 text-sm ${!batch.mouldingTime || !batch.unloadingTime ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                            className={`w-20 text-sm ${!batch.mouldingTime || !batch.unloadingTime || actionLoading[itemKey] ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                             title={!batch.mouldingTime || !batch.unloadingTime ? "Please enter both Moulding Time and Unloading Time first" : "Enter production loss"}
                           />
                         </TableCell>

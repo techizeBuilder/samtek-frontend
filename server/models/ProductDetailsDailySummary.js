@@ -10,6 +10,11 @@ const productDetailsDailySummarySchema = new mongoose.Schema({
     ref: 'Company',
     required: true
   },
+  orderIds: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Order',
+    index: true
+  }],
   productDailySummaryId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'ProductDailySummary',

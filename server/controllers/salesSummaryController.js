@@ -212,6 +212,7 @@ export const getSalesSummary = async (req, res) => {
         groupDescription: group.description || "",
         products: groupProducts.map(product => ({
           _id: product._id,
+          dailyDetailsId: product.dailyDetailsId,
           productId: product.productId,
           productName: product.productName,
           companyId: product.companyId,
@@ -245,6 +246,7 @@ export const getSalesSummary = async (req, res) => {
       .filter(product => !groupedProductIds.has(product.productId._id.toString()))
       .map(product => ({
         _id: product._id,
+        dailyDetailsId: product.dailyDetailsId,
         productId: product.productId,
         productName: product.productName,
         companyId: product.companyId,
@@ -299,11 +301,11 @@ export const getSalesSummary = async (req, res) => {
  */
 export const updateSalesSummary = async (req, res) => {
   try {
-    const { date, productId, updates } = req.body;
+    const { date, productId, updates, orderIds } = req.body;
     const userRole = req.user.role;
     const userCompanyId = req.user.companyId;
 
-    console.log('📝 Update request received:', { date, productId, updates });
+    console.log('📝 Update request received:', { date, productId, updates, orderIds });
 
     // Validate required fields
     if (!date || !productId || !updates) {
@@ -311,6 +313,17 @@ export const updateSalesSummary = async (req, res) => {
         success: false,
         message: 'Missing required fields: date, productId, and updates are required'
       });
+    }
+
+    // Validate orderIds if provided (optional field)
+    if (orderIds && Array.isArray(orderIds)) {
+      const invalidIds = orderIds.filter(id => !mongoose.Types.ObjectId.isValid(id));
+      if (invalidIds.length > 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid orderIds format'
+        });
+      }
     }
 
     // Parse and validate date
@@ -384,11 +397,18 @@ export const updateSalesSummary = async (req, res) => {
         date: summaryDate,
         productId: new mongoose.Types.ObjectId(actualProductId),
         productDailySummaryId: masterProduct._id,
-        companyId: masterProduct.companyId._id
+        companyId: masterProduct.companyId._id,
+        orderIds: orderIds ? orderIds.map(id => new mongoose.Types.ObjectId(id)) : []
       });
-      console.log('📝 Creating new daily details record');
+      console.log('📝 Creating new daily details record with orderIds:', orderIds);
     } else {
-      console.log('📝 Updating existing daily details record');
+      // Update orderIds if provided
+      if (orderIds && Array.isArray(orderIds)) {
+        dailyDetails.orderIds = orderIds.map(id => new mongoose.Types.ObjectId(id));
+        console.log('📝 Updating existing daily details record with orderIds:', orderIds);
+      } else {
+        console.log('📝 Updating existing daily details record');
+      }
     }
 
     // Apply updates to daily details
@@ -453,7 +473,8 @@ export const updateSalesSummary = async (req, res) => {
             date: summaryDate,
             qtyPerBatch: masterProduct.qtyPerBatch,
             produceBatches: batchesToCreate,
-            approvedBy: req.user.username
+            approvedBy: req.user.username,
+            dailyDetailsId: dailyDetails._id
           });
         } else {
           console.log(`⚠️ Skipped batch creation - invalid batchAdjusted value: ${dailyDetails.batchAdjusted}`);
@@ -530,7 +551,8 @@ const createProductionBatchEntries = async ({
   date,
   qtyPerBatch,
   produceBatches,
-  approvedBy
+  approvedBy,
+  dailyDetailsId
 }) => {
   try {
     console.log('🏭 Creating ProductionBatch entries:', {
@@ -592,6 +614,7 @@ const createProductionBatchEntries = async ({
         companyId,
         itemId: productId,
         groupId, // Optional - will be null for ungrouped items
+        DailyProductionId: dailyDetailsId || null, // Reference to ProductDetailsDailySummary
         batchNumber: currentBatchNumber,
         batchNo,
         productionDate: today,

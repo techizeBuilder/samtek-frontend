@@ -17,7 +17,11 @@ import {
   approveProduct,
   generateInvoice,
   getNextDCNumber,
-  createDispatchOrder
+  createDispatchOrder,
+  getTodaysProducts,
+  validateDCNumber,
+  createDeliveryChallan,
+  generateInvoiceForDC
 } from '../controllers/dispatchController.js';
 
 const router = express.Router();
@@ -38,11 +42,15 @@ router.post('/check-existing', checkExistingDispatch);     // POST /api/dispatch
 router.post('/create-from-packing', createDispatchFromPacking); // POST /api/dispatches/create-from-packing
 
 // Delivery Challan specific routes
-router.get('/next-dc-number', getNextDCNumber);           // GET /api/dispatches/next-dc-number
-router.post('/create-dispatch-order', createDispatchOrder); // POST /api/dispatches/create-dispatch-order
-router.put('/update-qty-issued', updateQtyIssued);         // PUT /api/dispatches/update-qty-issued
-router.post('/approve-product', approveProduct);           // POST /api/dispatches/approve-product
-router.post('/generate-invoice', generateInvoice);         // POST /api/dispatches/generate-invoice
+router.get('/todays-products', getTodaysProducts);              // GET /api/dispatches/todays-products
+router.get('/validate-dc-number', validateDCNumber);            // GET /api/dispatches/validate-dc-number
+router.post('/create-delivery-challan', createDeliveryChallan); // POST /api/dispatches/create-delivery-challan
+router.post('/generate-invoice/:dcId', generateInvoiceForDC);   // POST /api/dispatches/generate-invoice/:dcId
+router.get('/next-dc-number', getNextDCNumber);                 // GET /api/dispatches/next-dc-number
+router.post('/create-dispatch-order', createDispatchOrder);     // POST /api/dispatches/create-dispatch-order
+router.put('/update-qty-issued', updateQtyIssued);              // PUT /api/dispatches/update-qty-issued
+router.post('/approve-product', approveProduct);                // POST /api/dispatches/approve-product
+router.post('/generate-invoice', generateInvoice);              // POST /api/dispatches/generate-invoice
 
 router.get('/:id', getDispatchById);                   // GET /api/dispatches/:id
 router.post('/', createDispatch);                  // POST /api/dispatches

@@ -1574,7 +1574,7 @@ export const approveProductSummaries = async (req, res) => {
       
       for (const productSummary of productSummaries) {
         try {
-          const { productId, productName, batchAdjusted, qtyPerBatch, physicalStock, packing, toBeProducedDay, produceBatches } = productSummary;
+          const { productId, productName, batchAdjusted, qtyPerBatch, physicalStock, packing, toBeProducedDay, produceBatches, orderIds, dailyDetailsId } = productSummary;
           
           console.log(`📋 Processing ${productName} with batchAdjusted: ${batchAdjusted}`);
           
@@ -1604,7 +1604,10 @@ export const approveProductSummaries = async (req, res) => {
               physicalStock: physicalStock,
               packing: packing,
               toBeProducedDay: toBeProducedDay,
-              produceBatches: produceBatches
+              produceBatches: produceBatches,
+              ...(orderIds && Array.isArray(orderIds) && orderIds.length > 0 && {
+                orderIds: orderIds.map(id => new mongoose.Types.ObjectId(id))
+              })
             },
             { new: true }
           );
@@ -1622,7 +1625,8 @@ export const approveProductSummaries = async (req, res) => {
                 qtyPerBatch: qtyPerBatch || 1,
                 produceBatches: batchesToCreate,
                 approvedBy: user.username,
-                productName: productName
+                productName: productName,
+                dailyDetailsId: updatedSummary?._id || dailyDetailsId || null
               });
               
               approvalResults.push({
@@ -1786,7 +1790,8 @@ const createBulkProductionBatchEntries = async ({
   qtyPerBatch,
   produceBatches,
   approvedBy,
-  productName
+  productName,
+  dailyDetailsId
 }) => {
   try {
     console.log('🏭 Creating ProductionBatch entries for bulk approval:', {
@@ -1865,6 +1870,7 @@ const createBulkProductionBatchEntries = async ({
         companyId,
         itemId: productId,
         groupId, // Optional - will be null for ungrouped items
+        DailyProductionId: dailyDetailsId || null, // Reference to ProductDetailsDailySummary
         batchNumber: currentBatchNumber,
         batchNo,
         productionDate: today,

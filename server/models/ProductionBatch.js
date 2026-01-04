@@ -23,6 +23,15 @@ const productionBatchSchema = new mongoose.Schema({
     default: null
   },
   
+  // Reference to ProductDetailsDailySummary (optional)
+  DailyProductionId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'ProductDetailsDailySummary',
+    required: false,
+    default: null,
+    index: true
+  },
+  
   // Batch identifiers - both must be unique per company per date
   batchNumber: {
     type: Number,
