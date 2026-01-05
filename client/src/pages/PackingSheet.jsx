@@ -8,6 +8,7 @@ export default function PackingSheet() {
   const [packingData, setPackingData] = useState([]);
   const [groupTimings, setGroupTimings] = useState({});
   const [loading, setLoading] = useState(true);
+  const [approvingBatches, setApprovingBatches] = useState({});
   const debounceTimeoutRef = useRef(null);
 
   useEffect(() => {
@@ -23,9 +24,11 @@ export default function PackingSheet() {
     };
   }, []);
 
-  const loadPackingData = async () => {
+  const loadPackingData = async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) {
+        setLoading(true);
+      }
       
       console.log('🔄 Loading production groups for packing sheet...');
       console.log('🌐 API URL:', `${config.baseURL}/api/packing/production-groups`);
@@ -229,7 +232,9 @@ export default function PackingSheet() {
       // Set empty data instead of sample data
       setPackingData([]);
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   };
 
@@ -886,10 +891,19 @@ export default function PackingSheet() {
   const handleBatchApproval = async (groupIndex, itemIndex, batchIndex, batch) => {
     const batchData = packingData[groupIndex]?.items[itemIndex]?.batchDetails[batchIndex];
     const batchPackingSheetId = batchData?.packingSheetId;
+    const batchKey = `${groupIndex}-${itemIndex}-${batchIndex}`;
+    
+    // Prevent double-clicking
+    if (approvingBatches[batchKey]) {
+      return;
+    }
     
     try {
       if (batchPackingSheetId) {
         console.log('✅ Approving batch:', batch.batchNo);
+        
+        // Set loading state for this specific batch
+        setApprovingBatches(prev => ({ ...prev, [batchKey]: true }));
         
         const response = await fetch(`${config.baseURL}/api/packing/sheets/${batchPackingSheetId}/approve`, {
           method: 'POST',
@@ -920,10 +934,12 @@ export default function PackingSheet() {
             description: `Batch ${batch.batchNo} approved and dispatch created`,
           });
 
-          // Refresh data after batch approval
+          // Refresh data after batch approval silently (without loading screen)
           setTimeout(() => {
-            loadPackingData();
+            loadPackingData(true);
           }, 1000);
+        } else {
+          throw new Error('Failed to approve batch');
         }
       }
     } catch (error) {
@@ -932,6 +948,13 @@ export default function PackingSheet() {
         title: 'Error',
         description: 'Failed to approve batch',
         variant: 'destructive'
+      });
+    } finally {
+      // Remove loading state for this batch
+      setApprovingBatches(prev => {
+        const newState = { ...prev };
+        delete newState[batchKey];
+        return newState;
       });
     }
   };
@@ -1225,6 +1248,7 @@ export default function PackingSheet() {
                               const isCompleted = batchTiming?.punchedOut;
                               const isAlreadyApproved = batch.status === 'approved' || batch.isApproved;
                               const hasPackingLoss = (batch.packingLoss || 0) > 0;
+                              const isApproving = approvingBatches[batchKey];
                               
                               // If already approved, show approved status
                               if (isAlreadyApproved) {
@@ -1240,9 +1264,24 @@ export default function PackingSheet() {
                                   return (
                                     <button
                                       onClick={() => handleBatchApproval(groupIndex, itemIndex, batchIndex, batch)}
-                                      className="bg-green-500 text-white px-2 sm:px-3 py-1 rounded text-xs hover:bg-green-600 transition-colors whitespace-nowrap"
+                                      disabled={isApproving}
+                                      className={`px-2 sm:px-3 py-1 rounded text-xs transition-colors whitespace-nowrap ${
+                                        isApproving 
+                                          ? 'bg-gray-400 text-white cursor-not-allowed' 
+                                          : 'bg-green-500 text-white hover:bg-green-600'
+                                      }`}
                                     >
-                                      Approve
+                                      {isApproving ? (
+                                        <span className="flex items-center gap-1">
+                                          <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                          </svg>
+                                          Approving...
+                                        </span>
+                                      ) : (
+                                        'Approve'
+                                      )}
                                     </button>
                                   );
                                 } else {

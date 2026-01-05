@@ -10,7 +10,9 @@ import {
   RefreshCw,
   Truck,
   Receipt,
-  AlertCircle
+  AlertCircle,
+  Eye,
+  X
 } from 'lucide-react';
 import { config } from '@/config/environment';
 
@@ -20,7 +22,7 @@ export default function DeliveryChallan() {
   const [products, setProducts] = useState([]);
   const [salespeople, setSalespeople] = useState([]);
   const [customers, setCustomers] = useState([]);
-  const [dcPrefix] = useState('DC-');
+  const [dcPrefix] = useState('DC');
   const [dcNumber, setDcNumber] = useState('');
   const [selectedSalesman, setSelectedSalesman] = useState(null);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
@@ -31,10 +33,14 @@ export default function DeliveryChallan() {
   const [qtyIssuedMap, setQtyIssuedMap] = useState({});
   const [isDispatched, setIsDispatched] = useState(false);
   const [currentDCId, setCurrentDCId] = useState(null);
+  const [showPreview, setShowPreview] = useState(false);
+  const [nextDCNumber, setNextDCNumber] = useState('');
+  const [selectedItems, setSelectedItems] = useState({}); // Track which items are selected for dispatch
 
   useEffect(() => {
     fetchSalespeople();
     fetchTodaysProducts(); // Load all today's products on mount
+    fetchNextDCNumber(); // Fetch next DC number on mount
   }, []);
 
   // Fetch customers when salesperson is selected
@@ -44,8 +50,8 @@ export default function DeliveryChallan() {
       // Reset customer when salesman changes
       setSelectedCustomer(null);
       setCustomerSearchTerm('');
-      setProducts([]);
-      setQtyIssuedMap({});
+      // Fetch products for this salesman
+      fetchTodaysProducts();
     } else {
       setCustomers([]);
       setSelectedCustomer(null);
@@ -57,8 +63,8 @@ export default function DeliveryChallan() {
 
   // Fetch products when customer is selected (optional filter)
   useEffect(() => {
-    if (selectedSalesman || selectedCustomer) {
-      fetchTodaysProducts(); // Re-fetch with filters
+    if (selectedCustomer) {
+      fetchTodaysProducts(); // Re-fetch with customer filter
     }
   }, [selectedCustomer]);
 
@@ -76,6 +82,44 @@ export default function DeliveryChallan() {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, []);
+
+  const fetchNextDCNumber = async () => {
+    try {
+      console.log('🔢 Fetching next DC number...');
+      
+      const response = await fetch(`${config.baseURL}/api/dispatches/next-dc-number`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log('📋 Next DC number response:', result);
+      
+      if (result.success && result.dcNo) {
+        // Store the full DC number (e.g., DC017)
+        setNextDCNumber(result.dcNo);
+        setDcNumber(result.dcNo);
+        
+        toast({
+          title: "DC Number",
+          description: `Next available DC number: ${result.dcNo}`,
+        });
+      }
+    } catch (error) {
+      console.error('❌ Error fetching next DC number:', error);
+      toast({
+        title: "Error",
+        description: "Failed to fetch next DC number",
+        variant: "destructive",
+      });
+    }
+  };
 
   const fetchSalespeople = async () => {
     try {
@@ -172,10 +216,26 @@ export default function DeliveryChallan() {
         setProducts(result.data.products || []);
         // Initialize qtyIssued map with existing values from API
         const initialQtyMap = {};
+        const initialSelectedItems = {};
         (result.data.products || []).forEach(product => {
           initialQtyMap[product._id] = product.qtyIssued || '';
+          // Auto-select only non-dispatched items
+          initialSelectedItems[product._id] = product.status !== 'dispatched';
         });
         setQtyIssuedMap(initialQtyMap);
+        setSelectedItems(initialSelectedItems);
+        
+        // Check if products are already dispatched and set existing DC number
+        const productsData = result.data.products || [];
+        if (productsData.length > 0) {
+          const allDispatched = productsData.every(p => p.status === 'dispatched' && p.dcno);
+          if (allDispatched && productsData[0].dcno) {
+            // Use existing DC number instead of fetching next
+            setDcNumber(productsData[0].dcno);
+            setNextDCNumber(productsData[0].dcno);
+            console.log('📋 Using existing DC number:', productsData[0].dcno);
+          }
+        }
         
         console.log('✅ Products loaded:', result.data.products.length);
         console.log('📊 Initial qty map:', initialQtyMap);
@@ -263,7 +323,7 @@ export default function DeliveryChallan() {
   const validateDCNumber = async (dcNo) => {
     try {
       const response = await fetch(
-        `${config.baseURL}/api/dispatches/validate-dc-number?dcNo=${dcNo}`,
+        `${config.baseURL}/api/dispatches/validate-dc-number?dcNo=${encodeURIComponent(dcNo)}`,
         {
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('token')}`,
@@ -286,20 +346,20 @@ export default function DeliveryChallan() {
       if (!dcNumber || dcNumber.trim() === '') {
         toast({
           title: "Validation Error",
-          description: "Please enter DC number",
+          description: "DC number is required. Please enter a valid DC number.",
           variant: "destructive",
         });
         return;
       }
 
-      const fullDCNumber = `${dcPrefix}${dcNumber}`;
+      // dcNumber already contains full format like DC017
+      const fullDCNumber = dcNumber.trim().toUpperCase();
 
-      // Check DC number uniqueness
-      const isUnique = await validateDCNumber(fullDCNumber);
-      if (!isUnique) {
+      // Step 1b: Validate DC Number matches the next available number
+      if (nextDCNumber && fullDCNumber !== nextDCNumber) {
         toast({
-          title: "Validation Error",
-          description: "DC number already exists. Please use a different number.",
+          title: "Invalid DC Number",
+          description: `Please use the next available DC number: ${nextDCNumber}. You entered: ${fullDCNumber}`,
           variant: "destructive",
         });
         return;
@@ -309,7 +369,7 @@ export default function DeliveryChallan() {
       if (!selectedSalesman) {
         toast({
           title: "Validation Error",
-          description: "Please select a salesman",
+          description: "Salesman is required. Please select a salesman from the dropdown.",
           variant: "destructive",
         });
         return;
@@ -319,23 +379,49 @@ export default function DeliveryChallan() {
       if (!selectedCustomer) {
         toast({
           title: "Validation Error",
-          description: "Please select a customer",
+          description: "Customer is required. Please select a customer from the dropdown.",
           variant: "destructive",
         });
         return;
       }
 
-      // Step 4: Validate All Qty Issued Fields
+      // Step 4: Validate products exist
+      if (products.length === 0) {
+        toast({
+          title: "Validation Error",
+          description: "No products found. Please ensure today's products are loaded for the selected salesman.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Step 4b: Check if any items are selected
+      const selectedProductIds = Object.keys(selectedItems).filter(id => selectedItems[id]);
+      if (selectedProductIds.length === 0) {
+        toast({
+          title: "No Items Selected",
+          description: "Please select at least one item to dispatch by checking the checkbox.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Step 5: Validate All Qty Issued Fields for SELECTED items only
       const items = [];
       let hasError = false;
 
       for (const product of products) {
+        // Skip if item is not selected
+        if (!selectedItems[product._id]) {
+          continue;
+        }
+        
         const qtyIssued = qtyIssuedMap[product._id];
         
         if (!qtyIssued || qtyIssued === '' || Number(qtyIssued) <= 0) {
           toast({
             title: "Validation Error",
-            description: `Please enter qty issued for ${product.productName}`,
+            description: `Qty Issued is required for "${product.productName}". Please enter a quantity greater than 0.`,
             variant: "destructive",
           });
           hasError = true;
@@ -346,7 +432,7 @@ export default function DeliveryChallan() {
         if (numQtyIssued > product.indentQty) {
           toast({
             title: "Validation Error",
-            description: `Qty issued for ${product.productName} cannot exceed indent qty (${product.indentQty})`,
+            description: `Qty issued (${numQtyIssued}) for "${product.productName}" cannot exceed indent qty (${product.indentQty})`,
             variant: "destructive",
           });
           hasError = true;
@@ -354,6 +440,7 @@ export default function DeliveryChallan() {
         }
 
         items.push({
+          dispatchId: product._id, // This is the dispatch entry _id
           productId: product.productId || product._id,
           productName: product.productName,
           productGroup: product.productGroup,
@@ -364,8 +451,26 @@ export default function DeliveryChallan() {
 
       if (hasError) return;
 
-      // Step 5: Create Delivery Challan
+      // Step 6: Check DC number uniqueness
+      console.log('🔍 Validating DC number:', fullDCNumber);
+      const isUnique = await validateDCNumber(fullDCNumber);
+      if (!isUnique) {
+        toast({
+          title: "DC Number Already Exists",
+          description: `DC number "${fullDCNumber}" is already used. Please enter a different number.`,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Step 7: Create Delivery Challan
       setLoading(true);
+      console.log('📤 Creating delivery challan with data:', {
+        dcNo: fullDCNumber,
+        salesmanId: selectedSalesman._id,
+        customerId: selectedCustomer._id,
+        items: items
+      });
 
       const response = await fetch(`${config.baseURL}/api/dispatches/create-delivery-challan`, {
         method: 'POST',
@@ -381,20 +486,43 @@ export default function DeliveryChallan() {
         })
       });
 
-      if (!response.ok) {
-        const errorResult = await response.json();
-        throw new Error(errorResult.message || 'Failed to create delivery challan');
-      }
-
       const result = await response.json();
+      console.log('📥 Response from server:', result);
+
+      if (!response.ok) {
+        // Handle different error types with specific messages
+        let errorMessage = result.message || 'Failed to create delivery challan';
+        
+        // If there are validation errors, show them
+        if (result.errors && Array.isArray(result.errors)) {
+          errorMessage = result.errors.join(', ');
+        }
+        
+        // If item already dispatched
+        if (result.alreadyDispatched) {
+          errorMessage = `${result.productName || 'One or more items'} already dispatched with DC number ${result.existingDC}. Cannot create duplicate delivery challan.`;
+        }
+        
+        // If it's a stock validation error
+        if (result.error && result.error.includes('Closing stock cannot be negative')) {
+          errorMessage = 'Cannot dispatch: Insufficient stock available. The closing stock would be negative. Please check inventory levels.';
+        }
+        
+        // If DC number already exists
+        if (result.error && result.error.includes('Duplicate')) {
+          errorMessage = `DC number ${fullDCNumber} already exists. This delivery challan may have already been dispatched.`;
+        }
+        
+        throw new Error(errorMessage);
+      }
       
       if (result.success) {
         setCurrentDCId(result.data.dcId);
         setIsDispatched(true);
         
         toast({
-          title: "Dispatch Successful",
-          description: `Delivery challan ${fullDCNumber} created successfully`,
+          title: "✅ Dispatch Successful",
+          description: `Delivery challan ${fullDCNumber} created successfully with ${items.length} items.`,
         });
 
         // Lock all fields
@@ -402,10 +530,27 @@ export default function DeliveryChallan() {
       }
     } catch (error) {
       console.error('❌ Error creating delivery challan:', error);
+      
+      // Show detailed error with proper formatting
+      let errorTitle = "❌ Failed to Create Delivery Challan";
+      let errorDescription = error.message || "An unexpected error occurred. Please try again.";
+      
+      // Special handling for stock errors
+      if (error.message.includes('stock')) {
+        errorTitle = "❌ Insufficient Stock";
+      } else if (error.message.includes('already dispatched')) {
+        errorTitle = "❌ Already Dispatched";
+      } else if (error.message.includes('already exists') || error.message.includes('Duplicate')) {
+        errorTitle = "❌ Duplicate DC Number";
+      } else if (error.message.includes('Validation')) {
+        errorTitle = "❌ Validation Error";
+      }
+      
       toast({
-        title: "Error",
-        description: error.message || "Failed to create delivery challan",
+        title: errorTitle,
+        description: errorDescription,
         variant: "destructive",
+        duration: 5000, // Show for 5 seconds for important errors
       });
     } finally {
       setLoading(false);
@@ -414,7 +559,11 @@ export default function DeliveryChallan() {
 
   const handleGenerateInvoice = async () => {
     try {
-      if (!currentDCId) {
+      // Use currentDCId if available, otherwise use the first product's _id
+      const dcIdToUse = currentDCId || (products.length > 0 ? products[0]._id : null);
+      const dcNumberToUse = dcNumber || existingDCNumber;
+      
+      if (!dcIdToUse) {
         toast({
           title: "Error",
           description: "No delivery challan found to generate invoice",
@@ -423,14 +572,39 @@ export default function DeliveryChallan() {
         return;
       }
 
-      setLoading(true);
+      if (!selectedSalesman || !selectedCustomer) {
+        toast({
+          title: "Error",
+          description: "Salesman and customer information required for invoice",
+          variant: "destructive",
+        });
+        return;
+      }
 
-      const response = await fetch(`${config.baseURL}/api/dispatches/generate-invoice/${currentDCId}`, {
+      setLoading(true);
+      console.log('📄 Generating invoice for DC:', dcNumberToUse);
+
+      const response = await fetch(`${config.baseURL}/api/dispatches/generate-invoice/${dcIdToUse}`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`,
           'Content-Type': 'application/json'
-        }
+        },
+        body: JSON.stringify({
+          dcNo: dcNumberToUse,
+          salesmanId: selectedSalesman._id,
+          salesmanName: selectedSalesman.fullName || selectedSalesman.username,
+          customerId: selectedCustomer._id,
+          customerName: selectedCustomer.name,
+          customerCode: selectedCustomer.customerCode,
+          items: products.map(p => ({
+            productId: p.productId || p._id,
+            productName: p.productName,
+            productGroup: p.productGroup,
+            indentQty: p.indentQty,
+            qtyIssued: qtyIssuedMap[p._id] || p.qtyIssued || 0
+          }))
+        })
       });
 
       if (!response.ok) {
@@ -447,15 +621,15 @@ export default function DeliveryChallan() {
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `invoice-${dcPrefix}${dcNumber}.pdf`;
+        a.download = `invoice-${dcNumberToUse}-${selectedCustomer.name.replace(/\s+/g, '-')}.pdf`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         window.URL.revokeObjectURL(url);
 
         toast({
-          title: "Invoice Generated",
-          description: "Invoice PDF downloaded successfully",
+          title: "✅ Invoice Generated",
+          description: `Invoice for DC ${dcNumberToUse} downloaded successfully`,
         });
       } else {
         // Handle JSON response
@@ -490,7 +664,73 @@ export default function DeliveryChallan() {
     setQtyIssuedMap({});
     setIsDispatched(false);
     setCurrentDCId(null);
+    setShowPreview(false);
+    fetchNextDCNumber(); // Fetch new DC number after reset
   };
+
+  const handlePreview = () => {
+    // Validation
+    if (!dcNumber || dcNumber.trim() === '') {
+      toast({
+        title: "Validation Error",
+        description: "Please enter DC number",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!selectedSalesman) {
+      toast({
+        title: "Validation Error",
+        description: "Please select a salesman",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!selectedCustomer) {
+      toast({
+        title: "Validation Error",
+        description: "Please select a customer",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (products.length === 0) {
+      toast({
+        title: "Validation Error",
+        description: "No products available",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Check if all products have qty issued
+    const allQtyFilled = products.every(product => {
+      const qty = qtyIssuedMap[product._id];
+      return qty && qty !== '' && Number(qty) > 0;
+    });
+
+    if (!allQtyFilled) {
+      toast({
+        title: "Validation Error",
+        description: "Please enter qty issued for all products",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setShowPreview(true);
+  };
+
+  // Check if products are already dispatched
+  const isAlreadyDispatched = products.length > 0 && products.every(product => 
+    product.status === 'dispatched' && product.dcno
+  );
+  
+  // Get existing DC number if already dispatched
+  const existingDCNumber = isAlreadyDispatched && products.length > 0 ? products[0].dcno : null;
 
   const filteredSalespeople = salespeople.filter(salesman =>
     (salesman.fullName && salesman.fullName.toLowerCase().includes(salesmanSearchTerm.toLowerCase())) ||
@@ -538,23 +778,19 @@ export default function DeliveryChallan() {
             </div>
             <div className="flex items-center gap-1">
               <Input
-                className="w-16 text-center bg-gray-100 font-semibold cursor-not-allowed"
-                value={dcPrefix}
-                readOnly
-                disabled
-              />
-              <Input
-                type="number"
-                placeholder="016"
-                className="flex-1 text-center font-semibold"
+                type="text"
+                placeholder="DC017"
+                className="w-full text-center font-semibold text-lg"
                 value={dcNumber}
-                onChange={(e) => setDcNumber(e.target.value)}
+                onChange={(e) => setDcNumber(e.target.value.toUpperCase())}
                 disabled={isDispatched}
               />
             </div>
-            <div className="text-xs text-gray-500 text-center mt-1">
-              Enter numeric DC number
-            </div>
+            {!isAlreadyDispatched && (
+              <div className="text-xs text-blue-600 font-medium text-center mt-1">
+                Next DC number - {nextDCNumber || dcNumber}
+              </div>
+            )}
           </div>
           
           {/* Salesman Dropdown */}
@@ -563,18 +799,38 @@ export default function DeliveryChallan() {
               Salesman Name by Dropdown
             </div>
             <div className="relative dropdown-container">
-              <Input
-                placeholder="Search and select salesman"
-                value={salesmanSearchTerm}
-                onChange={(e) => {
-                  setSalesmanSearchTerm(e.target.value);
-                  setIsSalesmanDropdownOpen(true);
-                }}
-                onFocus={() => setIsSalesmanDropdownOpen(true)}
-                className="cursor-pointer"
-                disabled={isDispatched}
-              />
-              {isSalesmanDropdownOpen && !isDispatched && (
+              <div className="relative">
+                <Input
+                  placeholder="Search and select salesman"
+                  value={salesmanSearchTerm}
+                  onChange={(e) => {
+                    setSalesmanSearchTerm(e.target.value);
+                    setSelectedSalesman(null);
+                    setIsSalesmanDropdownOpen(true);
+                  }}
+                  onFocus={() => {
+                    if (!selectedSalesman) {
+                      setIsSalesmanDropdownOpen(true);
+                    }
+                  }}
+                  className="cursor-pointer"
+                  disabled={isDispatched}
+                  readOnly={selectedSalesman !== null}
+                />
+                {selectedSalesman && !isDispatched && (
+                  <button
+                    onClick={() => {
+                      setSelectedSalesman(null);
+                      setSalesmanSearchTerm('');
+                      setIsSalesmanDropdownOpen(true);
+                    }}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+              {isSalesmanDropdownOpen && !isDispatched && !selectedSalesman && (
                 <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
                   {filteredSalespeople.length > 0 ? (
                     filteredSalespeople.map((salesman) => (
@@ -655,13 +911,18 @@ export default function DeliveryChallan() {
               Dispatch Action
             </div>
             <Button 
-              className="w-full bg-blue-600 hover:bg-blue-700 text-sm"
+              className={`w-full text-sm ${
+                isAlreadyDispatched || isDispatched 
+                  ? 'bg-gray-400 cursor-not-allowed' 
+                  : 'bg-blue-600 hover:bg-blue-700'
+              }`}
               onClick={handleDispatch}
-              disabled={loading || isDispatched || !dcNumber || !selectedSalesman || !selectedCustomer || products.length === 0}
+              disabled={loading || isDispatched || isAlreadyDispatched || !dcNumber || !selectedSalesman || !selectedCustomer || products.length === 0}
             >
               <Truck className="h-4 w-4 mr-2" />
-              {loading ? 'Processing...' : isDispatched ? 'Dispatched' : 'Dispatch'}
+              {loading ? 'Processing...' : (isDispatched || isAlreadyDispatched) ? 'Already Dispatched' : 'Dispatch'}
             </Button>
+           
           </div>
 
           {/* Invoice Button */}
@@ -670,9 +931,13 @@ export default function DeliveryChallan() {
               Generate Invoice
             </div>
             <Button 
-              className="w-full bg-green-600 hover:bg-green-700 text-sm"
+              className={`w-full text-sm ${
+                (isDispatched || isAlreadyDispatched) && selectedSalesman && selectedCustomer
+                  ? 'bg-green-600 hover:bg-green-700' 
+                  : 'bg-gray-300 cursor-not-allowed'
+              }`}
               onClick={handleGenerateInvoice}
-              disabled={loading || !isDispatched}
+              disabled={loading || (!isDispatched && !isAlreadyDispatched) || !selectedSalesman || !selectedCustomer}
             >
               <Receipt className="h-4 w-4 mr-2" />
               {loading ? 'Generating...' : 'Invoice'}
@@ -707,35 +972,57 @@ export default function DeliveryChallan() {
               <div>No products found for today</div>
             </div>
           ) : (
-            products.map((product) => (
-              <div key={product._id} className="grid grid-cols-3 border-b border-gray-800 hover:bg-gray-50">
-                <div className="border-r border-gray-800 p-3">
-                  <div className="font-medium">{product.productName}</div>
-                  <div className="text-sm text-blue-600 mt-1">
-                    {product.productGroup && (
-                      <Badge variant="outline" className="bg-blue-50 text-blue-700">
-                        {product.productGroup}
-                      </Badge>
-                    )}
+            products.map((product) => {
+              const isItemDispatched = product.status === 'dispatched';
+              return (
+                <div key={product._id} className="grid grid-cols-3 border-b border-gray-800 hover:bg-gray-50">
+                  {/* Product Name with Checkbox */}
+                  <div className="border-r border-gray-800 p-3 flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      className="w-5 h-5 cursor-pointer flex-shrink-0"
+                      checked={selectedItems[product._id] || false}
+                      onChange={(e) => {
+                        setSelectedItems(prev => ({
+                          ...prev,
+                          [product._id]: e.target.checked
+                        }));
+                      }}
+                      disabled={isDispatched || isItemDispatched}
+                    />
+                    <div className="flex-1">
+                      <div className="font-medium">{product.productName}</div>
+                      <div className="text-sm text-blue-600 mt-1 flex items-center gap-2">
+                        {product.productGroup && (
+                          <Badge variant="outline" className="bg-blue-50 text-blue-700">
+                            {product.productGroup}
+                          </Badge>
+                        )}
+                        {isItemDispatched && (
+                          <span className="text-xs text-green-600 font-medium">
+                            Dispatched
+                          </span>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                </div>
-                <div className="border-r border-gray-800 p-3 text-center flex items-center justify-center">
-                  <Badge variant="outline" className="bg-green-50 text-green-700 text-lg">
-                    {product.indentQty}
-                  </Badge>
-                </div>
-                <div className="p-3">
-                  <Input
-                    type="number"
-                    placeholder="Enter qty"
-                    className="text-center"
-                    min="0"
-                    max={product.indentQty}
-                    value={qtyIssuedMap[product._id] || ''}
-                    onChange={(e) => handleQtyIssuedChange(product._id, e.target.value)}
-                    onBlur={(e) => handleQtyIssuedBlur(product._id, e.target.value)}
-                    disabled={isDispatched}
-                  />
+                  <div className="border-r border-gray-800 p-3 text-center flex items-center justify-center">
+                    <Badge variant="outline" className="bg-green-50 text-green-700 text-lg">
+                      {product.indentQty}
+                    </Badge>
+                  </div>
+                  <div className="p-3">
+                    <Input
+                      type="number"
+                      placeholder="Enter qty"
+                      className="text-center"
+                      min="0"
+                      max={product.indentQty}
+                      value={qtyIssuedMap[product._id] || ''}
+                      onChange={(e) => handleQtyIssuedChange(product._id, e.target.value)}
+                      onBlur={(e) => handleQtyIssuedBlur(product._id, e.target.value)}
+                      disabled={isDispatched}
+                    />
                   {qtyIssuedMap[product._id] && Number(qtyIssuedMap[product._id]) > product.indentQty && (
                     <div className="text-xs text-red-600 mt-1 text-center">
                       Cannot exceed indent qty
@@ -743,10 +1030,145 @@ export default function DeliveryChallan() {
                   )}
                 </div>
               </div>
-            ))
+            );
+            })
           )}
         </div>
       </div>
+
+      {/* Preview Modal */}
+      {showPreview && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-auto">
+            {/* Modal Header */}
+            <div className="sticky top-0 bg-blue-600 text-white p-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <FileText className="h-6 w-6" />
+                <h2 className="text-xl font-bold">Delivery Challan Preview</h2>
+              </div>
+              <button
+                onClick={() => setShowPreview(false)}
+                className="hover:bg-blue-700 p-2 rounded-full transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-6 space-y-6">
+              {/* DC Number Display */}
+              <div className="bg-blue-50 border-2 border-blue-300 rounded-lg p-4">
+                <div className="text-center">
+                  <div className="text-sm text-blue-600 font-medium mb-1">Delivery Challan Number</div>
+                  <div className="text-3xl font-bold text-blue-900">
+                    {dcNumber}
+                  </div>
+                </div>
+              </div>
+
+              {/* Customer & Salesman Info */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="border border-gray-300 rounded-lg p-4">
+                  <div className="text-sm text-gray-600 mb-1">Salesman</div>
+                  <div className="font-bold text-lg">{selectedSalesman?.fullName || selectedSalesman?.username}</div>
+                  {selectedSalesman?.email && (
+                    <div className="text-sm text-gray-500">{selectedSalesman.email}</div>
+                  )}
+                </div>
+                <div className="border border-gray-300 rounded-lg p-4">
+                  <div className="text-sm text-gray-600 mb-1">Customer</div>
+                  <div className="font-bold text-lg">{selectedCustomer?.name}</div>
+                  {selectedCustomer?.customerCode && (
+                    <div className="text-sm text-gray-500">Code: {selectedCustomer.customerCode}</div>
+                  )}
+                </div>
+              </div>
+
+              {/* Products Table */}
+              <div className="border border-gray-300 rounded-lg overflow-hidden">
+                <table className="w-full">
+                  <thead className="bg-yellow-200">
+                    <tr>
+                      <th className="border-b border-gray-300 p-3 text-left">Product Name / Group</th>
+                      <th className="border-b border-gray-300 p-3 text-center">Indent Qty</th>
+                      <th className="border-b border-gray-300 p-3 text-center">Qty Issued</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {products.map((product, index) => (
+                      <tr key={product._id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                        <td className="border-b border-gray-200 p-3">
+                          <div className="font-medium">{product.productName}</div>
+                          {product.productGroup && (
+                            <div className="text-sm text-blue-600 mt-1">
+                              <Badge variant="outline" className="bg-blue-50 text-blue-700">
+                                {product.productGroup}
+                              </Badge>
+                            </div>
+                          )}
+                        </td>
+                        <td className="border-b border-gray-200 p-3 text-center">
+                          <Badge variant="outline" className="bg-green-50 text-green-700 text-base">
+                            {product.indentQty}
+                          </Badge>
+                        </td>
+                        <td className="border-b border-gray-200 p-3 text-center">
+                          <Badge variant="outline" className="bg-blue-50 text-blue-700 text-base font-bold">
+                            {qtyIssuedMap[product._id]}
+                          </Badge>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Total Summary */}
+              <div className="bg-gray-50 border border-gray-300 rounded-lg p-4">
+                <div className="grid grid-cols-3 gap-4 text-center">
+                  <div>
+                    <div className="text-sm text-gray-600">Total Products</div>
+                    <div className="text-2xl font-bold text-gray-900">{products.length}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-gray-600">Total Indent Qty</div>
+                    <div className="text-2xl font-bold text-green-700">
+                      {products.reduce((sum, p) => sum + (p.indentQty || 0), 0)}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-gray-600">Total Qty Issued</div>
+                    <div className="text-2xl font-bold text-blue-700">
+                      {products.reduce((sum, p) => sum + (Number(qtyIssuedMap[p._id]) || 0), 0)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-3 justify-end">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowPreview(false)}
+                >
+                  Close
+                </Button>
+                <Button
+                  className="bg-blue-600 hover:bg-blue-700"
+                  onClick={() => {
+                    setShowPreview(false);
+                    handleDispatch();
+                  }}
+                  disabled={loading || isDispatched}
+                >
+                  <Truck className="h-4 w-4 mr-2" />
+                  Proceed to Dispatch
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

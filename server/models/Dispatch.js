@@ -82,8 +82,8 @@ const dispatchConsoleSchema = new mongoose.Schema({
   },
   closingStockEndOfDayBalance: {
     type: Number,
-    default: 0,
-    min: [0, 'Closing stock cannot be negative']
+    default: 0
+    // Can be negative when dispatched quantity exceeds available stock (shortage)
   },
   physicalStockEntryManualVerification: {
     type: Number,

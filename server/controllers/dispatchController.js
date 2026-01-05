@@ -428,30 +428,22 @@ export const getDispatchDashboardData = async (req, res) => {
   }
 };
 
-// Update manual stock entry for dispatch
+// Update manual stock entry for dispatch - ONLY updates physical stock field
 export const updateManualStock = async (req, res) => {
   try {
     const { 
       packingSheetId,
-      productId, // Add productId to identify specific product in dispatch console
-      productGroup, 
-      packedQuantityReadyForDispatch,
-      previousClosingStockYesterdayBalance,
-      returnQuantityYesterdayReturns,
-      totalIndentQuantityOrdersForTheDay,
-      dispatchedQuantitySentToday,
-      closingStockEndOfDayBalance,
+      productId,
       physicalStockEntryManualVerification
     } = req.body;
 
-    console.log('📝 Updating dispatch console with data:', {
+    console.log('📝 Updating ONLY physical stock entry:', {
       packingSheetId,
       productId,
-      productGroup,
-      physicalStockEntryManualVerification,
-      dispatchedQuantitySentToday
+      physicalStockEntryManualVerification
     });
 
+    // Validate required fields
     if (!packingSheetId) {
       return res.status(400).json({
         success: false,
@@ -459,121 +451,77 @@ export const updateManualStock = async (req, res) => {
       });
     }
 
+    if (physicalStockEntryManualVerification === undefined || physicalStockEntryManualVerification === null) {
+      return res.status(400).json({
+        success: false,
+        message: 'Physical stock value is required'
+      });
+    }
+
     const today = new Date();
     const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0);
     const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
 
-    // Build the query - ONLY look for today's entries, never update old ones
+    // Build the query to find the specific dispatch entry
     let query = {
       packingSheetId: packingSheetId,
-      // Use date range instead of $expr to allow upsert operations
       date: { $gte: startOfDay, $lte: endOfDay },
       company: req.user.companyId
     };
 
-    // If productId is provided, add it to the query
     if (productId) {
       query.productId = productId;
     }
 
-    // Build the update object - only update fields that are provided
-    let updateFields = {
-      status: 'updated',
-      lastUpdatedBy: req.user._id,
-      // Always set today's date for new entries
-      date: startOfDay,
-      company: req.user.companyId
-    };
+    console.log('🔍 Finding dispatch entry:', JSON.stringify(query, null, 2));
 
-    if (productGroup !== undefined) updateFields.productGroup = productGroup;
-    if (packedQuantityReadyForDispatch !== undefined) updateFields.packedQuantityReadyForDispatch = packedQuantityReadyForDispatch;
-    if (previousClosingStockYesterdayBalance !== undefined) updateFields.previousClosingStockYesterdayBalance = previousClosingStockYesterdayBalance;
-    if (returnQuantityYesterdayReturns !== undefined) updateFields.returnQuantityYesterdayReturns = returnQuantityYesterdayReturns;
-    if (totalIndentQuantityOrdersForTheDay !== undefined) updateFields.totalIndentQuantityOrdersForTheDay = totalIndentQuantityOrdersForTheDay;
-    if (dispatchedQuantitySentToday !== undefined) updateFields.dispatchedQuantitySentToday = dispatchedQuantitySentToday;
-    if (closingStockEndOfDayBalance !== undefined) updateFields.closingStockEndOfDayBalance = closingStockEndOfDayBalance;
-    if (physicalStockEntryManualVerification !== undefined) updateFields.physicalStockEntryManualVerification = physicalStockEntryManualVerification;
+    // Find the existing dispatch record
+    const existingDispatch = await Dispatch.findOne(query);
 
-    console.log('📝 Query for today\'s entry only:', JSON.stringify(query, null, 2));
-    console.log('📝 Update fields:', JSON.stringify(updateFields, null, 2));
+    if (!existingDispatch) {
+      return res.status(404).json({
+        success: false,
+        message: 'Dispatch entry not found for today'
+      });
+    }
 
-    // Get existing record to merge values for calculations
-    const existingRecord = await Dispatch.findOne(query);
+    // ONLY update physical stock field
+    existingDispatch.physicalStockEntryManualVerification = physicalStockEntryManualVerification;
     
-    // Calculate totalAvailableStock = Packed + Previous Closing + Returns
-    // Use updated values if provided, otherwise use existing values
-    const packedQty = updateFields.packedQuantityReadyForDispatch !== undefined ? 
-      updateFields.packedQuantityReadyForDispatch : (existingRecord?.packedQuantityReadyForDispatch || 0);
-    const previousClosing = updateFields.previousClosingStockYesterdayBalance !== undefined ? 
-      updateFields.previousClosingStockYesterdayBalance : (existingRecord?.previousClosingStockYesterdayBalance || 0);
-    const returns = updateFields.returnQuantityYesterdayReturns !== undefined ? 
-      updateFields.returnQuantityYesterdayReturns : (existingRecord?.returnQuantityYesterdayReturns || 0);
+    // Recalculate ONLY overallLoss based on existing closingStock
+    // overallLoss = Closing Stock - Physical Stock
+    existingDispatch.overallLoss = existingDispatch.closingStockEndOfDayBalance - physicalStockEntryManualVerification;
     
-    updateFields.totalAvailableStock = packedQty + previousClosing + returns;
-    
-    // Calculate excessShortage = Total Available - Total Indent
-    const totalIndent = updateFields.totalIndentQuantityOrdersForTheDay !== undefined ? 
-      updateFields.totalIndentQuantityOrdersForTheDay : (existingRecord?.totalIndentQuantityOrdersForTheDay || 0);
-    updateFields.excessShortage = updateFields.totalAvailableStock - totalIndent;
-    
-    // Calculate overallLoss if needed
-    const dispatched = updateFields.dispatchedQuantitySentToday !== undefined ? 
-      updateFields.dispatchedQuantitySentToday : (existingRecord?.dispatchedQuantitySentToday || 0);
-    const physicalStock = updateFields.physicalStockEntryManualVerification !== undefined ? 
-      updateFields.physicalStockEntryManualVerification : (existingRecord?.physicalStockEntryManualVerification || 0);
-    updateFields.overallLoss = updateFields.totalAvailableStock - dispatched - physicalStock;
+    existingDispatch.lastUpdatedBy = req.user._id;
+    existingDispatch.updatedAt = new Date();
 
-    console.log('🧮 Calculations:', {
-      packedQty,
-      previousClosing,
-      returns,
-      totalAvailable: updateFields.totalAvailableStock,
-      totalIndent,
-      excessShortage: updateFields.excessShortage,
-      dispatched,
-      physicalStock,
-      overallLoss: updateFields.overallLoss
-    });
+    // Save the updated dispatch entry
+    await existingDispatch.save();
 
-    // Update or create dispatch console entry
-    const dispatchEntry = await Dispatch.findOneAndUpdate(
-      query,
-      { $set: updateFields },
-      {
-        upsert: true,
-        new: true
-      }
-    );
-
-    console.log('✅ Dispatch console updated successfully for TODAY ONLY:', {
-      query,
-      updateFields,
-      dispatchEntryId: dispatchEntry._id,
-      status: dispatchEntry.status,
-      entryDate: dispatchEntry.date
+    console.log('✅ Physical stock updated successfully:', {
+      dispatchId: existingDispatch._id,
+      physicalStock: existingDispatch.physicalStockEntryManualVerification,
+      closingStock: existingDispatch.closingStockEndOfDayBalance,
+      overallLoss: existingDispatch.overallLoss
     });
 
     res.json({
       success: true,
-      message: 'Dispatch console updated successfully',
+      message: 'Physical stock updated successfully',
       data: {
-        id: dispatchEntry._id,
-        packingSheetId,
-        productGroup,
-        packedQuantityReadyForDispatch: dispatchEntry.packedQuantityReadyForDispatch,
-        totalAvailableStock: dispatchEntry.totalAvailableStock,
-        excessShortage: dispatchEntry.excessShortage,
-        overallLoss: dispatchEntry.overallLoss,
-        status: dispatchEntry.status,
-        updatedAt: dispatchEntry.updatedAt
+        id: existingDispatch._id,
+        physicalStockEntryManualVerification: existingDispatch.physicalStockEntryManualVerification,
+        closingStockEndOfDayBalance: existingDispatch.closingStockEndOfDayBalance,
+        overallLoss: existingDispatch.overallLoss,
+        updatedAt: existingDispatch.updatedAt
       }
     });
 
   } catch (error) {
-    console.error('Error updating dispatch console:', error);
+    console.error('Error updating physical stock:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to update dispatch console',
+      message: 'Failed to update physical stock',
       error: error.message
     });
   }
@@ -1038,8 +986,32 @@ export const updateQtyIssued = async (req, res) => {
       });
     }
 
-    // Update qty issued
+    // Update qty issued and related stock fields
     dispatch.qtyIssued = qtyIssued;
+    dispatch.dispatchedQuantitySentToday = qtyIssued;
+    
+    // Recalculate all stock fields properly
+    // Total Available Stock = Packed + Previous Closing + Returns
+    const totalAvailableStock = 
+      (dispatch.packedQuantityReadyForDispatch || 0) +
+      (dispatch.previousClosingStockYesterdayBalance || 0) +
+      (dispatch.returnQuantityYesterdayReturns || 0);
+    
+    dispatch.totalAvailableStock = totalAvailableStock;
+    
+    // Closing Stock End of Day = Total Available - Dispatched
+    dispatch.closingStockEndOfDayBalance = totalAvailableStock - (qtyIssued || 0);
+    
+    // If closing stock would be negative, set it to 0
+    if (dispatch.closingStockEndOfDayBalance < 0) {
+      dispatch.closingStockEndOfDayBalance = 0;
+    }
+    
+    // Overall Loss = Closing Stock - Physical Stock Entry
+    if (dispatch.physicalStockEntryManualVerification !== undefined) {
+      dispatch.overallLoss = dispatch.closingStockEndOfDayBalance - (dispatch.physicalStockEntryManualVerification || 0);
+    }
+    
     dispatch.updatedAt = new Date();
     const updatedDispatch = await dispatch.save();
 
@@ -1743,6 +1715,19 @@ export const createDeliveryChallan = async (req, res) => {
       });
     }
 
+    // Validate DC number is the next expected number
+    const nextExpectedDCno = await Dispatch.generateNextDCno(req.user.companyId);
+    console.log('🔍 DC Number validation:', { provided: dcNo, expected: nextExpectedDCno });
+    
+    if (dcNo !== nextExpectedDCno) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid DC number. Expected next DC number is ${nextExpectedDCno}, but received ${dcNo}. Please use the correct sequential DC number.`,
+        expectedDCno: nextExpectedDCno,
+        providedDCno: dcNo
+      });
+    }
+
     // Validate DC number uniqueness
     const existingDC = await Dispatch.findOne({
       dcno: dcNo,
@@ -1821,6 +1806,18 @@ export const createDeliveryChallan = async (req, res) => {
       }
 
       if (existingDispatch) {
+        // Check if already dispatched
+        if (existingDispatch.status === 'dispatched' && existingDispatch.dcno) {
+          console.log(`⚠️ Dispatch ${existingDispatch._id} already dispatched with DC: ${existingDispatch.dcno}`);
+          return res.status(400).json({
+            success: false,
+            message: `Item "${item.productName}" has already been dispatched with DC number ${existingDispatch.dcno}. Cannot create duplicate delivery challan.`,
+            alreadyDispatched: true,
+            existingDC: existingDispatch.dcno,
+            productName: item.productName
+          });
+        }
+        
         // Update existing dispatch entry with delivery challan details
         console.log(`🔄 Updating dispatch entry ${existingDispatch._id} with DC details`);
         
@@ -1881,6 +1878,27 @@ export const createDeliveryChallan = async (req, res) => {
 
   } catch (error) {
     console.error('❌ Error creating delivery challan:', error);
+    
+    // Handle validation errors specifically
+    if (error.name === 'ValidationError') {
+      const validationErrors = Object.values(error.errors).map(err => err.message);
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed while creating delivery challan',
+        errors: validationErrors,
+        details: error.message
+      });
+    }
+    
+    // Handle duplicate DC number error
+    if (error.code === 11000) {
+      return res.status(400).json({
+        success: false,
+        message: 'DC number already exists. This delivery challan may have already been created.',
+        error: 'Duplicate DC number'
+      });
+    }
+    
     res.status(500).json({
       success: false,
       message: 'Failed to create delivery challan',
@@ -1893,8 +1911,10 @@ export const createDeliveryChallan = async (req, res) => {
 export const generateInvoiceForDC = async (req, res) => {
   try {
     const { dcId } = req.params;
+    const requestBody = req.body || {};
 
     console.log('🧾 Generating invoice for DC ID:', dcId);
+    console.log('📦 Request body:', requestBody);
 
     // Find the dispatch entry
     const dispatch = await Dispatch.findById(dcId)
@@ -1921,6 +1941,12 @@ export const generateInvoiceForDC = async (req, res) => {
       });
     }
 
+    // Use data from request body if provided, otherwise use dispatch data
+    const dcNo = requestBody.dcNo || dispatch.dcno;
+    const salesmanName = requestBody.salesmanName || dispatch.salesPerson?.fullName || dispatch.salesPerson?.username || 'N/A';
+    const customerName = requestBody.customerName || dispatch.customer?.name || 'N/A';
+    const customerCode = requestBody.customerCode || dispatch.customer?.customerCode || 'N/A';
+
     // Find all items with the same DC number
     const allDCItems = await Dispatch.find({
       dcno: dispatch.dcno,
@@ -1930,40 +1956,190 @@ export const generateInvoiceForDC = async (req, res) => {
     .populate('salesPerson', 'fullName username email')
     .populate('customer', 'name customerCode address phone email');
 
-    // Mark as invoiced
-    await Dispatch.updateMany(
-      { dcno: dispatch.dcno, company: req.user.companyId },
-      { 
-        $set: { 
-          status: 'invoiced',
-          invoiceGeneratedAt: new Date(),
-          lastUpdatedBy: req.user.id
-        } 
-      }
-    );
-
-    console.log(`✅ Invoice generated for DC ${dispatch.dcno} with ${allDCItems.length} items`);
-
-    // Here you would generate the actual PDF invoice
-    // For now, return JSON response
-    res.json({
-      success: true,
-      message: 'Invoice generated successfully',
-      data: {
-        dcNo: dispatch.dcno,
-        customer: dispatch.customer,
-        salesman: dispatch.salesPerson,
-        items: allDCItems.map(item => ({
+    // Use items from request if provided, otherwise use database items
+    const items = requestBody.items && requestBody.items.length > 0 
+      ? requestBody.items 
+      : allDCItems.map(item => ({
           productName: item.productName,
           productGroup: item.productGroup,
           indentQty: item.indentQty,
-          qtyIssued: item.qtyIssued,
-          qtyDispatched: item.qtyIssued
-        })),
-        totalItems: allDCItems.length,
-        invoiceDate: new Date()
+          qtyIssued: item.qtyIssued
+        }));
+
+    // Don't update status - keep it as dispatched
+    // Invoice generation should not change dispatch status
+
+    console.log(`✅ Generating PDF invoice for DC ${dcNo} with ${items.length} items`);
+
+    // Generate PDF using PDFKit
+    const PDFDocument = (await import('pdfkit')).default;
+    const doc = new PDFDocument({ margin: 50, size: 'A4' });
+
+    // Set response headers for PDF download
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename=invoice-${dcNo}.pdf`);
+
+    // Pipe the PDF to the response
+    doc.pipe(res);
+
+    // Add company header with border
+    doc.rect(40, 40, 515, 80).stroke();
+    doc.fontSize(22).font('Helvetica-Bold').text('DELIVERY INVOICE', 50, 55, { align: 'center' });
+    doc.fontSize(11).font('Helvetica').text('Sunrise Bakery', 50, 85, { align: 'center' });
+    
+    doc.moveDown(3);
+
+    // Invoice Details Box
+    const detailsY = doc.y;
+    doc.rect(40, detailsY, 515, 70).stroke();
+    
+    doc.fontSize(11).font('Helvetica-Bold').text('Invoice Details', 50, detailsY + 10);
+    doc.fontSize(9).font('Helvetica');
+    doc.text(`DC Number: ${dcNo}`, 50, detailsY + 30);
+    doc.text(`Date: ${new Date().toLocaleDateString('en-IN')}`, 50, detailsY + 45);
+    doc.text(`Time: ${new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}`, 50, detailsY + 60);
+
+    doc.y = detailsY + 80;
+    doc.moveDown(0.5);
+
+    // Customer and Salesman Details in boxes
+    const detailBoxY = doc.y;
+    
+    // Customer Details Box (Left) - Increased height for more info
+    doc.rect(40, detailBoxY, 250, 110).stroke();
+    doc.fontSize(11).font('Helvetica-Bold').text('Customer Details:', 50, detailBoxY + 10);
+    doc.fontSize(8).font('Helvetica');
+    
+    let customerY = detailBoxY + 25;
+    doc.text(`Name: ${customerName}`, 50, customerY, { width: 230 });
+    customerY += 15;
+    doc.text(`Code: ${customerCode}`, 50, customerY);
+    customerY += 15;
+    
+    // Add customer phone - ALWAYS show, use placeholder if not available
+    const customerPhone = dispatch.customer?.phone || requestBody.customerPhone || 'N/A';
+    doc.text(`Phone: ${customerPhone}`, 50, customerY);
+    customerY += 15;
+    
+    // Add customer email if available
+    const customerEmail = dispatch.customer?.email || requestBody.customerEmail || '';
+    if (customerEmail) {
+      doc.text(`Email: ${customerEmail}`, 50, customerY, { width: 230 });
+      customerY += 15;
+    }
+    
+    // Add customer address if available
+    const customerAddress = dispatch.customer?.address || requestBody.customerAddress || '';
+    if (customerAddress) {
+      doc.text(`Address: ${customerAddress}`, 50, customerY, { width: 230 });
+    }
+
+    // Salesman Details Box (Right) - Increased height for more info
+    doc.rect(305, detailBoxY, 250, 110).stroke();
+    doc.fontSize(11).font('Helvetica-Bold').text('Salesman Details:', 315, detailBoxY + 10);
+    doc.fontSize(8).font('Helvetica');
+    doc.text(`Name: ${salesmanName}`, 315, detailBoxY + 25, { width: 230 });
+    
+    // Add salesman username if available
+    const salesmanUsername = dispatch.salesPerson?.username || requestBody.salesmanUsername || '';
+    if (salesmanUsername && salesmanUsername !== salesmanName) {
+      doc.text(`Username: ${salesmanUsername}`, 315, detailBoxY + 42, { width: 230 });
+    }
+    
+    // Add salesman email if available
+    const salesmanEmail = dispatch.salesPerson?.email || requestBody.salesmanEmail || '';
+    if (salesmanEmail) {
+      doc.text(`Email: ${salesmanEmail}`, 315, detailBoxY + 57, { width: 230 });
+    }
+    
+    // Add company info
+    const companyName = dispatch.company?.name || 'Sunrise Bakery';
+    doc.text(`Company: ${companyName}`, 315, detailBoxY + 77, { width: 230 });
+
+    doc.y = detailBoxY + 120;
+    doc.moveDown(1);
+
+    // Items Table with borders
+    const tableTop = doc.y;
+    const col1X = 50;   // SL No - 40 width
+    const col2X = 90;   // Product Name - 200 width
+    const col3X = 290;  // Product Group - 150 width
+    const col4X = 440;  // Indent Qty - 55 width
+    const col5X = 500;  // Qty Issued - 55 width
+    const tableRight = 555;
+
+    // Table Header with background
+    doc.rect(40, tableTop, 515, 20).fillAndStroke('#f0f0f0', '#000000');
+    
+    doc.fontSize(9).font('Helvetica-Bold').fillColor('#000000');
+    doc.text('SL', col1X, tableTop + 5);
+    doc.text('Product Name', col2X, tableTop + 5);
+    doc.text('Product Group', col3X, tableTop + 5);
+    doc.text('Indent', col4X, tableTop + 5);
+    doc.text('Issued', col5X, tableTop + 5);
+
+    doc.y = tableTop + 20;
+
+    // Table Rows
+    doc.fontSize(8).font('Helvetica');
+    let totalIndent = 0;
+    let totalIssued = 0;
+    let rowY = doc.y;
+
+    items.forEach((item, index) => {
+      // Check if we need a new page
+      if (rowY > 700) {
+        doc.addPage();
+        rowY = 50;
       }
+
+      // Row height calculation
+      const rowHeight = 30;
+      
+      // Draw row border
+      doc.rect(40, rowY, 515, rowHeight).stroke();
+      
+      // Draw vertical lines for columns
+      doc.moveTo(col1X - 10, rowY).lineTo(col1X - 10, rowY + rowHeight).stroke(); // After SL
+      doc.moveTo(col2X - 10, rowY).lineTo(col2X - 10, rowY + rowHeight).stroke(); // After Product Name
+      doc.moveTo(col3X - 10, rowY).lineTo(col3X - 10, rowY + rowHeight).stroke(); // After Product Group
+      doc.moveTo(col4X - 10, rowY).lineTo(col4X - 10, rowY + rowHeight).stroke(); // After Indent
+
+      // Add text with proper alignment
+      doc.text(`${index + 1}`, col1X, rowY + 10, { width: 30 });
+      doc.text(item.productName || 'N/A', col2X, rowY + 5, { width: 190 });
+      doc.text(item.productGroup || 'N/A', col3X, rowY + 5, { width: 140 });
+      doc.text(`${item.indentQty || 0}`, col4X, rowY + 10, { width: 50, align: 'center' });
+      doc.text(`${item.qtyIssued || 0}`, col5X, rowY + 10, { width: 50, align: 'center' });
+
+      totalIndent += item.indentQty || 0;
+      totalIssued += item.qtyIssued || 0;
+
+      rowY += rowHeight;
     });
+
+    // Total Row with background
+    doc.rect(40, rowY, 515, 25).fillAndStroke('#e0e0e0', '#000000');
+    doc.fontSize(10).font('Helvetica-Bold').fillColor('#000000');
+    doc.text('TOTAL:', col3X, rowY + 7);
+    doc.text(`${totalIndent}`, col4X, rowY + 7, { width: 50, align: 'center' });
+    doc.text(`${totalIssued}`, col5X, rowY + 7, { width: 50, align: 'center' });
+
+    doc.y = rowY + 35;
+    doc.moveDown(1);
+
+    // Footer
+    // doc.fontSize(12).font('Helvetica-Oblique').fillColor('#000000');
+    // const footerY = doc.y;
+    // doc.text('Thank you for your business!', 40, footerY, { width: 515, align: 'center' });
+    // doc.moveDown(0.5);
+    // doc.fontSize(10).font('Helvetica');
+    // doc.text('This is a computer-generated invoice', 40, doc.y, { width: 515, align: 'center' });
+
+    // Finalize the PDF
+    doc.end();
+
+    console.log(`✅ PDF invoice generated for DC ${dcNo}`);
 
   } catch (error) {
     console.error('❌ Error generating invoice:', error);
