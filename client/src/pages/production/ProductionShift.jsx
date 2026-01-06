@@ -177,22 +177,23 @@ export default function ProductionShift() {
     }
   };
 
-  // Handle ungrouped batch data changes (save to API)
+  // Update local state only (for onChange - typing)
+  const updateUngroupedBatchDataLocal = (itemKey, field, value) => {
+    setUngroupedBatchData(prev => ({
+      ...prev,
+      [itemKey]: {
+        ...prev[itemKey],
+        [field]: value
+      }
+    }));
+  };
+
+  // Handle ungrouped batch data changes (save to API - for onBlur)
   const handleUngroupedBatchDataChange = async (itemKey, field, value) => {
     // Set loading state for this specific action
     setActionLoading(prev => ({ ...prev, [itemKey]: true }));
     
     try {
-      // Update local state immediately for better UX
-      setUngroupedBatchData(prev => ({
-        ...prev,
-        [itemKey]: {
-          ...prev[itemKey],
-          [field]: value
-        }
-      }));
-
-
       // Extract the full item ID from key (includes batch info like _batch_1)
       const fullItemId = itemKey.replace('ungrouped_', '');
       
@@ -897,6 +898,10 @@ export default function ProductionShift() {
                             value={batch.productionLoss || ''}
                             disabled={!batch.mouldingTime || !batch.unloadingTime || actionLoading[itemKey]}
                             onChange={(e) => {
+                              const value = e.target.value;
+                              updateUngroupedBatchDataLocal(itemKey, 'productionLoss', value);
+                            }}
+                            onBlur={(e) => {
                               const value = e.target.value;
                               handleUngroupedBatchDataChange(itemKey, 'productionLoss', value);
                             }}

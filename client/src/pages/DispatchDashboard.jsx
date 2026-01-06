@@ -63,6 +63,7 @@ export default function DispatchDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [manualStockEntries, setManualStockEntries] = useState({});
+  const [dispatchedQuantities, setDispatchedQuantities] = useState({});
   const { toast } = useToast();
 
   const fetchDashboardData = async () => {
@@ -105,6 +106,22 @@ export default function DispatchDashboard() {
       title: 'Success',
       description: 'Dashboard refreshed successfully'
     });
+  };
+
+  // Update local state only for manual stock entry (for onChange - typing)
+  const updateManualStockLocal = (key, value) => {
+    setManualStockEntries(prev => ({
+      ...prev,
+      [key]: value
+    }));
+  };
+
+  // Update local state only for dispatched quantity (for onChange - typing)
+  const updateDispatchedQuantityLocal = (key, value) => {
+    setDispatchedQuantities(prev => ({
+      ...prev,
+      [key]: value
+    }));
   };
 
   const handleManualStockEntry = async (productGroup, packingSheetId, value) => {
@@ -464,18 +481,19 @@ export default function DispatchDashboard() {
                         <input
                           type="number"
                           className="w-20 p-1 border rounded text-center"
-                          value={entry.dispatchedQuantitySentToday || 0}
+                          value={dispatchedQuantities[`${entry.productGroup}_${entry.packingSheetId}`] ?? entry.dispatchedQuantitySentToday ?? 0}
                           placeholder="0"
                           onChange={(e) => {
+                            const key = `${entry.productGroup}_${entry.packingSheetId}`;
+                            updateDispatchedQuantityLocal(key, e.target.value);
+                          }}
+                          onBlur={(e) => {
                             handleDispatchedQuantityUpdate(
                               entry.productGroup, 
                               entry.packingSheetId,
                               entry.productId,
                               e.target.value
                             );
-                          }}
-                          onBlur={(e) => {
-                            // Optional: you can add onBlur validation here
                           }}
                         />
                       </td>
@@ -484,17 +502,18 @@ export default function DispatchDashboard() {
                         <input
                           type="number"
                           className="w-20 p-1 border rounded text-center"
-                          value={entry.physicalStockEntryManualVerification || 0}
+                          value={manualStockEntries[`${entry.productGroup}_${entry.packingSheetId}`] ?? entry.physicalStockEntryManualVerification ?? 0}
                           placeholder="Manual"
                           onChange={(e) => {
+                            const key = `${entry.productGroup}_${entry.packingSheetId}`;
+                            updateManualStockLocal(key, e.target.value);
+                          }}
+                          onBlur={(e) => {
                             handleManualStockEntry(
                               entry.productGroup,
                               entry.packingSheetId,
                               e.target.value
                             );
-                          }}
-                          onBlur={(e) => {
-                            // Optional: you can add onBlur validation here
                           }}
                         />
                       </td>

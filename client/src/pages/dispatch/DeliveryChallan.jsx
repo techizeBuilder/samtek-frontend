@@ -552,6 +552,7 @@ export default function DeliveryChallan() {
         variant: "destructive",
         duration: 5000, // Show for 5 seconds for important errors
       });
+
     } finally {
       setLoading(false);
     }
@@ -665,7 +666,9 @@ export default function DeliveryChallan() {
     setIsDispatched(false);
     setCurrentDCId(null);
     setShowPreview(false);
+    setSelectedItems({});
     fetchNextDCNumber(); // Fetch new DC number after reset
+    fetchTodaysProducts(); // Fetch today's products after reset
   };
 
   const handlePreview = () => {
