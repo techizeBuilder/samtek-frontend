@@ -21,7 +21,11 @@ import {
   getTodaysProducts,
   validateDCNumber,
   createDeliveryChallan,
-  generateInvoiceForDC
+  generateInvoiceForDC,
+  createDirectOrder,
+  getSalesPersonsForDispatch,
+  getCustomersForDispatch,
+  getProductsForDispatch
 } from '../controllers/dispatchController.js';
 
 const router = express.Router();
@@ -48,6 +52,13 @@ router.post('/create-delivery-challan', createDeliveryChallan); // POST /api/dis
 router.post('/generate-invoice/:dcId', generateInvoiceForDC);   // POST /api/dispatches/generate-invoice/:dcId
 router.get('/next-dc-number', getNextDCNumber);                 // GET /api/dispatches/next-dc-number
 router.post('/create-dispatch-order', createDispatchOrder);     // POST /api/dispatches/create-dispatch-order
+
+// Direct order creation routes
+router.post('/create-direct-order', createDirectOrder);         // POST /api/dispatches/create-direct-order
+router.get('/sales-persons', getSalesPersonsForDispatch);       // GET /api/dispatches/sales-persons
+router.get('/customers', getCustomersForDispatch);              // GET /api/dispatches/customers
+router.get('/products', getProductsForDispatch);                // GET /api/dispatches/products
+
 router.put('/update-qty-issued', updateQtyIssued);              // PUT /api/dispatches/update-qty-issued
 router.post('/approve-product', approveProduct);                // POST /api/dispatches/approve-product
 router.post('/generate-invoice', generateInvoice);              // POST /api/dispatches/generate-invoice

@@ -5,7 +5,7 @@ const dispatchConsoleSchema = new mongoose.Schema({
   packingSheetId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'PackingSheet',
-    required: true,
+    required: false, // Optional - not needed for direct orders from dispatch
     index: true
   },
   

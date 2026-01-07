@@ -1,9 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
+import ProductSelector from '@/components/products/ProductSelector';
 import {
   Package,
   FileText,
@@ -12,7 +17,9 @@ import {
   Receipt,
   AlertCircle,
   Eye,
-  X
+  X,
+  Plus,
+  ShoppingCart
 } from 'lucide-react';
 import { config } from '@/config/environment';
 
@@ -37,36 +44,46 @@ export default function DeliveryChallan() {
   const [nextDCNumber, setNextDCNumber] = useState('');
   const [selectedItems, setSelectedItems] = useState({}); // Track which items are selected for dispatch
 
+  // Direct Order Creation State
+  const [isDirectOrderModalOpen, setIsDirectOrderModalOpen] = useState(false);
+  const [directOrderLoading, setDirectOrderLoading] = useState(false);
+  const [orderSalesPersons, setOrderSalesPersons] = useState([]);
+  const [orderCustomers, setOrderCustomers] = useState([]);
+  const [orderProducts, setOrderProducts] = useState([]);
+  const [directOrderForm, setDirectOrderForm] = useState({
+    salesPersonId: '',
+    customerId: '',
+    orderDate: new Date().toISOString().split('T')[0],
+    notes: '',
+    selectedProducts: []
+  });
+
   useEffect(() => {
     fetchSalespeople();
+    fetchAllCustomers(); // Load all customers on mount
     fetchTodaysProducts(); // Load all today's products on mount
     fetchNextDCNumber(); // Fetch next DC number on mount
   }, []);
 
-  // Fetch customers when salesperson is selected
+  // When salesperson changes, just reset customer selection
+  // Keep showing ALL customers (no filtering by salesperson)
   useEffect(() => {
     if (selectedSalesman) {
-      fetchCustomersBySalesperson(selectedSalesman._id);
-      // Reset customer when salesman changes
+      // Don't filter customers - show all customers
+      // Only reset customer selection when salesman changes
       setSelectedCustomer(null);
       setCustomerSearchTerm('');
       // Fetch products for this salesman
       fetchTodaysProducts();
     } else {
-      setCustomers([]);
+      // When no salesman selected, still load all customers
+      fetchAllCustomers();
       setSelectedCustomer(null);
       setCustomerSearchTerm('');
       setProducts([]);
       setQtyIssuedMap({});
     }
   }, [selectedSalesman]);
-
-  // Fetch products when customer is selected (optional filter)
-  useEffect(() => {
-    if (selectedCustomer) {
-      fetchTodaysProducts(); // Re-fetch with customer filter
-    }
-  }, [selectedCustomer]);
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -147,6 +164,37 @@ export default function DeliveryChallan() {
       toast({
         title: "Error",
         description: "Failed to fetch salespeople list",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const fetchAllCustomers = async () => {
+    try {
+      console.log('👥 Fetching all customers...');
+      
+      const response = await fetch(`${config.baseURL}/api/customers`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log('👥 All customers response:', result);
+      
+      if (result.success) {
+        setCustomers(result.customers || result.data || []);
+      }
+    } catch (error) {
+      console.error('❌ Error fetching all customers:', error);
+      toast({
+        title: "Error",
+        description: "Failed to fetch customers list",
         variant: "destructive",
       });
     }
@@ -671,6 +719,196 @@ export default function DeliveryChallan() {
     fetchTodaysProducts(); // Fetch today's products after reset
   };
 
+  // Direct Order Creation Functions
+  const fetchOrderSalesPersons = async () => {
+    try {
+      const response = await fetch(`${config.baseURL}/api/dispatches/sales-persons`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      const result = await response.json();
+      if (result.success) {
+        setOrderSalesPersons(result.data.salesPersons || []);
+      }
+    } catch (error) {
+      console.error('Error fetching sales persons:', error);
+    }
+  };
+
+  const fetchOrderCustomers = async (salesPersonId = null) => {
+    try {
+      const url = salesPersonId 
+        ? `${config.baseURL}/api/dispatches/customers?salesPersonId=${salesPersonId}`
+        : `${config.baseURL}/api/dispatches/customers`;
+      
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      const result = await response.json();
+      if (result.success) {
+        setOrderCustomers(result.data.customers || []);
+      }
+    } catch (error) {
+      console.error('Error fetching customers:', error);
+    }
+  };
+
+  const fetchOrderProducts = async () => {
+    try {
+      const response = await fetch(`${config.baseURL}/api/dispatches/products`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      const result = await response.json();
+      if (result.success) {
+        setOrderProducts(result.data.products || []);
+      }
+    } catch (error) {
+      console.error('Error fetching products:', error);
+    }
+  };
+
+  const handleDirectOrderModalOpen = () => {
+    setIsDirectOrderModalOpen(true);
+    // Load sales persons and products; use existing customers from main component
+    fetchOrderSalesPersons();
+    setOrderCustomers(customers); // Use already loaded customers
+    fetchOrderProducts();
+  };
+
+  const handleProductSelect = (product) => {
+    const existingIndex = directOrderForm.selectedProducts.findIndex(p => p._id === product._id);
+    if (existingIndex >= 0) {
+      const updatedProducts = [...directOrderForm.selectedProducts];
+      updatedProducts[existingIndex] = {
+        ...updatedProducts[existingIndex],
+        quantity: parseInt(updatedProducts[existingIndex].quantity) + 1
+      };
+      setDirectOrderForm({ ...directOrderForm, selectedProducts: updatedProducts });
+    } else {
+      setDirectOrderForm({ 
+        ...directOrderForm, 
+        selectedProducts: [...directOrderForm.selectedProducts, { 
+          ...product, 
+          quantity: 1,
+          price: product.price || product.salePrice || 0
+        }] 
+      });
+    }
+  };
+
+  const handleQuantityChange = (productId, quantity) => {
+    const updatedProducts = directOrderForm.selectedProducts.map(p =>
+      p._id === productId ? { ...p, quantity: parseInt(quantity) || 1 } : p
+    );
+    setDirectOrderForm({ ...directOrderForm, selectedProducts: updatedProducts });
+  };
+
+  const handleProductRemove = (productId) => {
+    const updatedProducts = directOrderForm.selectedProducts.filter(p => p._id !== productId);
+    setDirectOrderForm({ ...directOrderForm, selectedProducts: updatedProducts });
+  };
+
+  const handleCreateDirectOrder = async () => {
+    // Validation
+    if (!directOrderForm.salesPersonId) {
+      toast({
+        title: "Validation Error",
+        description: "Please select a sales person",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (!directOrderForm.customerId) {
+      toast({
+        title: "Validation Error",
+        description: "Please select a customer",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (directOrderForm.selectedProducts.length === 0) {
+      toast({
+        title: "Validation Error",
+        description: "Please add at least one product",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      setDirectOrderLoading(true);
+
+      const orderData = {
+        salesPersonId: directOrderForm.salesPersonId,
+        customerId: directOrderForm.customerId,
+        orderDate: directOrderForm.orderDate,
+        notes: directOrderForm.notes,
+        products: directOrderForm.selectedProducts.map(p => ({
+          productId: p._id,
+          quantity: parseInt(p.quantity),
+          unitPrice: parseFloat(p.price) || 0
+        }))
+      };
+
+      console.log('Creating direct order:', orderData);
+
+      const response = await fetch(`${config.baseURL}/api/dispatches/create-direct-order`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(orderData)
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.message || 'Failed to create order');
+      }
+
+      if (result.success) {
+        toast({
+          title: "Success",
+          description: `Order ${result.order.orderCode} created successfully`,
+        });
+
+        // Reset form
+        setDirectOrderForm({
+          salesPersonId: '',
+          customerId: '',
+          orderDate: new Date().toISOString().split('T')[0],
+          notes: '',
+          selectedProducts: []
+        });
+
+        setIsDirectOrderModalOpen(false);
+        
+        // Refresh today's products
+        fetchTodaysProducts();
+      }
+    } catch (error) {
+      console.error('Error creating direct order:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create order",
+        variant: "destructive"
+      });
+    } finally {
+      setDirectOrderLoading(false);
+    }
+  };
+
   const handlePreview = () => {
     // Validation
     if (!dcNumber || dcNumber.trim() === '') {
@@ -740,7 +978,7 @@ export default function DeliveryChallan() {
     (salesman.username && salesman.username.toLowerCase().includes(salesmanSearchTerm.toLowerCase()))
   );
 
-  const filteredCustomers = customers.filter(customer =>
+  const filteredCustomers = (customers || []).filter(customer =>
     customer.name.toLowerCase().includes(customerSearchTerm.toLowerCase()) ||
     (customer.customerCode && customer.customerCode.toLowerCase().includes(customerSearchTerm.toLowerCase()))
   );
@@ -762,10 +1000,16 @@ export default function DeliveryChallan() {
           <h1 className="text-3xl font-bold text-gray-900">Delivery Challan</h1>
           <p className="text-gray-600 mt-1">Product Groups and Indent Quantities for Today</p>
         </div>
-        <Button onClick={handleReset} variant="outline" disabled={loading}>
-          <RefreshCw className="h-4 w-4 mr-2" />
-          Reset Form
-        </Button>
+        <div className="flex gap-2">
+          <Button onClick={handleDirectOrderModalOpen} variant="default" className="bg-green-600 hover:bg-green-700">
+            <Plus className="h-4 w-4 mr-2" />
+            Direct Add Order
+          </Button>
+          <Button onClick={handleReset} variant="outline" disabled={loading}>
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Reset Form
+          </Button>
+        </div>
       </div>
 
       {/* Main Form Container */}
@@ -877,9 +1121,9 @@ export default function DeliveryChallan() {
                 }}
                 onFocus={() => setIsCustomerDropdownOpen(true)}
                 className="cursor-pointer"
-                disabled={!selectedSalesman || isDispatched}
+                disabled={isDispatched}
               />
-              {isCustomerDropdownOpen && !isDispatched && selectedSalesman && (
+              {isCustomerDropdownOpen && !isDispatched && (
                 <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
                   {filteredCustomers.length > 0 ? (
                     filteredCustomers.map((customer) => (
@@ -1172,6 +1416,144 @@ export default function DeliveryChallan() {
           </div>
         </div>
       )}
+      
+      {/* Direct Add Order Modal */}
+      <Dialog open={isDirectOrderModalOpen} onOpenChange={setIsDirectOrderModalOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ShoppingCart className="h-5 w-5" />
+              Direct Add Order
+            </DialogTitle>
+            <DialogDescription>
+              Create a new order directly from dispatch. Fill in the details below.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* Sales Person Selection */}
+            <div>
+              <Label htmlFor="salesPerson" className="text-sm font-medium">Sales Person *</Label>
+              <Select
+                value={directOrderForm.salesPersonId}
+                onValueChange={(value) => {
+                  setDirectOrderForm({ ...directOrderForm, salesPersonId: value });
+                }}
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="Select sales person" />
+                </SelectTrigger>
+                <SelectContent>
+                  {orderSalesPersons.map((person) => (
+                    <SelectItem key={person._id} value={person._id}>
+                      {person.fullName || person.username}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Customer Selection */}
+            <div>
+              <Label htmlFor="customer" className="text-sm font-medium">Customer Name by dropdown search *</Label>
+              <Select
+                value={directOrderForm.customerId}
+                onValueChange={(value) => setDirectOrderForm({ ...directOrderForm, customerId: value })}
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="Select customer" />
+                </SelectTrigger>
+                <SelectContent>
+                  {orderCustomers.length > 0 ? (
+                    orderCustomers.map((customer) => (
+                      <SelectItem key={customer._id} value={customer._id}>
+                        {customer.name} {customer.customerCode ? `(${customer.customerCode})` : ''}
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <SelectItem value="loading" disabled>
+                      Loading customers...
+                    </SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Order Date */}
+            <div>
+              <Label htmlFor="orderDate" className="text-sm font-medium">Order Date *</Label>
+              <Input
+                id="orderDate"
+                type="date"
+                value={directOrderForm.orderDate}
+                onChange={(e) => setDirectOrderForm({ ...directOrderForm, orderDate: e.target.value })}
+                className="mt-1"
+              />
+            </div>
+
+            {/* Product Selection */}
+            <div>
+              <Label className="text-sm font-medium">Select Products *</Label>
+              <div className="mt-1">
+                {orderProducts.length > 0 ? (
+                  <ProductSelector
+                    onProductSelect={handleProductSelect}
+                    selectedProducts={directOrderForm.selectedProducts}
+                    onQuantityChange={handleQuantityChange}
+                    onProductRemove={handleProductRemove}
+                    customProducts={orderProducts}
+                  />
+                ) : (
+                  <div className="text-center py-4 text-gray-500">
+                    Loading products...
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Notes */}
+            <div>
+              <Label htmlFor="notes" className="text-sm font-medium">Notes</Label>
+              <Textarea
+                id="notes"
+                placeholder="Add any special instructions or notes..."
+                value={directOrderForm.notes}
+                onChange={(e) => setDirectOrderForm({ ...directOrderForm, notes: e.target.value })}
+                rows={3}
+                className="mt-1"
+              />
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex justify-end gap-2 pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setIsDirectOrderModalOpen(false);
+                  setDirectOrderForm({
+                    salesPersonId: '',
+                    customerId: '',
+                    orderDate: new Date().toISOString().split('T')[0],
+                    notes: '',
+                    selectedProducts: []
+                  });
+                }}
+                disabled={directOrderLoading}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleCreateDirectOrder}
+                disabled={directOrderLoading}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                {directOrderLoading ? 'Creating...' : 'Create Order'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

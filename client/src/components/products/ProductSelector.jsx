@@ -15,7 +15,8 @@ const ProductSelector = React.memo(({
   onProductSelect, 
   onProductRemove, 
   onQuantityChange,
-  className = ""
+  className = "",
+  customProducts = null // Allow passing custom products list
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedBrand, setSelectedBrand] = useState('all');
@@ -70,6 +71,7 @@ const ProductSelector = React.memo(({
         throw error;
       }
     },
+    enabled: !customProducts, // Only fetch if custom products not provided
     onError: (error) => {
       console.error('❌ ProductSelector: Query Error:', error);
       toast({
@@ -80,7 +82,7 @@ const ProductSelector = React.memo(({
     }
   });
 
-  const items = itemsResponse?.items || [];
+  const items = customProducts || itemsResponse?.items || [];
   
   // Fetch priority products for Sales users
   const { data: priorityProductsResponse, isLoading: priorityProductsLoading } = useQuery({
@@ -97,7 +99,7 @@ const ProductSelector = React.memo(({
         return { data: { products: [] } };
       }
     },
-    enabled: isSalesUser,
+    enabled: isSalesUser && !customProducts, // Only fetch if Sales user and no custom products
     retry: 1
   });
 
