@@ -471,29 +471,18 @@ export const updateManualStock = async (req, res) => {
     const { 
       packingSheetId,
       productId,
-      physicalStockEntryManualVerification
+      productGroup,
+      physicalStockEntryManualVerification,
+      dispatchedQuantitySentToday
     } = req.body;
 
-    console.log('📝 Updating ONLY physical stock entry:', {
+    console.log('📝 Updating stock entry:', {
       packingSheetId,
       productId,
-      physicalStockEntryManualVerification
+      productGroup,
+      physicalStockEntryManualVerification,
+      dispatchedQuantitySentToday
     });
-
-    // Validate required fields
-    if (!packingSheetId) {
-      return res.status(400).json({
-        success: false,
-        message: 'Packing sheet ID is required'
-      });
-    }
-
-    if (physicalStockEntryManualVerification === undefined || physicalStockEntryManualVerification === null) {
-      return res.status(400).json({
-        success: false,
-        message: 'Physical stock value is required'
-      });
-    }
 
     const today = new Date();
     const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0);
@@ -501,13 +490,21 @@ export const updateManualStock = async (req, res) => {
 
     // Build the query to find the specific dispatch entry
     let query = {
-      packingSheetId: packingSheetId,
       date: { $gte: startOfDay, $lte: endOfDay },
       company: req.user.companyId
     };
 
+    // Add optional filters
+    if (packingSheetId) {
+      query.packingSheetId = packingSheetId;
+    }
+    
     if (productId) {
       query.productId = productId;
+    }
+    
+    if (productGroup) {
+      query.productGroup = productGroup;
     }
 
     console.log('🔍 Finding dispatch entry:', JSON.stringify(query, null, 2));
@@ -522,12 +519,26 @@ export const updateManualStock = async (req, res) => {
       });
     }
 
-    // ONLY update physical stock field
-    existingDispatch.physicalStockEntryManualVerification = physicalStockEntryManualVerification;
+    // Update fields based on what was provided
+    if (physicalStockEntryManualVerification !== undefined && physicalStockEntryManualVerification !== null) {
+      existingDispatch.physicalStockEntryManualVerification = physicalStockEntryManualVerification;
+      
+      // Recalculate overallLoss = Closing Stock - Physical Stock
+      existingDispatch.overallLoss = existingDispatch.closingStockEndOfDayBalance - physicalStockEntryManualVerification;
+    }
     
-    // Recalculate ONLY overallLoss based on existing closingStock
-    // overallLoss = Closing Stock - Physical Stock
-    existingDispatch.overallLoss = existingDispatch.closingStockEndOfDayBalance - physicalStockEntryManualVerification;
+    if (dispatchedQuantitySentToday !== undefined && dispatchedQuantitySentToday !== null) {
+      existingDispatch.dispatchedQuantitySentToday = dispatchedQuantitySentToday;
+      existingDispatch.qtyIssued = dispatchedQuantitySentToday;
+      
+      // Recalculate closing stock
+      const totalAvailableStock = 
+        (existingDispatch.packedQuantityReadyForDispatch || 0) +
+        (existingDispatch.previousClosingStockYesterdayBalance || 0) +
+        (existingDispatch.returnQuantityYesterdayReturns || 0);
+      
+      existingDispatch.closingStockEndOfDayBalance = totalAvailableStock - dispatchedQuantitySentToday;
+    }
     
     existingDispatch.lastUpdatedBy = req.user._id;
     existingDispatch.updatedAt = new Date();
@@ -535,11 +546,11 @@ export const updateManualStock = async (req, res) => {
     // Save the updated dispatch entry
     await existingDispatch.save();
 
-    console.log('✅ Physical stock updated successfully:', {
+    console.log('✅ Stock updated successfully:', {
       dispatchId: existingDispatch._id,
+      dispatchedQuantitySentToday: existingDispatch.dispatchedQuantitySentToday,
       physicalStock: existingDispatch.physicalStockEntryManualVerification,
-      closingStock: existingDispatch.closingStockEndOfDayBalance,
-      overallLoss: existingDispatch.overallLoss
+      closingStock: existingDispatch.closingStockEndOfDayBalance
     });
 
     res.json({
@@ -547,6 +558,8 @@ export const updateManualStock = async (req, res) => {
       message: 'Physical stock updated successfully',
       data: {
         id: existingDispatch._id,
+        dispatchedQuantitySentToday: existingDispatch.dispatchedQuantitySentToday,
+        qtyIssued: existingDispatch.qtyIssued,
         physicalStockEntryManualVerification: existingDispatch.physicalStockEntryManualVerification,
         closingStockEndOfDayBalance: existingDispatch.closingStockEndOfDayBalance,
         overallLoss: existingDispatch.overallLoss,
@@ -555,10 +568,10 @@ export const updateManualStock = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error updating physical stock:', error);
+    console.error('Error updating stock:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to update physical stock',
+      message: 'Failed to update stock',
       error: error.message
     });
   }
@@ -1020,6 +1033,15 @@ export const updateQtyIssued = async (req, res) => {
       return res.status(404).json({ 
         success: false, 
         message: 'Delivery challan not found' 
+      });
+    }
+
+    // Check if already dispatched or approved - prevent changes
+    if (dispatch.status === 'dispatched' || dispatch.status === 'approved') {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot update Qty Issued. This item is already ${dispatch.status}. Qty changes are not allowed for dispatched or approved items.`,
+        currentStatus: dispatch.status
       });
     }
 
@@ -1583,9 +1605,9 @@ export const createDispatchOrder = async (req, res) => {
             productName: productItem.product.name,
             productGroup: productItem.product.productGroup || productItem.product.category,
             company: order.companyId,
-            indentQty: productItem.quantity,
+            indentQty: 0,
             totalIndentQuantityOrdersForTheDay: productItem.quantity,
-            qtyIssued: 0,
+            qtyIssued: productItem.quantity,
             status: 'pending',
             date: new Date(),
             salesPerson: salesmanId,
@@ -1664,16 +1686,33 @@ export const getTodaysProducts = async (req, res) => {
 
     console.log(`✅ Found ${dispatchProducts.length} dispatch products for today with filters`);
 
-    // Format the response
-    const products = dispatchProducts.map(dispatch => ({
-      _id: dispatch._id,
-      productId: dispatch.productId?._id || dispatch.productId,
-      productName: dispatch.productName,
-      productGroup: dispatch.productGroup,
-      indentQty: dispatch.totalIndentQuantityOrdersForTheDay || dispatch.indentQty || 0,
-      qtyIssued: dispatch.qtyIssued || 0,
-      dcno: dispatch.dcno,
-      status: dispatch.status
+    // Format the response with item details from inventory
+    const products = await Promise.all(dispatchProducts.map(async (dispatch) => {
+      // Get item details from Item table using productId
+      let itemDetails = null;
+      if (dispatch.productId) {
+        try {
+          itemDetails = await Item.findById(dispatch.productId).select('stock batch location qty');
+          console.log(`📦 Item details for ${dispatch.productName}:`, itemDetails);
+        } catch (err) {
+          console.log(`⚠️ Could not fetch item details for productId: ${dispatch.productId}`);
+        }
+      }
+
+      return {
+        _id: dispatch._id,
+        productId: dispatch.productId?._id || dispatch.productId,
+        productName: dispatch.productName,
+        productGroup: dispatch.productGroup,
+        indentQty: dispatch.totalIndentQuantityOrdersForTheDay || dispatch.indentQty || 0,
+        qtyIssued: dispatch.qtyIssued || 0,
+        dcno: dispatch.dcno,
+        status: dispatch.status,
+        // Add stock and batch info from Item table
+        stock: itemDetails?.stock || itemDetails?.qty || dispatch.totalAvailableStock || 0,
+        batchNo: itemDetails?.batch || dispatch.batchNo || null,
+        totalAvailableStock: dispatch.totalAvailableStock || 0
+      };
     }));
 
     res.json({
@@ -1875,6 +1914,30 @@ export const createDeliveryChallan = async (req, res) => {
         dispatchEntries.push(existingDispatch);
         
         console.log(`✅ Successfully updated dispatch ${existingDispatch._id} with DC ${dcNo}`);
+        
+        // Reduce item stock/batch quantity
+        if (item.productId && item.qtyIssued > 0) {
+          try {
+            const itemToUpdate = await Item.findById(item.productId);
+            if (itemToUpdate) {
+              // Reduce stock quantity
+              const previousStock = itemToUpdate.stock || itemToUpdate.qty || 0;
+              itemToUpdate.stock = Math.max(0, previousStock - item.qtyIssued);
+              itemToUpdate.qty = itemToUpdate.stock;
+              
+              // Reduce batch number (stored as string number)
+              if (itemToUpdate.batch) {
+                const previousBatch = parseInt(itemToUpdate.batch) || 0;
+                itemToUpdate.batch = Math.max(0, previousBatch - item.qtyIssued).toString();
+              }
+              
+              await itemToUpdate.save();
+              console.log(`📉 Reduced inventory for ${item.productName}: stock ${previousStock} → ${itemToUpdate.stock}, batch ${itemToUpdate.batch} (dispatched: ${item.qtyIssued})`);
+            }
+          } catch (err) {
+            console.error(`⚠️ Could not reduce stock for productId ${item.productId}:`, err.message);
+          }
+        }
       } else {
         // Create new dispatch entry only if no existing record found
         console.log(`✨ Creating NEW dispatch entry for product: ${item.productName}`);
@@ -1901,6 +1964,30 @@ export const createDeliveryChallan = async (req, res) => {
         dispatchEntries.push(dispatchEntry);
         
         console.log(`✅ Created new dispatch entry with _id: ${dispatchEntry._id}`);
+        
+        // Reduce item stock/batch quantity
+        if (item.productId && item.qtyIssued > 0) {
+          try {
+            const itemToUpdate = await Item.findById(item.productId);
+            if (itemToUpdate) {
+              // Reduce stock quantity
+              const previousStock = itemToUpdate.stock || itemToUpdate.qty || 0;
+              itemToUpdate.stock = Math.max(0, previousStock - item.qtyIssued);
+              itemToUpdate.qty = itemToUpdate.stock;
+              
+              // Reduce batch number (stored as string number)
+              if (itemToUpdate.batch) {
+                const previousBatch = parseInt(itemToUpdate.batch) || 0;
+                itemToUpdate.batch = Math.max(0, previousBatch - item.qtyIssued).toString();
+              }
+              
+              await itemToUpdate.save();
+              console.log(`📉 Reduced inventory for ${item.productName}: stock ${previousStock} → ${itemToUpdate.stock}, batch ${itemToUpdate.batch} (dispatched: ${item.qtyIssued})`);
+            }
+          } catch (err) {
+            console.error(`⚠️ Could not reduce stock for productId ${item.productId}:`, err.message);
+          }
+        }
       }
     }
 
@@ -2285,7 +2372,7 @@ export const generateInvoiceForDC = async (req, res) => {
     const signY = doc.y;
     
     // Customer Signature
-    doc.fontSize(8).font('Helvetica').fillColor('#000000');
+  doc.fontSize(8).font('Helvetica').fillColor('#000000');
     doc.text('Received By:', 40, signY);
     doc.moveTo(40, signY + 40).lineTo(180, signY + 40).stroke();
     doc.text('Customer Signature', 40, signY + 45);
@@ -2486,10 +2573,10 @@ export const createDirectOrder = async (req, res) => {
           physicalStockEntryManualVerification: existingDispatch.physicalStockEntryManualVerification || 0,
           
           // Add new order data
-          totalIndentQuantityOrdersForTheDay: (existingDispatch.totalIndentQuantityOrdersForTheDay || 0) + indentQty,
-          indentQty: indentQty,
-          qtyIssued: 0,
-          dispatchedQuantitySentToday: 0,
+          totalIndentQuantityOrdersForTheDay: 0,
+          indentQty: 0,
+          qtyIssued: indentQty,
+          dispatchedQuantitySentToday: indentQty,
           
           // Recalculate closing stock
           closingStockEndOfDayBalance: existingDispatch.closingStockEndOfDayBalance || 0,
@@ -2528,8 +2615,8 @@ export const createDirectOrder = async (req, res) => {
           totalAvailableStock: 0,
           totalIndentQuantityOrdersForTheDay: indentQty,
           indentQty: indentQty,
-          qtyIssued: 0,
-          dispatchedQuantitySentToday: 0,
+          qtyIssued: indentQty,
+          dispatchedQuantitySentToday: indentQty,
           closingStockEndOfDayBalance: 0,
           physicalStockEntryManualVerification: 0,
           

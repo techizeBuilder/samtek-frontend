@@ -345,11 +345,17 @@ export default function DeliveryChallan() {
         })
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to update qty issued');
-      }
-
       const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        // Show specific error message from backend
+        toast({
+          title: "Error",
+          description: result.message || "Failed to save qty issued",
+          variant: "destructive",
+        });
+        return;
+      }
 
       if (result.success) {
         toast({
@@ -362,7 +368,7 @@ export default function DeliveryChallan() {
       console.error('❌ Error saving qty issued:', error);
       toast({
         title: "Error",
-        description: "Failed to save qty issued",
+        description: error.message || "Failed to save qty issued",
         variant: "destructive",
       });
     }
@@ -1003,7 +1009,7 @@ export default function DeliveryChallan() {
         <div className="flex gap-2">
           <Button onClick={handleDirectOrderModalOpen} variant="default" className="bg-green-600 hover:bg-green-700">
             <Plus className="h-4 w-4 mr-2" />
-            Direct Add Order
+            Create Dispatch Order
           </Button>
           <Button onClick={handleReset} variant="outline" disabled={loading}>
             <RefreshCw className="h-4 w-4 mr-2" />
@@ -1195,9 +1201,12 @@ export default function DeliveryChallan() {
         {/* Product Table */}
         <div>
           {/* Table Header */}
-          <div className="grid grid-cols-3 bg-yellow-300 border-b border-gray-800">
+          <div className="grid grid-cols-4 bg-yellow-300 border-b border-gray-800">
             <div className="border-r border-gray-800 p-3 text-center font-medium">
               Product Name / Product Group
+            </div>
+            <div className="border-r border-gray-800 p-3 text-center font-medium">
+              Stock / Batch
             </div>
             <div className="border-r border-gray-800 p-3 text-center font-medium">
               Indent Qty
@@ -1222,7 +1231,7 @@ export default function DeliveryChallan() {
             products.map((product) => {
               const isItemDispatched = product.status === 'dispatched';
               return (
-                <div key={product._id} className="grid grid-cols-3 border-b border-gray-800 hover:bg-gray-50">
+                <div key={product._id} className="grid grid-cols-4 border-b border-gray-800 hover:bg-gray-50">
                   {/* Product Name with Checkbox */}
                   <div className="border-r border-gray-800 p-3 flex items-center gap-3">
                     <input
@@ -1252,6 +1261,14 @@ export default function DeliveryChallan() {
                         )}
                       </div>
                     </div>
+                  </div>
+                  {/* Stock / Batch Column */}
+                  <div className="border-r border-gray-800 p-3 text-center flex flex-col items-center justify-center gap-1">
+                    {product.batchNo && (
+                      <Badge variant="outline" className="bg-purple-50 text-purple-700 text-xs">
+                        Stock: {product.batchNo}
+                      </Badge>
+                    )}
                   </div>
                   <div className="border-r border-gray-800 p-3 text-center flex items-center justify-center">
                     <Badge variant="outline" className="bg-green-50 text-green-700 text-lg">
@@ -1423,10 +1440,10 @@ export default function DeliveryChallan() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <ShoppingCart className="h-5 w-5" />
-              Direct Add Order
+              Create Dispatch Order
             </DialogTitle>
             <DialogDescription>
-              Create a new order directly from dispatch. Fill in the details below.
+              Create a new order and automatically add it to dispatch. Fill in the details below.
             </DialogDescription>
           </DialogHeader>
 
