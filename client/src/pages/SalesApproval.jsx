@@ -1839,7 +1839,7 @@ const SalesApproval = () => {
                               {groupProducts.reduce((sum, product) => sum + (getProductionData(product.productName).physicalStock || 0), 0)}
                             </td>
                             <td className="p-2 border-r text-center text-sm font-bold text-cyan-700">
-                              {groupProducts.reduce((sum, product) => sum + getBatchAdjusted(product.productName), 0)}
+                              {parseFloat(groupProducts.reduce((sum, product) => sum + getBatchAdjusted(product.productName), 0).toFixed(2))}
                             </td>
                             <td className="p-2 border-r text-center text-sm font-bold text-amber-700">
                               {groupProducts.reduce((sum, product) => {

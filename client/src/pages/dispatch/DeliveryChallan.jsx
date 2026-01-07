@@ -304,8 +304,9 @@ export default function DeliveryChallan() {
     const product = products.find(p => p._id === productId);
     const numValue = Number(value);
     
-    // Validate against indent qty
-    if (product && numValue > product.indentQty) {
+    // Only validate against indent qty if indent qty is greater than 0
+    // If indent qty is 0, allow any value up to stock
+    if (product && product.indentQty > 0 && numValue > product.indentQty) {
       toast({
         title: "Validation Error",
         description: `Qty issued cannot exceed indent qty (${product.indentQty})`,
@@ -483,7 +484,8 @@ export default function DeliveryChallan() {
         }
 
         const numQtyIssued = Number(qtyIssued);
-        if (numQtyIssued > product.indentQty) {
+        // Only validate against indent qty if indent qty is greater than 0
+        if (product.indentQty > 0 && numQtyIssued > product.indentQty) {
           toast({
             title: "Validation Error",
             description: `Qty issued (${numQtyIssued}) for "${product.productName}" cannot exceed indent qty (${product.indentQty})`,
@@ -1281,13 +1283,13 @@ export default function DeliveryChallan() {
                       placeholder="Enter qty"
                       className="text-center"
                       min="0"
-                      max={product.indentQty}
+                      max={product.indentQty > 0 ? product.indentQty : undefined}
                       value={qtyIssuedMap[product._id] || ''}
                       onChange={(e) => handleQtyIssuedChange(product._id, e.target.value)}
                       onBlur={(e) => handleQtyIssuedBlur(product._id, e.target.value)}
                       disabled={isDispatched}
                     />
-                  {qtyIssuedMap[product._id] && Number(qtyIssuedMap[product._id]) > product.indentQty && (
+                  {qtyIssuedMap[product._id] && product.indentQty > 0 && Number(qtyIssuedMap[product._id]) > product.indentQty && (
                     <div className="text-xs text-red-600 mt-1 text-center">
                       Cannot exceed indent qty
                     </div>

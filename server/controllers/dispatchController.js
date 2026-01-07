@@ -1045,6 +1045,27 @@ export const updateQtyIssued = async (req, res) => {
       });
     }
 
+    // Validate qtyIssued against available item.batch inventory
+    if (dispatch.productId) {
+      try {
+        const item = await Item.findById(dispatch.productId);
+        if (item) {
+          const availableBatch = parseInt(item.batch) || 0;
+          
+          if (qtyIssued > availableBatch) {
+            return res.status(400).json({
+              success: false,
+              message: `Cannot issue ${qtyIssued} units. Available stock/batch is only ${availableBatch}. Please enter a quantity that does not exceed available inventory.`,
+              availableBatch: availableBatch,
+              requestedQty: qtyIssued
+            });
+          }
+        }
+      } catch (err) {
+        console.error('Error checking item batch:', err);
+      }
+    }
+
     // Update qty issued and related stock fields
     dispatch.qtyIssued = qtyIssued;
     dispatch.dispatchedQuantitySentToday = qtyIssued;

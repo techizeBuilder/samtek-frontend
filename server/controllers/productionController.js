@@ -193,7 +193,7 @@ export const getProductionDashboard = async (req, res) => {
         
         dashBoardData.push({
           productGroup: group.name,
-          noOfBatchesForProduction: totalBatches
+          noOfBatchesForProduction: parseFloat(totalBatches.toFixed(2))
         });
         
         console.log(`Group "${group.name}": ${group.items.length} items, ${totalBatches} total batches`);
