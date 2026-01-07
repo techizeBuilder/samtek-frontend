@@ -41,7 +41,13 @@ export const usePermissions = () => {
     } else if (user.permissions && typeof user.permissions === 'object') {
       // Complex permissions object - check if it has modules array
       if (Array.isArray(user.permissions.modules)) {
-        return user.permissions.modules.some(module => module.name === moduleName);
+        // Check for both singular and plural forms (e.g., 'dispatch' vs 'dispatches')
+        const hasSingular = user.permissions.modules.some(module => module.name === moduleName);
+        if (hasSingular) return true;
+        
+        // Check plural form if singular not found
+        const pluralForm = moduleName.endsWith('s') ? moduleName.slice(0, -1) : moduleName + 's';
+        return user.permissions.modules.some(module => module.name === pluralForm);
       } else if (user.permissions.some && typeof user.permissions.some === 'function') {
         // Legacy format - array-like permissions
         return user.permissions.some(permission => {
@@ -104,10 +110,18 @@ export const usePermissions = () => {
       return feature[action] || false;
     }
     
-    // For other roles, check direct module access
-    const userModule = user.permissions.modules?.find(module => 
+    // For other roles, check direct module access with both singular and plural forms
+    let userModule = user.permissions.modules?.find(module => 
       module.name === moduleName
     );
+    
+    // If not found, try the alternate form (singular/plural)
+    if (!userModule) {
+      const alternateForm = moduleName.endsWith('s') ? moduleName.slice(0, -1) : moduleName + 's';
+      userModule = user.permissions.modules?.find(module => 
+        module.name === alternateForm
+      );
+    }
     
     if (!userModule) return false;
     

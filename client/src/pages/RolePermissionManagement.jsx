@@ -637,6 +637,30 @@ export default function RolePermissionManagement() {
             ]
           }
         ];
+      case 'Dispatch':
+        return [
+          {
+            name: 'dispatches',
+            dashboard: true,
+            features: [
+              { key: 'dashboard', view: true, add: true, edit: true, delete: true },
+              { key: 'deliveryChallan', view: true, add: true, edit: true, delete: true },
+              { key: 'dispatchHistory', view: true, add: true, edit: true, delete: true }
+            ]
+          }
+        ];
+      case 'Accounts':
+        return [
+          {
+            name: 'accounts',
+            dashboard: true,
+            features: [
+              { key: 'transactions', view: true, add: true, edit: true, delete: true },
+              { key: 'balanceSheet', view: true, add: true, edit: true, delete: true },
+              { key: 'reports', view: true, add: true, edit: true, delete: true }
+            ]
+          }
+        ];
       default:
         return [];
     }

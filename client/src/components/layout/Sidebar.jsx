@@ -468,6 +468,26 @@ export default function Sidebar({ isOpen, onClose }) {
       
       return false; // Hide all non-packing items for Packing users
     });
+  } else if (user?.role === 'Dispatch') {
+    // For Dispatch users, only show dispatch-related items and profile
+    filteredMenuItems = roleMenuItems.filter(item => {
+      // Always show items without module restriction (like profile)
+      if (!item.module) return true;
+      
+      // Only show dispatch module items - check both 'dispatch' and 'dispatches'
+      if (item.module === 'dispatches' || item.module === 'dispatch') {
+        // If item has a specific feature requirement, check feature access
+        if (item.feature) {
+          // Check both singular and plural module names for compatibility
+          const hasFeature = hasFeatureAccess('dispatches', item.feature, 'view') || 
+                            hasFeatureAccess('dispatch', item.feature, 'view');
+          return hasFeature;
+        }
+        return true;
+      }
+      
+      return false; // Hide all non-dispatch items for Dispatch users
+    });
   } else {
     // For other roles, use the existing filtering logic
     filteredMenuItems = roleMenuItems.filter(item => {
