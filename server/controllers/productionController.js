@@ -176,7 +176,8 @@ export const getProductionDashboard = async (req, res) => {
           date: {
             $gte: today,
             $lt: tomorrow
-          }
+          },
+          status: 'approved' // Only include approved products
         };
         
         // Add company filter if user has company
