@@ -411,6 +411,10 @@ export const updateSalesSummary = async (req, res) => {
       }
     }
 
+    // 🔍 Capture the old status BEFORE applying updates (needed for batch logic)
+    const oldStatus = dailyDetails.status;
+    console.log('📌 Previous status:', oldStatus, '→ New status:', updates.status || oldStatus);
+
     // Apply updates to daily details
     Object.keys(updates).forEach(key => {
       if (dailyDetails.schema.paths[key] && key !== '_id' && key !== '__v') {
@@ -441,11 +445,12 @@ export const updateSalesSummary = async (req, res) => {
 
     console.log('💾 Daily details saved successfully');
     
-    // 🎯 Handle ProductionBatch creation/removal based on status changes AND batchAdjusted updates
+    // 🎯 Handle ProductionBatch creation/removal based on status changes
     if (userRole === 'Unit Manager') {
-      // Check if this is an approval (status is approved) AND batchAdjusted has a value
-      if (updates.status === 'approved' || (dailyDetails.status === 'approved' && updates.batchAdjusted)) {
-        console.log('🏭 Unit Manager approved product or updated batches - creating ProductionBatch entries...');
+      // Only create batches when status is BECOMING approved (not already approved)
+      if (updates.status === 'approved' && oldStatus !== 'approved') {
+        console.log('🏭 Unit Manager approved product - creating ProductionBatch entries...');
+        console.log(`   Status transition: ${oldStatus} → approved`);
         
         // First, remove existing non-completed batches for this product to avoid duplicates
         const today = new Date(summaryDate);
@@ -578,6 +583,20 @@ const createProductionBatchEntries = async ({
     // Get the next batch number for this company and date
     const today = new Date(date);
     today.setUTCHours(0, 0, 0, 0); // Use UTC to avoid timezone issues
+    
+    // ✅ DUPLICATE PREVENTION: Check if batches already exist for this product today
+    const existingProductBatches = await ProductionBatch.find({
+      companyId,
+      itemId: productId,
+      productionDate: today
+    });
+    
+    if (existingProductBatches.length > 0) {
+      console.log(`⚠️ DUPLICATE PREVENTED: ${existingProductBatches.length} batch(es) already exist for this product today`);
+      console.log(`   Existing batches: ${existingProductBatches.map(b => b.batchNo).join(', ')}`);
+      console.log(`   Skipping batch creation to prevent duplicates`);
+      return existingProductBatches; // Return existing batches instead of creating new ones
+    }
     
     // Find the highest existing batch number for this date and company
     const existingBatches = await ProductionBatch.find({

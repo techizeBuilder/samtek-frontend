@@ -789,13 +789,14 @@ export const getUngroupedItems = async (req, res) => {
     console.log(`🚫 ${assignedItemIds.length} items are assigned to production groups`);
     
     // Filter ungrouped items from ProductDetailsDailySummary
-    // Only show items with batchAdjusted > 0 (exclude items with 0 batches)
+    // Only show items with batchAdjusted > 0 AND status='approved' (exclude pending items)
     const ungroupedItems = productDetailsSummary.filter(item => {
       const hasProduct = item.productId;
       const isNotAssigned = !assignedItemIds.includes(item.productId?._id.toString());
       const hasBatches = (item.batchAdjusted || 0) > 0;
+      const isApproved = item.status === 'approved';
       
-      return hasProduct && isNotAssigned && hasBatches;
+      return hasProduct && isNotAssigned && hasBatches && isApproved;
     });
     
     console.log(`🔄 Found ${ungroupedItems.length} ungrouped items with batches > 0`);
