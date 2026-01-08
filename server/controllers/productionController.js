@@ -751,7 +751,7 @@ export const debugProductSummaryData = async (req, res) => {
 // Get ungrouped items only (dedicated endpoint)
 export const getUngroupedItems = async (req, res) => {
   try {
-    console.log('🏭 Getting ACTUAL ProductDetailsDailySummary for today');
+    console.log('🏭 Getting Ungrouped Items with batchAdjusted values');
     console.log('User details:', {
       username: req.user?.username,
       role: req.user?.role,
@@ -766,21 +766,15 @@ export const getUngroupedItems = async (req, res) => {
       date: today.toISOString().split('T')[0]
     });
     
-    // Get today's ACTUAL production data from ProductDetailsDailySummary
-    const actualProductionData = await ProductDetailsDailySummary.find({
+    // Get ProductDetailsDailySummary for batch values (batchAdjusted)
+    const productDetailsSummary = await ProductDetailsDailySummary.find({
       companyId: req.user.companyId,
       date: today
     })
     .populate('productId', 'name code category subCategory qty unit price image description')
     .lean();
     
-    console.log(`📦 Found ${actualProductionData.length} actual production records for today`);
-    console.log('Actual production data:', actualProductionData.map(p => ({ 
-      productName: p.productId?.name,
-      productionFinalBatches: p.productionFinalBatches,
-      packing: p.packing,
-      physicalStock: p.physicalStock
-    })));
+    console.log(`📦 Found ${productDetailsSummary.length} ProductDetailsDailySummary records for today`);
     
     // Filter items that are not assigned to any production group
     const assignedGroups = await ProductionGroup.find({
@@ -792,19 +786,28 @@ export const getUngroupedItems = async (req, res) => {
       group.items.map(item => item.toString())
     );
     
-    // Filter ungrouped items from actual production data
-    const ungroupedActualData = actualProductionData.filter(productData => {
-      return productData.productId && 
-             !assignedItemIds.includes(productData.productId._id.toString());
+    console.log(`🚫 ${assignedItemIds.length} items are assigned to production groups`);
+    
+    // Filter ungrouped items from ProductDetailsDailySummary
+    // Only show items with batchAdjusted > 0 (exclude items with 0 batches)
+    const ungroupedItems = productDetailsSummary.filter(item => {
+      const hasProduct = item.productId;
+      const isNotAssigned = !assignedItemIds.includes(item.productId?._id.toString());
+      const hasBatches = (item.batchAdjusted || 0) > 0;
+      
+      return hasProduct && isNotAssigned && hasBatches;
     });
     
-    console.log(`🔄 Found ${ungroupedActualData.length} ungrouped items with actual production data`);
+    console.log(`🔄 Found ${ungroupedItems.length} ungrouped items with batches > 0`);
     
-    // Format the data for frontend with ACTUAL batch values
-    const formattedItems = ungroupedActualData.map(productData => {
-      const { productId, productionFinalBatches, packing, physicalStock, batchAdjusted, toBeProduced } = productData;
+    // Format the data for frontend with batchAdjusted values
+    const formattedItems = ungroupedItems.map(item => {
+      const { productId, batchAdjusted, productionFinalBatches, packing, physicalStock } = item;
       
-      console.log(`📊 Item: ${productId.name} has ACTUAL productionFinalBatches: ${productionFinalBatches}`);
+      // Use batchAdjusted as the batch count (this gives 0.6, 0.3, 0.1, 0.9, 1.2, 1, 0)
+      const batchCount = batchAdjusted || 0;
+      
+      console.log(`📊 Item: ${productId?.name} - batchAdjusted: ${batchCount}`);
       
       return {
         _id: productId._id,
@@ -817,38 +820,27 @@ export const getUngroupedItems = async (req, res) => {
         price: productId.price || 0,
         image: productId.image,
         description: productId.description,
-        // ACTUAL batch values from ProductDetailsDailySummary
-        noOfBatchesForProduction: productionFinalBatches || 0,
-        productionFinalBatches: productionFinalBatches || 0, // This is the ACTUAL value you want
+        // Use batchAdjusted for batch count (fractional batches like 0.6, 0.3, etc.)
+        noOfBatchesForProduction: batchCount,
+        productionFinalBatches: productionFinalBatches || 0,
+        batchAdjusted: batchCount,
         packing: packing || 0,
         physicalStock: physicalStock || 0,
-        batchAdjusted: batchAdjusted || 0,
-        toBeProduced: toBeProduced || 0,
-        qtyPerBatch: productId.qty || 0, // Item's standard quantity
-        productionStatus: productionFinalBatches > 0 ? 'completed' : 'not_started',
-        isUngrouped: true,
-        // For compatibility with frontend expectations
-        batches: [{
-          batchId: `actual-${productId._id}`,
-          batchNo: 'ACTUAL',
-          qtyPerBatch: productionFinalBatches || 0,
-          productionStatus: productionFinalBatches > 0 ? 'completed' : 'not_started',
-          productionLoss: 0,
-          actualProduction: true
-        }]
+        qtyPerBatch: productId.qty || 0,
+        productionStatus: batchCount > 0 ? 'pending' : 'not_started',
+        isUngrouped: true
       };
     });
     
-    console.log('📊 Formatted items with ACTUAL batch values:', formattedItems.map(item => ({
+    console.log('📊 Formatted ungrouped items with batch values:', formattedItems.map(item => ({
       name: item.name,
-      productionFinalBatches: item.productionFinalBatches,
-      packing: item.packing,
-      physicalStock: item.physicalStock
+      noOfBatchesForProduction: item.noOfBatchesForProduction,
+      batchAdjusted: item.batchAdjusted
     })));
     
     res.json({
       success: true,
-      message: 'Actual production data fetched successfully',
+      message: 'Ungrouped items fetched successfully',
       data: {
         items: formattedItems,
         totalItems: formattedItems.length
@@ -856,10 +848,10 @@ export const getUngroupedItems = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error fetching actual production data:', error);
+    console.error('Error fetching ungrouped items:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch actual production data',
+      message: 'Failed to fetch ungrouped items',
       error: error.message
     });
   }
