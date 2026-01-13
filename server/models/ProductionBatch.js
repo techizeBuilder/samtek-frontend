@@ -8,12 +8,6 @@ const productionBatchSchema = new mongoose.Schema({
     required: true,
     index: true
   },
-  itemId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Item',
-    required: true,
-    index: true
-  },
   
   // Optional group reference (for grouped production items)
   groupId: {
@@ -21,15 +15,6 @@ const productionBatchSchema = new mongoose.Schema({
     ref: 'ProductionGroup',
     required: false,
     default: null
-  },
-  
-  // Reference to ProductDetailsDailySummary (optional)
-  DailyProductionId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'ProductDetailsDailySummary',
-    required: false,
-    default: null,
-    index: true
   },
   
   // Batch identifiers - both must be unique per company per date
@@ -101,7 +86,32 @@ const productionBatchSchema = new mongoose.Schema({
     type: String,
     default: '',
     maxlength: 1000
-  }
+  },
+  
+  // Batch tracking (combined or single)
+  totalBatchAdjusted: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
+  combinedItems: [{
+    itemId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Item'
+    },
+    DailyProductionId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'ProductDetailsDailySummary'
+    },
+    batchAdjustedValue: {
+      type: Number,
+      min: 0
+    },
+    qtyContribution: {
+      type: Number,
+      min: 0
+    }
+  }]
   
 }, {
   timestamps: true, // Automatically adds createdAt and updatedAt
@@ -155,9 +165,9 @@ productionBatchSchema.pre('save', function(next) {
       }
     }
     
-    // Ensure production date is at day-level (no time component)
+    // Ensure production date is at day-level (no time component) - USE UTC!
     if (this.productionDate) {
-      this.productionDate.setHours(0, 0, 0, 0);
+      this.productionDate.setUTCHours(0, 0, 0, 0);
     }
     
     next();

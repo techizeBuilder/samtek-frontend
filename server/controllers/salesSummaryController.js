@@ -68,7 +68,7 @@ export const getSalesSummary = async (req, res) => {
     }
 
     const masterProducts = await ProductDailySummary.find(masterFilter)
-      .populate('productId', 'name category subCategory')
+      .populate('productId', 'name category subCategory batch')
       .populate('companyId', 'name')
       .sort({ productName: 1 });
 
@@ -121,6 +121,15 @@ export const getSalesSummary = async (req, res) => {
     const combinedSummaries = masterProducts.map(masterProduct => {
       const productId = masterProduct.productId ? masterProduct.productId._id.toString() : null;
       const dailyDetail = dailyDetailsMap.get(productId);
+      
+      // Get qtyPerBatch from Item.batch field or fallback to stored value
+      let qtyPerBatch = masterProduct.qtyPerBatch || 0;
+      if (masterProduct.productId?.batch) {
+        const batchValue = Number(masterProduct.productId.batch);
+        if (!isNaN(batchValue) && batchValue > 0) {
+          qtyPerBatch = batchValue;
+        }
+      }
 
       return {
         _id: masterProduct._id,
@@ -128,7 +137,7 @@ export const getSalesSummary = async (req, res) => {
         productName: masterProduct.productName,
         companyId: masterProduct.companyId,
         date: summaryDate,
-        qtyPerBatch: masterProduct.qtyPerBatch || 0,
+        qtyPerBatch: qtyPerBatch,
         
         // Daily fields from ProductDetailsDailySummary (with defaults)
         packing: dailyDetail?.packing || 0,
@@ -411,9 +420,11 @@ export const updateSalesSummary = async (req, res) => {
       }
     }
 
-    // 🔍 Capture the old status BEFORE applying updates (needed for batch logic)
+    // 🔍 Capture the old status and batchAdjusted BEFORE applying updates (needed for batch logic)
     const oldStatus = dailyDetails.status;
+    const oldBatchAdjusted = dailyDetails.batchAdjusted || 0;
     console.log('📌 Previous status:', oldStatus, '→ New status:', updates.status || oldStatus);
+    console.log('📌 Previous batchAdjusted:', oldBatchAdjusted, '→ New batchAdjusted:', updates.batchAdjusted ?? oldBatchAdjusted);
 
     // Apply updates to daily details
     Object.keys(updates).forEach(key => {
@@ -447,60 +458,547 @@ export const updateSalesSummary = async (req, res) => {
     
     // 🎯 Handle ProductionBatch creation/removal based on status changes
     if (userRole === 'Unit Manager') {
-      // Only create batches when status is BECOMING approved (not already approved)
+      // CASE 1: Status changed to approved (first time approval)
       if (updates.status === 'approved' && oldStatus !== 'approved') {
         console.log('🏭 Unit Manager approved product - creating ProductionBatch entries...');
         console.log(`   Status transition: ${oldStatus} → approved`);
         
-        // First, remove existing non-completed batches for this product to avoid duplicates
         const today = new Date(summaryDate);
         today.setUTCHours(0, 0, 0, 0);
         
-        const deletedBatches = await ProductionBatch.deleteMany({
-          itemId: actualProductId,
-          companyId: masterProduct.companyId._id,
-          productionDate: today,
-          status: { $ne: 'completed' } // Remove all except completed batches
-        });
-        
-        console.log(`🗑️ Removed ${deletedBatches.deletedCount} existing non-completed ProductionBatch entries before creating new ones`);
-        
-        // Create ProductionBatch entries (batchAdjusted already validated >= 1)
-        const batchesToCreate = Math.max(Math.ceil(dailyDetails.batchAdjusted), 1); // Ensure at least 1 batch
-        
-        // Double-check validation before creating batches
-        if (batchesToCreate > 0 && dailyDetails.batchAdjusted > 0) {
-          console.log(`📊 Creating ${batchesToCreate} batch(es) for approved product (from batchAdjusted: ${dailyDetails.batchAdjusted})`);
+        // Validate before creating batches
+        if (dailyDetails.batchAdjusted > 0) {
+          console.log(`📊 Approving product with batchAdjusted: ${dailyDetails.batchAdjusted}`);
           
-          await createProductionBatchEntries({
-            productId: actualProductId,
-            companyId: masterProduct.companyId._id,
-            date: summaryDate,
-            qtyPerBatch: masterProduct.qtyPerBatch,
-            produceBatches: batchesToCreate,
-            approvedBy: req.user.username,
-            dailyDetailsId: dailyDetails._id
+          // Check if product is in a production group
+          const productionGroup = await ProductionGroup.findOne({
+            company: masterProduct.companyId._id,
+            items: new mongoose.Types.ObjectId(actualProductId),
+            isActive: true
           });
+          
+          if (productionGroup) {
+            console.log(`   Product belongs to group: ${productionGroup.groupName}`);
+            
+            // Get existing batches for this group
+            const existingBatchDocs = await ProductionBatch.find({
+              groupId: productionGroup._id,
+              companyId: masterProduct.companyId._id,
+              productionDate: today,
+              status: { $ne: 'completed' }
+            }).sort({ batchNumber: 1 });
+            
+            console.log(`   📊 EXISTING batches: ${existingBatchDocs.length}`);
+            existingBatchDocs.forEach(b => {
+              console.log(`      ${b.batchNo}: totalBatchAdjusted=${b.totalBatchAdjusted}`);
+            });
+            
+            // IMPORTANT: Keep ONLY full batches (1.0), DELETE fractional batches (old remainders)
+            const fullBatches = existingBatchDocs.filter(b => b.totalBatchAdjusted === 1.0);
+            const fractionalBatches = existingBatchDocs.filter(b => b.totalBatchAdjusted < 1.0);
+            
+            console.log(`   ✅ Full batches (1.0) to KEEP: ${fullBatches.length}`);
+            fullBatches.forEach(b => console.log(`      ${b.batchNo}`));
+            
+            if (fractionalBatches.length > 0) {
+              console.log(`   🗑️ Fractional batches (old remainders) to DELETE: ${fractionalBatches.length}`);
+              fractionalBatches.forEach(b => console.log(`      ${b.batchNo} (${b.totalBatchAdjusted})`));
+              
+              const fractionalIds = fractionalBatches.map(b => b._id);
+              const deleteResult = await ProductionBatch.deleteMany({
+                _id: { $in: fractionalIds }
+              });
+              console.log(`   ✅ DELETED ${deleteResult.deletedCount} old fractional batches`);
+            }
+            
+            // Get all approved products in this group
+            const groupProductIds = productionGroup.items;
+            const groupDailyDetails = await ProductDetailsDailySummary.find({
+              date: today,
+              productId: { $in: groupProductIds },
+              companyId: masterProduct.companyId._id,
+              status: 'approved'
+            });
+            
+            // Calculate group total from ALL approved products
+            const groupTotal = groupDailyDetails.reduce((sum, detail) => sum + (detail.batchAdjusted || 0), 0);
+            console.log(`   📊 ALL approved products total: ${groupTotal}`);
+            
+            // Calculate required batches
+            const requiredBatches = Math.ceil(groupTotal);
+            console.log(`   Required batches: ${requiredBatches}`);
+            
+            // Calculate batches to create (only count full batches as existing)
+            const existingBatches = fullBatches.length;
+            const batchesToCreate = Math.max(0, requiredBatches - existingBatches);
+            console.log(`   Batches to create: ${batchesToCreate}`);
+            
+            if (batchesToCreate > 0) {
+              // Get next batch number
+              const allExistingBatches = await ProductionBatch.find({
+                companyId: masterProduct.companyId._id,
+                productionDate: today
+              }).sort({ batchNumber: -1 }).limit(1);
+              
+              let nextBatchNumber = 1;
+              if (allExistingBatches.length > 0) {
+                nextBatchNumber = allExistingBatches[0].batchNumber + 1;
+              }
+              console.log(`   Starting batch number: ${nextBatchNumber}`);
+              
+              // Get all approved products in the group with their details (use ALL approved)
+              const combinedItems = groupDailyDetails.map(detail => ({
+                itemId: detail.productId,
+                DailyProductionId: detail._id,
+                batchAdjustedValue: detail.batchAdjusted || 0,
+                qtyContribution: detail.qtyPerBatch || 0
+              }));
+              
+              // Create new batches with ALL group items
+              for (let i = 0; i < batchesToCreate; i++) {
+                const currentBatchNumber = nextBatchNumber + i;
+                const batchNo = `BATNO${String(currentBatchNumber).padStart(2, '0')}`;
+                
+                // Calculate dynamic totalBatchAdjusted for this batch
+                const isLastBatch = (i === batchesToCreate - 1);
+                const remainder = parseFloat((groupTotal - Math.floor(groupTotal)).toFixed(2));
+                const batchAdjusted = isLastBatch && remainder > 0 ? remainder : 1.0;
+                
+                // Use first product's qtyPerBatch (item.batch value)
+                const qtyPerBatch = groupDailyDetails[0]?.qtyPerBatch || masterProduct.qtyPerBatch || 0;
+                const qtyAchieved = parseFloat((qtyPerBatch * batchAdjusted).toFixed(2));
+                
+                const newBatch = new ProductionBatch({
+                  itemId: groupProductIds[0],
+                  groupId: productionGroup._id,
+                  companyId: masterProduct.companyId._id,
+                  productionDate: today,
+                  batchNumber: currentBatchNumber,
+                  batchNo: batchNo,
+                  qtyPerBatch: qtyPerBatch,
+                  qtyAchieved: qtyAchieved,
+                  totalBatchAdjusted: batchAdjusted,
+                  status: 'pending',
+                  combinedItems: combinedItems,
+                  approvedBy: req.user.username,
+                  createdAt: new Date()
+                });
+                
+                await newBatch.save();
+                console.log(`   ✅ Created batch ${batchNo}`);
+              }
+              
+              console.log(`   ✅ Created ${batchesToCreate} new batches for group`);
+            } else {
+              console.log(`   ✅ No additional batches needed (existing batches sufficient)`);
+              
+              // Still need to update full batches with newly approved product!
+              if (fullBatches.length > 0) {
+                console.log(`   🔄 Updating ${fullBatches.length} full batches with ALL approved products...`);
+                
+                // Get updated combinedItems with ALL approved products
+                const updatedCombinedItems = groupDailyDetails.map(detail => ({
+                  itemId: detail.productId,
+                  DailyProductionId: detail._id,
+                  batchAdjustedValue: detail.batchAdjusted || 0,
+                  qtyContribution: detail.qtyPerBatch || 0
+                }));
+                
+                // Update all full batches
+                for (const batch of fullBatches) {
+                  batch.combinedItems = updatedCombinedItems;
+                  await batch.save();
+                  console.log(`      ✅ Updated ${batch.batchNo} with ${updatedCombinedItems.length} products`);
+                }
+              }
+            }
+          } else {
+            // Product not in a group - use individual batch creation
+            console.log(`   Product is not in a production group - creating individual batches`);
+            await createProductionBatchEntries({
+              productId: actualProductId,
+              companyId: masterProduct.companyId._id,
+              date: summaryDate,
+              qtyPerBatch: masterProduct.qtyPerBatch,
+              batchAdjusted: dailyDetails.batchAdjusted,
+              approvedBy: req.user.username,
+              dailyDetailsId: dailyDetails._id
+            });
+          }
         } else {
           console.log(`⚠️ Skipped batch creation - invalid batchAdjusted value: ${dailyDetails.batchAdjusted}`);
         }
-      } else if (updates.status === 'pending') {
-        console.log('⚠️ Unit Manager moved product back to pending - removing ProductionBatch entries...');
+      } 
+      // CASE 2: Already approved, but batchAdjusted changed - adjust batches
+      else if (oldStatus === 'approved' && updates.batchAdjusted !== undefined && updates.batchAdjusted !== oldBatchAdjusted) {
+        console.log('🔄 Unit Manager updated batchAdjusted on approved product - adjusting batches...');
+        console.log(`   batchAdjusted changed: ${oldBatchAdjusted} → ${updates.batchAdjusted}`);
         
-        // Remove ProductionBatch entries for this product, company and date
         const today = new Date(summaryDate);
-        today.setHours(0, 0, 0, 0);
+        today.setUTCHours(0, 0, 0, 0);
         
-        // Remove ALL ProductionBatch entries except completed ones
-        // This includes: pending, not_started, in_progress, paused, cancelled, migrated_from_batchdata
-        const deletedBatches = await ProductionBatch.deleteMany({
-          itemId: actualProductId,
-          companyId: masterProduct.companyId._id,
-          productionDate: today,
-          status: { $ne: 'completed' } // Remove all except completed batches
+        // Check if product is in a production group
+        const productionGroup = await ProductionGroup.findOne({
+          company: masterProduct.companyId._id,
+          items: new mongoose.Types.ObjectId(actualProductId),
+          isActive: true
         });
         
-        console.log(`🗑️ Removed ${deletedBatches.deletedCount} ProductionBatch entries for pending product (all except completed)`);
+        if (productionGroup) {
+          console.log(`   Product belongs to group: ${productionGroup.groupName}`);
+          
+          // Get all products in this group and their current batchAdjusted values
+          const groupProductIds = productionGroup.items;
+          const groupDailyDetails = await ProductDetailsDailySummary.find({
+            date: today,
+            productId: { $in: groupProductIds },
+            companyId: masterProduct.companyId._id,
+            status: 'approved'
+          });
+          
+          // Calculate new group total
+          let groupTotal = 0;
+          let oldTotal = 0;
+          console.log(`   📊 GROUP CALCULATION:`);
+          for (const detail of groupDailyDetails) {
+            const productIdStr = detail.productId.toString();
+            const isUpdatedProduct = productIdStr === actualProductId.toString();
+            const oldValue = detail.batchAdjusted || 0;
+            const newValue = isUpdatedProduct ? updates.batchAdjusted : oldValue;
+            
+            oldTotal += oldValue;
+            groupTotal += newValue;
+            
+            console.log(`      Product ${productIdStr.substring(0, 8)}: ${oldValue} → ${newValue} ${isUpdatedProduct ? '(UPDATED)' : ''}`);
+          }
+          
+          console.log(`   📊 OLD Total: ${oldTotal}`);
+          console.log(`   📊 NEW Total: ${groupTotal}`);
+          console.log(`   📊 Difference: ${oldTotal} - ${updates.batchAdjusted} + ${updates.batchAdjusted} = ${groupTotal}`);
+          
+          // NEW LOGIC: Keep full batches unchanged, delete rest, create new for remainder
+          // Calculate how many FULL batches (1.0) we need
+          const fullBatches = Math.floor(groupTotal);
+          const remainder = parseFloat((groupTotal - fullBatches).toFixed(2));
+          
+          console.log(`   🎯 BATCH CALCULATION:`);
+          console.log(`      Full batches to KEEP: ${fullBatches}`);
+          console.log(`      Remainder for NEW batch: ${remainder}`);
+          
+          // Count existing batches for this group
+          const existingBatches = await ProductionBatch.countDocuments({
+            groupId: productionGroup._id,
+            companyId: masterProduct.companyId._id,
+            productionDate: today,
+            status: { $ne: 'completed' }
+          });
+          console.log(`      Existing batches in DB: ${existingBatches}`);
+          
+          // Get all existing batches sorted by batch number
+          let existingBatchDocs = await ProductionBatch.find({
+            groupId: productionGroup._id,
+            companyId: masterProduct.companyId._id,
+            productionDate: today,
+            status: { $ne: 'completed' }
+          }).sort({ batchNumber: 1 });
+          
+          console.log(`   📋 EXISTING BATCHES BEFORE DELETE:`);
+          existingBatchDocs.forEach(b => {
+            console.log(`      ${b.batchNo} (batchNumber: ${b.batchNumber}): totalBatchAdjusted=${b.totalBatchAdjusted}`);
+          });
+          
+          // Step 1: KEEP first 'fullBatches' batches UNCHANGED (don't touch their combinedItems!)
+          console.log(`   ✅ KEEPING first ${fullBatches} batches UNCHANGED (BATNO01-BATNO${String(fullBatches).padStart(2, '0')})`);
+          
+          // Step 2: DELETE all batches AFTER position 'fullBatches'
+          if (existingBatches > fullBatches) {
+            const batchesToDelete = existingBatches - fullBatches;
+            console.log(`   🗑️ DELETING ${batchesToDelete} batches after position ${fullBatches}...`);
+            
+            // Get batches to delete (all after fullBatches position)
+            const batchesToRemove = existingBatchDocs.slice(fullBatches); // All batches after fullBatches
+            const batchIds = batchesToRemove.map(b => b._id);
+            
+            console.log(`   🗑️ Batches to DELETE:`);
+            batchesToRemove.forEach(b => {
+              console.log(`      ${b.batchNo} (batchNumber: ${b.batchNumber}, _id: ${b._id})`);
+            });
+            
+            if (batchIds.length > 0) {
+              const deleteResult = await ProductionBatch.deleteMany({
+                _id: { $in: batchIds }
+              });
+              console.log(`   ✅ DELETED ${deleteResult.deletedCount} batches (kept first ${fullBatches} unchanged)`);
+              
+              // Verify deletion
+              const remainingBatches = await ProductionBatch.find({
+                groupId: productionGroup._id,
+                companyId: masterProduct.companyId._id,
+                productionDate: today,
+                status: { $ne: 'completed' }
+              }).sort({ batchNumber: 1 });
+              
+              console.log(`   ✅ REMAINING BATCHES AFTER DELETE:`);
+              remainingBatches.forEach(b => {
+                console.log(`      ${b.batchNo} (batchNumber: ${b.batchNumber}): totalBatchAdjusted=${b.totalBatchAdjusted}`);
+              });
+            }
+          }
+          
+          // Step 3: CREATE NEW batch for remainder (if any) with UPDATED combinedItems
+          if (remainder > 0) {
+            console.log(`   ➕ Creating 1 new batch for remainder ${remainder}...`);
+            
+            // Simple: new batch number = fullBatches + 1
+            // Example: fullBatches=2, newBatch=3 (BATNO03)
+            const nextBatchNumber = fullBatches + 1;
+            const batchNo = `BATNO${String(nextBatchNumber).padStart(2, '0')}`;
+            console.log(`   Creating batch ${batchNo} (position ${nextBatchNumber}) with remainder ${remainder}`);
+            
+            // Get all approved products in the group with UPDATED values
+            const combinedItems = groupDailyDetails.map(detail => ({
+              itemId: detail.productId,
+              DailyProductionId: detail._id,
+              batchAdjustedValue: detail.productId.toString() === actualProductId.toString() 
+                ? updates.batchAdjusted  // NEW updated value
+                : (detail.batchAdjusted || 0),
+              qtyContribution: detail.qtyPerBatch || 0
+            }));
+            
+            // Use first product's qtyPerBatch
+            const qtyPerBatch = groupDailyDetails[0]?.qtyPerBatch || masterProduct.qtyPerBatch || 0;
+            const qtyAchieved = parseFloat((qtyPerBatch * remainder).toFixed(2));
+            
+            const newBatch = new ProductionBatch({
+              itemId: groupProductIds[0],
+              groupId: productionGroup._id,
+              companyId: masterProduct.companyId._id,
+              productionDate: today,
+              batchNumber: nextBatchNumber,
+              batchNo: batchNo,
+              qtyPerBatch: qtyPerBatch,
+              qtyAchieved: qtyAchieved,
+              totalBatchAdjusted: remainder,
+              status: 'pending',
+              combinedItems: combinedItems,
+              approvedBy: req.user.username,
+              createdAt: new Date()
+            });
+            
+            await newBatch.save();
+            console.log(`   ✅ Created batch ${batchNo} with totalBatchAdjusted=${remainder}, qtyAchieved=${qtyAchieved}`);
+          } else {
+            console.log(`   ℹ️ No remainder - only ${fullBatches} full batches needed`);
+          }
+        } else {
+          // Product not in a group - handle individually (same incremental logic)
+          console.log(`   Product is not in a production group - handling individually`);
+          
+          // Calculate required batches for this single product
+          const requiredBatches = Math.ceil(updates.batchAdjusted);
+          console.log(`   Required batches: ${requiredBatches}`);
+          
+          // Count existing batches for this product
+          const existingBatches = await ProductionBatch.countDocuments({
+            "combinedItems.itemId": actualProductId,
+            companyId: masterProduct.companyId._id,
+            productionDate: today,
+            status: { $ne: 'completed' }
+          });
+          console.log(`   Existing batches: ${existingBatches}`);
+          
+          // Adjust batches (delete or create)
+          if (requiredBatches < existingBatches) {
+            // DELETE excess batches
+            const batchesToDelete = existingBatches - requiredBatches;
+            console.log(`   🗑️ Deleting ${batchesToDelete} excess batches...`);
+            
+            const batchesToRemove = await ProductionBatch.find({
+              "combinedItems.itemId": actualProductId,
+              companyId: masterProduct.companyId._id,
+              productionDate: today,
+              status: { $ne: 'completed' }
+            }).sort({ createdAt: 1 }).limit(batchesToDelete);
+            
+            const batchIds = batchesToRemove.map(b => b._id);
+            const deleteResult = await ProductionBatch.deleteMany({
+              _id: { $in: batchIds }
+            });
+            
+            console.log(`   ✅ Deleted ${deleteResult.deletedCount} excess batches`);
+          } else if (requiredBatches > existingBatches) {
+            // CREATE additional batches
+            const batchesToCreate = requiredBatches - existingBatches;
+            console.log(`   ➕ Creating ${batchesToCreate} additional batches...`);
+            
+            await createProductionBatchEntries({
+              productId: actualProductId,
+              companyId: masterProduct.companyId._id,
+              date: summaryDate,
+              qtyPerBatch: masterProduct.qtyPerBatch,
+              batchAdjusted: updates.batchAdjusted,
+              approvedBy: req.user.username,
+              dailyDetailsId: dailyDetails._id
+            });
+          } else {
+            console.log(`   ✅ Batch count unchanged (${existingBatches} batches sufficient)`);
+          }
+        }
+      }
+      // CASE 3: Status changed to pending
+      else if (updates.status === 'pending') {
+        console.log('⚠️ Unit Manager moved product back to pending - adjusting batches...');
+        
+        const today = new Date(summaryDate);
+        today.setUTCHours(0, 0, 0, 0);
+        
+        // Check if product is in a production group
+        const productionGroup = await ProductionGroup.findOne({
+          company: masterProduct.companyId._id,
+          items: new mongoose.Types.ObjectId(actualProductId),
+          isActive: true
+        });
+        
+        if (productionGroup) {
+          console.log(`   Product belongs to group: ${productionGroup.groupName}`);
+          
+          // Get remaining approved products in this group (excluding this one being set to pending)
+          const groupProductIds = productionGroup.items;
+          const groupDailyDetails = await ProductDetailsDailySummary.find({
+            date: today,
+            productId: { $in: groupProductIds, $ne: new mongoose.Types.ObjectId(actualProductId) },
+            companyId: masterProduct.companyId._id,
+            status: 'approved'
+          });
+          
+          // Calculate new group total (without this product - so batchAdjusted = 0 for this product)
+          let groupTotal = 0;
+          let oldTotal = 0;
+          console.log(`   📊 GROUP CALCULATION (moving to pending):`);
+          for (const detail of groupDailyDetails) {
+            groupTotal += (detail.batchAdjusted || 0);
+            console.log(`      Product ${detail.productId.toString().substring(0, 8)}: ${detail.batchAdjusted || 0}`);
+          }
+          console.log(`      Product ${actualProductId.toString().substring(0, 8)}: 0 (MOVING TO PENDING)`);
+          
+          console.log(`   📊 NEW Total without this product: ${groupTotal}`);
+          
+          if (groupTotal > 0) {
+            // USE SAME LOGIC AS CASE 2: Keep full batches, delete rest, create new for remainder
+            const fullBatches = Math.floor(groupTotal);
+            const remainder = parseFloat((groupTotal - fullBatches).toFixed(2));
+            
+            console.log(`   🎯 BATCH CALCULATION:`);
+            console.log(`      Full batches to KEEP: ${fullBatches}`);
+            console.log(`      Remainder for NEW batch: ${remainder}`);
+            
+            // Count existing batches
+            const existingBatches = await ProductionBatch.countDocuments({
+              groupId: productionGroup._id,
+              companyId: masterProduct.companyId._id,
+              productionDate: today,
+              status: { $ne: 'completed' }
+            });
+            console.log(`      Existing batches in DB: ${existingBatches}`);
+            
+            // Get all existing batches
+            let existingBatchDocs = await ProductionBatch.find({
+              groupId: productionGroup._id,
+              companyId: masterProduct.companyId._id,
+              productionDate: today,
+              status: { $ne: 'completed' }
+            }).sort({ batchNumber: 1 });
+            
+            console.log(`   📋 EXISTING BATCHES BEFORE DELETE:`);
+            existingBatchDocs.forEach(b => {
+              console.log(`      ${b.batchNo} (batchNumber: ${b.batchNumber}): totalBatchAdjusted=${b.totalBatchAdjusted}`);
+            });
+            
+            // Step 1: KEEP first 'fullBatches' batches UNCHANGED
+            console.log(`   ✅ KEEPING first ${fullBatches} batches UNCHANGED`);
+            
+            // Step 2: DELETE all batches AFTER position 'fullBatches'
+            if (existingBatches > fullBatches) {
+              const batchesToDelete = existingBatches - fullBatches;
+              console.log(`   🗑️ DELETING ${batchesToDelete} batches after position ${fullBatches}...`);
+              
+              const batchesToRemove = existingBatchDocs.slice(fullBatches);
+              const batchIds = batchesToRemove.map(b => b._id);
+              
+              console.log(`   🗑️ Batches to DELETE:`);
+              batchesToRemove.forEach(b => {
+                console.log(`      ${b.batchNo} (batchNumber: ${b.batchNumber})`);
+              });
+              
+              if (batchIds.length > 0) {
+                const deleteResult = await ProductionBatch.deleteMany({
+                  _id: { $in: batchIds }
+                });
+                console.log(`   ✅ DELETED ${deleteResult.deletedCount} batches`);
+              }
+            }
+            
+            // Step 3: CREATE NEW batch for remainder (if any) WITHOUT the pending product
+            if (remainder > 0) {
+              console.log(`   ➕ Creating 1 new batch for remainder ${remainder}...`);
+              
+              const nextBatchNumber = fullBatches + 1;
+              const batchNo = `BATNO${String(nextBatchNumber).padStart(2, '0')}`;
+              console.log(`   Creating batch ${batchNo} without pending product`);
+              
+              // combinedItems WITHOUT the pending product
+              const combinedItems = groupDailyDetails.map(detail => ({
+                itemId: detail.productId,
+                DailyProductionId: detail._id,
+                batchAdjustedValue: detail.batchAdjusted || 0,
+                qtyContribution: detail.qtyPerBatch || 0
+              }));
+              
+              const qtyPerBatch = groupDailyDetails[0]?.qtyPerBatch || masterProduct.qtyPerBatch || 0;
+              const qtyAchieved = parseFloat((qtyPerBatch * remainder).toFixed(2));
+              
+              const newBatch = new ProductionBatch({
+                itemId: groupProductIds[0],
+                groupId: productionGroup._id,
+                companyId: masterProduct.companyId._id,
+                productionDate: today,
+                batchNumber: nextBatchNumber,
+                batchNo: batchNo,
+                qtyPerBatch: qtyPerBatch,
+                qtyAchieved: qtyAchieved,
+                totalBatchAdjusted: remainder,
+                status: 'pending',
+                combinedItems: combinedItems,
+                approvedBy: req.user.username,
+                createdAt: new Date()
+              });
+              
+              await newBatch.save();
+              console.log(`   ✅ Created batch ${batchNo} with remainder ${remainder}`);
+            } else {
+              console.log(`   ℹ️ No remainder - only ${fullBatches} full batches needed`);
+            }
+          } else {
+            // No approved products left in group - delete all batches for this group
+            const deleteResult = await ProductionBatch.deleteMany({
+              groupId: productionGroup._id,
+              companyId: masterProduct.companyId._id,
+              productionDate: today,
+              status: { $ne: 'completed' }
+            });
+            console.log(`   🗑️ Deleted all ${deleteResult.deletedCount} batches (no approved products left in group)`);
+          }
+        } else {
+          // Ungrouped product - delete only batches containing this product
+          const deletedBatches = await ProductionBatch.deleteMany({
+            "combinedItems.itemId": actualProductId,
+            companyId: masterProduct.companyId._id,
+            productionDate: today,
+            status: { $ne: 'completed' }
+          });
+          
+          console.log(`🗑️ Removed ${deletedBatches.deletedCount} batches for ungrouped product`);
+        }
       }
     }
 
@@ -556,6 +1054,7 @@ const createProductionBatchEntries = async ({
   date,
   qtyPerBatch,
   produceBatches,
+  batchAdjusted = 1,
   approvedBy,
   dailyDetailsId
 }) => {
@@ -563,40 +1062,75 @@ const createProductionBatchEntries = async ({
     console.log('🏭 Creating ProductionBatch entries:', {
       productId,
       companyId,
-      produceBatches,
+      batchAdjusted,
       qtyPerBatch,
       approvedBy
     });
 
-    // Validate inputs - CRITICAL: Prevent creation of 0-batch entries
-    if (!produceBatches || produceBatches <= 0 || produceBatches === 0) {
-      console.log(`⚠️ Invalid produceBatches value: ${produceBatches} - skipping ProductionBatch creation`);
+    // Validate inputs
+    if (!batchAdjusted || batchAdjusted <= 0) {
+      console.log(`⚠️ Invalid batchAdjusted value: ${batchAdjusted} - skipping ProductionBatch creation`);
       return [];
     }
 
-    // Additional safety check for edge cases
-    if (isNaN(produceBatches) || !isFinite(produceBatches)) {
-      console.log(`⚠️ Invalid produceBatches value (NaN or infinite): ${produceBatches} - skipping ProductionBatch creation`);
-      return [];
-    }
-
-    // Get the next batch number for this company and date
     const today = new Date(date);
-    today.setUTCHours(0, 0, 0, 0); // Use UTC to avoid timezone issues
-    
-    // ✅ DUPLICATE PREVENTION: Check if batches already exist for this product today
-    const existingProductBatches = await ProductionBatch.find({
-      companyId,
-      itemId: productId,
-      productionDate: today
+    today.setUTCHours(0, 0, 0, 0);
+
+    // Check if this product is part of a production group
+    const productionGroup = await ProductionGroup.findOne({
+      company: companyId,
+      items: productId,
+      isActive: true
     });
     
-    if (existingProductBatches.length > 0) {
-      console.log(`⚠️ DUPLICATE PREVENTED: ${existingProductBatches.length} batch(es) already exist for this product today`);
-      console.log(`   Existing batches: ${existingProductBatches.map(b => b.batchNo).join(', ')}`);
-      console.log(`   Skipping batch creation to prevent duplicates`);
-      return existingProductBatches; // Return existing batches instead of creating new ones
+    const groupId = productionGroup ? productionGroup._id : null;
+    console.log(`🔗 Product ${groupId ? 'IS' : 'IS NOT'} part of a production group: ${groupId}`);
+
+    // 🎯 SMART REUSE: Check if existing PENDING partial batches can accommodate this item
+    const existingPartialBatches = await ProductionBatch.find({
+      companyId,
+      groupId: groupId || null, // Match groupId (null for ungrouped)
+      productionDate: today,
+      status: 'pending',
+      totalBatchAdjusted: { $lt: 1.0 } // Has available space
+    }).sort({ createdAt: 1 }); // Oldest first (FIFO)
+    
+    console.log(`🔍 Found ${existingPartialBatches.length} existing partial batches with space`);
+    
+    // Try to add to existing batch first
+    for (const existingBatch of existingPartialBatches) {
+      const availableSpace = parseFloat((1.0 - existingBatch.totalBatchAdjusted).toFixed(2));
+      
+      console.log(`   📊 ${existingBatch.batchNo}: ${existingBatch.totalBatchAdjusted.toFixed(2)} used, ${availableSpace.toFixed(2)} available`);
+      
+      if (batchAdjusted <= availableSpace) {
+        // ✅ FITS! Add to existing batch
+        console.log(`✅ Adding to existing ${existingBatch.batchNo}: ${batchAdjusted} fits in ${availableSpace} space`);
+        
+        existingBatch.combinedItems.push({
+          itemId: productId,
+          DailyProductionId: dailyDetailsId || null,
+          batchAdjustedValue: batchAdjusted,
+          qtyContribution: qtyPerBatch
+        });
+        
+        const oldTotal = existingBatch.totalBatchAdjusted;
+        existingBatch.totalBatchAdjusted = parseFloat(
+          (existingBatch.totalBatchAdjusted + batchAdjusted).toFixed(2)
+        );
+        
+        // Update notes to reflect the addition
+        existingBatch.notes = `${existingBatch.notes || 'Combined batch'} + ${batchAdjusted} = ${existingBatch.totalBatchAdjusted.toFixed(2)}`;
+        
+        await existingBatch.save();
+        
+        console.log(`🎉 Successfully added to existing batch ${existingBatch.batchNo}: ${oldTotal.toFixed(2)} → ${existingBatch.totalBatchAdjusted.toFixed(2)}`);
+        return [existingBatch]; // Return the updated batch
+      }
     }
+    
+    // No existing batch can fit → Create new batch
+    console.log(`📦 No existing batch can fit ${batchAdjusted}, creating new batch...`);
     
     // Find the highest existing batch number for this date and company
     const existingBatches = await ProductionBatch.find({
@@ -609,61 +1143,36 @@ const createProductionBatchEntries = async ({
       nextBatchNumber = existingBatches[0].batchNumber + 1;
     }
     
-    console.log(`📊 Next batch number will start from: ${nextBatchNumber}`);
-
-    // Check if this product is part of a production group
-    const productionGroup = await ProductionGroup.findOne({
-      company: companyId,
-      items: productId,
-      isActive: true
+    const batchNo = `BATNO${String(nextBatchNumber).padStart(2, '0')}`;
+    
+    const newBatch = await ProductionBatch.create({
+      companyId,
+      groupId,
+      batchNumber: nextBatchNumber,
+      batchNo,
+      productionDate: today,
+      qtyPerBatch,
+      qtyAchieved: qtyPerBatch,
+      productionLoss: 0,
+      status: 'pending',
+      mouldingTime: null,
+      unloadingTime: null,
+      createdBy: approvedBy,
+      totalBatchAdjusted: batchAdjusted,
+      combinedItems: [{
+        itemId: productId,
+        DailyProductionId: dailyDetailsId || null,
+        batchAdjustedValue: batchAdjusted,
+        qtyContribution: qtyPerBatch
+      }],
+      notes: `Created with batch value ${batchAdjusted}`
     });
     
-    const groupId = productionGroup ? productionGroup._id : null;
-    console.log(`🔗 Product ${groupId ? 'IS' : 'IS NOT'} part of a production group: ${groupId}`);
-
-    // Create multiple ProductionBatch entries based on produceBatches count
-    const batchEntries = [];
-    
-    for (let i = 0; i < produceBatches; i++) {
-      const currentBatchNumber = nextBatchNumber + i;
-      const paddedBatchNumber = String(currentBatchNumber).padStart(2, '0');
-      const batchNo = `BATNO${paddedBatchNumber}`;
-      
-      const batchEntry = {
-        companyId,
-        itemId: productId,
-        groupId, // Optional - will be null for ungrouped items
-        DailyProductionId: dailyDetailsId || null, // Reference to ProductDetailsDailySummary
-        batchNumber: currentBatchNumber,
-        batchNo,
-        productionDate: today,
-        qtyPerBatch: qtyPerBatch, // Use original qtyPerBatch for each batch (don't divide)
-        qtyAchieved: qtyPerBatch, // Start with full quantity achieved
-        productionLoss: 0,
-        status: 'pending', // Start with pending status
-        mouldingTime: null,
-        unloadingTime: null,
-        createdBy: approvedBy,
-        notes: `Created by unit manager approval for ${produceBatches} batches`
-      };
-      
-      batchEntries.push(batchEntry);
-      console.log(`📦 Prepared batch ${i + 1}/${produceBatches}: ${batchNo} with qty ${qtyPerBatch}`);
-    }
-    
-    // Insert all batch entries at once
-    const createdBatches = await ProductionBatch.insertMany(batchEntries);
-    console.log(`✅ Successfully created ${createdBatches.length} ProductionBatch entries`);
-    
-    // Log the created batch numbers for verification
-    const createdBatchNos = createdBatches.map(batch => batch.batchNo);
-    console.log(`🏷️ Created batch numbers: ${createdBatchNos.join(', ')}`);
-    
-    return createdBatches;
+    console.log(`✅ Created new batch ${batchNo} with value ${batchAdjusted}`);
+    return [newBatch];
     
   } catch (error) {
     console.error('❌ Error creating ProductionBatch entries:', error);
-    // Don't throw - this is a supplementary feature, main functionality should continue
     console.error('⚠️ ProductionBatch creation failed but product approval will continue');
     return [];
   }

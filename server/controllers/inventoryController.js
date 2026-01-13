@@ -67,10 +67,10 @@ const updateProductSummaryQtyPerBatch = async (productId, productName, qtyPerBat
 
     if (existingSummary) {
       // Update existing summary - keep original date
-      console.log('  📅 Existing date (keeping):', existingSummary.date.toISOString().split('T')[0]);
+      console.log('  📅 Existing date (keeping):', existingSummary.date ? existingSummary.date.toISOString().split('T')[0] : 'N/A');
       const oldValue = existingSummary.qtyPerBatch;
       existingSummary.qtyPerBatch = qtyPerBatch;
-      existingSummary.calculateFormulas(); // Recalculate dependent fields
+      // Don't call calculateFormulas() as it might overwrite qtyPerBatch
       await existingSummary.save();
       console.log('✅ Updated existing product summary qtyPerBatch from', oldValue, 'to', qtyPerBatch);
     } else {

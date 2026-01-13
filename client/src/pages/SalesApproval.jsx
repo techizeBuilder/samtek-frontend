@@ -59,6 +59,7 @@ const SalesApproval = () => {
   const [isAllSelected, setIsAllSelected] = useState(false);
   const [approvingProducts, setApprovingProducts] = useState(new Set()); // Track which products are being approved
   const [bulkApproving, setBulkApproving] = useState(false); // Separate state for bulk operations
+  const [approvingGroups, setApprovingGroups] = useState(new Set()); // Track which groups are being bulk approved
   
   // Debouncing states for input fields
   const [inputValues, setInputValues] = useState({}); // Store temporary input values
@@ -504,6 +505,126 @@ const SalesApproval = () => {
       });
     } finally {
       setBulkApproving(false);
+    }
+  };
+
+  // 🎯 NEW: Bulk approve entire production group with optimal batch creation
+  const handleBulkApproveGroup = async (groupName) => {
+    try {
+      setApprovingGroups(prev => new Set(prev).add(groupName));
+      
+      console.log('🎯 Bulk approving production group:', groupName);
+      console.log('📅 Using selected date:', selectedDate);
+
+      // Collect all products in this group with their full data
+      const groupProducts = filteredProducts.filter(product => {
+        const productGroup = getProductionGroup(product.productName);
+        return productGroup && productGroup.groupName === groupName;
+      });
+
+      // Get the groupId from the first product's production group
+      const firstProduct = groupProducts[0];
+      const productGroup = firstProduct ? getProductionGroup(firstProduct.productName) : null;
+      const groupId = productGroup?.groupId || null;
+
+      console.log('🏷️ First product:', firstProduct?.productName);
+      console.log('🏷️ Production group:', productGroup);
+      console.log('🏷️ Group ID:', groupId);
+
+      if (!groupId) {
+        console.error('⚠️ WARNING: groupId is null! Production group data:', productGroup);
+      }
+
+      // Prepare products data array
+      const productsData = groupProducts.map(product => {
+        // Extract productId
+        let actualProductId;
+        if (typeof product.productId === 'string') {
+          actualProductId = product.productId;
+        } else if (typeof product.productId === 'object' && product.productId._id) {
+          actualProductId = product.productId._id;
+        } else {
+          throw new Error(`Invalid productId structure for ${product.productName}`);
+        }
+
+        // Get production data
+        const productionInfo = productionData[product.productName] || {};
+        const batchAdjusted = productionInfo.batchAdjusted || product.batchAdjusted || 0;
+        const qtyPerBatch = productionInfo.qtyPerBatch || product.qtyPerBatch || 1;
+        const physicalStock = productionInfo.physicalStock || product.physicalStock || 0;
+        const packing = productionInfo.packing || product.packing || 0;
+
+        // Extract orderIds
+        const orderIds = product.salesBreakdown && product.salesBreakdown.length > 0
+          ? product.salesBreakdown.flatMap(sb => sb.orderIds || [])
+          : [];
+
+        return {
+          productId: actualProductId,
+          productName: product.productName,
+          batchAdjusted: batchAdjusted,
+          qtyPerBatch: qtyPerBatch,
+          physicalStock: physicalStock,
+          packing: packing,
+          orderIds: orderIds,
+          dailyDetailsId: product.dailyDetailsId || null
+        };
+      });
+
+      console.log('📦 Sending products data:', productsData);
+
+      const response = await fetch(`${config.baseURL}/api/unit-manager/bulk-approve-group`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({
+          groupName: groupName,
+          groupId: groupId,
+          date: selectedDate,
+          products: productsData
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || `HTTP ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log('✅ Group bulk approval completed:', result);
+
+      if (result.success) {
+        toast({
+          title: 'Group Approval Success',
+          description: `Approved ${result.data.itemsApproved} items in group "${groupName}" and created ${result.data.batchesCreated} optimal batches`
+        });
+        
+        // Refresh data to show updated status
+        console.log('🔄 Auto-refreshing data after group approval...');
+        await refreshProductionData(selectedDate);
+        await loadSummaryStatusData();
+      } else {
+        toast({
+          title: 'Group Approval Failed',
+          description: result.message || 'An error occurred during group approval',
+          variant: 'destructive'
+        });
+      }
+    } catch (error) {
+      console.error('💥 Error in group bulk approval:', error);
+      toast({
+        title: 'Error',
+        description: error.message || 'Network error during group approval',
+        variant: 'destructive'
+      });
+    } finally {
+      setApprovingGroups(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(groupName);
+        return newSet;
+      });
     }
   };
 
@@ -1825,30 +1946,35 @@ const SalesApproval = () => {
                         if (groupName === 'Ungrouped') return null;
                         
                         return (
-                          <tr key={groupName} className="border-b bg-blue-50 hover:bg-blue-100">
-                            <td className="p-2 border-r text-sm font-bold text-gray-900">
-                              {groupName} Total
+                          <tr key={groupName} className="border-b bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100 transition-colors">
+                            <td className="p-3 border-r">
+                              <div className="flex items-center gap-2">
+                                <div className="flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 shadow-md">
+                                  <Package className="h-4 w-4 text-white" />
+                                </div>
+                                <span className="text-sm font-bold text-gray-900">{groupName} Total</span>
+                              </div>
                             </td>
-                            <td className="p-2 border-r text-center text-sm font-bold text-green-700">
+                            <td className="p-3 border-r text-center text-sm font-bold text-green-700">
                               {parseFloat(groupProducts.reduce((sum, product) => sum + getProductionWithFinalBatches(product.productName), 0).toFixed(2))}
                             </td>
-                            <td className="p-2 border-r text-center text-sm font-bold text-purple-700">
+                            <td className="p-3 border-r text-center text-sm font-bold text-purple-700">
                               {parseFloat(groupProducts.reduce((sum, product) => sum + getProduceBatches(product.productName), 0).toFixed(2))}
                             </td>
-                            <td className="p-2 border-r text-center text-sm font-bold text-indigo-700">
+                            <td className="p-3 border-r text-center text-sm font-bold text-indigo-700">
                               {groupProducts.reduce((sum, product) => sum + (getProductionData(product.productName).physicalStock || 0), 0)}
                             </td>
-                            <td className="p-2 border-r text-center text-sm font-bold text-cyan-700">
+                            <td className="p-3 border-r text-center text-sm font-bold text-cyan-700">
                               {parseFloat(groupProducts.reduce((sum, product) => sum + getBatchAdjusted(product.productName), 0).toFixed(2))}
                             </td>
-                            <td className="p-2 border-r text-center text-sm font-bold text-amber-700">
+                            <td className="p-3 border-r text-center text-sm font-bold text-amber-700">
                               {groupProducts.reduce((sum, product) => {
                                 const productData = orders.find(p => p.productName === product.productName);
                                 const totalQuantity = productData ? productData.totalQuantity : 0;
                                 return sum + Math.max(0, totalQuantity - (getProductionData(product.productName).physicalStock || 0));
                               }, 0)}
                             </td>
-                            <td className="p-2 text-center text-sm font-bold text-blue-700">
+                            <td className="p-3 text-center text-sm font-bold text-blue-700">
                               {groupProducts.reduce((sum, product) => {
                                 const productData = orders.find(p => p.productName === product.productName);
                                 return sum + (productData ? productData.totalQuantity : 0);
@@ -2099,6 +2225,22 @@ const SalesApproval = () => {
                   const totalQuantity = productData ? productData.totalQuantity : 0;
                   const totalOrderCount = productData ? productData.totalOrders : 0;
 
+                  // Get production group for styling
+                  const productGroup = getProductionGroup(product.productName);
+                  const groupName = productGroup?.groupName || null;
+                  
+                  // Define light background colors for different groups
+                  const groupColors = {
+                    'milk 400': 'bg-blue-50/60',
+                    'broun 400': 'bg-amber-50/60',
+                    'Cakes': 'bg-pink-50/60',
+                    'Bombay PAV': 'bg-purple-50/60',
+                    'default': 'bg-gray-50/30'
+                  };
+                  
+                  // Get the background color for this group
+                  const rowBgColor = groupName ? (groupColors[groupName] || groupColors['default']) : 'bg-white';
+
                   // Debug log to see what we're getting
                   if (index === 0) {
                     console.log('🔍 Debug product lookup:', {
@@ -2116,9 +2258,9 @@ const SalesApproval = () => {
                     productData.salesPersons.flatMap(sp => sp.orders || []) : [];
 
                   return (
-                    <tr key={`${product.productName}-${index}`} className="border-b hover:bg-gray-50/50 transition-colors">
+                    <tr key={`${product.productName}-${index}`} className={`border-b hover:opacity-90 transition-all ${rowBgColor}`}>
                       {/* 1. Selection Checkbox Column */}
-                      <td className="bg-white p-1 lg:p-2 text-center border-r">
+                      <td className="p-1 lg:p-2 text-center border-r">
                         <input
                           type="checkbox"
                           checked={selectedProducts.has(product.productName)}
@@ -2128,7 +2270,7 @@ const SalesApproval = () => {
                         />
                       </td>
                       {/* 2. Product Name Column */}
-                      <td className="bg-white p-1 lg:p-2 font-medium text-gray-900 border-r max-w-[100px] lg:max-w-[160px]">
+                      <td className="p-1 lg:p-2 font-medium text-gray-900 border-r max-w-[100px] lg:max-w-[160px]">
                         <div className="flex flex-col">
                           <span className="text-xs font-semibold text-gray-900 leading-tight break-words">
                             {product.productName} - {getProductCategory(product.productName)}
@@ -2154,7 +2296,7 @@ const SalesApproval = () => {
                       </td>
 
                       {/* 3. Production with final batches Column - AUTO CALCULATED */}
-                      <td className="bg-white p-1 lg:p-2 border-r text-center align-middle">
+                      <td className="p-1 lg:p-2 border-r text-center align-middle">
                         <div className="text-center">
                           <div className="text-sm font-bold text-green-600">
                             {getProductionWithFinalBatches(product.productName)}
@@ -2163,7 +2305,7 @@ const SalesApproval = () => {
                       </td>
 
                       {/* 4. Produce / Batches Column */}
-                      <td className="bg-white p-1 lg:p-2 border-r text-center align-middle">
+                      <td className="p-1 lg:p-2 border-r text-center align-middle">
                         <div className="text-center">
                           <div className="text-sm font-bold text-green-600">
                             {getProduceBatches(product.productName)}
@@ -2172,7 +2314,7 @@ const SalesApproval = () => {
                       </td>
 
                       {/* 5. Physical Stock Column - EDITABLE */}
-                      <td className="bg-white p-1 lg:p-2 border-r text-center align-middle">
+                      <td className="p-1 lg:p-2 border-r text-center align-middle">
                         <div className="text-center">
                           <Input
                             type="text"
@@ -2186,7 +2328,7 @@ const SalesApproval = () => {
                       </td>
 
                       {/* 6. Batch Adjusted Column - EDITABLE */}
-                      <td className="bg-white p-1 lg:p-2 border-r text-center align-middle">
+                      <td className="p-1 lg:p-2 border-r text-center align-middle">
                         <div className="text-center">
                           <Input
                             type="text"
@@ -2200,7 +2342,7 @@ const SalesApproval = () => {
                       </td>
 
                       {/* 7. To be Prod/Day Column - AUTO CALCULATED */}
-                      <td className="bg-white p-1 lg:p-2 border-r text-center align-middle">
+                      <td className="p-1 lg:p-2 border-r text-center align-middle">
                         <div className="text-center">
                           <div className="text-sm font-bold text-amber-600">
                             {Math.max(0, totalQuantity - (getProductionData(product.productName).physicalStock || 0))}
@@ -2214,7 +2356,7 @@ const SalesApproval = () => {
                         const totalQty = salesPersonData.reduce((sum, order) => sum + (order.quantity || 0), 0);
 
                         return (
-                          <td key={`${product.productName}-${salesPersonName}`} className="bg-white p-1 lg:p-2 border-r text-center align-middle">
+                          <td key={`${product.productName}-${salesPersonName}`} className="p-1 lg:p-2 border-r text-center align-middle">
                             {salesPersonData.length === 0 ? (
                               <span className="text-gray-400 text-sm">0</span>
                             ) : (
@@ -2245,7 +2387,7 @@ const SalesApproval = () => {
                       </td>
 
                       {/* Qty/Batch Column */}
-                      <td className="bg-white p-1 lg:p-2 border-r text-center align-middle">
+                      <td className="p-1 lg:p-2 border-r text-center align-middle">
                         <div className="text-center">
                           <div className="text-sm font-bold text-orange-600">
                             {getProductionData(product.productName).qtyPerBatch || 0}
@@ -2253,7 +2395,7 @@ const SalesApproval = () => {
                         </div>
                       </td>
                       {/* Status Column */}
-                      <td className="bg-white p-1 lg:p-2 border-r text-center align-middle">
+                      <td className="p-1 lg:p-2 border-r text-center align-middle">
                         <div className="text-center">
                           <Badge 
                             variant={getSummaryStatus(product.productName) === 'approved' ? 'default' : 'secondary'}
@@ -2264,7 +2406,8 @@ const SalesApproval = () => {
                         </div>
                       </td>
                       {/* Actions Column - LAST COLUMN */}
-                      <td className="bg-white p-1 lg:p-2 text-center align-middle">
+                      <td className="p-1 lg:p-2 text-center align-middle">
+                        {/* Always show individual approve button */}
                         <div className="flex items-center justify-center gap-1">
                           <Button
                             onClick={() => handleIndividualApprove(product.productName)}

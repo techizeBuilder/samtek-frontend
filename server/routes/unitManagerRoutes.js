@@ -30,6 +30,7 @@ import {
   approveUnitManagerDamage,
   getUnitManagerSalesPersons
 } from '../controllers/unitManagerController.js';
+import { bulkApproveGroup } from '../controllers/bulkGroupApprovalController.js';
 // Import models for debug endpoint
 import User from '../models/User.js';
 import Order from '../models/Order.js';
@@ -220,6 +221,24 @@ router.get('/dashboard/stats', getDashboardStats);
 // Product Summary Approval Routes (Single endpoint for both individual and bulk)
 router.post('/product-summary/approve', approveProductSummaries); // Individual & Bulk approve
 router.post('/approve-product-summaries', approveProductSummaries); // Alternative endpoint for frontend compatibility
+
+// 🎯 NEW: Bulk approve entire production group (optimal batch creation)
+router.post('/bulk-approve-group', (req, res) => {
+  console.log('🎯 POST /unit-manager/bulk-approve-group called');
+  console.log('User:', req.user ? { id: req.user.id, role: req.user.role } : 'No user');
+  console.log('Body:', req.body);
+  
+  try {
+    bulkApproveGroup(req, res);
+  } catch (error) {
+    console.error('Error in bulk-approve-group route:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message
+    });
+  }
+});
 
 // Get approved product summaries with available batches
 router.get('/product-summaries/approved', getApprovedProductSummaries);

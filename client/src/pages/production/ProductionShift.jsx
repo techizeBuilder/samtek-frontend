@@ -74,6 +74,7 @@ export default function ProductionShift() {
               mouldingTime: item.mouldingTime || '',
               unloadingTime: item.unloadingTime || '',
               productionLoss: item.productionLoss || '',
+              notes: item.notes || '', // Initialize notes field from API
               qtyAchieved: Math.max(0, (item.qtyPerBatch || 0) - (item.productionLoss || 0))
             };
           });
@@ -499,6 +500,14 @@ export default function ProductionShift() {
               <div className="text-xs text-gray-500">Batch {batchIndex + 1} of {batchCount}</div>
             )}
           </TableCell>
+
+          {/* No. Of Batches - Show 1 for each individual batch */}
+          <TableCell className="text-center">
+            <div className="font-semibold text-purple-600 text-lg">
+              1
+            </div>
+            <div className="text-xs text-gray-500">batch</div>
+          </TableCell>
         
         {/* Moulding Time - Punch In/Out System */}
         <TableCell>
@@ -604,14 +613,38 @@ export default function ProductionShift() {
           </div>
         </TableCell>
         
-        {/* Qty Achieved/Batch (auto-calculated) - Qty/Batch minus Production Loss */}
+        {/* Qty Achieved/Batch (auto-calculated) - Use individual batch's totalBatchAdjusted */}
         <TableCell className="text-center">
           <span className="text-green-600 font-medium text-lg">
-            {Math.max(0, (group.qtyPerBatch || 0) - (batch.productionLoss || 0))}
+            {Math.max(0, Math.round((batch.totalBatchAdjusted || 1) * (group.qtyPerBatch || 0)) - (batch.productionLoss || 0))}
           </span>
           <div className="text-xs text-gray-500">
-            {group.qtyPerBatch || 0} - {batch.productionLoss || 0}
+            ({batch.totalBatchAdjusted || 1} × {group.qtyPerBatch || 0}) - {batch.productionLoss || 0}
           </div>
+        </TableCell>
+
+        {/* Note field */}
+        <TableCell>
+          <Input
+            type="text"
+            placeholder="Add note..."
+            value={batch.notes || ''}
+            onChange={(e) => {
+              const value = e.target.value;
+              setBatchData(prev => ({
+                ...prev,
+                [batchKey]: {
+                  ...prev[batchKey],
+                  notes: value
+                }
+              }));
+            }}
+            onBlur={(e) => {
+              const value = e.target.value;
+              handleBatchDataChange(batchKey, 'notes', value);
+            }}
+            className="w-32 text-sm"
+          />
         </TableCell>
         
           {/* Actions */}
@@ -725,11 +758,13 @@ export default function ProductionShift() {
                   <TableRow>
                     <TableHead className="text-center">Batch No.</TableHead>
                     <TableHead>Product Group</TableHead>
+                    <TableHead className="text-center">No. Of Batches</TableHead>
                     <TableHead>Moulding Time</TableHead>
                     <TableHead>Unloading Time</TableHead>
                     <TableHead>Production Loss</TableHead>
                     <TableHead>Qty/Batch</TableHead>
                     <TableHead className="text-green-700">Qty Achieved/Batch (auto)</TableHead>
+                    <TableHead>Note</TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -767,11 +802,13 @@ export default function ProductionShift() {
                   <TableRow>
                     <TableHead className="text-center">Batch No.</TableHead>
                     <TableHead>Product Name</TableHead>
+                    <TableHead className="text-center">No. Of Batches</TableHead>
                     <TableHead>Moulding Time</TableHead>
                     <TableHead>Unloading Time</TableHead>
                     <TableHead>Production Loss</TableHead>
                     <TableHead>Qty/Batch</TableHead>
                     <TableHead className="text-green-700">Qty Achieved/Batch (auto)</TableHead>
+                    <TableHead>Note</TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -819,6 +856,14 @@ export default function ProductionShift() {
                               <div className="text-xs text-gray-500">{item.code}</div>
                             </div>
                           </div>
+                        </TableCell>
+
+                        {/* No. Of Batches - Show 1 for each individual batch */}
+                        <TableCell className="text-center">
+                          <div className="font-semibold text-purple-600 text-lg">
+                            1
+                          </div>
+                          <div className="text-xs text-gray-500">batch</div>
                         </TableCell>
                         
                         {/* Moulding Time - Punch In/Out System */}
@@ -917,14 +962,38 @@ export default function ProductionShift() {
                           </div>
                         </TableCell>
                         
-                        {/* Qty Achieved/Batch (auto-calculated) */}
+                        {/* Qty Achieved/Batch (auto-calculated) - Use batch's totalBatchAdjusted */}
                         <TableCell className="text-center">
                           <span className="text-green-600 font-medium">
-                            {Math.max(0, (item.qtyPerBatch || 0) - (parseFloat(batch.productionLoss) || 0))}
+                            {Math.max(0, Math.round((batch.totalBatchAdjusted || 1) * (item.qtyPerBatch || 0)) - (parseFloat(batch.productionLoss) || 0))}
                           </span>
                           <div className="text-xs text-gray-500">
-                            {item.qtyPerBatch || 0} - {batch.productionLoss || 0}
+                            ({batch.totalBatchAdjusted || 1} × {item.qtyPerBatch || 0}) - {batch.productionLoss || 0}
                           </div>
+                        </TableCell>
+
+                        {/* Notes field */}
+                        <TableCell>
+                          <Input
+                            type="text"
+                            placeholder="Add note..."
+                            value={batch.notes !== undefined ? batch.notes : (item.notes || '')}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              setUngroupedBatchData(prev => ({
+                                ...prev,
+                                [itemKey]: {
+                                  ...prev[itemKey],
+                                  notes: value
+                                }
+                              }));
+                            }}
+                            onBlur={(e) => {
+                              const value = e.target.value;
+                              handleUngroupedBatchDataChange(itemKey, 'notes', value);
+                            }}
+                            className="w-32 text-sm"
+                          />
                         </TableCell>
                         
                         {/* Actions */}
