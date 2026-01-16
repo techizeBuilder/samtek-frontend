@@ -278,8 +278,8 @@ export const getProductionShiftData = async (req, res) => {
     // First, get today's approved ProductionBatches to find which groups have data
     const todayBatches = await ProductionBatch.find({
       companyId: req.user.companyId,
-      productionDate: { $gte: today, $lt: tomorrow },
-      status: { $ne: 'completed' } // Only pending/in-progress batches
+      productionDate: { $gte: today, $lt: tomorrow }
+      // Include ALL batches regardless of status to show completed ones
     })
     .populate({
       path: 'groupId', 
@@ -369,13 +369,18 @@ export const getProductionShiftData = async (req, res) => {
       const batchDataMap = {};
       batches.forEach(batch => {
         batchDataMap[batch.batchNo] = {
+          _id: batch._id,
+          batchId: batch._id,
+          groupId: batch.groupId?._id || batch.groupId,
           mouldingTime: batch.mouldingTime,
           unloadingTime: batch.unloadingTime,
           productionLoss: batch.productionLoss || 0,
-          productionStatus: batch.productionStatus || 'not_started',
+          productionStatus: batch.status || 'not_started', // Use batch.status field
+          status: batch.status || 'not_started', // Also include status for consistency
           totalBatchAdjusted: batch.totalBatchAdjusted || 1.0, // Include batch remainder
           qtyPerBatch: batch.qtyPerBatch || 0,
-          qtyAchieved: batch.qtyAchieved || 0
+          qtyAchieved: batch.qtyAchieved || 0,
+          notes: batch.notes || '' // Include notes field
         };
       });
 
@@ -1462,6 +1467,12 @@ export const updateUngroupedItemProduction = async (req, res) => {
       // When unloading time is set, change status to 'completed'
       productionRecord.status = 'completed';
       console.log(`📊 Auto-updating status to 'completed' due to unloading time being set`);
+    }
+    
+    if (field === 'productionLoss') {
+      // When production loss is entered, change status to 'completed'
+      productionRecord.status = 'completed';
+      console.log(`📊 Auto-updating status to 'completed' due to production loss being entered`);
     }
     
     // Check if both times are set and auto-complete

@@ -88,42 +88,56 @@ export default function ProductionShift() {
         // Initialize batch data with proper values from database
         const initialBatchData = {};
         data.data.groups.forEach(group => {
-          const batchCount = group.noOfBatchesForProduction || 1;
-          
-          console.log('🔍 Initializing group data:', {
-            name: group.name,
-            batchCount: batchCount,
-            batchData: group.batchData
-          });
-          
-          // Create batch data for each individual batch
-          for (let batchIndex = 0; batchIndex < batchCount; batchIndex++) {
-            const batchKey = `${group._id}_batch_${batchIndex + 1}`;
+          // Use batchData directly since it has all the information we need
+          if (group.batchData && typeof group.batchData === 'object') {
+            const batchNumbers = Object.keys(group.batchData).sort(); // Sort batch numbers: BATNO01, BATNO02, etc.
             
-            // Get the actual item for this batch to find its batchNo
-            const item = group.items && group.items[batchIndex] ? group.items[batchIndex] : null;
-            const itemBatchNo = item?.batchNo;
-            
-            // Get individual batch data from API response using actual batchNo
-            const batchFromAPI = (itemBatchNo && group.batchData?.[itemBatchNo]) ? group.batchData[itemBatchNo] : {};
-            
-            console.log('🔍 Mapping batch data:', {
-              batchKey,
-              itemBatchNo,
-              batchFromAPI
+            console.log('🔍 Processing group batches:', {
+              groupId: group._id,
+              groupName: group.name,
+              batchNumbers: batchNumbers,
+              batchCount: batchNumbers.length
             });
             
-            initialBatchData[batchKey] = {
-              productGroup: group.name,
-              batchNumber: batchIndex + 1,
-              totalBatches: batchCount,
-              // Use individual batch timing data if available, otherwise empty
-              mouldingTime: batchFromAPI.mouldingTime || '',
-              unloadingTime: batchFromAPI.unloadingTime || '',
-              productionLoss: batchFromAPI.productionLoss !== undefined ? batchFromAPI.productionLoss : '',
-              qtyBatch: group.qtyPerBatch || 0,
-              qtyAchieved: batchFromAPI.qtyAchieved !== undefined ? batchFromAPI.qtyAchieved : Math.max(0, (group.qtyPerBatch || 0) - (batchFromAPI.productionLoss || 0))
-            };
+            batchNumbers.forEach((batchNo, index) => {
+              const batchFromAPI = group.batchData[batchNo];
+              const batchKey = `${group._id}_batch_${index + 1}`;
+              
+              console.log('✅ Mapping batch:', {
+                batchKey,
+                batchNo,
+                _id: batchFromAPI._id,
+                batchId: batchFromAPI.batchId
+              });
+              
+              // Validate we have required data
+              if (!batchFromAPI._id && !batchFromAPI.batchId) {
+                console.error('⚠️ Missing _id for batch:', {
+                  batchKey,
+                  batchNo,
+                  batchFromAPI
+                });
+              }
+              
+              initialBatchData[batchKey] = {
+                productGroup: group.name,
+                batchNumber: index + 1,
+                totalBatches: batchNumbers.length,
+                _id: batchFromAPI._id || batchFromAPI.batchId,
+                batchId: batchFromAPI.batchId || batchFromAPI._id,
+                groupId: batchFromAPI.groupId || group._id,
+                batchNo: batchNo,
+                // Use individual batch timing data
+                mouldingTime: batchFromAPI.mouldingTime || '',
+                unloadingTime: batchFromAPI.unloadingTime || '',
+                productionLoss: batchFromAPI.productionLoss !== undefined ? batchFromAPI.productionLoss : '',
+                productionStatus: batchFromAPI.productionStatus || batchFromAPI.status || 'not_started',
+                status: batchFromAPI.status || batchFromAPI.productionStatus || 'not_started',
+                qtyBatch: batchFromAPI.qtyPerBatch || group.qtyPerBatch || 0,
+                qtyAchieved: batchFromAPI.qtyAchieved !== undefined ? batchFromAPI.qtyAchieved : (batchFromAPI.qtyPerBatch || 0),
+                notes: batchFromAPI.notes || ''
+              };
+            });
           }
         });
         
@@ -334,15 +348,28 @@ export default function ProductionShift() {
       const groupId = batchKeyParts[0];
       const batchIndex = parseInt(batchKeyParts[1]) - 1; // Convert to 0-based index
       
-      // Find the group and item
-      const group = productionGroups.find(g => g._id === groupId);
-      if (!group || !group.items || !group.items[batchIndex]) {
-        console.error('❌ Could not find item for batchKey:', batchKey);
+      // Get the batch data which contains the _id we need
+      const currentBatchData = batchData[batchKey];
+      if (!currentBatchData || !currentBatchData._id || !currentBatchData.batchNo) {
+        console.error('❌ Could not find batch data for batchKey:', batchKey, {
+          groupId,
+          batchIndex,
+          currentBatchData,
+          missingId: !currentBatchData?._id,
+          missingBatchNo: !currentBatchData?.batchNo,
+          allBatchKeys: Object.keys(batchData),
+          allBatchData: batchData
+        });
         return;
       }
       
-      const item = group.items[batchIndex];
-      console.log('📦 Found item:', { _id: item._id, batchNo: item.batchNo });
+      console.log('📦 Found batch data:', { 
+        _id: currentBatchData._id, 
+        batchId: currentBatchData.batchId,
+        batchNo: currentBatchData.batchNo,
+        groupId: currentBatchData.groupId,
+        fullBatchData: currentBatchData
+      });
       
       let processedValue = value;
       
@@ -359,8 +386,8 @@ export default function ProductionShift() {
       }
       
       const updateData = {
-        _id: item._id,        // Item ID
-        batchno: item.batchNo, // Item batch number like "BATNO01"
+        _id: currentBatchData._id || currentBatchData.batchId,        // Batch ID from database
+        batchno: currentBatchData.batchNo, // Batch number like "BATNO01"
         field: field,
         value: processedValue
       };

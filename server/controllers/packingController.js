@@ -34,6 +34,22 @@ export const getProductionGroupsForPacking = async (req, res) => {
     }).lean();
 
     console.log(`🏁 Found ${completedBatches.length} completed production batches for ${targetDate.toDateString()}`);
+    console.log('🔍 Date range:', { targetDate: targetDate.toISOString(), endOfDay: endOfDay.toISOString() });
+    console.log('🔍 Company ID:', req.user.companyId.toString());
+    
+    // Debug: Log ALL batch details to see what we're getting
+    completedBatches.forEach((batch, index) => {
+      console.log(`🔍 Batch ${index + 1}:`, {
+        _id: batch._id.toString(),
+        batchNo: batch.batchNo,
+        status: batch.status,
+        groupId: batch.groupId?.toString() || 'NO GROUP',
+        itemId: batch.itemId?.toString() || 'NO ITEM',
+        productionDate: batch.productionDate,
+        qtyAchieved: batch.qtyAchieved,
+        notes: batch.notes
+      });
+    });
     
     // Debug: Log the first few batches to see their structure
     if (completedBatches.length > 0) {
@@ -69,10 +85,11 @@ export const getProductionGroupsForPacking = async (req, res) => {
       status: b.status
     })));
 
-    // Get ALL production groups from user's company 
+    // Get ALL production groups from user's company - filter only those with completed batches
     const allProductionGroups = await ProductionGroup.find({
       isActive: true,
-      company: req.user.companyId
+      company: req.user.companyId,
+      _id: { $in: completedGroupIds } // Only get groups that have completed batches
     })
       .populate({
         path: 'items',
@@ -87,76 +104,77 @@ export const getProductionGroupsForPacking = async (req, res) => {
       })
       .lean();
 
-    console.log(`📦 Found ${allProductionGroups.length} total production groups`);
+    console.log(`📦 Found ${allProductionGroups.length} production groups with completed batches`);
 
     // Identify items that need to be in groups (either existing groups or individual groups)
     const itemsInGroups = new Set();
     
-    // First, handle existing production groups with multiple items
+    // First, handle existing production groups with completed batches
     const packingData = [];
     
     for (const group of allProductionGroups) {
-      const groupItems = [];
+      // Get all batches for this group (regardless of itemId since GROUP batches may not have itemId)
+      const groupCompletedBatches = completedBatches.filter(batch => 
+        batch.groupId?.toString() === group._id.toString()
+      );
       
-      if (group.items && group.items.length > 0) {
-        for (const item of group.items) {
-          // Check if this item has completed production batches today
-          const itemCompletedBatches = completedBatches.filter(batch => 
-            batch.itemId?.toString() === item._id.toString()
-          );
+      console.log(`📦 Processing group "${group.name}": ${groupCompletedBatches.length} completed batches`);
+      
+      if (groupCompletedBatches.length === 0) {
+        console.log(`⏭️ Skipping group "${group.name}" - no completed batches`);
+        continue;
+      }
+      
+      const groupItems = [];
+      const totalGroupAchievedQty = groupCompletedBatches.reduce((sum, batch) => sum + (batch.qtyAchieved || 0), 0);
+      const totalGroupLoss = groupCompletedBatches.reduce((sum, batch) => sum + (batch.productionLoss || 0), 0);
+      
+      // For GROUP batches (which don't have itemId), create ONE combined item for the entire group
+      // This prevents duplicates where each product gets all batches
+      
+      // Get first item for display purposes (group name already shows on parent)
+      const displayItem = group.items && group.items.length > 0 ? group.items[0] : null;
+      
+      if (displayItem) {
+        // Get ProductDetailsDailySummary for the first item as representative
+        const dailySummary = await ProductDetailsDailySummary.findOne({
+          productId: displayItem._id,
+          companyId: req.user.companyId,
+          date: targetDate
+        }).lean();
 
-          if (itemCompletedBatches.length > 0) {
-            itemsInGroups.add(item._id.toString()); // Mark item as grouped
-            
-            // Calculate total achieved quantity from completed batches
-            const totalAchievedQty = itemCompletedBatches.reduce((sum, batch) => sum + (batch.qtyAchieved || 0), 0);
-            
-            // Get ProductDetailsDailySummary data for this item and today's date
-            const dailySummary = await ProductDetailsDailySummary.findOne({
-              productId: item._id,
-              companyId: req.user.companyId,
-              date: targetDate
-            }).lean();
+        console.log(`📊 Creating combined item for group ${group.name} with ${groupCompletedBatches.length} batches`);
+        
+        // Create ONE combined item for all batches in the group
+        groupItems.push({
+          _id: displayItem._id,
+          name: group.name, // Use group name instead of individual item name
+          code: displayItem.code,
+          category: displayItem.category,
+          unit: displayItem.unit || '',
+          image: displayItem.image,
+          currentStock: displayItem.qty || 0,
+          producedQty: dailySummary?.productionFinalBatches || 0,
+          indentQty: dailySummary?.productionFinalBatches || 0,
+          achievedQty: totalGroupAchievedQty,
+          packedQty: 0,
+          packingLoss: 0,
+          notes: '',
+          completedBatches: groupCompletedBatches.length,
+          batchDetails: await Promise.all(groupCompletedBatches.map(async (batch) => {
+            try {
+              const batchPackingSheets = await PackingSheet.find({
+                $or: [
+                  { batchId: batch._id },
+                  { batchNo: batch.batchNo }
+                ],
+                company: req.user.companyId,
+                packingDate: { $gte: targetDate, $lte: endOfDay }
+              }).lean() || [];
 
-            console.log(`📊 ${item.name} (in group ${group.name}): Completed=${itemCompletedBatches.length}, TotalAchieved=${totalAchievedQty}`);
-            console.log(`🔍 First itemCompletedBatch:`, itemCompletedBatches[0] ? {
-              _id: itemCompletedBatches[0]._id,
-              batchNo: itemCompletedBatches[0].batchNo,
-              companyId: itemCompletedBatches[0].companyId,
-              itemId: itemCompletedBatches[0].itemId,
-              groupId: itemCompletedBatches[0].groupId
-            } : 'No batches');
-            
-            groupItems.push({
-              _id: item._id,
-              name: item.name,
-              code: item.code,
-              category: item.category,
-              unit: item.unit || '',
-              image: item.image,
-              currentStock: item.qty || 0,
-              producedQty: dailySummary?.productionFinalBatches || 0,
-              indentQty: dailySummary?.productionFinalBatches || 0,
-              achievedQty: totalAchievedQty,
-              packedQty: 0,
-              packingLoss: 0,
-              notes: '',
-              completedBatches: itemCompletedBatches.length,
-              batchDetails: await Promise.all(itemCompletedBatches.map(async (batch) => {
-                try {
-                  // Find packing sheets for this specific batch using root level batchId/batchNo
-                  const batchPackingSheets = await PackingSheet.find({
-                    $or: [
-                      { batchId: batch._id },
-                      { batchNo: batch.batchNo }
-                    ],
-                    company: req.user.companyId,
-                    packingDate: { $gte: targetDate, $lte: endOfDay }
-                  }).lean() || [];
-
-                  return {
-                    _id: batch._id,
-                    batchNo: batch.batchNo,
+              return {
+                _id: batch._id,
+                batchNo: batch.batchNo,
                     qtyAchieved: batch.qtyAchieved,
                     productionLoss: batch.productionLoss,
                     status: 'completed',
@@ -210,19 +228,12 @@ export const getProductionGroupsForPacking = async (req, res) => {
                 createdAt: dailySummary.createdAt,
                 updatedAt: dailySummary.updatedAt
               } : null
-            });
-          }
-        }
+        });
       }
 
-      // Only add group if it has items with completed batches
+      // Add group since we already filtered to only groups with completed batches
       if (groupItems.length > 0) {
-        const groupCompletedBatches = completedBatches.filter(batch => 
-          batch.groupId?.toString() === group._id.toString()
-        );
-        const totalGroupAchievedQty = groupCompletedBatches.reduce((sum, batch) => sum + (batch.qtyAchieved || 0), 0);
-
-        console.log(`📦 Adding group ${group.name}: ${groupItems.length} items with completed batches`);
+        console.log(`📦 Adding group ${group.name}: ${groupItems.length} items, ${groupCompletedBatches.length} completed batches`);
 
         packingData.push({
           _id: group._id,
@@ -231,12 +242,14 @@ export const getProductionGroupsForPacking = async (req, res) => {
           totalItems: groupItems.length,
           qtyPerBatch: group.qtyPerBatch || 0,
           qtyAchievedPerBatch: totalGroupAchievedQty,
-          productionLoss: groupCompletedBatches.reduce((sum, batch) => sum + (batch.productionLoss || 0), 0),
+          productionLoss: totalGroupLoss,
           items: groupItems,
           createdBy: group.createdBy?.username || 'Unknown',
           createdAt: group.createdAt,
           completedBatches: groupCompletedBatches.length
         });
+      } else {
+        console.log(`⚠️ Group ${group.name} has no items - skipping`);
       }
     }
 
