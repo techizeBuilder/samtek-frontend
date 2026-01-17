@@ -291,7 +291,7 @@ export default function DispatchDashboard() {
               <Package className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{dashboardData?.summary?.totalPackedQuantity || 0}</div>
+              <div className="text-2xl font-bold">{(dashboardData?.summary?.totalPackedQuantity || 0).toFixed(2)}</div>
               <p className="text-xs text-muted-foreground">
                 Ready for dispatch
               </p>
@@ -307,7 +307,7 @@ export default function DispatchDashboard() {
               <Users className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{dashboardData?.summary?.totalAvailableStock || 0}</div>
+              <div className="text-2xl font-bold">{(dashboardData?.summary?.totalAvailableStock || 0).toFixed(2)}</div>
               <p className="text-xs text-muted-foreground">
                 Stock available for dispatch
               </p>
@@ -338,7 +338,7 @@ export default function DispatchDashboard() {
                   ? 'text-green-600' 
                   : 'text-red-600'
               }`}>
-                {dashboardData?.summary?.totalExcessShortage || 0}
+                {(dashboardData?.summary?.totalExcessShortage || 0).toFixed(2)}
               </div>
               <p className="text-xs text-muted-foreground">
                 Overall excess/shortage
@@ -420,34 +420,34 @@ export default function DispatchDashboard() {
                 <tbody>
                   <tr className="bg-blue-50">
                     <td className="border border-gray-900 p-2 font-medium">Dispatch Console<br />Totals</td>
-                    <td className="border border-gray-900 p-2 text-center font-bold">{dashboardData?.summary?.totalPackedQuantity || 0}</td>
+                    <td className="border border-gray-900 p-2 text-center font-bold">{(dashboardData?.summary?.totalPackedQuantity || 0).toFixed(2)}</td>
                     <td className="border border-gray-900 p-2 text-center">
-                      {dashboardData?.dispatchConsoleEntries?.reduce((sum, entry) => sum + (entry.previousClosingStockYesterdayBalance || 0), 0) || 0}
+                      {(dashboardData?.dispatchConsoleEntries?.reduce((sum, entry) => sum + (entry.previousClosingStockYesterdayBalance || 0), 0) || 0).toFixed(2)}
                     </td>
                     <td className="border border-gray-900 p-2 text-center">
-                      {dashboardData?.dispatchConsoleEntries?.reduce((sum, entry) => sum + (entry.returnQuantityYesterdayReturns || 0), 0) || 0}
+                      {(dashboardData?.dispatchConsoleEntries?.reduce((sum, entry) => sum + (entry.returnQuantityYesterdayReturns || 0), 0) || 0).toFixed(2)}
                     </td>
-                    <td className="border border-gray-900 p-2 text-center font-bold">{dashboardData?.summary?.totalAvailableStock || 0}</td>
-                    <td className="border border-gray-900 p-2 text-center">{dashboardData?.summary?.totalIndentQuantity || 0}</td>
+                    <td className="border border-gray-900 p-2 text-center font-bold">{(dashboardData?.summary?.totalAvailableStock || 0).toFixed(2)}</td>
+                    <td className="border border-gray-900 p-2 text-center">{(dashboardData?.summary?.totalIndentQuantity || 0).toFixed(2)}</td>
                     <td className="border border-gray-900 p-2 text-center font-bold">
                       <span className={`px-2 py-1 rounded text-sm ${
                         (dashboardData?.summary?.totalExcessShortage || 0) >= 0 
                           ? 'bg-green-100 text-green-800' 
                           : 'bg-red-100 text-red-800'
                       }`}>
-                        {dashboardData?.summary?.totalExcessShortage || 0}
+                        {(dashboardData?.summary?.totalExcessShortage || 0).toFixed(2)}
                       </span>
                     </td>
-                    <td className="border border-gray-900 p-2 text-center">{dashboardData?.summary?.totalDispatchedQuantity || 0}</td>
+                    <td className="border border-gray-900 p-2 text-center">{(dashboardData?.summary?.totalDispatchedQuantity || 0).toFixed(2)}</td>
                     <td className="border border-gray-900 p-2 text-center font-bold">
-                      {dashboardData?.dispatchConsoleEntries?.reduce((sum, entry) => sum + (entry.closingStockEndOfDayBalance || 0), 0) || 0}
+                      {(dashboardData?.dispatchConsoleEntries?.reduce((sum, entry) => sum + (entry.closingStockEndOfDayBalance || 0), 0) || 0).toFixed(2)}
                     </td>
                     <td className="border border-gray-900 p-2 text-center">
-                      {dashboardData?.dispatchConsoleEntries?.reduce((sum, entry) => sum + (entry.physicalStockEntryManualVerification || 0), 0) || 0}
+                      {(dashboardData?.dispatchConsoleEntries?.reduce((sum, entry) => sum + (entry.physicalStockEntryManualVerification || 0), 0) || 0).toFixed(2)}
                     </td>
                     <td className="border border-gray-900 p-2 text-center">
                       <span className="text-red-600 font-medium">
-                        {dashboardData?.dispatchConsoleEntries?.reduce((sum, entry) => sum + (entry.overallLoss || 0), 0) || 0}
+                        {(dashboardData?.dispatchConsoleEntries?.reduce((sum, entry) => sum + (entry.overallLoss || 0), 0) || 0).toFixed(2)}
                       </span>
                     </td>
                   </tr>
@@ -463,18 +463,18 @@ export default function DispatchDashboard() {
                           </div>
                         </div>
                       </td>
-                      <td className="border border-gray-900 p-2 text-center font-medium">{entry.packedQuantityReadyForDispatch || 0}</td>
-                      <td className="border border-gray-900 p-2 text-center">{entry.previousClosingStockYesterdayBalance || 0}</td>
-                      <td className="border border-gray-900 p-2 text-center">{entry.returnQuantityYesterdayReturns || 0}</td>
-                      <td className="border border-gray-900 p-2 text-center font-medium">{entry.totalAvailableStock || 0}</td>
-                      <td className="border border-gray-900 p-2 text-center">{entry.totalIndentQuantityOrdersForTheDay || 0}</td>
+                      <td className="border border-gray-900 p-2 text-center font-medium">{(entry.packedQuantityReadyForDispatch || 0).toFixed(2)}</td>
+                      <td className="border border-gray-900 p-2 text-center">{(entry.previousClosingStockYesterdayBalance || 0).toFixed(2)}</td>
+                      <td className="border border-gray-900 p-2 text-center">{(entry.returnQuantityYesterdayReturns || 0).toFixed(2)}</td>
+                      <td className="border border-gray-900 p-2 text-center font-medium">{(entry.totalAvailableStock || 0).toFixed(2)}</td>
+                      <td className="border border-gray-900 p-2 text-center">{(entry.totalIndentQuantityOrdersForTheDay || 0).toFixed(2)}</td>
                       <td className="border border-gray-900 p-2 text-center">
                         <span className={`font-medium ${
                           (entry.excessShortage || 0) >= 0 
                             ? 'text-green-600' 
                             : 'text-red-600'
                         }`}>
-                          {entry.excessShortage || 0}
+                          {(entry.excessShortage || 0).toFixed(2)}
                         </span>
                       </td>
                       <td className="border border-gray-900 p-2 text-center">
@@ -497,7 +497,7 @@ export default function DispatchDashboard() {
                           }}
                         />
                       </td>
-                      <td className="border border-gray-900 p-2 text-center">{entry.closingStockEndOfDayBalance || 0}</td>
+                      <td className="border border-gray-900 p-2 text-center">{(entry.closingStockEndOfDayBalance || 0).toFixed(2)}</td>
                       <td className="border border-gray-900 p-2 text-center">
                         <input
                           type="number"
@@ -523,7 +523,7 @@ export default function DispatchDashboard() {
                             ? 'text-red-600' 
                             : 'text-green-600'
                         }`}>
-                          {entry.overallLoss || 0}
+                          {(entry.overallLoss || 0).toFixed(2)}
                         </span>
                       </td>
                     </tr>

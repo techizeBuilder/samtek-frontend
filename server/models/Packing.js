@@ -86,6 +86,11 @@ const PackingSheetSchema = new mongoose.Schema({
     default: 0,
     min: 0
   },
+  updatedPackedQty: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
   items: [PackingItemSchema],
   status: {
     type: String,

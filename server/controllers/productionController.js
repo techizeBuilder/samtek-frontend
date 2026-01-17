@@ -285,6 +285,16 @@ export const getProductionShiftData = async (req, res) => {
       path: 'groupId', 
       select: 'name description qtyPerBatch qtyAchievedPerBatch unitHeadOrManager mouldingTime unloadingTime productionLoss createdBy createdAt isActive'
     })
+    .populate({
+      path: 'combinedItems.itemId',
+      model: 'Item',
+      select: 'name code category qty unit price image batch'
+    })
+    .populate({
+      path: 'combinedItems.DailyProductionId',
+      model: 'ProductDetailsDailySummary',
+      select: 'date batchAdjusted'
+    })
     .sort({ batchNumber: 1 })
     .lean();
 
@@ -380,7 +390,8 @@ export const getProductionShiftData = async (req, res) => {
           totalBatchAdjusted: batch.totalBatchAdjusted || 1.0, // Include batch remainder
           qtyPerBatch: batch.qtyPerBatch || 0,
           qtyAchieved: batch.qtyAchieved || 0,
-          notes: batch.notes || '' // Include notes field
+          notes: batch.notes || '', // Include notes field
+          combinedItems: batch.combinedItems || [] // Include populated combinedItems with full item details
         };
       });
 
@@ -1399,6 +1410,11 @@ export const updateUngroupedItemProduction = async (req, res) => {
         console.warn(`⚠️ No ProductDailySummary found for productId: ${_id}, using default qtyPerBatch: ${defaultQtyPerBatch}`);
       }
 
+      // Calculate correct qtyAchieved based on totalBatchAdjusted (if available)
+      // Default to 1.0 if not specified
+      const totalBatchAdjusted = 1.0; // Will be updated when batch record is found/created
+      const initialQtyAchieved = defaultQtyPerBatch * totalBatchAdjusted;
+
       // Create new production record
       productionRecord = new ProductionBatch({
         companyId: req.user.companyId,
@@ -1407,16 +1423,22 @@ export const updateUngroupedItemProduction = async (req, res) => {
         batchNumber: batchNumber,
         productionDate: today,
         qtyPerBatch: defaultQtyPerBatch,
-        qtyAchieved: defaultQtyPerBatch,
+        qtyAchieved: initialQtyAchieved,
+        totalBatchAdjusted: totalBatchAdjusted,
         productionLoss: 0,
         status: 'in_progress',
         createdBy: req.user.username || req.user._id,
         updatedBy: req.user.username || req.user._id
       });
       
-      console.log(`🆕 Created new record for batchNo: ${batchno}, itemId: ${_id}`);
+      console.log(`🆕 Created new record for batchNo: ${batchno}, itemId: ${_id}, totalBatchAdjusted: ${totalBatchAdjusted}`);
     } else {
-      console.log(`✅ Found existing ProductionBatch record for batchNo: ${batchno}`);
+      console.log(`✅ Found existing ProductionBatch record for batchNo: ${batchno}`, {
+        qtyPerBatch: productionRecord.qtyPerBatch,
+        totalBatchAdjusted: productionRecord.totalBatchAdjusted,
+        qtyAchieved: productionRecord.qtyAchieved,
+        productionLoss: productionRecord.productionLoss
+      });
     }
 
     // Validate field
@@ -1454,6 +1476,30 @@ export const updateUngroupedItemProduction = async (req, res) => {
     productionRecord.updatedBy = req.user.username || req.user._id;
     productionRecord.updatedAt = new Date();
 
+    // ALWAYS recalculate qtyAchieved based on totalBatchAdjusted, qtyPerBatch, and productionLoss
+    // Formula: qtyAchieved = (totalBatchAdjusted × qtyPerBatch) - productionLoss
+    const totalBatchAdjusted = productionRecord.totalBatchAdjusted || 1;
+    const qtyPerBatch = productionRecord.qtyPerBatch || 0;
+    const productionLoss = productionRecord.productionLoss || 0;
+    
+    const calculatedQtyAchieved = (totalBatchAdjusted * qtyPerBatch) - productionLoss;
+    
+    console.log(`🧮 Recalculating qtyAchieved:`);
+    console.log(`   Formula: (${totalBatchAdjusted} × ${qtyPerBatch}) - ${productionLoss} = ${calculatedQtyAchieved}`);
+    
+    // Validate that production loss doesn't exceed the batch quantity
+    if (productionLoss > (totalBatchAdjusted * qtyPerBatch)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Production loss cannot exceed batch quantity',
+        error: `Production loss (${productionLoss}) exceeds available quantity (${totalBatchAdjusted * qtyPerBatch})`
+      });
+    }
+    
+    // Set the calculated qtyAchieved rounded to 2 decimal places
+    productionRecord.qtyAchieved = Math.round(Math.max(0, calculatedQtyAchieved) * 100) / 100;
+    console.log(`   ✅ Set qtyAchieved to: ${productionRecord.qtyAchieved}`);
+
     // Auto-update status based on field changes
     if (field === 'mouldingTime' && processedValue) {
       // When moulding time is set, change status to 'in_progress' 
@@ -1481,13 +1527,7 @@ export const updateUngroupedItemProduction = async (req, res) => {
       console.log(`📊 Auto-updating status to 'completed' because both moulding and unloading times are set`);
     }
 
-    console.log(`🔧 Updating field: ${field} with value:`, processedValue);
-
-    // Validate qtyAchieved is not negative before saving
-    if (productionRecord.qtyAchieved < 0) {
-      console.warn(`⚠️ WARNING: qtyAchieved is negative (${productionRecord.qtyAchieved}), adjusting to 0`);
-      productionRecord.qtyAchieved = 0;
-    }
+    console.log(`🔧 Updated field: ${field} with value:`, processedValue);
 
     // Save the record with proper error handling
     let savedRecord;

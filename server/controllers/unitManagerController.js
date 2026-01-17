@@ -176,10 +176,10 @@ export const updateOrderStatus = async (req, res) => {
                 continue;
               }
 
-              // Use product details - batch field contains the batch value we need
+              // Use product details - batch field contains the quantity value (e.g., "169" = 169g/units)
               productName = productName || productDetails.name;
-              // Use batch value if available, otherwise fallback to qty or 1
-              qtyPerBatch = productDetails.batch ? parseInt(productDetails.batch) || productDetails.qty || 1 : productDetails.qty || 1;
+              // Parse batch as qtyPerBatch - it contains the numeric quantity value
+              qtyPerBatch = productDetails.batch ? parseFloat(productDetails.batch) || 1 : 1;
 
               console.log(`   Using product name: ${productName}`);
               console.log(`   Product qtyPerBatch: ${qtyPerBatch}`);
@@ -355,10 +355,10 @@ export const updateOrderStatus = async (req, res) => {
             continue;
           }
 
-          // Use product details - batch field contains the batch value we need
+          // Use product details - batch field contains the quantity value (e.g., "169" = 169g/units)
           productName = productName || productDetails.name;
-          // Use batch value if available, otherwise fallback to qty or 1
-          qtyPerBatch = productDetails.batch ? parseInt(productDetails.batch) || productDetails.qty || 1 : productDetails.qty || 1;
+          // Parse batch as qtyPerBatch - it contains the numeric quantity value
+          qtyPerBatch = productDetails.batch ? parseFloat(productDetails.batch) || 1 : 1;
 
           console.log(`   Using product name: ${productName}`);
           console.log(`   Product qtyPerBatch: ${qtyPerBatch}`);
@@ -1987,6 +1987,31 @@ const createGroupedProductionBatchEntries = async ({
       // Get first product's details for batch metadata
       const firstProduct = allGroupProducts[0] || groupData.products[0];
       
+      // ✅ FIX: Get qtyPerBatch from Item.batch field if not set in summary
+      let masterQtyPerBatch = firstProduct.qtyPerBatch || 0;
+      if (masterQtyPerBatch === 0) {
+        console.log(`   ⚠️ qtyPerBatch is 0! Fetching from Item.batch for product ${firstProduct.productId}...`);
+        const item = await Item.findById(firstProduct.productId).select('batch name').lean();
+        console.log(`   📦 Item: ${item?.name}, batch field = "${item?.batch}" (type: ${typeof item?.batch})`);
+        
+        if (item?.batch) {
+          masterQtyPerBatch = parseFloat(item.batch) || 0;
+          console.log(`   ✅ Parsed qtyPerBatch from Item.batch = ${masterQtyPerBatch}`);
+          
+          // Update the ProductDetailsDailySummary so it's correct for future use
+          if (masterQtyPerBatch > 0) {
+            await ProductDetailsDailySummary.updateOne(
+              { _id: firstProduct._id },
+              { $set: { qtyPerBatch: masterQtyPerBatch } }
+            );
+            console.log(`   ✅ Updated ProductDetailsDailySummary with qtyPerBatch = ${masterQtyPerBatch}`);
+          }
+        } else {
+          console.log(`   ❌ ERROR: Item has no batch field! qtyPerBatch will be 0!`);
+        }
+      }
+      console.log(`   🎯 FINAL masterQtyPerBatch for group = ${masterQtyPerBatch}`);
+      
       // Create the required number of batches
       for (let i = 0; i < batchesToCreate; i++) {
         const currentBatchNumber = nextBatchNumber + i;
@@ -1997,9 +2022,10 @@ const createGroupedProductionBatchEntries = async ({
         const remainder = parseFloat((totalBatchAdjusted - Math.floor(totalBatchAdjusted)).toFixed(2));
         const batchAdjusted = isLastBatch && remainder > 0 ? remainder : 1.0;
         
-        // Use first product's qtyPerBatch (item.batch value)
-        const qtyPerBatch = firstProduct.qtyPerBatch || 0;
+        // Use master qtyPerBatch fetched from Item.batch
+        const qtyPerBatch = masterQtyPerBatch;
         const qtyAchieved = parseFloat((qtyPerBatch * batchAdjusted).toFixed(2));
+        console.log(`   📊 Batch ${batchNo}: qtyPerBatch=${qtyPerBatch}, batchAdjusted=${batchAdjusted}, qtyAchieved=${qtyAchieved}`);
         
         const newBatch = new ProductionBatch({
           itemId: firstProduct.productId || firstProduct._id, // Reference first product as primary
@@ -2236,8 +2262,8 @@ const createSingleProductionBatch = async ({
       batchNumber: nextBatchNumber,
       batchNo,
       productionDate: date,
-      qtyPerBatch: actualQty,
-      qtyAchieved: actualQty,
+      qtyPerBatch: masterQtyPerBatch, // Base batch quantity (e.g., 234)
+      qtyAchieved: actualQty, // Adjusted quantity = masterQtyPerBatch * batchAdjustedTotal (e.g., 234 * 0.7 = 163.8)
       productionLoss: 0,
       status: 'pending',
       mouldingTime: null,
@@ -2359,7 +2385,7 @@ const createBulkProductionBatchEntries = async ({
         batchNo,
         productionDate: today,
         qtyPerBatch: qtyPerBatch, // Use original qtyPerBatch for each batch (don't divide)
-        qtyAchieved: qtyPerBatch, // Start with full quantity achieved
+        qtyAchieved: qtyPerBatch * batchAdjusted, // Calculate based on batchAdjusted
         productionLoss: 0,
         status: 'pending', // Start with pending status
         mouldingTime: null,

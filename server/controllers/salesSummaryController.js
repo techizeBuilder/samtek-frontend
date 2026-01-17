@@ -546,6 +546,33 @@ export const updateSalesSummary = async (req, res) => {
               }
               console.log(`   Starting batch number: ${nextBatchNumber}`);
               
+              // ✅ FIX: Update qtyPerBatch from Item.batch if missing
+              console.log(`   🔍 Checking qtyPerBatch for ${groupDailyDetails.length} products...`);
+              for (const detail of groupDailyDetails) {
+                console.log(`      Product ${detail.productId}: current qtyPerBatch = ${detail.qtyPerBatch}`);
+                if (!detail.qtyPerBatch || detail.qtyPerBatch === 0) {
+                  const item = await Item.findById(detail.productId).select('batch qty name').lean();
+                  console.log(`      Item data:`, { name: item?.name, batch: item?.batch, qty: item?.qty });
+                  if (item?.batch) {
+                    const qtyFromBatch = parseFloat(item.batch) || 0;
+                    console.log(`      Parsed batch: "${item.batch}" → ${qtyFromBatch}`);
+                    if (qtyFromBatch > 0) {
+                      detail.qtyPerBatch = qtyFromBatch;
+                      // Update in database too
+                      await ProductDetailsDailySummary.updateOne(
+                        { _id: detail._id },
+                        { $set: { qtyPerBatch: qtyFromBatch } }
+                      );
+                      console.log(`      ✅ Updated qtyPerBatch for ${detail.productId}: ${qtyFromBatch}`);
+                    } else {
+                      console.log(`      ⚠️ Batch value is 0 or invalid`);
+                    }
+                  } else {
+                    console.log(`      ⚠️ Item has no batch field`);
+                  }
+                }
+              }
+              
               // Get all approved products in the group with their details (use ALL approved)
               const combinedItems = groupDailyDetails.map(detail => ({
                 itemId: detail.productId,
@@ -564,9 +591,26 @@ export const updateSalesSummary = async (req, res) => {
                 const remainder = parseFloat((groupTotal - Math.floor(groupTotal)).toFixed(2));
                 const batchAdjusted = isLastBatch && remainder > 0 ? remainder : 1.0;
                 
-                // Use first product's qtyPerBatch (item.batch value)
-                const qtyPerBatch = groupDailyDetails[0]?.qtyPerBatch || masterProduct.qtyPerBatch || 0;
+                // Use first product's qtyPerBatch - get from Item.batch if 0
+                let qtyPerBatch = groupDailyDetails[0]?.qtyPerBatch || 0;
+                console.log(`   🔍 BATCH ${batchNo}: Initial qtyPerBatch from groupDailyDetails = ${qtyPerBatch}`);
+                
+                if (qtyPerBatch === 0) {
+                  console.log(`   ⚠️ qtyPerBatch is 0! Fetching from Item.batch...`);
+                  const item = await Item.findById(groupDailyDetails[0].productId).select('batch name').lean();
+                  console.log(`   📦 Item found:`, item?.name, `batch field =`, item?.batch, `type =`, typeof item?.batch);
+                  
+                  if (item?.batch) {
+                    qtyPerBatch = parseFloat(item.batch) || 0;
+                    console.log(`   ✅ Parsed qtyPerBatch = ${qtyPerBatch}`);
+                  } else {
+                    console.log(`   ❌ ERROR: Item has no batch field!`);
+                  }
+                }
+                
+                console.log(`   🎯 FINAL qtyPerBatch for ${batchNo} = ${qtyPerBatch}`);
                 const qtyAchieved = parseFloat((qtyPerBatch * batchAdjusted).toFixed(2));
+                console.log(`   📊 qtyAchieved = ${qtyPerBatch} × ${batchAdjusted} = ${qtyAchieved}`);
                 
                 const newBatch = new ProductionBatch({
                   itemId: groupProductIds[0],
@@ -596,6 +640,10 @@ export const updateSalesSummary = async (req, res) => {
               if (fullBatches.length > 0) {
                 console.log(`   🔄 Updating ${fullBatches.length} full batches with ALL approved products...`);
                 
+                // Get qtyPerBatch from first product (now guaranteed to be set)
+                const qtyPerBatch = groupDailyDetails[0]?.qtyPerBatch || 0;
+                console.log(`   Using qtyPerBatch: ${qtyPerBatch}`);
+                
                 // Get updated combinedItems with ALL approved products
                 const updatedCombinedItems = groupDailyDetails.map(detail => ({
                   itemId: detail.productId,
@@ -604,11 +652,13 @@ export const updateSalesSummary = async (req, res) => {
                   qtyContribution: detail.qtyPerBatch || 0
                 }));
                 
-                // Update all full batches
+                // Update all full batches with corrected qtyPerBatch and qtyAchieved
                 for (const batch of fullBatches) {
                   batch.combinedItems = updatedCombinedItems;
+                  batch.qtyPerBatch = qtyPerBatch;
+                  batch.qtyAchieved = parseFloat((qtyPerBatch * batch.totalBatchAdjusted).toFixed(2));
                   await batch.save();
-                  console.log(`      ✅ Updated ${batch.batchNo} with ${updatedCombinedItems.length} products`);
+                  console.log(`      ✅ Updated ${batch.batchNo}: qtyPerBatch=${qtyPerBatch}, qtyAchieved=${batch.qtyAchieved}`);
                 }
               }
             }
@@ -749,6 +799,24 @@ export const updateSalesSummary = async (req, res) => {
           if (remainder > 0) {
             console.log(`   ➕ Creating 1 new batch for remainder ${remainder}...`);
             
+            // ✅ FIX: Update qtyPerBatch from Item.batch if missing
+            for (const detail of groupDailyDetails) {
+              if (!detail.qtyPerBatch || detail.qtyPerBatch === 0) {
+                const item = await Item.findById(detail.productId).select('batch').lean();
+                if (item?.batch) {
+                  const qtyFromBatch = parseFloat(item.batch) || 0;
+                  if (qtyFromBatch > 0) {
+                    detail.qtyPerBatch = qtyFromBatch;
+                    await ProductDetailsDailySummary.updateOne(
+                      { _id: detail._id },
+                      { $set: { qtyPerBatch: qtyFromBatch } }
+                    );
+                    console.log(`   ✅ Updated qtyPerBatch for ${detail.productId}: ${qtyFromBatch}`);
+                  }
+                }
+              }
+            }
+            
             // Simple: new batch number = fullBatches + 1
             // Example: fullBatches=2, newBatch=3 (BATNO03)
             const nextBatchNumber = fullBatches + 1;
@@ -765,8 +833,8 @@ export const updateSalesSummary = async (req, res) => {
               qtyContribution: detail.qtyPerBatch || 0
             }));
             
-            // Use first product's qtyPerBatch
-            const qtyPerBatch = groupDailyDetails[0]?.qtyPerBatch || masterProduct.qtyPerBatch || 0;
+            // Use first product's qtyPerBatch (now guaranteed to be correct)
+            const qtyPerBatch = groupDailyDetails[0]?.qtyPerBatch || 0;
             const qtyAchieved = parseFloat((qtyPerBatch * remainder).toFixed(2));
             
             const newBatch = new ProductionBatch({
@@ -942,6 +1010,24 @@ export const updateSalesSummary = async (req, res) => {
             if (remainder > 0) {
               console.log(`   ➕ Creating 1 new batch for remainder ${remainder}...`);
               
+              // ✅ FIX: Update qtyPerBatch from Item.batch if missing
+              for (const detail of groupDailyDetails) {
+                if (!detail.qtyPerBatch || detail.qtyPerBatch === 0) {
+                  const item = await Item.findById(detail.productId).select('batch').lean();
+                  if (item?.batch) {
+                    const qtyFromBatch = parseFloat(item.batch) || 0;
+                    if (qtyFromBatch > 0) {
+                      detail.qtyPerBatch = qtyFromBatch;
+                      await ProductDetailsDailySummary.updateOne(
+                        { _id: detail._id },
+                        { $set: { qtyPerBatch: qtyFromBatch } }
+                      );
+                      console.log(`   ✅ Updated qtyPerBatch for ${detail.productId}: ${qtyFromBatch}`);
+                    }
+                  }
+                }
+              }
+              
               const nextBatchNumber = fullBatches + 1;
               const batchNo = `BATNO${String(nextBatchNumber).padStart(2, '0')}`;
               console.log(`   Creating batch ${batchNo} without pending product`);
@@ -954,7 +1040,7 @@ export const updateSalesSummary = async (req, res) => {
                 qtyContribution: detail.qtyPerBatch || 0
               }));
               
-              const qtyPerBatch = groupDailyDetails[0]?.qtyPerBatch || masterProduct.qtyPerBatch || 0;
+              const qtyPerBatch = groupDailyDetails[0]?.qtyPerBatch || 0;
               const qtyAchieved = parseFloat((qtyPerBatch * remainder).toFixed(2));
               
               const newBatch = new ProductionBatch({

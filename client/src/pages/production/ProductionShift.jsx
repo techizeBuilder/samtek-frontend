@@ -74,6 +74,7 @@ export default function ProductionShift() {
               mouldingTime: item.mouldingTime || '',
               unloadingTime: item.unloadingTime || '',
               productionLoss: item.productionLoss || '',
+              totalBatchAdjusted: item.totalBatchAdjusted !== undefined ? item.totalBatchAdjusted : 1,
               notes: item.notes || '', // Initialize notes field from API
               qtyAchieved: Math.max(0, (item.qtyPerBatch || 0) - (item.productionLoss || 0))
             };
@@ -107,7 +108,9 @@ export default function ProductionShift() {
                 batchKey,
                 batchNo,
                 _id: batchFromAPI._id,
-                batchId: batchFromAPI.batchId
+                batchId: batchFromAPI.batchId,
+                combinedItems: batchFromAPI.combinedItems,
+                combinedItemsLength: batchFromAPI.combinedItems?.length || 0
               });
               
               // Validate we have required data
@@ -133,9 +136,11 @@ export default function ProductionShift() {
                 productionLoss: batchFromAPI.productionLoss !== undefined ? batchFromAPI.productionLoss : '',
                 productionStatus: batchFromAPI.productionStatus || batchFromAPI.status || 'not_started',
                 status: batchFromAPI.status || batchFromAPI.productionStatus || 'not_started',
+                totalBatchAdjusted: batchFromAPI.totalBatchAdjusted !== undefined ? batchFromAPI.totalBatchAdjusted : 1,
                 qtyBatch: batchFromAPI.qtyPerBatch || group.qtyPerBatch || 0,
                 qtyAchieved: batchFromAPI.qtyAchieved !== undefined ? batchFromAPI.qtyAchieved : (batchFromAPI.qtyPerBatch || 0),
-                notes: batchFromAPI.notes || ''
+                notes: batchFromAPI.notes || '',
+                combinedItems: batchFromAPI.combinedItems || [] // CRITICAL: Include populated combinedItems from API
               };
             });
           }
@@ -469,16 +474,27 @@ export default function ProductionShift() {
   // View batch details - Updated to show entire group details
   const handleViewBatch = (group, item, batchKey) => {
     const batch = batchData[batchKey] || {};
+    
+    console.log('🔍 Opening batch details:', {
+      groupId: group._id,
+      groupName: group.name,
+      batchKey,
+      batch,
+      combinedItems: batch.combinedItems,
+      combinedItemsCount: batch.combinedItems?.length || 0
+    });
+    
     setSelectedBatch({
       batchNo: productionGroups.findIndex(g => g._id === group._id) + 1,
       productGroup: group.name,
       group: group, // Pass entire group to show all items
+      batch: batch, // Pass batch data with combinedItems
       mouldingTime: batch.mouldingTime || '00:00',
       unloadingTime: batch.unloadingTime || '00:00',
       productionLoss: batch.productionLoss || 0,
       totalQty: group.qtyPerBatch || 0, // Use qtyPerBatch from ProductionGroup model
       qtyAchieved: Math.max(0, (group.qtyPerBatch || 0) - (batch.productionLoss || 0)), // Auto-calculated: Qty/Batch - Production Loss
-      totalItems: group.totalItems,
+      totalItems: batch.combinedItems?.length || group.totalItems || 0,
       description: group.description || 'No description',
       createdBy: group.createdBy,
       createdAt: group.createdAt
@@ -528,12 +544,12 @@ export default function ProductionShift() {
             )}
           </TableCell>
 
-          {/* No. Of Batches - Show 1 for each individual batch */}
+          {/* No. Of Batches - Dynamic batch weight */}
           <TableCell className="text-center">
             <div className="font-semibold text-purple-600 text-lg">
-              1
+              {batch.totalBatchAdjusted !== undefined ? batch.totalBatchAdjusted : 1}
             </div>
-            <div className="text-xs text-gray-500">batch</div>
+            <div className="text-xs text-gray-500">batch weight</div>
           </TableCell>
         
         {/* Moulding Time - Punch In/Out System */}
@@ -885,12 +901,12 @@ export default function ProductionShift() {
                           </div>
                         </TableCell>
 
-                        {/* No. Of Batches - Show 1 for each individual batch */}
+                        {/* No. Of Batches - Dynamic batch weight */}
                         <TableCell className="text-center">
                           <div className="font-semibold text-purple-600 text-lg">
-                            1
+                            {batch.totalBatchAdjusted !== undefined ? batch.totalBatchAdjusted : 1}
                           </div>
-                          <div className="text-xs text-gray-500">batch</div>
+                          <div className="text-xs text-gray-500">batch weight</div>
                         </TableCell>
                         
                         {/* Moulding Time - Punch In/Out System */}
@@ -1202,7 +1218,7 @@ export default function ProductionShift() {
               {/* All Items in Group or Single Item Details */}
               <div>
                 <label className="text-sm font-medium text-gray-500">
-                  {selectedBatch?.isUngrouped ? 'Item Details' : 'All Items in this Production Group'}
+                  {selectedBatch?.isUngrouped ? 'Item Details' : 'All Items in this Production Batch'}
                 </label>
                 <div className="mt-2 space-y-3 max-h-60 overflow-y-auto">
                   {selectedBatch?.isUngrouped ? (
@@ -1240,35 +1256,52 @@ export default function ProductionShift() {
                       </div>
                     </div>
                   ) : (
-                    /* Multiple items in production group */
-                    selectedBatch.group?.items?.map((item, index) => (
-                    <div key={item._id} className="p-4 border rounded-lg bg-gray-50">
-                      <div className="flex items-center space-x-3">
-                        {item.image ? (
-                          <img
-                            src={item.image}
-                            alt={item.name}
-                            className="w-12 h-12 rounded object-cover"
-                          />
-                        ) : (
-                          <div className="w-12 h-12 rounded bg-gray-200 flex items-center justify-center">
-                            <Package className="w-6 h-6 text-gray-500" />
-                          </div>
-                        )}
-                        <div className="flex-1">
-                          <div className="font-medium">{item.name}</div>
-                          <div className="text-sm text-gray-600">
-                            <strong>Code:</strong> {item.code} | 
-                            <strong> Category:</strong> {item.category}
-                          </div>
-                          <div className="text-sm text-gray-600">
-                            <strong>Qty:</strong> {item.qty} {item.unit} | 
-                            <strong> Qty/Batch:</strong> <span className="text-blue-600 font-medium">{item.qtyPerBatch || 0}</span>
-                          </div>
+                    /* Multiple items from batch.combinedItems */
+                    <>
+                      {(!selectedBatch.batch?.combinedItems || selectedBatch.batch.combinedItems.length === 0) ? (
+                        <div className="p-4 text-center text-gray-500">
+                          No items found in this production batch
                         </div>
-                      </div>
-                    </div>
-                  )))}
+                      ) : (
+                        selectedBatch.batch.combinedItems.map((combinedItem, index) => {
+                          const item = combinedItem.itemId || {};
+                          return (
+                            <div key={item._id || index} className="p-4 border rounded-lg bg-gray-50">
+                              <div className="flex items-center space-x-3">
+                                {item.image ? (
+                                  <img
+                                    src={item.image}
+                                    alt={item.name}
+                                    className="w-12 h-12 rounded object-cover"
+                                  />
+                                ) : (
+                                  <div className="w-12 h-12 rounded bg-gray-200 flex items-center justify-center">
+                                    <Package className="w-6 h-6 text-gray-500" />
+                                  </div>
+                                )}
+                                <div className="flex-1">
+                                  <div className="font-medium">{item.name || 'Unknown Item'}</div>
+                                  <div className="text-sm text-gray-600">
+                                    {item.code && <><strong>Code:</strong> {item.code}</>}
+                                    {item.category && <> | <strong>Category:</strong> {item.category}</>}
+                                  </div>
+                                  <div className="text-sm text-gray-600">
+                                    {item.qty !== undefined && <><strong>Stock:</strong> {item.qty} {item.unit || ''}</>}
+                                    {item.batch && <> | <strong>Batch Size:</strong> {item.batch}</>}
+                                  </div>
+                                  <div className="text-sm text-gray-600 mt-1">
+                                    <strong>Batch Adjusted:</strong> <span className="text-green-600 font-medium">{combinedItem.batchAdjustedValue || 0}</span>
+                                    {' | '}
+                                    <strong>Qty Contribution:</strong> <span className="text-blue-600 font-medium">{combinedItem.qtyContribution || 0}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </>
+                  )}
                 </div>
               </div>
 

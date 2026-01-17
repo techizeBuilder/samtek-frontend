@@ -43,6 +43,7 @@ export default function DeliveryChallan() {
   const [showPreview, setShowPreview] = useState(false);
   const [nextDCNumber, setNextDCNumber] = useState('');
   const [selectedItems, setSelectedItems] = useState({}); // Track which items are selected for dispatch
+  const [expandedGroup, setExpandedGroup] = useState({}); // Track which product groups are expanded
 
   // Direct Order Creation State
   const [isDirectOrderModalOpen, setIsDirectOrderModalOpen] = useState(false);
@@ -1232,70 +1233,119 @@ export default function DeliveryChallan() {
           ) : (
             products.map((product) => {
               const isItemDispatched = product.status === 'dispatched';
+              const hasItems = product.items && product.items.length > 0;
+              
               return (
-                <div key={product._id} className="grid grid-cols-4 border-b border-gray-800 hover:bg-gray-50">
-                  {/* Product Name with Checkbox */}
-                  <div className="border-r border-gray-800 p-3 flex items-center gap-3">
-                    <input
-                      type="checkbox"
-                      className="w-5 h-5 cursor-pointer flex-shrink-0"
-                      checked={selectedItems[product._id] || false}
-                      onChange={(e) => {
-                        setSelectedItems(prev => ({
-                          ...prev,
-                          [product._id]: e.target.checked
-                        }));
-                      }}
-                      disabled={isDispatched || isItemDispatched}
-                    />
-                    <div className="flex-1">
-                      <div className="font-medium">{product.productName}</div>
-                      <div className="text-sm text-blue-600 mt-1 flex items-center gap-2">
-                        {product.productGroup && (
-                          <Badge variant="outline" className="bg-blue-50 text-blue-700">
-                            {product.productGroup}
-                          </Badge>
-                        )}
-                        {isItemDispatched && (
-                          <span className="text-xs text-green-600 font-medium">
-                            Dispatched
-                          </span>
-                        )}
+                <div key={product._id} className="border-b border-gray-800">
+                  {/* Main Row */}
+                  <div className="grid grid-cols-4 hover:bg-gray-50">
+                    {/* Product Name with Checkbox */}
+                    <div className="border-r border-gray-800 p-3 flex items-center gap-3">
+                      <input
+                        type="checkbox"
+                        className="w-5 h-5 cursor-pointer flex-shrink-0"
+                        checked={selectedItems[product._id] || false}
+                        onChange={(e) => {
+                          setSelectedItems(prev => ({
+                            ...prev,
+                            [product._id]: e.target.checked
+                          }));
+                        }}
+                        disabled={isDispatched || isItemDispatched}
+                      />
+                      <div className="flex-1">
+                        <div className="font-medium">{product.productName}</div>
+                        <div className="text-sm text-blue-600 mt-1 flex items-center gap-2 flex-wrap">
+                          {product.productGroup && (
+                            <Badge variant="outline" className="bg-blue-50 text-blue-700">
+                              {product.productGroup}
+                            </Badge>
+                          )}
+                          {product.salesPerson && (
+                            <Badge variant="outline" className="bg-orange-50 text-orange-700">
+                              👤 {product.salesPerson.fullName || product.salesPerson.username}
+                            </Badge>
+                          )}
+                          {isItemDispatched && (
+                            <span className="text-xs text-green-600 font-medium">
+                              Dispatched
+                            </span>
+                          )}
+                          {hasItems && (
+                            <button
+                              onClick={() => setExpandedGroup(prev => ({
+                                ...prev,
+                                [product._id]: !prev[product._id]
+                              }))}
+                              className="text-xs text-blue-600 hover:text-blue-800 underline"
+                            >
+                              {expandedGroup[product._id] ? 'Hide' : 'Show'} {product.items.length} items
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                  {/* Stock / Batch Column */}
-                  <div className="border-r border-gray-800 p-3 text-center flex flex-col items-center justify-center gap-1">
-                    {product.batchNo && (
-                      <Badge variant="outline" className="bg-purple-50 text-purple-700 text-xs">
-                        Stock: {product.batchNo}
+                    {/* Stock / Batch Column - Show totalItemBatch */}
+                    <div className="border-r border-gray-800 p-3 text-center flex flex-col items-center justify-center gap-1">
+                      {product.totalItemBatch !== undefined && product.totalItemBatch !== null ? (
+                        <Badge variant="outline" className="bg-purple-50 text-purple-700 text-lg font-bold">
+                          Total: {product.totalItemBatch}
+                        </Badge>
+                      ) : product.batchNo ? (
+                        <Badge variant="outline" className="bg-purple-50 text-purple-700 text-xs">
+                          Stock: {product.batchNo}
+                        </Badge>
+                      ) : (
+                        <span className="text-gray-400 text-xs">N/A</span>
+                      )}
+                    </div>
+                    <div className="border-r border-gray-800 p-3 text-center flex items-center justify-center">
+                      <Badge variant="outline" className="bg-green-50 text-green-700 text-lg">
+                        {product.indentQty}
                       </Badge>
-                    )}
+                    </div>
+                    <div className="p-3">
+                      <Input
+                        type="number"
+                        placeholder="Enter qty"
+                        className="text-center"
+                        min="0"
+                        max={product.indentQty > 0 ? product.indentQty : undefined}
+                        value={qtyIssuedMap[product._id] || ''}
+                        onChange={(e) => handleQtyIssuedChange(product._id, e.target.value)}
+                        onBlur={(e) => handleQtyIssuedBlur(product._id, e.target.value)}
+                        disabled={isDispatched}
+                      />
+                      {qtyIssuedMap[product._id] && product.indentQty > 0 && Number(qtyIssuedMap[product._id]) > product.indentQty && (
+                        <div className="text-xs text-red-600 mt-1 text-center">
+                          Cannot exceed indent qty
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <div className="border-r border-gray-800 p-3 text-center flex items-center justify-center">
-                    <Badge variant="outline" className="bg-green-50 text-green-700 text-lg">
-                      {product.indentQty}
-                    </Badge>
-                  </div>
-                  <div className="p-3">
-                    <Input
-                      type="number"
-                      placeholder="Enter qty"
-                      className="text-center"
-                      min="0"
-                      max={product.indentQty > 0 ? product.indentQty : undefined}
-                      value={qtyIssuedMap[product._id] || ''}
-                      onChange={(e) => handleQtyIssuedChange(product._id, e.target.value)}
-                      onBlur={(e) => handleQtyIssuedBlur(product._id, e.target.value)}
-                      disabled={isDispatched}
-                    />
-                  {qtyIssuedMap[product._id] && product.indentQty > 0 && Number(qtyIssuedMap[product._id]) > product.indentQty && (
-                    <div className="text-xs text-red-600 mt-1 text-center">
-                      Cannot exceed indent qty
+                  
+                  {/* Expanded Items List */}
+                  {expandedGroup[product._id] && hasItems && (
+                    <div className="bg-gray-50 border-t border-gray-300">
+                      <div className="px-6 py-2">
+                        <div className="text-xs font-semibold text-gray-600 mb-2">Individual Items:</div>
+                        <div className="space-y-1">
+                          {product.items.map((item, idx) => (
+                            <div key={idx} className="flex items-center justify-between text-sm py-1 px-2 bg-white rounded border border-gray-200">
+                              <span className="font-medium text-gray-700">{item.productName}</span>
+                              <div className="flex items-center gap-3">
+                                <Badge variant="outline" className="bg-purple-100 text-purple-700 text-xs">
+                                  Batch: {item.batch || 'N/A'}
+                                </Badge>
+                                <span className="text-gray-500 text-xs">Stock: {item.stock || 0}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
-              </div>
             );
             })
           )}

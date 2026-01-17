@@ -11,6 +11,7 @@ import {
   getDeliveryChallanData,
   updateManualStock,
   getDispatchHistory,
+  updateDispatchDelivery,
   checkExistingDispatch,
   createDispatchFromPacking,
   updateQtyIssued,
@@ -40,6 +41,7 @@ router.get('/dashboard', getDispatchDashboardData); // GET /api/dispatches/dashb
 router.get('/delivery-challan', getDeliveryChallanData); // GET /api/dispatches/delivery-challan
 router.get('/history', getDispatchHistory);        // GET /api/dispatches/history
 router.put('/manual-stock', updateManualStock);    // PUT /api/dispatches/manual-stock
+router.put('/update-delivery/:dispatchId', updateDispatchDelivery); // PUT /api/dispatches/update-delivery/:dispatchId
 
 // New routes for packing integration
 router.post('/check-existing', checkExistingDispatch);     // POST /api/dispatches/check-existing

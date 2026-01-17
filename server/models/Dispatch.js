@@ -100,7 +100,7 @@ const dispatchConsoleSchema = new mongoose.Schema({
   dcno: {
     type: String,
     trim: true,
-    unique: true,
+    sparse: true,
     index: true,
     match: /^DC\d{3,}$/,
     uppercase: true
@@ -217,10 +217,10 @@ dispatchConsoleSchema.pre('save', function(next) {
     (this.previousClosingStockYesterdayBalance || 0) + 
     (this.returnQuantityYesterdayReturns || 0);
   
-  // Calculate excessShortage = available - indent  
+  // Calculate excessShortage = indent - available (positive = shortage, negative = excess)
   this.excessShortage = 
-    (this.totalAvailableStock || 0) - 
-    (this.totalIndentQuantityOrdersForTheDay || 0);
+    (this.totalIndentQuantityOrdersForTheDay || 0) - 
+    (this.totalAvailableStock || 0);
   
   // Calculate closingStockEndOfDayBalance = totalAvailableStock - dispatchedQuantity
   this.closingStockEndOfDayBalance = 
@@ -263,7 +263,7 @@ dispatchConsoleSchema.pre('findOneAndUpdate', function(next) {
       // Calculate dependent fields
       const totalAvailable = packing + closing + returns;
       update.$set.totalAvailableStock = totalAvailable;
-      update.$set.excessShortage = totalAvailable - indent;
+      update.$set.excessShortage = indent - totalAvailable;
       
       // Calculate closingStockEndOfDayBalance = totalAvailableStock - dispatchedQuantity
       const closingStock = totalAvailable - dispatched;

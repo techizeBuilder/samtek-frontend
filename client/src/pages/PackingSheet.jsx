@@ -96,8 +96,8 @@ export default function PackingSheet() {
             groupId: group._id, // This should be the real production group ID
             rawGroupData: group, // Keep original data for debugging
             // Group-level quantities (main totals)
-            groupIndentQty: group.qtyPerBatch || 0,
-            groupProducedQty: group.qtyAchievedPerBatch || 0,
+            groupIndentQty: Number(group.qtyPerBatch || 0).toFixed(2),
+            groupProducedQty: Number(group.qtyAchievedPerBatch || 0).toFixed(2),
             // Include packing sheet data
             packingSheets: group.packingSheets || [],
             hasExistingPackingSheet: group.packingSheets && group.packingSheets.length > 0,
@@ -806,6 +806,13 @@ export default function PackingSheet() {
       debounceTimeoutRef.current = setTimeout(async () => {
         try {
           console.log(`🚀 API call for batch ${batch.batchNo} packing loss: ${packingLoss}`);
+          console.log(`📝 Batch itemId:`, batchData.itemId);
+          // Extract actual ID string from itemId (could be object or string)
+          const productIdValue = typeof batchData.itemId === 'object' && batchData.itemId !== null 
+            ? (batchData.itemId._id || batchData.itemId.toString()) 
+            : batchData.itemId;
+          console.log(`📝 Extracted productId:`, productIdValue);
+          
           const response = await fetch(`${config.baseURL}/api/packing/sheets/${batchPackingSheetId}/item`, {
             method: 'PUT',
             headers: {
@@ -813,7 +820,7 @@ export default function PackingSheet() {
               'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-              productId: batchData.itemId,
+              productId: productIdValue,
               batchId: batchData._id,
               packingLoss: packingLoss
             })
@@ -829,13 +836,14 @@ export default function PackingSheet() {
               description: `Packing loss updated for batch ${batch.batchNo}`,
             });
           } else {
-            throw new Error(`API call failed: ${response.status}`);
+            const errorData = await response.json();
+            throw new Error(errorData.message || `API call failed: ${response.status}`);
           }
         } catch (error) {
           console.error('❌ Error updating batch packing loss:', error);
           toast({
             title: "Error",
-            description: `Failed to update packing loss for batch ${batch.batchNo}`,
+            description: error.message || `Failed to update packing loss for batch ${batch.batchNo}`,
             variant: "destructive",
           });
         }
@@ -864,6 +872,11 @@ export default function PackingSheet() {
     if (batchPackingSheetId) {
       setTimeout(async () => {
         try {
+          // Extract actual ID string from itemId (could be object or string)
+          const productIdValue = typeof batchData.itemId === 'object' && batchData.itemId !== null 
+            ? (batchData.itemId._id || batchData.itemId.toString()) 
+            : batchData.itemId;
+          
           const response = await fetch(`${config.baseURL}/api/packing/sheets/${batchPackingSheetId}/item`, {
             method: 'PUT',
             headers: {
@@ -871,7 +884,7 @@ export default function PackingSheet() {
               'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-              productId: batchData.itemId,
+              productId: productIdValue,
               batchId: batchData._id,
               notes: newNotes
             })
@@ -1113,7 +1126,7 @@ export default function PackingSheet() {
                     </td>
                     <td className="border border-gray-900 px-1 sm:px-2 py-2 text-center">
                       <span className="bg-gray-200 text-gray-700 px-2 py-1 rounded text-xs font-bold">
-                        {group.items.reduce((sum, i) => sum + (i.dailySummaryData?.productionFinalBatches || 0), 0)}
+                        {Number(group.rawGroupData?.qtyAchievedPerBatch || 0).toFixed(2)}
                       </span>
                     </td>
                     <td className="border border-gray-900 px-1 sm:px-2 py-2 text-center">
@@ -1150,14 +1163,14 @@ export default function PackingSheet() {
                           {/* Indent Qty - from batch */}
                           <td className="border border-gray-900 px-1 sm:px-2 py-2 text-center">
                             <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs sm:text-sm font-medium">
-                              {batch.qtyAchieved || 0}
+                              {Number(batch.qtyAchieved || 0).toFixed(2)}
                             </span>
                           </td>
                           
                           {/* Produced Qty - from batch */}
                           <td className="border border-gray-900 px-1 sm:px-2 py-2 text-center">
                             <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs sm:text-sm font-medium">
-                              {batch.qtyAchieved || 0}
+                              {Number(batch.qtyAchieved || 0).toFixed(2)}
                             </span>
                           </td>
                           
@@ -1225,7 +1238,7 @@ export default function PackingSheet() {
                           {/* Batch-level Qty Packed */}
                           <td className="border border-gray-900 px-1 sm:px-2 py-2 text-center">
                             <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold">
-                              {Math.max(0, (batch.qtyAchieved || 0) - (batch.packingLoss || 0))}
+                              {(Math.max(0, (batch.qtyAchieved || 0) - (batch.packingLoss || 0))).toFixed(2)}
                             </span>
                           </td>
                           

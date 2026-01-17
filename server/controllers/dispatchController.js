@@ -366,8 +366,8 @@ export const getDispatchDashboardData = async (req, res) => {
       // Calculate totalAvailableStock = Packed + Previous Closing + Returns
       const calculatedTotalAvailable = packedQty + previousClosing + returns;
       
-      // Calculate excessShortage = Total Available - Total Indent
-      const calculatedExcessShortage = calculatedTotalAvailable - totalIndent;
+      // Calculate excessShortage = Total Indent - Total Available (positive = shortage, negative = excess)
+      const calculatedExcessShortage = totalIndent - calculatedTotalAvailable;
       
       // Calculate overallLoss = Total Available - Dispatched - Physical Stock
       const calculatedOverallLoss = calculatedTotalAvailable - dispatched - physicalStock;
@@ -637,6 +637,14 @@ export const getDispatchHistory = async (req, res) => {
         select: 'companyName'
       })
       .populate({
+        path: 'customer',
+        select: 'name phone email address city'
+      })
+      .populate({
+        path: 'salesPerson',
+        select: 'username fullName'
+      })
+      .populate({
         path: 'lastUpdatedBy',
         select: 'username fullName'
       })
@@ -696,6 +704,19 @@ export const getDispatchHistory = async (req, res) => {
     const formattedData = dispatchHistory.map(dispatch => ({
       id: dispatch._id,
       dispatchId: dispatch._id,
+      customer: dispatch.customer ? {
+        id: dispatch.customer._id,
+        name: dispatch.customer.name || 'Unknown',
+        phone: dispatch.customer.phone || '',
+        email: dispatch.customer.email || '',
+        address: dispatch.customer.address || '',
+        city: dispatch.customer.city || ''
+      } : null,
+      salesPerson: dispatch.salesPerson ? {
+        id: dispatch.salesPerson._id,
+        username: dispatch.salesPerson.username || '',
+        fullName: dispatch.salesPerson.fullName || ''
+      } : null,
       packingSheet: {
         id: dispatch.packingSheetId?._id,
         slNo: dispatch.packingSheetId?.slNo || 'N/A',
@@ -725,8 +746,12 @@ export const getDispatchHistory = async (req, res) => {
       },
       status: dispatch.status || 'pending',
       date: dispatch.date,
+      deliveryDate: dispatch.approvedAt || null,
+      dcno: dispatch.dcno || '',
       batchNo: dispatch.batchNo || '',
       remarks: dispatch.remarks || '',
+      vehicleNumber: dispatch.vehicleNumber || '',
+      transporterName: dispatch.transporterName || '',
       verifiedBy: dispatch.verifiedBy?.username || dispatch.verifiedBy?.fullName || null,
       verifiedAt: dispatch.verifiedAt,
       lastUpdatedBy: dispatch.lastUpdatedBy?.username || dispatch.lastUpdatedBy?.fullName || 'Unknown',
@@ -766,6 +791,80 @@ export const getDispatchHistory = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to fetch dispatch history',
+      error: error.message
+    });
+  }
+};
+
+// Update dispatch delivery date and qty issued
+export const updateDispatchDelivery = async (req, res) => {
+  try {
+    const { dispatchId } = req.params;
+    const { deliveryDate, qtyIssued } = req.body;
+    const userCompanyId = req.user.companyId;
+
+    console.log('📝 Updating dispatch delivery:', { dispatchId, deliveryDate, qtyIssued, userCompanyId });
+
+    // Validate dispatch ID
+    if (!dispatchId || !mongoose.Types.ObjectId.isValid(dispatchId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid dispatch ID is required'
+      });
+    }
+
+    // Find dispatch and verify company access
+    const dispatch = await Dispatch.findOne({
+      _id: dispatchId,
+      company: userCompanyId
+    });
+
+    if (!dispatch) {
+      return res.status(404).json({
+        success: false,
+        message: 'Dispatch not found or access denied'
+      });
+    }
+
+    // Build update object
+    const updateData = {
+      lastUpdatedBy: req.user.id,
+      updatedAt: new Date()
+    };
+
+    if (deliveryDate) {
+      updateData.deliveryDate = new Date(deliveryDate);
+      updateData.approvedAt = new Date(deliveryDate); // Set approvedAt as delivery date
+    }
+
+    if (qtyIssued !== undefined && qtyIssued !== null) {
+      updateData.qtyIssued = parseFloat(qtyIssued);
+    }
+
+    // Update dispatch
+    const updatedDispatch = await Dispatch.findByIdAndUpdate(
+      dispatchId,
+      { $set: updateData },
+      { new: true, runValidators: true }
+    )
+      .populate('customer', 'name phone email')
+      .populate('salesPerson', 'username fullName')
+      .populate('productId', 'name code category unit')
+      .lean();
+
+    console.log('✅ Dispatch updated successfully:', updatedDispatch._id);
+
+    res.json({
+      success: true,
+      message: 'Dispatch updated successfully',
+      data: updatedDispatch
+    });
+
+  } catch (error) {
+    console.error('❌ Error updating dispatch delivery:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update dispatch',
       error: error.message
     });
   }
@@ -1703,38 +1802,247 @@ export const getTodaysProducts = async (req, res) => {
 
     // Find dispatch entries for today
     const dispatchProducts = await Dispatch.find(query)
-    .sort({ createdAt: -1 });
+      .populate('packingSheetId')
+      .populate('salesPerson', 'fullName username email')
+      .populate('customer', 'name customerCode address phone email')
+      .sort({ createdAt: -1 });
 
     console.log(`✅ Found ${dispatchProducts.length} dispatch products for today with filters`);
 
-    // Format the response with item details from inventory
-    const products = await Promise.all(dispatchProducts.map(async (dispatch) => {
-      // Get item details from Item table using productId
-      let itemDetails = null;
-      if (dispatch.productId) {
-        try {
-          itemDetails = await Item.findById(dispatch.productId).select('stock batch location qty');
-          console.log(`📦 Item details for ${dispatch.productName}:`, itemDetails);
-        } catch (err) {
-          console.log(`⚠️ Could not fetch item details for productId: ${dispatch.productId}`);
+    // Import required models
+    const PackingSheet = (await import('../models/Packing.js')).default;
+    const ProductionBatch = (await import('../models/ProductionBatch.js')).default;
+    const Item = (await import('../models/Inventory.js')).default;
+
+    // Group dispatches by packingSheetId
+    const groupedByPackingSheet = {};
+    
+    for (const dispatch of dispatchProducts) {
+      const packingSheetId = dispatch.packingSheetId?._id?.toString() || dispatch.packingSheetId?.toString();
+      
+      if (!packingSheetId) {
+        // Handle ungrouped items (no packing sheet)
+        const key = `ungrouped_${dispatch._id}`;
+        if (!groupedByPackingSheet[key]) {
+          groupedByPackingSheet[key] = {
+            _id: dispatch._id,
+            packingSheetId: null,
+            productGroup: dispatch.productGroup || 'Ungrouped',
+            company: dispatch.company,
+            date: dispatch.date,
+            packedQuantityReadyForDispatch: dispatch.packedQuantityReadyForDispatch,
+            previousClosingStockYesterdayBalance: dispatch.previousClosingStockYesterdayBalance,
+            returnQuantityYesterdayReturns: dispatch.returnQuantityYesterdayReturns,
+            totalAvailableStock: dispatch.totalAvailableStock,
+            totalIndentQuantityOrdersForTheDay: dispatch.totalIndentQuantityOrdersForTheDay,
+            excessShortage: dispatch.excessShortage,
+            dispatchedQuantitySentToday: dispatch.dispatchedQuantitySentToday,
+            closingStockEndOfDayBalance: dispatch.closingStockEndOfDayBalance,
+            physicalStockEntryManualVerification: dispatch.physicalStockEntryManualVerification,
+            overallLoss: dispatch.overallLoss,
+            dcno: dispatch.dcno,
+            batchNo: dispatch.batchNo,
+            remarks: dispatch.remarks,
+            verifiedBy: dispatch.verifiedBy,
+            verifiedAt: dispatch.verifiedAt,
+            salesPerson: dispatch.salesPerson ? {
+              _id: dispatch.salesPerson._id,
+              fullName: dispatch.salesPerson.fullName,
+              username: dispatch.salesPerson.username,
+              email: dispatch.salesPerson.email
+            } : null,
+            customer: dispatch.customer ? {
+              _id: dispatch.customer._id,
+              name: dispatch.customer.name,
+              customerCode: dispatch.customer.customerCode,
+              address: dispatch.customer.address,
+              phone: dispatch.customer.phone,
+              email: dispatch.customer.email
+            } : null,
+            orderId: dispatch.orderId,
+            indentQty: dispatch.indentQty,
+            qtyIssued: dispatch.qtyIssued,
+            approvedBy: dispatch.approvedBy,
+            approvedAt: dispatch.approvedAt,
+            invoiceGenerated: dispatch.invoiceGenerated,
+            status: dispatch.status,
+            lastUpdatedBy: dispatch.lastUpdatedBy,
+            items: []
+          };
+        }
+        
+        // Add item details for ungrouped item
+        let itemDetails = null;
+        if (dispatch.productId) {
+          try {
+            itemDetails = await Item.findById(dispatch.productId).select('name stock batch location qty');
+          } catch (err) {
+            console.log(`⚠️ Could not fetch item details for productId: ${dispatch.productId}`);
+          }
+        }
+        
+        groupedByPackingSheet[key].items.push({
+          itemId: dispatch.productId?._id || dispatch.productId,
+          productName: dispatch.productName || itemDetails?.name || 'Unknown',
+          batch: itemDetails?.batch || dispatch.batchNo || null, // ✅ Item's batch from Item table
+          stock: itemDetails?.stock || itemDetails?.qty || dispatch.totalAvailableStock || 0,
+          qtyIssued: dispatch.qtyIssued || 0,
+          status: dispatch.status,
+          totalAvailableStock: dispatch.totalAvailableStock || 0
+        });
+        
+        // ✅ Add group-level indentQty for ungrouped items
+        groupedByPackingSheet[key].indentQty = dispatch.totalIndentQuantityOrdersForTheDay || dispatch.indentQty || 0;
+        
+        // ✅ Calculate totalItemBatch for ungrouped items
+        const itemBatchValue = parseFloat(itemDetails?.batch) || 0;
+        groupedByPackingSheet[key].totalItemBatch = itemBatchValue;
+      } else {
+        // Handle grouped items with packing sheet
+        if (!groupedByPackingSheet[packingSheetId]) {
+          groupedByPackingSheet[packingSheetId] = {
+            _id: dispatch._id,
+            packingSheetId: packingSheetId,
+            productGroup: dispatch.productGroup,
+            company: dispatch.company,
+            date: dispatch.date,
+            packedQuantityReadyForDispatch: dispatch.packedQuantityReadyForDispatch,
+            previousClosingStockYesterdayBalance: dispatch.previousClosingStockYesterdayBalance,
+            returnQuantityYesterdayReturns: dispatch.returnQuantityYesterdayReturns,
+            totalAvailableStock: dispatch.totalAvailableStock,
+            totalIndentQuantityOrdersForTheDay: dispatch.totalIndentQuantityOrdersForTheDay,
+            excessShortage: dispatch.excessShortage,
+            dispatchedQuantitySentToday: dispatch.dispatchedQuantitySentToday,
+            closingStockEndOfDayBalance: dispatch.closingStockEndOfDayBalance,
+            physicalStockEntryManualVerification: dispatch.physicalStockEntryManualVerification,
+            overallLoss: dispatch.overallLoss,
+            dcno: dispatch.dcno,
+            batchNo: dispatch.batchNo,
+            remarks: dispatch.remarks,
+            verifiedBy: dispatch.verifiedBy,
+            verifiedAt: dispatch.verifiedAt,
+            salesPerson: dispatch.salesPerson ? {
+              _id: dispatch.salesPerson._id,
+              fullName: dispatch.salesPerson.fullName,
+              username: dispatch.salesPerson.username,
+              email: dispatch.salesPerson.email
+            } : null,
+            customer: dispatch.customer ? {
+              _id: dispatch.customer._id,
+              name: dispatch.customer.name,
+              customerCode: dispatch.customer.customerCode,
+              address: dispatch.customer.address,
+              phone: dispatch.customer.phone,
+              email: dispatch.customer.email
+            } : null,
+            orderId: dispatch.orderId,
+            indentQty: dispatch.indentQty,
+            qtyIssued: dispatch.qtyIssued,
+            approvedBy: dispatch.approvedBy,
+            approvedAt: dispatch.approvedAt,
+            invoiceGenerated: dispatch.invoiceGenerated,
+            status: dispatch.status,
+            lastUpdatedBy: dispatch.lastUpdatedBy,
+            items: []
+          };
         }
       }
+    }
 
-      return {
-        _id: dispatch._id,
-        productId: dispatch.productId?._id || dispatch.productId,
-        productName: dispatch.productName,
-        productGroup: dispatch.productGroup,
-        indentQty: dispatch.totalIndentQuantityOrdersForTheDay || dispatch.indentQty || 0,
-        qtyIssued: dispatch.qtyIssued || 0,
-        dcno: dispatch.dcno,
-        status: dispatch.status,
-        // Add stock and batch info from Item table
-        stock: itemDetails?.stock || itemDetails?.qty || dispatch.totalAvailableStock || 0,
-        batchNo: itemDetails?.batch || dispatch.batchNo || null,
-        totalAvailableStock: dispatch.totalAvailableStock || 0
-      };
-    }));
+    // For each packing sheet, get production batch details and items
+    const products = [];
+    
+    for (const [key, group] of Object.entries(groupedByPackingSheet)) {
+      if (key.startsWith('ungrouped_')) {
+        // Already processed ungrouped items
+        products.push(group);
+        continue;
+      }
+      
+      try {
+        // Get packing sheet details
+        const packingSheet = await PackingSheet.findById(group.packingSheetId);
+        
+        if (!packingSheet) {
+          console.log(`⚠️ Packing sheet not found: ${group.packingSheetId}`);
+          continue;
+        }
+        
+        // Get production batch using productionGroup from packing sheet
+        const productionBatch = await ProductionBatch.findOne({
+          groupId: packingSheet.productionGroup,
+          companyId: req.user.companyId
+        }).populate('combinedItems.itemId');
+        
+        if (!productionBatch || !productionBatch.combinedItems || productionBatch.combinedItems.length === 0) {
+          console.log(`⚠️ No production batch or combined items found for group: ${packingSheet.productionGroup}`);
+          continue;
+        }
+        
+        console.log(`📦 Found production batch with ${productionBatch.combinedItems.length} items for packing sheet ${group.packingSheetId}`);
+        
+        // Get dispatch details for this packing sheet to get indent quantities
+        const relatedDispatches = dispatchProducts.filter(d => {
+          const dPackingSheetId = d.packingSheetId?._id?.toString() || d.packingSheetId?.toString();
+          return dPackingSheetId === group.packingSheetId;
+        });
+        
+        // Build items array from combinedItems in production batch
+        for (const combinedItem of productionBatch.combinedItems) {
+          const item = combinedItem.itemId;
+          
+          if (!item) {
+            console.log(`⚠️ Item not found in combinedItems`);
+            continue;
+          }
+          
+          // Fetch fresh item details from Item collection to get current batch number
+          let itemBatch = null;
+          let itemStock = 0;
+          try {
+            const freshItem = await Item.findById(item._id).select('batch stock qty').lean();
+            if (freshItem) {
+              itemBatch = freshItem.batch;
+              itemStock = freshItem.stock || freshItem.qty || 0;
+            }
+          } catch (err) {
+            console.log(`⚠️ Could not fetch fresh item data for ${item._id}`);
+          }
+          
+          // Find matching dispatch entry for this item
+          const matchingDispatch = relatedDispatches.find(d => 
+            d.productId?.toString() === item._id.toString()
+          );
+          
+          group.items.push({
+            itemId: item._id,
+            productName: item.name || 'Unknown',
+            batch: itemBatch || item.batch || null, // ✅ Each item's batch from Item table
+            stock: itemStock || item.stock || item.qty || 0,
+            qtyIssued: matchingDispatch?.qtyIssued || 0,
+            status: matchingDispatch?.status || 'pending',
+            totalAvailableStock: matchingDispatch?.totalAvailableStock || itemStock || 0
+          });
+        }
+        
+        // ✅ Add group-level indentQty (already exists as totalIndentQuantityOrdersForTheDay)
+        group.indentQty = group.totalIndentQuantityOrdersForTheDay;
+        
+        // ✅ Calculate totalItemBatch: sum of all item.batch values in this group
+        const totalItemBatch = group.items.reduce((sum, item) => {
+          const batchValue = parseFloat(item.batch) || 0;
+          return sum + batchValue;
+        }, 0);
+        group.totalItemBatch = totalItemBatch;
+        
+        products.push(group);
+        
+      } catch (err) {
+        console.error(`❌ Error processing packing sheet ${group.packingSheetId}:`, err);
+      }
+    }
+
+    console.log(`✅ Returning ${products.length} grouped products`);
 
     res.json({
       success: true,
@@ -2109,23 +2417,68 @@ export const generateInvoiceForDC = async (req, res) => {
     const customerCode = requestBody.customerCode || dispatch.customer?.customerCode || 'N/A';
 
     // Find all items with the same DC number
-    const allDCItems = await Dispatch.find({
+    let allDCItems = await Dispatch.find({
       dcno: dispatch.dcno,
       company: req.user.companyId
     })
     .populate('productId', 'name code category unit price')
     .populate('salesPerson', 'fullName username email')
-    .populate('customer', 'name customerCode address phone email');
+    .populate('customer', 'name customerCode address phone email')
+    .lean();
+
+    console.log('🔍 Found', allDCItems.length, 'items for DC:', dispatch.dcno);
+    
+    // If productId populate failed but we have productId references, fetch them manually
+    for (let i = 0; i < allDCItems.length; i++) {
+      const item = allDCItems[i];
+      if (item.productId && typeof item.productId === 'string' && !item.productId.name) {
+        console.log('⚠️ Product not populated, fetching manually for productId:', item.productId);
+        const product = await Item.findById(item.productId).select('name code category unit').lean();
+        if (product) {
+          allDCItems[i].productId = product;
+          console.log('✅ Manually fetched product:', product.name);
+        }
+      }
+    }
+    
+    // Log first item details for debugging
+    if (allDCItems.length > 0) {
+      const firstItem = allDCItems[0];
+      console.log('📦 First item details:', {
+        _id: firstItem._id,
+        productId: firstItem.productId?._id,
+        productIdName: firstItem.productId?.name,
+        productName: firstItem.productName,
+        productGroup: firstItem.productGroup,
+        indentQty: firstItem.indentQty,
+        qtyIssued: firstItem.qtyIssued
+      });
+    }
 
     // Use items from request if provided, otherwise use database items
     const items = requestBody.items && requestBody.items.length > 0 
       ? requestBody.items 
-      : allDCItems.map(item => ({
-          productName: item.productName,
-          productGroup: item.productGroup,
-          indentQty: item.indentQty,
-          qtyIssued: item.qtyIssued
-        }));
+      : allDCItems.map(item => {
+          // Try multiple sources for product name
+          const productName = item.productId?.name || item.productName || 'Product Name Not Set';
+          
+          console.log('📋 Mapping item:', {
+            hasProductId: !!item.productId,
+            productIdName: item.productId?.name,
+            productName: item.productName,
+            finalName: productName,
+            indentQty: item.indentQty || item.totalIndentQuantityOrdersForTheDay,
+            qtyIssued: item.qtyIssued || item.dispatchedQuantitySentToday
+          });
+          
+          return {
+            productName: productName,
+            productGroup: item.productGroup || '',
+            indentQty: item.indentQty || item.totalIndentQuantityOrdersForTheDay || 0,
+            qtyIssued: item.qtyIssued || item.dispatchedQuantitySentToday || 0,
+            unit: item.productId?.unit || item.unit || 'Pcs'
+          };
+        });
 
     // Don't update status - keep it as dispatched
     // Invoice generation should not change dispatch status
@@ -2325,8 +2678,8 @@ export const generateInvoiceForDC = async (req, res) => {
       // Row data
       doc.text(`${index + 1}`, slCol, currentY + 10, { width: 30 });
       doc.text(item.productName || 'N/A', itemCol, currentY + 6, { width: 190 });
-      doc.text(item.productGroup || 'N/A', groupCol, currentY + 10, { width: 100 });
-      doc.text('Pcs', unitCol, currentY + 10, { width: 45 });
+      doc.text(item.productGroup || '', groupCol, currentY + 10, { width: 100 });
+      doc.text(item.unit || 'Pcs', unitCol, currentY + 10, { width: 45 });
       doc.text(`${item.indentQty || 0}`, qtyCol, currentY + 10, { width: 40, align: 'right' });
       doc.text(`${item.qtyIssued || 0}`, rateCol, currentY + 10, { width: 40, align: 'right' });
 
@@ -2341,8 +2694,8 @@ export const generateInvoiceForDC = async (req, res) => {
     doc.rect(30, currentY, 535, 25).fillAndStroke('#e5e7eb', '#9ca3af');
     doc.fontSize(9).font('Helvetica-Bold').fillColor('#000000');
     doc.text('SUBTOTAL:', groupCol, currentY + 8);
-    doc.text(`${totalIndent}`, qtyCol, currentY + 8, { width: 40, align: 'right' });
-    doc.text(`${totalIssued}`, rateCol, currentY + 8, { width: 40, align: 'right' });
+    doc.text(totalIndent.toFixed(2), qtyCol, currentY + 8, { width: 40, align: 'right' });
+    doc.text(totalIssued.toFixed(2), rateCol, currentY + 8, { width: 40, align: 'right' });
     
     currentY += 25;
 

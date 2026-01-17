@@ -126,6 +126,11 @@ export const getProductionGroupsForPacking = async (req, res) => {
       }
       
       const groupItems = [];
+      // Calculate raw production (before loss): sum of (totalBatchAdjusted × qtyPerBatch)
+      const totalGroupRawProduction = groupCompletedBatches.reduce((sum, batch) => {
+        const batchRawProduction = (batch.totalBatchAdjusted || 1) * (batch.qtyPerBatch || 0);
+        return sum + batchRawProduction;
+      }, 0);
       const totalGroupAchievedQty = groupCompletedBatches.reduce((sum, batch) => sum + (batch.qtyAchieved || 0), 0);
       const totalGroupLoss = groupCompletedBatches.reduce((sum, batch) => sum + (batch.productionLoss || 0), 0);
       
@@ -235,15 +240,26 @@ export const getProductionGroupsForPacking = async (req, res) => {
       if (groupItems.length > 0) {
         console.log(`📦 Adding group ${group.name}: ${groupItems.length} items, ${groupCompletedBatches.length} completed batches`);
 
+        // Round all numeric values to 2 decimal places
+        const round2 = (num) => Math.round((Number(num) || 0) * 100) / 100;
+
         packingData.push({
           _id: group._id,
           name: group.name,
           description: group.description || '',
           totalItems: groupItems.length,
-          qtyPerBatch: group.qtyPerBatch || 0,
-          qtyAchievedPerBatch: totalGroupAchievedQty,
-          productionLoss: totalGroupLoss,
-          items: groupItems,
+          qtyPerBatch: round2(group.qtyPerBatch),
+          qtyAchievedPerBatch: round2(totalGroupRawProduction),
+          productionLoss: round2(totalGroupLoss),
+          items: groupItems.map(item => ({
+            ...item,
+            indentQty: round2(item.indentQty),
+            producedQty: round2(item.producedQty),
+            achievedQty: round2(item.achievedQty),
+            packedQty: round2(item.packedQty),
+            packingLoss: round2(item.packingLoss),
+            currentStock: round2(item.currentStock)
+          })),
           createdBy: group.createdBy?.username || 'Unknown',
           createdAt: group.createdAt,
           completedBatches: groupCompletedBatches.length
@@ -274,6 +290,11 @@ export const getProductionGroupsForPacking = async (req, res) => {
         );
 
         if (itemCompletedBatches.length > 0) {
+          // Calculate raw production (before loss): sum of (totalBatchAdjusted × qtyPerBatch)
+          const totalRawProduction = itemCompletedBatches.reduce((sum, batch) => {
+            const batchRawProduction = (batch.totalBatchAdjusted || 1) * (batch.qtyPerBatch || 0);
+            return sum + batchRawProduction;
+          }, 0);
           const totalAchievedQty = itemCompletedBatches.reduce((sum, batch) => sum + (batch.qtyAchieved || 0), 0);
           const totalProductionLoss = itemCompletedBatches.reduce((sum, batch) => sum + (batch.productionLoss || 0), 0);
           
@@ -294,7 +315,7 @@ export const getProductionGroupsForPacking = async (req, res) => {
             description: `Individual production group for ${item.name}`,
             totalItems: 1,
             qtyPerBatch: 0,
-            qtyAchievedPerBatch: totalAchievedQty,
+            qtyAchievedPerBatch: Math.round(totalRawProduction * 100) / 100,
             productionLoss: totalProductionLoss,
             items: [{
               _id: item._id,
@@ -391,43 +412,92 @@ export const getProductionGroupsForPacking = async (req, res) => {
     if (trueOrphanBatches.length > 0) {
       console.log(`🔄 Found ${trueOrphanBatches.length} truly orphaned batches - adding to ungrouped`);
       
+      // Try to populate itemId for each orphan batch to get product name
+      const orphanBatchesWithItems = await Promise.all(
+        trueOrphanBatches.map(async (batch) => {
+          // Try to get itemId from batch.itemId or batch.combinedItems[0].itemId
+          const itemIdToFetch = batch.itemId || (batch.combinedItems && batch.combinedItems.length > 0 ? batch.combinedItems[0].itemId : null);
+          
+          if (itemIdToFetch) {
+            const item = await Item.findById(itemIdToFetch).lean();
+            return { ...batch, itemData: item, actualItemId: itemIdToFetch };
+          }
+          return { ...batch, itemData: null, actualItemId: null };
+        })
+      );
+      
+      // If there's only one orphan batch with an item, use the item name
+      const groupName = orphanBatchesWithItems.length === 1 && orphanBatchesWithItems[0].itemData 
+        ? orphanBatchesWithItems[0].itemData.name 
+        : 'Ungrouped Items';
+      
       packingData.push({
         _id: 'ungrouped-items',
-        name: 'Ungrouped Items',
-        description: 'Batches without proper item or group assignment',
+        name: groupName,
+        description: orphanBatchesWithItems.length === 1 && orphanBatchesWithItems[0].itemData
+          ? `Production batch for ${orphanBatchesWithItems[0].itemData.name}`
+          : 'Batches without proper item or group assignment',
         totalItems: trueOrphanBatches.length,
         qtyPerBatch: 0,
-        qtyAchievedPerBatch: trueOrphanBatches.reduce((sum, batch) => sum + (batch.qtyAchieved || 0), 0),
+        qtyAchievedPerBatch: Math.round(trueOrphanBatches.reduce((sum, batch) => {
+          const batchRawProduction = (batch.totalBatchAdjusted || 1) * (batch.qtyPerBatch || 0);
+          return sum + batchRawProduction;
+        }, 0) * 100) / 100,
         productionLoss: trueOrphanBatches.reduce((sum, batch) => sum + (batch.productionLoss || 0), 0),
-        items: trueOrphanBatches.map(batch => ({
-          _id: batch._id,
-          name: `Batch ${batch.batchNo}`,
-          code: batch.batchNo,
-          category: 'Unknown',
-          unit: 'pcs',
-          image: null,
-          currentStock: 0,
-          producedQty: 0,
-          indentQty: 0,
-          achievedQty: batch.qtyAchieved || 0,
-          packedQty: 0,
-          packingLoss: 0,
-          notes: '',
-          completedBatches: 1,
-          batchDetails: [{
+        items: await Promise.all(orphanBatchesWithItems.map(async (batch) => {
+          // Get packing sheets for this batch
+          const batchPackingSheets = await PackingSheet.find({
+            $or: [
+              { batchId: batch._id },
+              { batchNo: batch.batchNo }
+            ],
+            company: req.user.companyId,
+            packingDate: { $gte: targetDate, $lte: endOfDay }
+          }).lean() || [];
+
+          return {
             _id: batch._id,
-            batchNo: batch.batchNo,
-            qtyAchieved: batch.qtyAchieved,
-            productionLoss: batch.productionLoss,
-            status: 'completed',
-            companyId: batch.companyId,
-            itemId: batch.itemId,
-            groupId: batch.groupId,
-            productionDate: batch.productionDate,
-            createdAt: batch.createdAt,
-            updatedAt: batch.updatedAt
-          }],
-          dailySummaryData: null
+            name: batch.itemData ? batch.itemData.name : `Batch ${batch.batchNo}`,
+            code: batch.itemData ? batch.itemData.code : batch.batchNo,
+            category: batch.itemData ? batch.itemData.category : 'Unknown',
+            unit: batch.itemData ? batch.itemData.unit : 'pcs',
+            image: batch.itemData ? batch.itemData.image : null,
+            currentStock: batch.itemData ? batch.itemData.qty : 0,
+            producedQty: 0,
+            indentQty: 0,
+            achievedQty: batch.qtyAchieved || 0,
+            packedQty: 0,
+            packingLoss: 0,
+            notes: '',
+            completedBatches: 1,
+            batchDetails: [{
+              _id: batch._id,
+              batchNo: batch.batchNo,
+              qtyAchieved: batch.qtyAchieved,
+              productionLoss: batch.productionLoss,
+              status: 'completed',
+              companyId: batch.companyId,
+              itemId: batch.actualItemId || batch.itemId,
+              groupId: batch.groupId,
+              productionDate: batch.productionDate,
+              createdAt: batch.createdAt,
+              updatedAt: batch.updatedAt,
+              // Include packing sheets for this batch
+              packingSheets: batchPackingSheets.map(sheet => ({
+                _id: sheet._id,
+                packingStartTime: sheet.packingStartTime,
+                packingEndTime: sheet.packingEndTime,
+                packingLoss: sheet.packingLoss || 0,
+                packedQty: sheet.totalPackedQty || batch.qtyAchieved || 0,
+                notes: sheet.notes || '',
+                status: sheet.status || 'pending',
+                isApproved: sheet.status === 'approved',
+                createdAt: sheet.createdAt,
+                updatedAt: sheet.updatedAt
+              }))
+            }],
+            dailySummaryData: null
+          };
         })),
         createdBy: 'System',
         createdAt: new Date(),
@@ -549,9 +619,23 @@ export const getPackingSheets = async (req, res) => {
 
     console.log(`✅ Found ${packingSheets.length} packing sheets`);
 
+    // Helper function to round to 2 decimal places
+    const round2 = (num) => Math.round((Number(num) || 0) * 100) / 100;
+
     // Add computed fields for each packing sheet
     const enrichedPackingSheets = packingSheets.map(sheet => ({
       ...sheet,
+      // Round all numeric fields to 2 decimal places
+      totalPackedQty: round2(sheet.totalPackedQty),
+      packingLoss: round2(sheet.packingLoss),
+      updatedPackedQty: round2(sheet.updatedPackedQty),
+      items: sheet.items.map(item => ({
+        ...item,
+        indentQty: round2(item.indentQty),
+        producedQty: round2(item.producedQty),
+        packedQty: round2(item.packedQty),
+        packingLoss: round2(item.packingLoss)
+      })),
       // Computed fields for frontend logic
       hasPackingProgress: sheet.items.some(item => (Number(item.packedQty) || 0) > 0) || 
                          Number(sheet.packingLoss) > 0 || 
@@ -563,8 +647,7 @@ export const getPackingSheets = async (req, res) => {
                    (sheet.notes && sheet.notes.trim().length > 0) ||
                    Boolean(sheet.packingStartTime)
                    ),
-      totalPackedQty: sheet.items.reduce((sum, item) => sum + (Number(item.packedQty) || 0), 0),
-      totalProducedQty: sheet.items.reduce((sum, item) => sum + (Number(item.producedQty) || 0), 0),
+      totalProducedQty: round2(sheet.items.reduce((sum, item) => sum + (Number(item.producedQty) || 0), 0)),
       packingProgress: (() => {
         const totalProduced = sheet.items.reduce((sum, item) => sum + (Number(item.producedQty) || 0), 0);
         const totalPacked = sheet.items.reduce((sum, item) => sum + (Number(item.packedQty) || 0), 0);
@@ -1224,25 +1307,8 @@ export const getPackingStats = async (req, res) => {
 export const updatePackingItem = async (req, res) => {
   try {
     const { packingSheetId } = req.params;
-    const { productId, packingLoss, notes, batchId, batchNo } = req.body;
-    console.log('📝 Updating individual packing item:', { packingSheetId, productId, packingLoss, notes, batchId, batchNo });
-    console.log('📝 Raw req.body:', req.body);
-    console.log('📝 Notes value type and content:', typeof notes, notes);
-
-    // Validation
-    if (!productId) {
-      return res.status(400).json({
-        success: false,
-        message: 'productId is required'
-      });
-    }
-
-    if (packingLoss !== undefined && (packingLoss < 0 || isNaN(Number(packingLoss)))) {
-      return res.status(400).json({
-        success: false,
-        message: 'Packing loss must be a non-negative number'
-      });
-    }
+    const { packingLoss, notes, batchId } = req.body;
+    console.log('📝 Updating packing sheet:', { packingSheetId, batchId, packingLoss, notes });
 
     const packingSheet = await PackingSheet.findOne({
       _id: packingSheetId,
@@ -1256,105 +1322,74 @@ export const updatePackingItem = async (req, res) => {
       });
     }
 
-    // Find the specific item
-    const item = packingSheet.items.find(item => item.productId.toString() === productId);
+    // Helper to round to 2 decimals
+    const round2 = (num) => Math.round((Number(num) || 0) * 100) / 100;
+
+    // STEP 1: ALWAYS get fresh totalPackedQty from batch
+    const ProductionBatch = (await import('../models/ProductionBatch.js')).default;
+    const batch = await ProductionBatch.findById(batchId || packingSheet.batchId).lean();
     
-    if (!item) {
-      return res.status(404).json({
-        success: false,
-        message: 'Product not found in packing sheet'
-      });
+    if (batch) {
+      packingSheet.totalPackedQty = round2(batch.qtyAchieved || 0);
+      console.log(`✅ Updated totalPackedQty from batch: ${packingSheet.totalPackedQty}`);
     }
 
-    // Update fields if provided
-    if (batchId !== undefined) {
-      item.batchId = batchId;
-      console.log(`🔄 Updated batchId for item: ${item.batchId}`);
-    }
-    if (batchNo !== undefined) {
-      item.batchNo = batchNo;
-      console.log(`🔄 Updated batchNo for item: ${item.batchNo}`);
-    }
+    // STEP 2: Update packingLoss if provided
     if (packingLoss !== undefined) {
-      // Store packingLoss at MAIN SHEET LEVEL, not item level
-      packingSheet.packingLoss = Number(packingLoss);
-      console.log(`🔄 Updated packingLoss for main sheet: ${packingSheet.packingLoss}`);
+      if (packingLoss < 0 || isNaN(Number(packingLoss))) {
+        return res.status(400).json({
+          success: false,
+          message: 'Packing loss must be a non-negative number'
+        });
+      }
+      
+      if (Number(packingLoss) > packingSheet.totalPackedQty) {
+        return res.status(400).json({
+          success: false,
+          message: `Packing loss (${packingLoss}) cannot exceed available quantity (${packingSheet.totalPackedQty})`
+        });
+      }
+
+      packingSheet.packingLoss = round2(packingLoss);
+      
+      if (!packingSheet.packingStartTime) {
+        packingSheet.packingStartTime = new Date();
+      }
+      
+      console.log(`✅ Updated packingLoss: ${packingSheet.packingLoss}`);
     }
+
+    // STEP 3: ALWAYS calculate updatedPackedQty = totalPackedQty - packingLoss
+    packingSheet.updatedPackedQty = round2(Math.max(0, (packingSheet.totalPackedQty || 0) - (packingSheet.packingLoss || 0)));
+    console.log(`✅ Calculated updatedPackedQty: ${packingSheet.totalPackedQty} - ${packingSheet.packingLoss} = ${packingSheet.updatedPackedQty}`);
+
+    // STEP 4: Update item.packedQty if items exist
+    if (packingSheet.items && packingSheet.items.length > 0) {
+      packingSheet.items[0].packedQty = packingSheet.updatedPackedQty;
+    }
+
+    // STEP 5: Update notes if provided
     if (notes !== undefined) {
-      // Store notes at MAIN SHEET LEVEL, not item level
       packingSheet.notes = notes;
-      console.log(`📝 Updated notes for main sheet: ${packingSheet.notes}`);
+      console.log(`✅ Updated notes: ${packingSheet.notes}`);
     }
 
-    // AUTO-CALCULATE packedQty = producedQty - packingLoss (from main sheet)
-    const producedQty = Number(item.producedQty) || 0;
-    const currentPackingLoss = Number(packingSheet.packingLoss) || 0; // Use main sheet packingLoss
-    item.packedQty = Math.max(0, producedQty - currentPackingLoss);
-    
-    console.log(`📊 Auto-calculated for ${item.productName}: packedQty = ${producedQty} - ${currentPackingLoss} = ${item.packedQty}`);
-
-    // AUTO-UPDATE STATUS: Check if packing is complete
-    const allItemsPacked = packingSheet.items.every(item => {
-      const itemProducedQty = Number(item.producedQty) || 0;
-      const itemPackedQty = Number(item.packedQty) || 0;
-      return itemProducedQty > 0 ? itemPackedQty > 0 : true; // If produced, must be packed
-    });
-
-    if (allItemsPacked && packingSheet.status === 'pending') {
-      packingSheet.status = 'in_progress';
-      console.log(`📋 Updated status to in_progress`);
-    }
-
-    // If packedQty equals producedQty for all items, mark as completed
-    const allItemsCompleted = packingSheet.items.every(item => {
-      const itemProducedQty = Number(item.producedQty) || 0;
-      const itemPackedQty = Number(item.packedQty) || 0;
-      return itemProducedQty === 0 || itemPackedQty === itemProducedQty;
-    });
-
-    if (allItemsCompleted && packingSheet.status !== 'completed' && packingSheet.status !== 'approved') {
-      packingSheet.status = 'completed';
-      packingSheet.packingEndTime = new Date();
-      console.log(`✅ Updated status to completed`);
-    }
-
-    // Update sheet metadata
+    // STEP 6: Save
     packingSheet.lastUpdatedBy = req.user._id || req.user.id;
-    packingSheet.updatedAt = new Date();
-    
-    // Save the changes
     await packingSheet.save();
-    
-    console.log(`✅ Successfully updated packing item for ${item.productName}`);
-    console.log(`📝 Final saved notes: "${packingSheet.notes}"`);
-    console.log(`📦 Final saved packingLoss: ${packingSheet.packingLoss}`);
+
+    console.log(`✅ FINAL: totalPackedQty=${packingSheet.totalPackedQty}, packingLoss=${packingSheet.packingLoss}, updatedPackedQty=${packingSheet.updatedPackedQty}`);
 
     res.json({
       success: true,
-      message: 'Packing item updated successfully',
+      message: 'Packing sheet updated successfully',
       data: {
         packingSheetId: packingSheet._id,
-        productId: item.productId,
-        productName: item.productName,
-        batchId: item.batchId,
-        batchNo: item.batchNo,
-        indentQty: item.indentQty,
-        producedQty: item.producedQty,
-        packingLoss: packingSheet.packingLoss, // Return from main sheet level
-        packedQty: item.packedQty,
-        notes: packingSheet.notes, // Return from main sheet level
-        status: packingSheet.status, // Include status for frontend
-        packingStartTime: packingSheet.packingStartTime,
-        packingEndTime: packingSheet.packingEndTime,
-        lastUpdated: packingSheet.updatedAt,
-        // Include all items for frontend state update
-        allItems: packingSheet.items.map(i => ({
-          productId: i.productId,
-          productName: i.productName,
-          indentQty: i.indentQty,
-          producedQty: i.producedQty,
-          packedQty: i.packedQty
-        }))
+        totalPackedQty: packingSheet.totalPackedQty,
+        packingLoss: packingSheet.packingLoss,
+        updatedPackedQty: packingSheet.updatedPackedQty,
+        notes: packingSheet.notes,
+        packingStartTime: packingSheet.packingStartTime
       }
     });
 
@@ -1533,6 +1568,25 @@ export const approvePackingSheet = async (req, res) => {
       });
     }
 
+    console.log('📊 Packing sheet loaded for approval:', {
+      _id: packingSheet._id,
+      totalPackedQty: packingSheet.totalPackedQty,
+      packingLoss: packingSheet.packingLoss,
+      updatedPackedQty: packingSheet.updatedPackedQty,
+      hasItems: packingSheet.items?.length || 0,
+      batchId: packingSheet.batchId
+    });
+
+
+    console.log('📊 Packing sheet loaded for approval:', {
+      _id: packingSheet._id,
+      totalPackedQty: packingSheet.totalPackedQty,
+      packingLoss: packingSheet.packingLoss,
+      updatedPackedQty: packingSheet.updatedPackedQty,
+      hasItems: packingSheet.items?.length || 0,
+      batchId: packingSheet.batchId
+    });
+
     // Check if already approved
     if (packingSheet.status === 'approved') {
       return res.status(400).json({
@@ -1642,25 +1696,266 @@ export const approvePackingSheet = async (req, res) => {
       // Create separate dispatch console entries for each item in the packing sheet
       // dispatchEntries array already declared above
       
-      for (const item of packingSheet.items) {
-        if (item.packedQty > 0) { // Only create entries for items with packed quantity
+      // Determine if this is a GROUP sheet by checking if batch has groupId
+      const ProductionBatch = (await import('../models/ProductionBatch.js')).default;
+      let isGroupSheet = false;
+      let batch = null;
+      
+      if (packingSheet.batchId) {
+        batch = await ProductionBatch.findById(packingSheet.batchId).lean();
+        
+        // Check if batch has groupId - this indicates it's a GROUP sheet
+        if (batch && batch.groupId) {
+          isGroupSheet = true;
+          console.log('📦 Processing GROUP packing sheet for dispatch (batch.groupId exists)');
+        } else {
+          console.log('📦 Processing UNGROUPED packing sheet for dispatch (batch.groupId is null)');
+        }
+      }
+      
+      // Handle GROUP packing sheets - Create ONE dispatch entry for the entire group
+      if (isGroupSheet && batch && batch.combinedItems && batch.combinedItems.length > 0) {
+          const Item = (await import('../models/Inventory.js')).Item;
           
-          // Validate item has required fields
-          if (!item.productId || !item.productName) {
-            console.log('⚠️ Skipping item with missing data:', {
+          // Get ALL item details from combinedItems and calculate total productionFinalBatches
+          let totalIndentFromProductionBatches = 0;
+          
+          const allItemDetails = await Promise.all(
+            batch.combinedItems.map(async (combinedItem) => {
+              const item = await Item.findById(combinedItem.itemId).lean();
+              
+              // Get ProductDetailsDailySummary for each item to sum productionFinalBatches
+              if (item) {
+                const itemSummary = await ProductDetailsDailySummary.findOne({
+                  productId: combinedItem.itemId,
+                  companyId: req.user.companyId,
+                  date: { $gte: startOfDay, $lte: new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000) }
+                });
+                
+                if (itemSummary && itemSummary.productionFinalBatches) {
+                  totalIndentFromProductionBatches += itemSummary.productionFinalBatches;
+                  console.log(`📊 Item ${item.name}: productionFinalBatches = ${itemSummary.productionFinalBatches}`);
+                }
+              }
+              
+              return item ? `${item.name} (${combinedItem.quantity || 0} units)` : null;
+            })
+          );
+          
+          const validItems = allItemDetails.filter(item => item !== null);
+          const productNamesDisplay = validItems.join(', ');
+          
+          console.log(`📊 GROUP TOTAL: totalIndentFromProductionBatches = ${totalIndentFromProductionBatches} (from ${validItems.length} items)`);
+          
+          // Use first item for productId
+          const firstCombinedItem = batch.combinedItems[0];
+          const itemDetails = await Item.findById(firstCombinedItem.itemId).lean();
+          
+          if (itemDetails) {
+            // Use updatedPackedQty directly (already calculated when packingLoss was entered)
+            const actualPackedQty = packingSheet.updatedPackedQty || 0;
+            
+            console.log(`📊 Group sheet - Combined items: ${validItems.length} products, Display: ${productNamesDisplay}`);
+            console.log(`📊 Group sheet - using updatedPackedQty:`, {
+              updatedPackedQty: packingSheet.updatedPackedQty,
+              actualPackedQty: actualPackedQty
+            });
+            
+            // Get indent and stock info - Use first item for reference
+            const itemIdToUse = firstCombinedItem.itemId;
+            
+            const todayItemSummary = await ProductDetailsDailySummary.findOne({
+              productId: itemIdToUse,
+              companyId: req.user.companyId,
+              date: { $gte: startOfDay, $lte: new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000) }
+            });
+            
+            const yesterdayItemSummary = await ProductDetailsDailySummary.findOne({
+              productId: itemIdToUse,
+              companyId: req.user.companyId,
+              date: { $gte: yesterdayStart, $lte: yesterdayEnd }
+            });
+            
+            const yesterdayDispatch = await Dispatch.findOne({
+              productId: itemIdToUse,
+              company: req.user.companyId,
+              date: { $gte: yesterdayStart, $lte: yesterdayEnd }
+            });
+            
+            // Use totalIndentFromProductionBatches calculated above for the GROUP
+            const itemIndentQuantity = totalIndentFromProductionBatches;
+            console.log(`📊 Using GROUP totalIndentQuantity: ${itemIndentQuantity}`);
+            
+            const itemPreviousStock = yesterdayDispatch?.closingStockEndOfDayBalance || 
+                                     yesterdayDispatch?.physicalStockEntryManualVerification ||
+                                     yesterdayItemSummary?.physicalStock || 
+                                     yesterdayItemSummary?.closingStock || 
+                                     0;
+            
+            // Get return quantity
+            const Return = (await import('../models/Return.js')).default;
+            const yesterdayReturns = await Return.aggregate([
+              {
+                $match: {
+                  companyId: req.user.companyId,
+                  returnDate: { $gte: yesterdayStart, $lte: yesterdayEnd },
+                  status: { $in: ['approved', 'completed'] }
+                }
+              },
+              {
+                $unwind: '$items'
+              },
+              {
+                $match: {
+                  'items.productId': itemIdToUse
+                }
+              },
+              {
+                $group: {
+                  _id: null,
+                  totalReturnQuantity: { $sum: '$items.quantity' }
+                }
+              }
+            ]);
+            
+            const itemReturnQuantity = yesterdayReturns.length > 0 ? yesterdayReturns[0].totalReturnQuantity : 0;
+            
+            // Get customer and salesPerson
+            const Order = (await import('../models/Order.js')).default;
+            let salesPersonId = null;
+            let customerId = null;
+            
+            if (todayItemSummary && todayItemSummary.orderIds && todayItemSummary.orderIds.length > 0) {
+              const orders = await Order.find({
+                _id: { $in: todayItemSummary.orderIds },
+                companyId: req.user.companyId
+              })
+                .select('salesPerson customer orderCode')
+                .populate('salesPerson', 'username')
+                .populate('customer', 'name');
+              
+              for (const order of orders) {
+                if (order.customer && order.salesPerson) {
+                  salesPersonId = order.salesPerson._id || order.salesPerson;
+                  customerId = order.customer._id || order.customer;
+                  break;
+                }
+              }
+            }
+            
+            // Check if dispatch entry already exists
+            const existingDispatchEntry = await Dispatch.findOne({
+              packingSheetId: packingSheet._id,
+              date: startOfDay,
+              productId: itemIdToUse,
+              company: req.user.companyId,
+              batchNo: packingSheet.batchNo
+            });
+            
+            let dispatchEntry;
+            
+            if (existingDispatchEntry) {
+              const totalAvailable = actualPackedQty + itemPreviousStock + itemReturnQuantity;
+              const dispatchedQty = existingDispatchEntry.dispatchedQuantitySentToday || 0;
+              
+              const excessShortageValue = Math.round((itemIndentQuantity - totalAvailable) * 100) / 100;
+              
+              console.log(`🔢 GROUP DISPATCH CALCULATION:`, {
+                itemIndentQuantity,
+                totalAvailable,
+                excessShortage: excessShortageValue,
+                formula: `${itemIndentQuantity} - ${totalAvailable} = ${excessShortageValue}`
+              });
+              
+              dispatchEntry = await Dispatch.findByIdAndUpdate(
+                existingDispatchEntry._id,
+                {
+                  $set: {
+                    salesPerson: salesPersonId,
+                    customer: customerId,
+                    productGroup: packingSheet.productionGroupName || 'Unknown Group',
+                    productName: productNamesDisplay,
+                    packedQuantityReadyForDispatch: Math.round(actualPackedQty * 100) / 100,
+                    previousClosingStockYesterdayBalance: Math.round(itemPreviousStock * 100) / 100,
+                    returnQuantityYesterdayReturns: Math.round(itemReturnQuantity * 100) / 100,
+                    totalIndentQuantityOrdersForTheDay: Math.round(itemIndentQuantity * 100) / 100,
+                    totalAvailableStock: Math.round(totalAvailable * 100) / 100,
+                    excessShortage: excessShortageValue,
+                    closingStockEndOfDayBalance: totalAvailable - dispatchedQty,
+                    status: 'updated',
+                    lastUpdatedBy: req.user._id || req.user.id
+                  }
+                },
+                { new: true }
+              );
+            } else {
+              const totalAvailable = actualPackedQty + itemPreviousStock + itemReturnQuantity;
+              const excessShortageValue = Math.round((itemIndentQuantity - totalAvailable) * 100) / 100;
+              
+              console.log(`🔢 GROUP DISPATCH CALCULATION (NEW):`, {
+                itemIndentQuantity,
+                totalAvailable,
+                excessShortage: excessShortageValue,
+                formula: `${itemIndentQuantity} - ${totalAvailable} = ${excessShortageValue}`
+              });
+              
+              dispatchEntry = await Dispatch.create({
+                packingSheetId: packingSheet._id,
+                productId: firstCombinedItem.itemId,
+                productName: productNamesDisplay,
+                salesPerson: salesPersonId,
+                customer: customerId,
+                date: startOfDay,
+                productGroup: packingSheet.productionGroupName || 'Unknown Group',
+                company: req.user.companyId,
+                packedQuantityReadyForDispatch: Math.round(actualPackedQty * 100) / 100,
+                previousClosingStockYesterdayBalance: Math.round(itemPreviousStock * 100) / 100,
+                returnQuantityYesterdayReturns: Math.round(itemReturnQuantity * 100) / 100,
+                totalIndentQuantityOrdersForTheDay: Math.round(itemIndentQuantity * 100) / 100,
+                totalAvailableStock: Math.round(totalAvailable * 100) / 100,
+                excessShortage: excessShortageValue,
+                dispatchedQuantitySentToday: 0,
+                closingStockEndOfDayBalance: totalAvailable - 0,
+                physicalStockEntryManualVerification: 0,
+                batchNo: packingSheet.batchNo,
+                status: 'updated',
+                lastUpdatedBy: req.user._id || req.user.id
+              });
+            }
+            
+            dispatchEntries.push(dispatchEntry);
+            console.log('✅ Created dispatch entry for group sheet:', {
+              productName: itemDetails.name,
+              actualPackedQty: actualPackedQty,
+              totalAvailable: actualPackedQty + itemPreviousStock + itemReturnQuantity
+            });
+          }
+      } // End of if (isGroupSheet && batch...)
+      
+      // Process ITEM-LEVEL (UNGROUPED) packing sheets
+      if (!isGroupSheet) {
+        console.log(`🔍 Processing ${packingSheet.items?.length || 0} UNGROUPED items for dispatch entries`);
+        try {
+          for (const item of packingSheet.items || []) {
+            console.log(`📦 Checking item: ${item.productName}, packedQty: ${item.packedQty}, type: ${typeof item.packedQty}`);
+            if (item.packedQty > 0) { // Only create entries for items with packed quantity
+            
+            // Validate item has required fields
+            if (!item.productId || !item.productName) {
+              console.log('⚠️ Skipping item with missing data:', {
+                productId: item.productId,
+                productName: item.productName,
+                packedQty: item.packedQty
+              });
+              continue;
+            }
+            
+            console.log('🔍 Processing item for dispatch:', {
               productId: item.productId,
               productName: item.productName,
-              packedQty: item.packedQty
+              packedQty: item.packedQty,
+              packingSheetBatchId: packingSheet.batchId
             });
-            continue;
-          }
-          
-          console.log('🔍 Processing item:', {
-            productId: item.productId,
-            productName: item.productName,
-            packedQty: item.packedQty,
-            packingSheetBatchId: packingSheet.batchId
-          });
           
           // STEP 1: Get ProductionBatch using batchId from PackingSheet
           const ProductionBatch = (await import('../models/ProductionBatch.js')).default;
@@ -1716,7 +2011,9 @@ export const approvePackingSheet = async (req, res) => {
             date: { $gte: yesterdayStart, $lte: yesterdayEnd }
           });
 
-          const itemIndentQuantity = todayItemSummary?.totalIndent || item.indentQty || 0;
+          // Use productionFinalBatches from ProductDetailsDailySummary for ungrouped items
+          const itemIndentQuantity = todayItemSummary?.productionFinalBatches || 0;
+          console.log(`📊 UNGROUPED ITEM ${item.productName}: productionFinalBatches = ${itemIndentQuantity}`);
           
           // Try multiple fields for previous stock - priority order
           const itemPreviousStock = yesterdayDispatch?.closingStockEndOfDayBalance || 
@@ -1859,22 +2156,25 @@ export const approvePackingSheet = async (req, res) => {
             // Update existing entry
             console.log(`🔄 Updating existing dispatch entry for ${item.productName} (ID: ${existingDispatchEntry._id})`);
             
+            const totalAvailable = item.packedQty + itemPreviousStock + itemReturnQuantity;
+            const dispatchedQty = existingDispatchEntry.dispatchedQuantitySentToday || 0;
+            const excessShortageValue = Math.round((itemIndentQuantity - totalAvailable) * 100) / 100;
+            
             dispatchEntry = await Dispatch.findByIdAndUpdate(
               existingDispatchEntry._id,
               {
                 $set: {
-                  dcno: null,
                   salesPerson: salesPersonId,
                   customer: customerId,
                   productGroup: `${packingSheet.productionGroupName || 'Unknown Group'} - ${item.productName}`,
                   productName: item.productName,
-                  packedQuantityReadyForDispatch: item.packedQty,
-                  previousClosingStockYesterdayBalance: itemPreviousStock,
-                  returnQuantityYesterdayReturns: itemReturnQuantity,
-                  totalIndentQuantityOrdersForTheDay: itemIndentQuantity,
-                  totalAvailableStock: item.packedQty + itemPreviousStock + itemReturnQuantity,
-                  excessShortage: (item.packedQty + itemPreviousStock + itemReturnQuantity) - itemIndentQuantity,
-                  closingStockEndOfDayBalance: item.packedQty + itemPreviousStock + itemReturnQuantity,
+                  packedQuantityReadyForDispatch: Math.round(item.packedQty * 100) / 100,
+                  previousClosingStockYesterdayBalance: Math.round(itemPreviousStock * 100) / 100,
+                  returnQuantityYesterdayReturns: Math.round(itemReturnQuantity * 100) / 100,
+                  totalIndentQuantityOrdersForTheDay: Math.round(itemIndentQuantity * 100) / 100,
+                  totalAvailableStock: Math.round(totalAvailable * 100) / 100,
+                  excessShortage: excessShortageValue,
+                  closingStockEndOfDayBalance: Math.round((totalAvailable - dispatchedQty) * 100) / 100,
                   status: 'updated',
                   lastUpdatedBy: req.user._id || req.user.id
                 }
@@ -1885,6 +2185,9 @@ export const approvePackingSheet = async (req, res) => {
             // Create new dispatch entry
             console.log(`✨ Creating new dispatch entry for ${item.productName}`);
        
+            const totalAvailable = item.packedQty + itemPreviousStock + itemReturnQuantity;
+            const excessShortageValue = Math.round((itemIndentQuantity - totalAvailable) * 100) / 100;
+            
             dispatchEntry = await Dispatch.create({
               packingSheetId: packingSheet._id,
               productId: item.productId,
@@ -1894,15 +2197,14 @@ export const approvePackingSheet = async (req, res) => {
               date: startOfDay,
               productGroup: `${packingSheet.productionGroupName || 'Unknown Group'} - ${item.productName}`,
               company: req.user.companyId,
-              dcno: null,
-              packedQuantityReadyForDispatch: item.packedQty,
-              previousClosingStockYesterdayBalance: itemPreviousStock,
-              returnQuantityYesterdayReturns: itemReturnQuantity,
-              totalIndentQuantityOrdersForTheDay: itemIndentQuantity,
-              totalAvailableStock: item.packedQty + itemPreviousStock + itemReturnQuantity,
-              excessShortage: (item.packedQty + itemPreviousStock + itemReturnQuantity) - itemIndentQuantity,
+              packedQuantityReadyForDispatch: Math.round(item.packedQty * 100) / 100,
+              previousClosingStockYesterdayBalance: Math.round(itemPreviousStock * 100) / 100,
+              returnQuantityYesterdayReturns: Math.round(itemReturnQuantity * 100) / 100,
+              totalIndentQuantityOrdersForTheDay: Math.round(itemIndentQuantity * 100) / 100,
+              totalAvailableStock: Math.round(totalAvailable * 100) / 100,
+              excessShortage: excessShortageValue,
               dispatchedQuantitySentToday: 0,
-              closingStockEndOfDayBalance: item.packedQty + itemPreviousStock + itemReturnQuantity,
+              closingStockEndOfDayBalance: Math.round(totalAvailable * 100) / 100,
               physicalStockEntryManualVerification: 0,
               batchNo: packingSheet.batchNo,
               status: 'updated',
@@ -1911,8 +2213,14 @@ export const approvePackingSheet = async (req, res) => {
           }
           
           dispatchEntries.push(dispatchEntry);
-        } // End of if (item.packedQty > 0)
-      } // End of for (const item of packingSheet.items)
+          console.log(`✅ Dispatch entry created for ${item.productName}:`, dispatchEntry._id);
+          } // End of if (item.packedQty > 0)
+        } // End of for (const item of packingSheet.items)
+        } catch (itemLoopError) {
+          console.error('❌ ERROR in item processing loop:', itemLoopError);
+          console.error('Stack:', itemLoopError.stack);
+        }
+      } // End of if (!isGroupSheet)
 
       console.log('✅ Dispatch console entries created:', {
         totalEntries: dispatchEntries.length,

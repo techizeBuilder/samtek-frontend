@@ -148,12 +148,14 @@ productionBatchSchema.index(
 // PRE-SAVE MIDDLEWARE
 productionBatchSchema.pre('save', function(next) {
   try {
-    // Auto-calculate qtyAchieved based on qtyPerBatch - productionLoss
-    if (this.isModified('qtyPerBatch') || this.isModified('productionLoss') || this.isNew) {
+    // Auto-calculate qtyAchieved based on: (totalBatchAdjusted × qtyPerBatch) - productionLoss
+    if (this.isModified('qtyPerBatch') || this.isModified('productionLoss') || this.isModified('totalBatchAdjusted') || this.isNew) {
+      const totalBatchAdjusted = Number(this.totalBatchAdjusted) || 1;
       const qtyPerBatch = Number(this.qtyPerBatch) || 0;
       const productionLoss = Number(this.productionLoss) || 0;
-      this.qtyAchieved = qtyPerBatch - productionLoss; // Allow negative values
-      console.log(`📊 PRE-SAVE: qtyAchieved = ${qtyPerBatch} - ${productionLoss} = ${this.qtyAchieved}`);
+      const calculated = (totalBatchAdjusted * qtyPerBatch) - productionLoss;
+      this.qtyAchieved = Math.round(calculated * 100) / 100; // Round to 2 decimal places
+      console.log(`📊 PRE-SAVE: qtyAchieved = (${totalBatchAdjusted} × ${qtyPerBatch}) - ${productionLoss} = ${this.qtyAchieved}`);
     }
     
     // Auto-update status based on timing fields
