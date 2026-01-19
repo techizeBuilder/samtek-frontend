@@ -2271,9 +2271,7 @@ const createSingleProductionBatch = async ({
       createdBy: approvedBy,
       totalBatchAdjusted: batchAdjustedTotal, // Max 1.0 enforced above
       combinedItems: combinedItems,
-      notes: isCombinedBatch 
-        ? `Smart combined batch (${combinedItems.map(item => item.batchAdjustedValue.toFixed(2)).join(' + ')} = ${batchAdjustedTotal.toFixed(2)})`
-        : `Single batch (${batchAdjustedTotal.toFixed(2)})`
+      notes: ''
     };
     
     const createdBatch = await ProductionBatch.create(batchEntry);

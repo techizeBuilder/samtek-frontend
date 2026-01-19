@@ -435,6 +435,11 @@ export const getProductionShiftData = async (req, res) => {
       path: 'groupId',
       select: 'name description'
     })
+    .populate({
+      path: 'combinedItems.itemId',
+      model: 'Item',
+      select: 'name code category subCategory qty unit price image'
+    })
     .sort({ batchNumber: 1 })
     .lean();
     
@@ -449,16 +454,28 @@ export const getProductionShiftData = async (req, res) => {
         // Extract group name from notes if available
         const groupName = batch.notes?.split('|')[0]?.replace('Group:', '').trim() || 'Combined Batch';
         
+        // Get the first item's name for display, or create a combined name
+        let displayName = groupName;
+        if (batch.combinedItems.length > 0 && batch.combinedItems[0].itemId) {
+          if (batch.combinedItems.length === 1) {
+            // Single item - use item name
+            displayName = batch.combinedItems[0].itemId.name || groupName;
+          } else {
+            // Multiple items - show first item + count
+            displayName = `${batch.combinedItems[0].itemId.name || 'Item'} (+${batch.combinedItems.length - 1} more)`;
+          }
+        }
+        
         return {
           _id: `combined_batch_${batch.batchNumber}`,
-          name: groupName,
+          name: displayName,
           code: batch.batchNo,
           category: 'Combined Batch',
           subCategory: '',
           qty: batch.totalBatchAdjusted || 0,
           unit: '',
           price: 0,
-          image: null,
+          image: batch.combinedItems[0]?.itemId?.image || null,
           qtyPerBatch: batch.qtyPerBatch || 0,
           batchAdjusted: batch.totalBatchAdjusted || 0,
           batchNo: batch.batchNo,
@@ -1854,9 +1871,9 @@ export const getAllProductionReports = async (req, res) => {
       filter.status = status;
     }
 
-    // Add item filter
+    // Add item filter (search in combinedItems array)
     if (itemId) {
-      filter.itemId = itemId;
+      filter['combinedItems.itemId'] = itemId;
     }
 
     // Add group filter
@@ -1869,12 +1886,13 @@ export const getAllProductionReports = async (req, res) => {
     // Get paginated production data with populated item and group details
     const productionData = await ProductionBatch.find(filter)
       .populate({
-        path: 'itemId',
+        path: 'combinedItems.itemId',
+        model: 'Item',
         select: 'name code category subCategory unit type importance store'
       })
       .populate({
         path: 'groupId',
-        select: 'groupName description'
+        select: 'name description'
       })
       .populate({
         path: 'companyId',
@@ -1928,52 +1946,93 @@ export const getAllProductionReports = async (req, res) => {
       : 0;
 
     // Format the production data
-    const formattedData = productionData.map(batch => ({
-      id: batch._id,
-      batchNo: batch.batchNo,
-      batchNumber: batch.batchNumber,
-      productionDate: batch.productionDate,
-      item: {
-        id: batch.itemId?._id,
-        name: batch.itemId?.name,
-        code: batch.itemId?.code,
-        category: batch.itemId?.category,
-        subCategory: batch.itemId?.subCategory,
-        unit: batch.itemId?.unit,
-        type: batch.itemId?.type,
-        importance: batch.itemId?.importance
-      },
-      group: batch.groupId ? {
-        id: batch.groupId._id,
-        name: batch.groupId.groupName,
-        description: batch.groupId.description
-      } : null,
-      company: {
-        id: batch.companyId._id,
-        name: batch.companyId.companyName
-      },
-      production: {
-        qtyPerBatch: batch.qtyPerBatch,
-        qtyAchieved: batch.qtyAchieved,
-        productionLoss: batch.productionLoss,
-        efficiency: batch.qtyPerBatch > 0 
-          ? ((batch.qtyAchieved / batch.qtyPerBatch) * 100).toFixed(2)
-          : 0
-      },
-      timing: {
-        mouldingTime: batch.mouldingTime,
-        unloadingTime: batch.unloadingTime,
-        duration: batch.mouldingTime && batch.unloadingTime 
-          ? Math.round((new Date(batch.unloadingTime) - new Date(batch.mouldingTime)) / (1000 * 60)) + ' minutes'
-          : null
-      },
-      status: batch.status,
-      notes: batch.notes,
-      createdBy: batch.createdBy,
-      updatedBy: batch.updatedBy,
-      createdAt: batch.createdAt,
-      updatedAt: batch.updatedAt
-    }));
+    const formattedData = productionData.map(batch => {
+      // Get item details from combinedItems (can be single or multiple items)
+      let itemInfo = null;
+      let itemsList = [];
+      
+      if (batch.combinedItems && batch.combinedItems.length > 0) {
+        itemsList = batch.combinedItems.map(ci => ({
+          id: ci.itemId?._id,
+          name: ci.itemId?.name || 'Unknown Item',
+          code: ci.itemId?.code,
+          category: ci.itemId?.category,
+          subCategory: ci.itemId?.subCategory,
+          unit: ci.itemId?.unit,
+          type: ci.itemId?.type,
+          importance: ci.itemId?.importance,
+          batchAdjustedValue: ci.batchAdjustedValue,
+          qtyContribution: ci.qtyContribution
+        }));
+        
+        // For single item, use it directly
+        if (itemsList.length === 1) {
+          itemInfo = {
+            id: itemsList[0].id,
+            name: itemsList[0].name,
+            code: itemsList[0].code,
+            category: itemsList[0].category,
+            subCategory: itemsList[0].subCategory,
+            unit: itemsList[0].unit,
+            type: itemsList[0].type,
+            importance: itemsList[0].importance
+          };
+        } else {
+          // For multiple items, show combined info
+          itemInfo = {
+            id: null,
+            name: `Combined Batch (${itemsList.length} items)`,
+            code: batch.batchNo,
+            category: 'Combined',
+            subCategory: '',
+            unit: '',
+            type: 'combined',
+            importance: ''
+          };
+        }
+      }
+      
+      return {
+        id: batch._id,
+        batchNo: batch.batchNo,
+        batchNumber: batch.batchNumber,
+        productionDate: batch.productionDate,
+        item: itemInfo,
+        items: itemsList.length > 1 ? itemsList : undefined, // Only include if multiple items
+        isCombined: batch.combinedItems && batch.combinedItems.length > 1,
+        group: batch.groupId ? {
+          id: batch.groupId._id,
+          name: batch.groupId.name,
+          description: batch.groupId.description
+        } : null,
+        company: batch.companyId ? {
+          id: batch.companyId._id,
+          name: batch.companyId.companyName
+        } : null,
+        production: {
+          qtyPerBatch: batch.qtyPerBatch,
+          qtyAchieved: batch.qtyAchieved,
+          productionLoss: batch.productionLoss,
+          totalBatchAdjusted: batch.totalBatchAdjusted,
+          efficiency: batch.qtyPerBatch > 0 
+            ? ((batch.qtyAchieved / batch.qtyPerBatch) * 100).toFixed(2)
+            : 0
+        },
+        timing: {
+          mouldingTime: batch.mouldingTime,
+          unloadingTime: batch.unloadingTime,
+          duration: batch.mouldingTime && batch.unloadingTime 
+            ? Math.round((new Date(batch.unloadingTime) - new Date(batch.mouldingTime)) / (1000 * 60)) + ' minutes'
+            : null
+        },
+        status: batch.status,
+        notes: batch.notes,
+        createdBy: batch.createdBy,
+        updatedBy: batch.updatedBy,
+        createdAt: batch.createdAt,
+        updatedAt: batch.updatedAt
+      };
+    });
 
     res.json({
       success: true,
