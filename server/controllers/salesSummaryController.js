@@ -448,8 +448,18 @@ export const updateSalesSummary = async (req, res) => {
       }
     }
 
-    // Calculate formulas using qtyPerBatch from master data
-    dailyDetails.calculateFormulas(masterProduct.qtyPerBatch);
+    // Don't recalculate if frontend already provided the values
+    // Frontend has already calculated productionFinalBatches, produceBatches, etc.
+    // Only calculate if missing values
+    if (!updates.productionFinalBatches || !updates.produceBatches) {
+      console.log('🔢 Calculating missing formulas with qtyPerBatch:', masterProduct.qtyPerBatch);
+      dailyDetails.calculateFormulas(masterProduct.qtyPerBatch);
+    } else {
+      console.log('✅ Using frontend-calculated values:', {
+        productionFinalBatches: updates.productionFinalBatches,
+        produceBatches: updates.produceBatches
+      });
+    }
 
     // Save the daily details
     await dailyDetails.save();

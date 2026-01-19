@@ -1771,12 +1771,23 @@ export const getTodaysProducts = async (req, res) => {
 
     console.log('📦 Fetching today\'s products for:', { salesmanId, customerId, companyId: req.user.companyId });
 
-    // Get today's date range (start and end of day)
+    // Get today's date range (start and end of day) - Use local time, not UTC
     const today = new Date();
-    const startOfDay = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate(), 0, 0, 0, 0));
-    const endOfDay = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate(), 23, 59, 59, 999));
+    const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0);
+    const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
 
-    console.log('📅 Date range:', { startOfDay, endOfDay });
+    console.log('📅 Date range:', { startOfDay, endOfDay, today });
+
+    // First, check if ANY dispatches exist for this company
+    const totalDispatches = await Dispatch.countDocuments({ company: req.user.companyId });
+    console.log(`📊 Total dispatches for company: ${totalDispatches}`);
+
+    // Check dispatches for today without status filter
+    const todayDispatches = await Dispatch.countDocuments({
+      company: req.user.companyId,
+      date: { $gte: startOfDay, $lte: endOfDay }
+    });
+    console.log(`📊 Dispatches for today (any status): ${todayDispatches}`);
 
     // Build query with optional filters
     const query = {
@@ -1808,95 +1819,117 @@ export const getTodaysProducts = async (req, res) => {
       .sort({ createdAt: -1 });
 
     console.log(`✅ Found ${dispatchProducts.length} dispatch products for today with filters`);
+    
+    // If no results, check what statuses exist for today
+    if (dispatchProducts.length === 0 && todayDispatches > 0) {
+      const todayDispatchSample = await Dispatch.find({
+        company: req.user.companyId,
+        date: { $gte: startOfDay, $lte: endOfDay }
+      }).limit(5).select('status productGroup date');
+      console.log('⚠️ Sample today dispatches with different statuses:', todayDispatchSample.map(d => ({
+        status: d.status,
+        productGroup: d.productGroup,
+        date: d.date
+      })));
+    }
 
     // Import required models
     const PackingSheet = (await import('../models/Packing.js')).default;
     const ProductionBatch = (await import('../models/ProductionBatch.js')).default;
-    const Item = (await import('../models/Inventory.js')).default;
+    const { Item } = await import('../models/Inventory.js');
 
     // Group dispatches by packingSheetId
     const groupedByPackingSheet = {};
     
+    console.log(`\n🔍 DEBUG: Processing ${dispatchProducts.length} dispatches...`);
+    
     for (const dispatch of dispatchProducts) {
       const packingSheetId = dispatch.packingSheetId?._id?.toString() || dispatch.packingSheetId?.toString();
       
+      console.log(`\n📋 Dispatch ${dispatch._id}:`);
+      console.log(`   Product: ${dispatch.productName || dispatch.productGroup}`);
+      console.log(`   PackingSheetId: ${packingSheetId || 'NULL/UNDEFINED'}`);
+      console.log(`   Has packingSheetId? ${!!packingSheetId}`);
+      
       if (!packingSheetId) {
-        // Handle ungrouped items (no packing sheet)
+        // Handle ungrouped items (no packing sheet) - Each dispatch is a separate entry
+        console.log(`   ✅ THIS IS AN UNGROUPED ITEM`);
         const key = `ungrouped_${dispatch._id}`;
-        if (!groupedByPackingSheet[key]) {
-          groupedByPackingSheet[key] = {
-            _id: dispatch._id,
-            packingSheetId: null,
-            productGroup: dispatch.productGroup || 'Ungrouped',
-            company: dispatch.company,
-            date: dispatch.date,
-            packedQuantityReadyForDispatch: dispatch.packedQuantityReadyForDispatch,
-            previousClosingStockYesterdayBalance: dispatch.previousClosingStockYesterdayBalance,
-            returnQuantityYesterdayReturns: dispatch.returnQuantityYesterdayReturns,
-            totalAvailableStock: dispatch.totalAvailableStock,
-            totalIndentQuantityOrdersForTheDay: dispatch.totalIndentQuantityOrdersForTheDay,
-            excessShortage: dispatch.excessShortage,
-            dispatchedQuantitySentToday: dispatch.dispatchedQuantitySentToday,
-            closingStockEndOfDayBalance: dispatch.closingStockEndOfDayBalance,
-            physicalStockEntryManualVerification: dispatch.physicalStockEntryManualVerification,
-            overallLoss: dispatch.overallLoss,
-            dcno: dispatch.dcno,
-            batchNo: dispatch.batchNo,
-            remarks: dispatch.remarks,
-            verifiedBy: dispatch.verifiedBy,
-            verifiedAt: dispatch.verifiedAt,
-            salesPerson: dispatch.salesPerson ? {
-              _id: dispatch.salesPerson._id,
-              fullName: dispatch.salesPerson.fullName,
-              username: dispatch.salesPerson.username,
-              email: dispatch.salesPerson.email
-            } : null,
-            customer: dispatch.customer ? {
-              _id: dispatch.customer._id,
-              name: dispatch.customer.name,
-              customerCode: dispatch.customer.customerCode,
-              address: dispatch.customer.address,
-              phone: dispatch.customer.phone,
-              email: dispatch.customer.email
-            } : null,
-            orderId: dispatch.orderId,
-            indentQty: dispatch.indentQty,
-            qtyIssued: dispatch.qtyIssued,
-            approvedBy: dispatch.approvedBy,
-            approvedAt: dispatch.approvedAt,
-            invoiceGenerated: dispatch.invoiceGenerated,
-            status: dispatch.status,
-            lastUpdatedBy: dispatch.lastUpdatedBy,
-            items: []
-          };
-        }
         
         // Add item details for ungrouped item
         let itemDetails = null;
         if (dispatch.productId) {
           try {
-            itemDetails = await Item.findById(dispatch.productId).select('name stock batch location qty');
+            itemDetails = await Item.findById(dispatch.productId).select('name stock batch location qty').lean();
+            console.log(`✅ Fetched ungrouped item details:`, { 
+              productId: dispatch.productId, 
+              name: itemDetails?.name, 
+              batch: itemDetails?.batch,
+              stock: itemDetails?.stock 
+            });
           } catch (err) {
-            console.log(`⚠️ Could not fetch item details for productId: ${dispatch.productId}`);
+            console.error(`❌ Could not fetch item details for productId: ${dispatch.productId}`, err.message);
           }
         }
         
-        groupedByPackingSheet[key].items.push({
-          itemId: dispatch.productId?._id || dispatch.productId,
+        // Create a separate entry for each ungrouped item (no grouping)
+        groupedByPackingSheet[key] = {
+          _id: dispatch._id,
+          packingSheetId: null,
+          productGroup: dispatch.productGroup || 'Ungrouped',
           productName: dispatch.productName || itemDetails?.name || 'Unknown',
-          batch: itemDetails?.batch || dispatch.batchNo || null, // ✅ Item's batch from Item table
-          stock: itemDetails?.stock || itemDetails?.qty || dispatch.totalAvailableStock || 0,
+          company: dispatch.company,
+          date: dispatch.date,
+          packedQuantityReadyForDispatch: dispatch.packedQuantityReadyForDispatch,
+          previousClosingStockYesterdayBalance: dispatch.previousClosingStockYesterdayBalance,
+          returnQuantityYesterdayReturns: dispatch.returnQuantityYesterdayReturns,
+          totalAvailableStock: dispatch.totalAvailableStock,
+          totalIndentQuantityOrdersForTheDay: dispatch.totalIndentQuantityOrdersForTheDay,
+          excessShortage: dispatch.excessShortage,
+          dispatchedQuantitySentToday: dispatch.dispatchedQuantitySentToday,
+          closingStockEndOfDayBalance: dispatch.closingStockEndOfDayBalance,
+          physicalStockEntryManualVerification: dispatch.physicalStockEntryManualVerification,
+          overallLoss: dispatch.overallLoss,
+          dcno: dispatch.dcno,
+          batchNo: dispatch.batchNo,
+          remarks: dispatch.remarks,
+          verifiedBy: dispatch.verifiedBy,
+          verifiedAt: dispatch.verifiedAt,
+          salesPerson: dispatch.salesPerson ? {
+            _id: dispatch.salesPerson._id,
+            fullName: dispatch.salesPerson.fullName,
+            username: dispatch.salesPerson.username,
+            email: dispatch.salesPerson.email
+          } : null,
+          customer: dispatch.customer ? {
+            _id: dispatch.customer._id,
+            name: dispatch.customer.name,
+            customerCode: dispatch.customer.customerCode,
+            address: dispatch.customer.address,
+            phone: dispatch.customer.phone,
+            email: dispatch.customer.email
+          } : null,
+          orderId: dispatch.orderId,
+          indentQty: dispatch.indentQty || 0,
           qtyIssued: dispatch.qtyIssued || 0,
+          approvedBy: dispatch.approvedBy,
+          approvedAt: dispatch.approvedAt,
+          invoiceGenerated: dispatch.invoiceGenerated,
           status: dispatch.status,
-          totalAvailableStock: dispatch.totalAvailableStock || 0
-        });
-        
-        // ✅ Add group-level indentQty for ungrouped items
-        groupedByPackingSheet[key].indentQty = dispatch.totalIndentQuantityOrdersForTheDay || dispatch.indentQty || 0;
-        
-        // ✅ Calculate totalItemBatch for ungrouped items
-        const itemBatchValue = parseFloat(itemDetails?.batch) || 0;
-        groupedByPackingSheet[key].totalItemBatch = itemBatchValue;
+          lastUpdatedBy: dispatch.lastUpdatedBy,
+          // Single item data (not an array - for ungrouped items)
+          items: [{
+            itemId: dispatch.productId?._id || dispatch.productId,
+            productName: dispatch.productName || itemDetails?.name || 'Unknown',
+            batch: itemDetails?.batch || dispatch.batchNo || null,
+            stock: itemDetails?.stock || itemDetails?.qty || dispatch.totalAvailableStock || 0,
+            qtyIssued: dispatch.qtyIssued || 0,
+            status: dispatch.status,
+            totalAvailableStock: dispatch.totalAvailableStock || 0
+          }],
+          totalItemBatch: parseFloat(itemDetails?.batch) || 0,
+          isUngrouped: true
+        };
       } else {
         // Handle grouped items with packing sheet
         if (!groupedByPackingSheet[packingSheetId]) {
@@ -1904,6 +1937,8 @@ export const getTodaysProducts = async (req, res) => {
             _id: dispatch._id,
             packingSheetId: packingSheetId,
             productGroup: dispatch.productGroup,
+            productId: dispatch.productId,
+            productName: dispatch.productName,
             company: dispatch.company,
             date: dispatch.date,
             packedQuantityReadyForDispatch: dispatch.packedQuantityReadyForDispatch,
@@ -1936,8 +1971,8 @@ export const getTodaysProducts = async (req, res) => {
               email: dispatch.customer.email
             } : null,
             orderId: dispatch.orderId,
-            indentQty: dispatch.indentQty,
-            qtyIssued: dispatch.qtyIssued,
+            indentQty: dispatch.indentQty || 0,
+            qtyIssued: dispatch.qtyIssued || 0,
             approvedBy: dispatch.approvedBy,
             approvedAt: dispatch.approvedAt,
             invoiceGenerated: dispatch.invoiceGenerated,
@@ -1952,34 +1987,82 @@ export const getTodaysProducts = async (req, res) => {
     // For each packing sheet, get production batch details and items
     const products = [];
     
+    console.log(`🔄 Processing ${Object.keys(groupedByPackingSheet).length} grouped packing sheets...`);
+    
     for (const [key, group] of Object.entries(groupedByPackingSheet)) {
       if (key.startsWith('ungrouped_')) {
         // Already processed ungrouped items
+        console.log(`  ✅ Adding ungrouped item: ${group.productGroup}`);
         products.push(group);
         continue;
       }
       
+      console.log(`  🔍 Processing packing sheet: ${group.packingSheetId}`);
       try {
         // Get packing sheet details
         const packingSheet = await PackingSheet.findById(group.packingSheetId);
         
         if (!packingSheet) {
-          console.log(`⚠️ Packing sheet not found: ${group.packingSheetId}`);
+          console.log(`  ⚠️ Packing sheet not found: ${group.packingSheetId}, skipping...`);
           continue;
         }
         
-        // Get production batch using productionGroup from packing sheet
-        const productionBatch = await ProductionBatch.findOne({
+        // If packing sheet has no production group, treat as ungrouped
+        if (!packingSheet.productionGroup) {
+          console.log(`  ⚠️ Packing sheet has no production group - UNGROUPED ITEM`);
+          console.log(`  🔍 ProductId from group: ${group.productId}`);
+          console.log(`  🔍 ProductId type: ${typeof group.productId}`);
+          
+          // Simple: Get batch from Item table using productId
+          let batchValue = 0;
+          if (group.productId) {
+            try {
+              console.log(`  📡 Querying Item collection for ID: ${group.productId}`);
+              const item = await Item.findById(group.productId).select('name batch stock qty').lean();
+              console.log(`  📦 Item query result:`, item);
+              
+              if (item) {
+                if (item.batch) {
+                  batchValue = parseFloat(item.batch);
+                  console.log(`  ✅✅✅ SUCCESS! Found batch: ${item.batch}, parsed: ${batchValue}`);
+                } else {
+                  console.log(`  ❌ Item found but batch field is: ${item.batch}`);
+                }
+              } else {
+                console.log(`  ❌ Item.findById returned null - Item not found in database!`);
+              }
+            } catch (err) {
+              console.error(`  ❌ Error fetching item:`, err);
+            }
+          } else {
+            console.log(`  ❌ No productId in group!`);
+          }
+          
+          // Set totalItemBatch directly
+          group.totalItemBatch = batchValue;
+          group.indentQty = group.indentQty || 0;
+          group.isUngrouped = true;
+          
+          console.log(`  ✅ FINAL UNGROUPED RESULT - totalItemBatch: ${group.totalItemBatch}, indentQty: ${group.indentQty}`);
+          products.push(group);
+          continue;
+        }
+        
+        console.log(`  📄 Found packing sheet with productionGroup: ${packingSheet.productionGroup}`);
+        
+        // Get ALL production batches for this productionGroup for TODAY only
+        const productionBatches = await ProductionBatch.find({
           groupId: packingSheet.productionGroup,
-          companyId: req.user.companyId
+          companyId: req.user.companyId,
+          productionDate: { $gte: startOfDay, $lte: endOfDay }
         }).populate('combinedItems.itemId');
         
-        if (!productionBatch || !productionBatch.combinedItems || productionBatch.combinedItems.length === 0) {
-          console.log(`⚠️ No production batch or combined items found for group: ${packingSheet.productionGroup}`);
+        if (!productionBatches || productionBatches.length === 0) {
+          console.log(`  ⚠️ No production batches found for group: ${packingSheet.productionGroup}, skipping...`);
           continue;
         }
         
-        console.log(`📦 Found production batch with ${productionBatch.combinedItems.length} items for packing sheet ${group.packingSheetId}`);
+        console.log(`  📦 Found ${productionBatches.length} production batch(es) for packing sheet ${group.packingSheetId}`);
         
         // Get dispatch details for this packing sheet to get indent quantities
         const relatedDispatches = dispatchProducts.filter(d => {
@@ -1987,46 +2070,67 @@ export const getTodaysProducts = async (req, res) => {
           return dPackingSheetId === group.packingSheetId;
         });
         
-        // Build items array from combinedItems in production batch
-        for (const combinedItem of productionBatch.combinedItems) {
-          const item = combinedItem.itemId;
-          
-          if (!item) {
-            console.log(`⚠️ Item not found in combinedItems`);
+        // Track unique items to avoid duplicates
+        const addedItemIds = new Set();
+        
+        // Build items array from ALL production batches
+        for (const productionBatch of productionBatches) {
+          if (!productionBatch.combinedItems || productionBatch.combinedItems.length === 0) {
+            console.log(`⚠️ Batch ${productionBatch.batchNo} has no combined items`);
             continue;
           }
           
-          // Fetch fresh item details from Item collection to get current batch number
-          let itemBatch = null;
-          let itemStock = 0;
-          try {
-            const freshItem = await Item.findById(item._id).select('batch stock qty').lean();
-            if (freshItem) {
-              itemBatch = freshItem.batch;
-              itemStock = freshItem.stock || freshItem.qty || 0;
+          console.log(`  📦 Processing batch ${productionBatch.batchNo} with ${productionBatch.combinedItems.length} items`);
+          
+          for (const combinedItem of productionBatch.combinedItems) {
+            const item = combinedItem.itemId;
+            
+            if (!item) {
+              console.log(`  ⚠️ Item not found in combinedItems`);
+              continue;
             }
-          } catch (err) {
-            console.log(`⚠️ Could not fetch fresh item data for ${item._id}`);
+            
+            // Skip if we've already added this item
+            const itemIdStr = item._id.toString();
+            if (addedItemIds.has(itemIdStr)) {
+              console.log(`  ⏭️ Skipping duplicate item: ${item.name}`);
+              continue;
+            }
+            addedItemIds.add(itemIdStr);
+            
+            // Fetch fresh item details from Item collection to get current batch number
+            let itemBatch = null;
+            let itemStock = 0;
+            try {
+              const freshItem = await Item.findById(item._id).select('batch stock qty').lean();
+              if (freshItem) {
+                itemBatch = freshItem.batch;
+                itemStock = freshItem.stock || freshItem.qty || 0;
+              }
+            } catch (err) {
+              console.log(`  ⚠️ Could not fetch fresh item data for ${item._id}`);
+            }
+            
+            // Find matching dispatch entry for this item
+            const matchingDispatch = relatedDispatches.find(d => 
+              d.productId?.toString() === item._id.toString()
+            );
+            
+            group.items.push({
+              itemId: item._id,
+              productName: item.name || 'Unknown',
+              batch: itemBatch || item.batch || null, // ✅ Each item's batch from Item table
+              stock: itemStock || item.stock || item.qty || 0,
+              qtyIssued: matchingDispatch?.qtyIssued || 0,
+              status: matchingDispatch?.status || 'pending',
+              totalAvailableStock: matchingDispatch?.totalAvailableStock || itemStock || 0
+            });
+            
+            console.log(`  ✅ Added item: ${item.name} (Batch: ${itemBatch}, Stock: ${itemStock})`);
           }
-          
-          // Find matching dispatch entry for this item
-          const matchingDispatch = relatedDispatches.find(d => 
-            d.productId?.toString() === item._id.toString()
-          );
-          
-          group.items.push({
-            itemId: item._id,
-            productName: item.name || 'Unknown',
-            batch: itemBatch || item.batch || null, // ✅ Each item's batch from Item table
-            stock: itemStock || item.stock || item.qty || 0,
-            qtyIssued: matchingDispatch?.qtyIssued || 0,
-            status: matchingDispatch?.status || 'pending',
-            totalAvailableStock: matchingDispatch?.totalAvailableStock || itemStock || 0
-          });
         }
         
-        // ✅ Add group-level indentQty (already exists as totalIndentQuantityOrdersForTheDay)
-        group.indentQty = group.totalIndentQuantityOrdersForTheDay;
+        // ✅ Keep existing indentQty from dispatch (already set from database)
         
         // ✅ Calculate totalItemBatch: sum of all item.batch values in this group
         const totalItemBatch = group.items.reduce((sum, item) => {

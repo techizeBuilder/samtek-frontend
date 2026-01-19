@@ -1717,14 +1717,15 @@ export const approvePackingSheet = async (req, res) => {
       if (isGroupSheet && batch && batch.combinedItems && batch.combinedItems.length > 0) {
           const Item = (await import('../models/Inventory.js')).Item;
           
-          // Get ALL item details from combinedItems and calculate total productionFinalBatches
-          let totalIndentFromProductionBatches = 0;
+          // Calculate TWO different totals for GROUP items
+          let totalIndentFromOrders = 0; // For indentQty field
+          let totalProductionBatches = 0; // For totalIndentQuantityOrdersForTheDay field
           
           const allItemDetails = await Promise.all(
             batch.combinedItems.map(async (combinedItem) => {
               const item = await Item.findById(combinedItem.itemId).lean();
               
-              // Get ProductDetailsDailySummary for each item to sum productionFinalBatches
+              // Get ProductDetailsDailySummary for each item
               if (item) {
                 const itemSummary = await ProductDetailsDailySummary.findOne({
                   productId: combinedItem.itemId,
@@ -1732,20 +1733,40 @@ export const approvePackingSheet = async (req, res) => {
                   date: { $gte: startOfDay, $lte: new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000) }
                 });
                 
-                if (itemSummary && itemSummary.productionFinalBatches) {
-                  totalIndentFromProductionBatches += itemSummary.productionFinalBatches;
-                  console.log(`📊 Item ${item.name}: productionFinalBatches = ${itemSummary.productionFinalBatches}`);
+                if (itemSummary) {
+                  console.log(`📋 Item ${item.name} summary:`, {
+                    totalIndent: itemSummary.totalIndent,
+                    productionFinalBatches: itemSummary.productionFinalBatches,
+                    toBeProducedDay: itemSummary.toBeProducedDay
+                  });
+                  
+                  // Sum ORDER quantities for indentQty - use toBeProducedDay (actual order quantity)
+                  const orderQty = itemSummary.toBeProducedDay || itemSummary.totalIndent || 0;
+                  if (orderQty > 0) {
+                    totalIndentFromOrders += orderQty;
+                    console.log(`📊 Item ${item.name}: order quantity = ${orderQty}`);
+                  }
+                  
+                  // Sum PRODUCTION batches for totalIndentQuantityOrdersForTheDay
+                  if (itemSummary.productionFinalBatches) {
+                    totalProductionBatches += itemSummary.productionFinalBatches;
+                    console.log(`📊 Item ${item.name}: productionFinalBatches = ${itemSummary.productionFinalBatches}`);
+                  }
+                } else {
+                  console.log(`⚠️ No ProductDetailsDailySummary found for item ${item.name}`);
                 }
               }
               
-              return item ? `${item.name} (${combinedItem.quantity || 0} units)` : null;
+              // Only include items with quantity > 0
+              const quantity = combinedItem.quantity || 0;
+              return (item && quantity > 0) ? `${item.name} (${quantity} units)` : null;
             })
           );
           
           const validItems = allItemDetails.filter(item => item !== null);
           const productNamesDisplay = validItems.join(', ');
           
-          console.log(`📊 GROUP TOTAL: totalIndentFromProductionBatches = ${totalIndentFromProductionBatches} (from ${validItems.length} items)`);
+          console.log(`📊 GROUP TOTALS: indentQty (orders) = ${totalIndentFromOrders}, totalIndentQuantity (production) = ${totalProductionBatches}`);
           
           // Use first item for productId
           const firstCombinedItem = batch.combinedItems[0];
@@ -1782,9 +1803,10 @@ export const approvePackingSheet = async (req, res) => {
               date: { $gte: yesterdayStart, $lte: yesterdayEnd }
             });
             
-            // Use totalIndentFromProductionBatches calculated above for the GROUP
-            const itemIndentQuantity = totalIndentFromProductionBatches;
-            console.log(`📊 Using GROUP totalIndentQuantity: ${itemIndentQuantity}`);
+            // Use PRODUCTION batches for totalIndentQuantityOrdersForTheDay field
+            const itemIndentQuantity = totalProductionBatches;
+            console.log(`📊 GROUP: totalIndentQuantityOrdersForTheDay (production) = ${itemIndentQuantity}`);
+            console.log(`📊 GROUP: indentQty (orders) = ${totalIndentFromOrders}`);
             
             const itemPreviousStock = yesterdayDispatch?.closingStockEndOfDayBalance || 
                                      yesterdayDispatch?.physicalStockEntryManualVerification ||
@@ -1879,6 +1901,7 @@ export const approvePackingSheet = async (req, res) => {
                     previousClosingStockYesterdayBalance: Math.round(itemPreviousStock * 100) / 100,
                     returnQuantityYesterdayReturns: Math.round(itemReturnQuantity * 100) / 100,
                     totalIndentQuantityOrdersForTheDay: Math.round(itemIndentQuantity * 100) / 100,
+                    indentQty: Math.round(totalIndentFromOrders * 100) / 100,
                     totalAvailableStock: Math.round(totalAvailable * 100) / 100,
                     excessShortage: excessShortageValue,
                     closingStockEndOfDayBalance: totalAvailable - dispatchedQty,
@@ -1912,6 +1935,7 @@ export const approvePackingSheet = async (req, res) => {
                 previousClosingStockYesterdayBalance: Math.round(itemPreviousStock * 100) / 100,
                 returnQuantityYesterdayReturns: Math.round(itemReturnQuantity * 100) / 100,
                 totalIndentQuantityOrdersForTheDay: Math.round(itemIndentQuantity * 100) / 100,
+                indentQty: Math.round(totalIndentFromOrders * 100) / 100,
                 totalAvailableStock: Math.round(totalAvailable * 100) / 100,
                 excessShortage: excessShortageValue,
                 dispatchedQuantitySentToday: 0,
@@ -2011,9 +2035,11 @@ export const approvePackingSheet = async (req, res) => {
             date: { $gte: yesterdayStart, $lte: yesterdayEnd }
           });
 
-          // Use productionFinalBatches from ProductDetailsDailySummary for ungrouped items
-          const itemIndentQuantity = todayItemSummary?.productionFinalBatches || 0;
-          console.log(`📊 UNGROUPED ITEM ${item.productName}: productionFinalBatches = ${itemIndentQuantity}`);
+          // Get indent quantity from ProductDetailsDailySummary
+          let itemIndentQuantity = todayItemSummary?.productionFinalBatches || 0;
+          // Get ORDER quantity for indentQty field (from sales orders)
+          let orderIndentQty = todayItemSummary?.toBeProducedDay || 0;
+          console.log(`📊 UNGROUPED ITEM ${item.productName}: productionFinalBatches = ${itemIndentQuantity}, orderQty = ${orderIndentQty}`);
           
           // Try multiple fields for previous stock - priority order
           const itemPreviousStock = yesterdayDispatch?.closingStockEndOfDayBalance || 
@@ -2166,12 +2192,13 @@ export const approvePackingSheet = async (req, res) => {
                 $set: {
                   salesPerson: salesPersonId,
                   customer: customerId,
-                  productGroup: `${packingSheet.productionGroupName || 'Unknown Group'} - ${item.productName}`,
+                  productGroup: `Ungrouped Items - ${item.productName}`,
                   productName: item.productName,
                   packedQuantityReadyForDispatch: Math.round(item.packedQty * 100) / 100,
                   previousClosingStockYesterdayBalance: Math.round(itemPreviousStock * 100) / 100,
                   returnQuantityYesterdayReturns: Math.round(itemReturnQuantity * 100) / 100,
                   totalIndentQuantityOrdersForTheDay: Math.round(itemIndentQuantity * 100) / 100,
+                  indentQty: Math.round(orderIndentQty * 100) / 100,
                   totalAvailableStock: Math.round(totalAvailable * 100) / 100,
                   excessShortage: excessShortageValue,
                   closingStockEndOfDayBalance: Math.round((totalAvailable - dispatchedQty) * 100) / 100,
@@ -2195,12 +2222,13 @@ export const approvePackingSheet = async (req, res) => {
               salesPerson: salesPersonId,
               customer: customerId,
               date: startOfDay,
-              productGroup: `${packingSheet.productionGroupName || 'Unknown Group'} - ${item.productName}`,
+              productGroup: `Ungrouped Items - ${item.productName}`,
               company: req.user.companyId,
               packedQuantityReadyForDispatch: Math.round(item.packedQty * 100) / 100,
               previousClosingStockYesterdayBalance: Math.round(itemPreviousStock * 100) / 100,
               returnQuantityYesterdayReturns: Math.round(itemReturnQuantity * 100) / 100,
               totalIndentQuantityOrdersForTheDay: Math.round(itemIndentQuantity * 100) / 100,
+              indentQty: Math.round(orderIndentQty * 100) / 100,
               totalAvailableStock: Math.round(totalAvailable * 100) / 100,
               excessShortage: excessShortageValue,
               dispatchedQuantitySentToday: 0,
