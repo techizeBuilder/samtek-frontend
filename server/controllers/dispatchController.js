@@ -1632,11 +1632,12 @@ export const generateInvoice = async (req, res) => {
 export const getNextDCNumber = async (req, res) => {
   try {
     // Use the static method from Dispatch model to generate next DCno
-    const nextDCno = await Dispatch.generateNextDCno();
+    const nextDCno = await Dispatch.generateNextDCno(req.user.companyId);
 
     res.status(200).json({ 
       success: true, 
-      dcNo: nextDCno
+      nextDCNumber: nextDCno,
+      dcNo: nextDCno // Keep both for compatibility
     });
   } catch (error) {
     console.error('Error getting next DC number:', error);
@@ -2525,9 +2526,16 @@ export const generateInvoiceForDC = async (req, res) => {
       dcno: dispatch.dcno,
       company: req.user.companyId
     })
-    .populate('productId', 'name code category unit price')
+    .populate('productId', 'name code category unit price salePrice gst')
     .populate('salesPerson', 'fullName username email')
     .populate('customer', 'name customerCode address phone email')
+    .populate({
+      path: 'orderId',
+      populate: {
+        path: 'products.product',
+        model: 'Item'
+      }
+    })
     .lean();
 
     console.log('🔍 Found', allDCItems.length, 'items for DC:', dispatch.dcno);
@@ -2566,21 +2574,44 @@ export const generateInvoiceForDC = async (req, res) => {
           // Try multiple sources for product name
           const productName = item.productId?.name || item.productName || 'Product Name Not Set';
           
+          // Get rate from order or product
+          let rate = 0;
+          if (item.orderId && item.orderId.products && Array.isArray(item.orderId.products)) {
+            const orderProduct = item.orderId.products.find(
+              p => p.product && item.productId && 
+                   p.product.toString() === item.productId._id.toString()
+            );
+            if (orderProduct) {
+              rate = orderProduct.price || 0;
+            }
+          }
+          // Fallback to product's sale price
+          if (rate === 0 && item.productId) {
+            rate = item.productId.salePrice || item.productId.price || 0;
+          }
+          
+          // Get GST from product
+          const gst = item.productId?.gst || 0;
+          
           console.log('📋 Mapping item:', {
             hasProductId: !!item.productId,
             productIdName: item.productId?.name,
             productName: item.productName,
             finalName: productName,
             indentQty: item.indentQty || item.totalIndentQuantityOrdersForTheDay,
-            qtyIssued: item.qtyIssued || item.dispatchedQuantitySentToday
+            qtyIssued: item.qtyIssued || item.dispatchedQuantitySentToday,
+            rate: rate,
+            gst: gst
           });
           
           return {
             productName: productName,
             productGroup: item.productGroup || '',
             indentQty: item.indentQty || item.totalIndentQuantityOrdersForTheDay || 0,
-            qtyIssued: item.qtyIssued || item.dispatchedQuantitySentToday || 0,
-            unit: item.productId?.unit || item.unit || 'Pcs'
+            qtyIssued: item.qtyIssued || item.packedQuantityReadyForDispatch || item.dispatchedQuantitySentToday || 0,
+            unit: item.productId?.unit || item.unit || 'Pcs',
+            rate: rate,
+            gst: gst
           };
         });
 
@@ -2734,21 +2765,23 @@ export const generateInvoiceForDC = async (req, res) => {
     // Table Header with Blue Background
     doc.rect(30, tableTop, 535, 25).fillAndStroke('#1e3a8a', '#1e3a8a');
     
-    // Column positions for professional layout
+    // Column positions for professional layout with financial columns
     const slCol = 40;
     const itemCol = 80;
-    const groupCol = 280;
-    const unitCol = 390;
-    const qtyCol = 445;
-    const rateCol = 490;
+    const qtyCol = 260;
+    const rateCol = 320;
+    const amountCol = 380;
+    const gstCol = 450;
+    const totalCol = 500;
     
     doc.fontSize(9).font('Helvetica-Bold').fillColor('#ffffff');
-    doc.text('S.No', slCol, tableTop + 8);
-    doc.text('Product Name', itemCol, tableTop + 8);
-    doc.text('Product Group', groupCol, tableTop + 8);
-    doc.text('Unit', unitCol, tableTop + 8);
-    doc.text('Indent', qtyCol, tableTop + 8);
-    doc.text('Issued', rateCol, tableTop + 8);
+    doc.text('S.No', slCol, tableTop + 8, { width: 30 });
+    doc.text('Product Name', itemCol, tableTop + 8, { width: 170 });
+    doc.text('Quantity', qtyCol, tableTop + 8, { width: 50, align: 'right' });
+    doc.text('Rate', rateCol, tableTop + 8, { width: 50, align: 'right' });
+    doc.text('Amount', amountCol, tableTop + 8, { width: 60, align: 'right' });
+    doc.text('GST%', gstCol, tableTop + 8, { width: 40, align: 'right' });
+    doc.text('Total', totalCol, tableTop + 8, { width: 55, align: 'right' });
 
     doc.fillColor('#000000');
     let currentY = tableTop + 25;
@@ -2756,10 +2789,8 @@ export const generateInvoiceForDC = async (req, res) => {
 
     // Table Rows with alternating colors
     doc.fontSize(8).font('Helvetica');
-    let totalIndent = 0;
-    let totalIssued = 0;
     let subtotal = 0;
-    const pricePerUnit = 45; // Default price per unit
+    let totalGST = 0;
 
     items.forEach((item, index) => {
       // Check if we need a new page
@@ -2779,17 +2810,25 @@ export const generateInvoiceForDC = async (req, res) => {
       
       doc.fillColor('#000000');
       
-      // Row data
+      // Get quantity, rate, and GST
+      const quantity = item.qtyIssued || 0;
+      const rate = item.rate || item.price || 0;
+      const gstRate = item.gst || 0;
+      const amount = quantity * rate;
+      const gstAmount = amount * (gstRate / 100);
+      const totalAmount = amount + gstAmount;
+      
+      // Row data with financial columns
       doc.text(`${index + 1}`, slCol, currentY + 10, { width: 30 });
-      doc.text(item.productName || 'N/A', itemCol, currentY + 6, { width: 190 });
-      doc.text(item.productGroup || '', groupCol, currentY + 10, { width: 100 });
-      doc.text(item.unit || 'Pcs', unitCol, currentY + 10, { width: 45 });
-      doc.text(`${item.indentQty || 0}`, qtyCol, currentY + 10, { width: 40, align: 'right' });
-      doc.text(`${item.qtyIssued || 0}`, rateCol, currentY + 10, { width: 40, align: 'right' });
+      doc.text(item.productName || 'N/A', itemCol, currentY + 6, { width: 170, ellipsis: true });
+      doc.text(`${quantity}`, qtyCol, currentY + 10, { width: 50, align: 'right' });
+      doc.text(`${rate.toFixed(2)}`, rateCol, currentY + 10, { width: 50, align: 'right' });
+      doc.text(`${amount.toFixed(2)}`, amountCol, currentY + 10, { width: 60, align: 'right' });
+      doc.text(`${gstRate}%`, gstCol, currentY + 10, { width: 40, align: 'right' });
+      doc.text(`${totalAmount.toFixed(2)}`, totalCol, currentY + 10, { width: 55, align: 'right' });
 
-      totalIndent += item.indentQty || 0;
-      totalIssued += item.qtyIssued || 0;
-      subtotal += (item.qtyIssued || 0) * pricePerUnit;
+      subtotal += amount;
+      totalGST += gstAmount;
 
       currentY += rowHeight;
     });
@@ -2797,32 +2836,28 @@ export const generateInvoiceForDC = async (req, res) => {
     // Subtotal Row
     doc.rect(30, currentY, 535, 25).fillAndStroke('#e5e7eb', '#9ca3af');
     doc.fontSize(9).font('Helvetica-Bold').fillColor('#000000');
-    doc.text('SUBTOTAL:', groupCol, currentY + 8);
-    doc.text(totalIndent.toFixed(2), qtyCol, currentY + 8, { width: 40, align: 'right' });
-    doc.text(totalIssued.toFixed(2), rateCol, currentY + 8, { width: 40, align: 'right' });
+    doc.text('SUBTOTAL:', itemCol, currentY + 8);
+    doc.text(`₹${subtotal.toFixed(2)}`, amountCol, currentY + 8, { width: 60, align: 'right' });
+    doc.text(`₹${totalGST.toFixed(2)}`, gstCol, currentY + 8, { width: 40, align: 'right' });
+    const grandTotal = subtotal + totalGST;
+    doc.text(`₹${grandTotal.toFixed(2)}`, totalCol, currentY + 8, { width: 55, align: 'right' });
     
     currentY += 25;
 
-    // Tax Calculation Section (CGST + SGST)
+    // Tax Calculation Section
     const taxY = currentY + 15;
     
     // Right side - Tax breakdown box
-    doc.rect(350, taxY, 215, 100).stroke();
+    doc.rect(350, taxY, 215, 85).stroke();
     doc.fontSize(9).font('Helvetica').fillColor('#000000');
     
     let taxLineY = taxY + 10;
-    doc.fillColor('#000000').text('Taxable Amount:', 360, taxLineY);
-    doc.text(`₹ ${subtotal.toFixed(2)}`, 500, taxLineY, { width: 55, align: 'right' });
+    doc.fillColor('#000000').text('Subtotal (Taxable):', 360, taxLineY);
+    doc.text(`₹${subtotal.toFixed(2)}`, 500, taxLineY, { width: 55, align: 'right' });
     
     taxLineY += 18;
-    doc.fillColor('#000000').text('CGST @ 9%:', 360, taxLineY);
-    const cgst = subtotal * 0.09;
-    doc.text(`₹ ${cgst.toFixed(2)}`, 500, taxLineY, { width: 55, align: 'right' });
-    
-    taxLineY += 18;
-    doc.fillColor('#000000').text('SGST @ 9%:', 360, taxLineY);
-    const sgst = subtotal * 0.09;
-    doc.text(`₹ ${sgst.toFixed(2)}`, 500, taxLineY, { width: 55, align: 'right' });
+    doc.fillColor('#000000').text('Total GST:', 360, taxLineY);
+    doc.text(`₹${totalGST.toFixed(2)}`, 500, taxLineY, { width: 55, align: 'right' });
     
     taxLineY += 18;
     doc.moveTo(360, taxLineY).lineTo(555, taxLineY).stroke();
@@ -2830,8 +2865,7 @@ export const generateInvoiceForDC = async (req, res) => {
     
     doc.fontSize(11).font('Helvetica-Bold').fillColor('#000000');
     doc.text('Grand Total:', 360, taxLineY);
-    const grandTotal = subtotal + cgst + sgst;
-    doc.text(`₹ ${grandTotal.toFixed(2)}`, 500, taxLineY, { width: 55, align: 'right' });
+    doc.text(`₹${grandTotal.toFixed(2)}`, 500, taxLineY, { width: 55, align: 'right' });
     
     // Left side - Amount in words
     doc.fontSize(9).font('Helvetica-Bold').fillColor('#000000');
@@ -2840,7 +2874,7 @@ export const generateInvoiceForDC = async (req, res) => {
     const amountInWords = convertNumberToWords(Math.round(grandTotal));
     doc.text(`${amountInWords} Rupees Only`, 40, taxY + 28, { width: 290 });
     
-    doc.y = taxY + 115;
+    doc.y = taxY + 100;
 
   
     
@@ -2877,12 +2911,313 @@ export const generateInvoiceForDC = async (req, res) => {
   }
 };
 
+// Global Invoice Generation by DC Number
+export const generateInvoiceByDC = async (req, res) => {
+  try {
+    const { dcNo, salesPersonId } = req.body;
+
+    console.log('📄 Generating invoice for DC:', dcNo);
+
+    if (!dcNo) {
+      return res.status(400).json({
+        success: false,
+        message: 'DC Number is required'
+      });
+    }
+
+    // Find all dispatch entries with this DC number
+    const dispatches = await Dispatch.find({ dcno: dcNo })
+      .populate('productId')
+      .populate('customer')
+      .populate('company')
+      .populate('salesPerson')
+      .populate({
+        path: 'orderId',
+        populate: {
+          path: 'products.product',
+          model: 'Item'
+        }
+      })
+      .sort({ createdAt: 1 });
+
+    console.log(`📦 Found ${dispatches.length} dispatch entries for DC ${dcNo}`);
+
+    if (!dispatches || dispatches.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'No dispatches found with this DC number'
+      });
+    }
+
+    // Use the first dispatch for common details
+    const firstDispatch = dispatches[0];
+    
+    // Override salesperson if provided
+    let salesPerson = firstDispatch.salesPerson;
+    if (salesPersonId) {
+      const customSalesPerson = await User.findById(salesPersonId);
+      if (customSalesPerson) {
+        salesPerson = customSalesPerson;
+      }
+    }
+
+    const customer = firstDispatch.customer;
+    const company = firstDispatch.company;
+
+    if (!customer) {
+      return res.status(404).json({
+        success: false,
+        message: 'Customer information not found'
+      });
+    }
+
+    // Setup PDF generation
+    const PDFDocument = (await import('pdfkit')).default;
+    const doc = new PDFDocument({ margin: 30, size: 'A4' });
+
+    // Set response headers
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="Invoice_${dcNo}_${Date.now()}.pdf"`);
+
+    // Company details with defaults
+    const companyDetails = {
+      name: company?.name || 'SUNRISE BAKERY',
+      tagline: company?.tagline || 'Premium Quality Baked Goods Since 2020',
+      address: company?.address || 'Company Address Not Set',
+      city: company?.city || '',
+      pincode: company?.pincode || '',
+      phone: company?.phone || 'Not Available',
+      email: company?.email || 'Not Available',
+      gstin: company?.gstin || 'GSTIN Not Set',
+      pan: company?.pan || 'PAN Not Set'
+    };
+
+    doc.pipe(res);
+
+    // Header
+    doc.rect(30, 30, 535, 120).fillAndStroke('#1e3a8a', '#1e3a8a');
+    doc.fontSize(28).font('Helvetica-Bold').fillColor('#ffffff')
+       .text(companyDetails.name.toUpperCase(), 40, 50, { align: 'center' });
+    doc.fontSize(10).font('Helvetica').fillColor('#e0e7ff')
+       .text(companyDetails.tagline, 40, 85, { align: 'center' });
+    
+    doc.fontSize(8).fillColor('#ffffff');
+    const fullAddress = `${companyDetails.address}${companyDetails.city ? ', ' + companyDetails.city : ''}${companyDetails.pincode ? ' - ' + companyDetails.pincode : ''}`;
+    doc.text(fullAddress, 40, 105, { align: 'left', width: 350 });
+    doc.text(`${companyDetails.phone} | ${companyDetails.email}`, 40, 118, { align: 'left', width: 350 });
+    doc.text(`GSTIN: ${companyDetails.gstin}`, 400, 105, { align: 'left' });
+    doc.text(`PAN: ${companyDetails.pan}`, 400, 118, { align: 'left' });
+    
+    doc.fillColor('#000000');
+    doc.y = 160;
+
+    // Invoice Title
+    doc.rect(30, doc.y, 535, 35).fillAndStroke('#f3f4f6', '#d1d5db');
+    doc.fontSize(18).font('Helvetica-Bold').fillColor('#1e3a8a')
+       .text('TAX INVOICE / DELIVERY CHALLAN', 40, doc.y + 10, { align: 'center' });
+    
+    doc.fillColor('#000000');
+    doc.y += 45;
+
+    // Invoice Details & Party Information Section
+    const invoiceDetailsY = doc.y;
+    
+    // Left Box - Invoice Info and Sales Person
+    doc.rect(30, invoiceDetailsY, 260, 120).stroke();
+    doc.fontSize(11).font('Helvetica-Bold').fillColor('#1e3a8a').text('Invoice Details', 40, invoiceDetailsY + 8);
+    doc.fillColor('#000000').fontSize(9).font('Helvetica');
+    doc.text(`DC No: `, 40, invoiceDetailsY + 28, { continued: true });
+    doc.font('Helvetica-Bold').text(`${dcNo}`);
+    doc.font('Helvetica').text(`Date: ${new Date(firstDispatch.date).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}`, 40, invoiceDetailsY + 43);
+    doc.text(`Time: ${new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}`, 40, invoiceDetailsY + 58);
+    
+    // Divider line
+    doc.moveTo(40, invoiceDetailsY + 75).lineTo(280, invoiceDetailsY + 75).stroke();
+    
+    // Sales Person info
+    doc.fontSize(10).font('Helvetica-Bold').fillColor('#1e3a8a').text('Sales Person', 40, invoiceDetailsY + 82);
+    doc.fillColor('#000000').fontSize(9).font('Helvetica');
+    const salesPersonName = salesPerson?.fullName || salesPerson?.username || salesPerson?.name || 'N/A';
+    doc.text(salesPersonName, 40, invoiceDetailsY + 98, { width: 240, ellipsis: true });
+
+    // Right Box - Bill To (Customer Details)
+    doc.rect(305, invoiceDetailsY, 260, 120).stroke();
+    doc.fontSize(11).font('Helvetica-Bold').fillColor('#1e3a8a').text('Bill To', 315, invoiceDetailsY + 8);
+    doc.fillColor('#000000').fontSize(10).font('Helvetica-Bold');
+    doc.text(customer.name || 'N/A', 315, invoiceDetailsY + 28, { width: 240, ellipsis: true });
+    
+    doc.fontSize(8).font('Helvetica');
+    let customerY = invoiceDetailsY + 45;
+    
+    const customerCode = customer.customerCode || 'N/A';
+    doc.text(`Code: ${customerCode}`, 315, customerY);
+    customerY += 13;
+    
+    const customerPhone = customer.phone || 'N/A';
+    doc.text(`Phone: ${customerPhone}`, 315, customerY);
+    customerY += 13;
+    
+    const customerAddress = customer.address || '';
+    if (customerAddress && customerAddress.trim() !== '') {
+      // Use text with proper wrapping
+      const addressLines = doc.heightOfString(customerAddress, { width: 240 });
+      if (addressLines > 26) {
+        // If address is too long, truncate with ellipsis
+        doc.text(customerAddress, 315, customerY, { width: 240, height: 26, ellipsis: true });
+      } else {
+        doc.text(customerAddress, 315, customerY, { width: 240, lineGap: 1 });
+      }
+    } else {
+      doc.text('Address: N/A', 315, customerY);
+    }
+
+    doc.y = invoiceDetailsY + 130;
+
+    // Items Table Header
+    const tableTop = doc.y;
+    doc.rect(30, tableTop, 535, 25).fillAndStroke('#1e3a8a', '#1e3a8a');
+    doc.fontSize(9).font('Helvetica-Bold').fillColor('#ffffff');
+    doc.text('S.No', 40, tableTop + 8, { width: 40 });
+    doc.text('Product Name', 90, tableTop + 8, { width: 180 });
+    doc.text('Quantity', 280, tableTop + 8, { width: 60, align: 'right' });
+    doc.text('Rate', 350, tableTop + 8, { width: 60, align: 'right' });
+    doc.text('Amount', 420, tableTop + 8, { width: 60, align: 'right' });
+    doc.text('GST%', 490, tableTop + 8, { width: 35, align: 'right' });
+    doc.text('Total', 525, tableTop + 8, { width: 50, align: 'right' });
+
+    doc.fillColor('#000000');
+    let yPosition = tableTop + 33;
+
+    // Items
+    let subtotal = 0;
+    let totalGST = 0;
+
+    dispatches.forEach((dispatch, index) => {
+      // Get product name from populated productId or fallback to productName field
+      const productName = dispatch.productId?.name || dispatch.productName || 'Unknown Product';
+      
+      // Get quantity from qtyIssued or indentQty
+      const quantity = dispatch.qtyIssued || dispatch.indentQty || 0;
+      
+      // Get rate and GST
+      let rate = 0;
+      let gstRate = 0;
+      
+      // Try to get from the order first
+      if (dispatch.orderId && dispatch.orderId.products && Array.isArray(dispatch.orderId.products)) {
+        // Find the matching product in the order
+        const orderProduct = dispatch.orderId.products.find(
+          p => p.product && dispatch.productId && 
+               p.product.toString() === dispatch.productId._id.toString()
+        );
+        
+        if (orderProduct) {
+          // Order stores 'price' field (not unitPrice)
+          rate = orderProduct.price || 0;
+          console.log(`📊 Found rate ${rate} from order for ${productName}`);
+        }
+      }
+      
+      // Get GST from product model (Item has 'gst' field)
+      if (dispatch.productId && dispatch.productId.gst !== undefined) {
+        gstRate = dispatch.productId.gst || 0;
+        console.log(`📊 Found GST ${gstRate}% from product for ${productName}`);
+      }
+      
+      // If no rate found in order, use product's salePrice
+      if (rate === 0 && dispatch.productId) {
+        rate = dispatch.productId.salePrice || dispatch.productId.price || 0;
+        console.log(`📊 Using product salePrice ${rate} for ${productName}`);
+      }
+      
+      const amount = quantity * rate;
+      const gstAmount = (amount * gstRate) / 100;
+      const total = amount + gstAmount;
+
+      console.log(`📦 ${productName}: Qty=${quantity}, Rate=${rate}, GST=${gstRate}%, Amount=${amount.toFixed(2)}, Total=${total.toFixed(2)}`);
+
+      subtotal += amount;
+      totalGST += gstAmount;
+
+      if (yPosition > 700) {
+        doc.addPage();
+        yPosition = 50;
+      }
+
+      doc.fontSize(8).font('Helvetica');
+      doc.text(index + 1, 40, yPosition, { width: 40 });
+      doc.text(productName, 90, yPosition, { width: 180 });
+      doc.text(quantity.toString(), 280, yPosition, { width: 60, align: 'right' });
+      doc.text(rate.toFixed(2), 350, yPosition, { width: 60, align: 'right' });
+      doc.text(amount.toFixed(2), 420, yPosition, { width: 60, align: 'right' });
+      doc.text(gstRate.toFixed(0) + '%', 490, yPosition, { width: 35, align: 'right' });
+      doc.text(total.toFixed(2), 525, yPosition, { width: 50, align: 'right' });
+
+      yPosition += 20;
+    });
+
+    // Totals Section
+    doc.moveTo(30, yPosition).lineTo(565, yPosition).stroke();
+    yPosition += 10;
+
+    const grandTotal = subtotal + totalGST;
+
+    doc.fontSize(9).font('Helvetica-Bold');
+    doc.text('Subtotal:', 420, yPosition, { width: 60, align: 'right' });
+    doc.text(`₹${subtotal.toFixed(2)}`, 490, yPosition, { width: 75, align: 'right' });
+    yPosition += 15;
+
+    doc.text('GST:', 420, yPosition, { width: 60, align: 'right' });
+    doc.text(`₹${totalGST.toFixed(2)}`, 490, yPosition, { width: 75, align: 'right' });
+    yPosition += 15;
+
+    doc.rect(420, yPosition - 5, 145, 25).fillAndStroke('#f3f4f6', '#d1d5db');
+    doc.fontSize(11).font('Helvetica-Bold').fillColor('#1e3a8a');
+    doc.text('Grand Total:', 430, yPosition + 3, { width: 60, align: 'left' });
+    doc.text(`₹${grandTotal.toFixed(2)}`, 490, yPosition + 3, { width: 75, align: 'right' });
+
+    doc.fillColor('#000000');
+    yPosition += 35;
+
+    // Amount in Words
+    const amountInWords = convertNumberToWords(Math.round(grandTotal));
+    doc.fontSize(9).font('Helvetica-Bold').text('Amount in Words:', 40, yPosition);
+    doc.font('Helvetica').text(`${amountInWords} Rupees Only`, 40, yPosition + 15, { width: 520 });
+
+    yPosition += 50;
+
+    // Signature Section
+    doc.fontSize(8).font('Helvetica');
+    doc.text('Received By:', 40, yPosition);
+    doc.moveTo(40, yPosition + 40).lineTo(180, yPosition + 40).stroke();
+    doc.text('Customer Signature', 40, yPosition + 45);
+    doc.text(`Date: ${new Date().toLocaleDateString('en-IN')}`, 40, yPosition + 58);
+    
+    doc.text(`For ${companyDetails.name}:`, 380, yPosition);
+    doc.moveTo(380, yPosition + 40).lineTo(520, yPosition + 40).stroke();
+    doc.text('Authorized Signatory', 380, yPosition + 45);
+    doc.text('(Company Seal)', 380, yPosition + 58);
+
+    doc.end();
+
+    console.log(`✅ Invoice generated for DC ${dcNo}`);
+
+  } catch (error) {
+    console.error('❌ Error generating invoice by DC:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to generate invoice',
+      error: error.message
+    });
+  }
+};
+
 // Create Direct Order from Dispatch (similar to sales order creation)
 export const createDirectOrder = async (req, res) => {
   try {
-    const { customerId, salesPersonId, orderDate, products, notes } = req.body;
+    const { customerId, salesPersonId, orderDate, products, notes, autoDispatch } = req.body;
 
-    console.log('📦 Creating direct order from dispatch:', { customerId, salesPersonId, orderDate, productsCount: products?.length });
+    console.log('📦 Creating direct order from dispatch:', { customerId, salesPersonId, orderDate, productsCount: products?.length, autoDispatch });
 
     // Validation
     const errors = {};
@@ -3016,12 +3351,45 @@ export const createDirectOrder = async (req, res) => {
     ));
     console.log('📅 Dispatch date:', { orderDate: parsedOrderDate, dispatchDate: dispatchStartOfDay });
     
+    // Generate DC number if auto-dispatch is requested
+    let dcNumber = null;
+    if (autoDispatch) {
+      dcNumber = await Dispatch.generateNextDCno(req.user.companyId);
+      console.log('📋 Generated DC number for auto-dispatch:', dcNumber);
+    }
+    
     const dispatchEntries = [];
 
     for (const orderProduct of order.products) {
       const productId = orderProduct.product._id;
       const productName = orderProduct.product.name;
       const indentQty = orderProduct.quantity;
+
+      // Get total indent quantity for this product from all orders for today
+      const totalOrderQtyForProduct = await Order.aggregate([
+        {
+          $match: {
+            customer: customerId,
+            orderDate: dispatchStartOfDay,
+            status: { $ne: 'cancelled' }
+          }
+        },
+        { $unwind: '$products' },
+        {
+          $match: {
+            'products.product': productId
+          }
+        },
+        {
+          $group: {
+            _id: null,
+            totalQty: { $sum: '$products.quantity' }
+          }
+        }
+      ]);
+      
+      const totalIndentQty = totalOrderQtyForProduct.length > 0 ? totalOrderQtyForProduct[0].totalQty : indentQty;
+      console.log(`📊 Total indent qty for ${productName} from all orders today: ${totalIndentQty}`);
 
       // Check if there's already a dispatch entry for this product on the order date
       const existingDispatch = await Dispatch.findOne({
@@ -3051,7 +3419,7 @@ export const createDirectOrder = async (req, res) => {
           physicalStockEntryManualVerification: existingDispatch.physicalStockEntryManualVerification || 0,
           
           // Add new order data
-          totalIndentQuantityOrdersForTheDay: 0,
+          totalIndentQuantityOrdersForTheDay: totalIndentQty,
           indentQty: 0,
           qtyIssued: indentQty,
           dispatchedQuantitySentToday: indentQty,
@@ -3068,7 +3436,9 @@ export const createDirectOrder = async (req, res) => {
           customer: customerId,
           orderId: order._id,
           
-          status: 'pending',
+          // Auto-dispatch fields
+          dcno: autoDispatch ? dcNumber : null,
+          status: autoDispatch ? 'dispatched' : 'pending',
           lastUpdatedBy: req.user._id || req.user.id,
           createdBy: req.user._id || req.user.id
         };
@@ -3091,7 +3461,7 @@ export const createDirectOrder = async (req, res) => {
           previousClosingStockYesterdayBalance: 0,
           returnQuantityYesterdayReturns: 0,
           totalAvailableStock: 0,
-          totalIndentQuantityOrdersForTheDay: indentQty,
+          totalIndentQuantityOrdersForTheDay: totalIndentQty,
           indentQty: indentQty,
           qtyIssued: indentQty,
           dispatchedQuantitySentToday: indentQty,
@@ -3106,7 +3476,9 @@ export const createDirectOrder = async (req, res) => {
           // No packing sheet for direct orders
           packingSheetId: null,
           
-          status: 'pending',
+          // Auto-dispatch fields
+          dcno: autoDispatch ? dcNumber : null,
+          status: autoDispatch ? 'dispatched' : 'pending',
           lastUpdatedBy: req.user._id || req.user.id,
           createdBy: req.user._id || req.user.id
         };
@@ -3122,9 +3494,16 @@ export const createDirectOrder = async (req, res) => {
 
     console.log(`✅ Created ${dispatchEntries.length} dispatch entries for order ${order.orderCode}`);
 
+    // Log auto-dispatch completion
+    if (autoDispatch && dcNumber) {
+      console.log(`✅ Auto-dispatch completed with DC number: ${dcNumber}`);
+    }
+
     res.status(201).json({
       success: true,
-      message: 'Order created successfully from dispatch.',
+      message: autoDispatch 
+        ? `Order created and dispatched successfully with DC No: ${dcNumber}` 
+        : 'Order created successfully from dispatch.',
       order: {
         _id: order._id,
         orderCode: order.orderCode,
@@ -3143,7 +3522,9 @@ export const createDirectOrder = async (req, res) => {
           indentQty: d.indentQty,
           status: d.status
         }))
-      }
+      },
+      dcNo: dcNumber,
+      autoDispatched: autoDispatch && dcNumber !== null
     });
 
   } catch (error) {

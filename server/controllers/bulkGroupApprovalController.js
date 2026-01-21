@@ -146,14 +146,15 @@ export const bulkApproveGroup = async (req, res) => {
     console.log(`📊 Required batches: ${requiredBatches}`);
 
     // Step 3: Check existing batches for this group today
+    // FIXED: Explicitly filter by groupId (including null for ungrouped items)
     const existingBatches = await ProductionBatch.countDocuments({
       companyId: userCompanyId,
       productionDate: approvalDate,
-      ...(groupId && { groupId: groupId }),
+      groupId: groupId || null,
       'combinedItems.DailyProductionId': { $in: productDataForBatching.map(p => p.dailyDetailsId) }
     });
     
-    console.log(`📦 Existing batches: ${existingBatches}`);
+    console.log(`📦 Existing batches for groupId ${groupId || 'null'}: ${existingBatches}`);
 
     // Step 4: Calculate how many new batches to create
     const batchesToCreate = Math.max(0, requiredBatches - existingBatches);

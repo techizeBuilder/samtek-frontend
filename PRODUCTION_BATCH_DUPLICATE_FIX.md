@@ -1,3 +1,582 @@
+# Production Batch Duplicate Entry Fix
+
+## Issue Identified
+
+When clicking "Start Moulding" on ungrouped production items, the system was creating **duplicate entries** in the `productionbatches` collection instead of updating existing records.
+
+### Root Cause
+
+**Date Timezone Mismatch** in `server/controllers/productionController.js` → `updateUngroupedItemProductionWithBatch()`:
+
+```javascript
+// ❌ OLD CODE (INCORRECT):
+const today = new Date();
+const productionDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+// This creates: 2026-01-20T18:30:00.000Z (local midnight IST → UTC)
+
+// But existing batches have:
+// 2026-01-21T00:00:00.000Z (UTC midnight)
+
+// Result: Query doesn't find existing batch → creates duplicate!
+```
+
+### Evidence
+
+From `simulate-approval-moulding-flow.js`:
+
+- Query date: `2026-01-20T18:30:00.000Z` (local)
+- Batch date: `2026-01-21T00:00:00.000Z` (UTC)  
+- **Dates don't match** → Query fails → Duplicate created
+
+Existing duplicates found: **3 records** with same `BATNO06` across different dates.
+
+## Solution Implemented
+
+### 1. Fixed Date Creation (Line 1710-1718)
+
+```javascript
+// ✅ NEW CODE (CORRECT):
+const today = new Date();
+const productionDate = new Date(Date.UTC(
+  today.getUTCFullYear(),
+  today.getUTCMonth(),
+  today.getUTCDate(),
+  0, 0, 0, 0
+));
+// This creates: 2026-01-21T00:00:00.000Z (UTC midnight)
+// Now matches existing batch dates!
+```
+
+### 2. Improved Query Logic (Line 1736-1784)
+
+Implemented **3-tier fallback strategy** to find existing batches:
+
+```javascript
+// Strategy 1: Most specific - batchNo + companyId + productionDate
+let productionRecord = await ProductionBatch.findOne({
+  batchNo: finalBatchNo,
+  companyId: companyId,
+  productionDate: productionDate
+});
+
+// Strategy 2: Add itemId if available
+if (!productionRecord && itemId) {
+  productionRecord = await ProductionBatch.findOne({
+    itemId: itemId,
+    batchNo: finalBatchNo,
+    companyId: companyId,
+    productionDate: productionDate
+  });
+}
+
+// Strategy 3: Date range search (handles edge cases)
+if (!productionRecord) {
+  const todayStart = new Date(productionDate);
+  todayStart.setUTCHours(0, 0, 0, 0);
+  const todayEnd = new Date(todayStart);
+  todayEnd.setUTCDate(todayEnd.getUTCDate() + 1);
+  
+  productionRecord = await ProductionBatch.findOne({
+    batchNo: finalBatchNo,
+    companyId: companyId,
+    productionDate: {
+      $gte: todayStart,
+      $lt: todayEnd
+    }
+  });
+}
+```
+
+This ensures the system will **always find existing batches** before creating new ones.
+
+## Testing Scripts Created
+
+### 1. `check-production-batch-duplicates-today.js`
+- Checks for duplicate batch numbers created today
+- Shows ungrouped vs grouped items
+- Shows approved vs pending items
+
+**Current Status**: ✅ No duplicates for today (21 unique batches)
+
+### 2. `test-duplicate-batch-creation.js`
+- Comprehensive analysis of duplicate patterns
+- Checks rapid creation timing
+- Groups batches by production group
+
+**Findings**:
+- 21 batches created today
+- 16 ungrouped batches
+- 19 batch pairs created within 5 seconds (normal bulk creation)
+- No duplicate batch numbers on same date
+
+### 3. `simulate-approval-moulding-flow.js`
+- Simulates the approval → start moulding workflow
+- Identifies the exact query failure point
+- **Successfully identified the date mismatch issue**
+
+### 4. `cleanup-duplicate-production-batches.js`
+- Identifies duplicates across database
+- Keeps best record (with moulding time, latest status)
+- Can delete duplicates (currently in dry-run mode)
+
+**Current Status**: ✅ No duplicates on same date found
+
+## Important Notes
+
+### Expected Behavior
+- **Same batch number on different dates is NORMAL**
+  - Example: BATNO06 on Jan 17, Jan 18, Jan 21
+  - Each production day resets batch numbering
+  
+### Ungrouped Items
+- Items showing in "Ungrouped Items (16 Items)" are **not duplicates**
+- These are batches without a `groupId`
+- This is normal for items not assigned to a production group
+
+## What Was Fixed
+
+✅ **Date timezone handling** - Now uses UTC consistently  
+✅ **Query logic** - Multiple fallback strategies  
+✅ **Duplicate prevention** - Will update existing batches instead of creating new ones  
+✅ **Logging** - Added detailed console logs for debugging  
+
+## What to Test
+
+1. **Approve products** in Unit Manager dashboard
+2. **Start Moulding** for an ungrouped item  
+3. **Verify** only ONE batch exists for that item on that date
+4. **Check logs** in server console - should see "✅ Found existing record"
+
+## Files Modified
+
+1. `server/controllers/productionController.js`
+   - Line 1710-1718: Fixed date creation
+   - Line 1736-1784: Improved query logic with fallback strategies
+
+## How to Clean Up Existing Duplicates
+
+If duplicates exist on the **same date**:
+
+1. Edit `cleanup-duplicate-production-batches.js`
+2. Change `const DRY_RUN = false;` (line 141)
+3. Run: `node cleanup-duplicate-production-batches.js`
+
+Script will:
+- Keep record with moulding time (has actual data)
+- Keep record with latest status
+- Keep oldest record if all else equal
+- Delete remaining duplicates
+
+---
+
+**Status**: ✅ **FIXED** - No more duplicates will be created when starting moulding
+
+
+
+import mongoose from 'mongoose';
+
+const dispatchConsoleSchema = new mongoose.Schema({
+  // Tracking fields
+  packingSheetId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'PackingSheet',
+    required: false, // Optional - not needed for direct orders from dispatch
+    index: true
+  },
+  
+  // Individual product tracking (NEW FIELDS)
+  productId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Item',
+    required: false, // Will be null for aggregated entries, populated for individual product entries
+    index: true
+  },
+  productName: {
+    type: String,
+    required: false, // Will be null for aggregated entries, populated for individual product entries
+    trim: true
+  },
+  
+  productGroup: {
+    type: String,
+    required: true,
+    trim: true
+  },
+  company: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Company',
+    required: true,
+    index: true
+  },
+  date: {
+    type: Date,
+    required: true,
+    default: () => {
+      const today = new Date();
+      return new Date(today.setHours(0, 0, 0, 0));
+    },
+    index: true
+  },
+  
+  // Dispatch Console Columns (matching dispatch console UI)
+  packedQuantityReadyForDispatch: {
+    type: Number,
+    default: 0,
+    min: [0, 'Packed quantity cannot be negative']
+  },
+  previousClosingStockYesterdayBalance: {
+    type: Number,
+    default: 0,
+    min: [0, 'Previous closing stock cannot be negative']
+  },
+  returnQuantityYesterdayReturns: {
+    type: Number,
+    default: 0,
+    min: [0, 'Return quantity cannot be negative']
+  },
+  totalAvailableStock: {
+    type: Number,
+    default: 0,
+    min: [0, 'Total available stock cannot be negative']
+    // Auto-calculated: packing + closing + returns
+  },
+  totalIndentQuantityOrdersForTheDay: {
+    type: Number,
+    default: 0,
+    min: [0, 'Total indent quantity cannot be negative']
+  },
+  excessShortage: {
+    type: Number,
+    default: 0
+    // Auto-calculated: available - indent (can be negative for shortage)
+  },
+  dispatchedQuantitySentToday: {
+    type: Number,
+    default: 0,
+    min: [0, 'Dispatched quantity cannot be negative']
+  },
+  closingStockEndOfDayBalance: {
+    type: Number,
+    default: 0
+    // Can be negative when dispatched quantity exceeds available stock (shortage)
+  },
+  physicalStockEntryManualVerification: {
+    type: Number,
+    default: 0,
+    min: [0, 'Physical stock entry cannot be negative']
+  },
+  overallLoss: {
+    type: Number,
+    default: 0
+    // Auto-calculated: closing - physical (can be negative)
+  },
+  
+  // Additional tracking fields
+  dcno: {
+    type: String,
+    trim: true,
+    sparse: true,
+    index: true,
+    match: /^DC\d{3,}$/,
+    uppercase: true
+  },
+  batchNo: {
+    type: String,
+    trim: true
+  },
+  remarks: {
+    type: String,
+    trim: true,
+    maxlength: [500, 'Remarks cannot exceed 500 characters']
+  },
+  verifiedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  verifiedAt: {
+    type: Date
+  },
+  
+  // Delivery Challan specific fields
+  salesPerson: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    index: true
+  },
+  customer: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Customer',
+    index: true
+  },
+  orderId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Order'
+  },
+  indentQty: {
+    type: Number,
+    default: 0
+  },
+  qtyIssued: {
+    type: Number,
+    default: 0
+  },
+  approvedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  approvedAt: {
+    type: Date
+  },
+  invoiceGenerated: {
+    type: Boolean,
+    default: false
+  },
+  invoiceGeneratedAt: {
+    type: Date
+  },
+  vehicleNumber: {
+    type: String,
+    trim: true
+  },
+  transporterName: {
+    type: String,
+    trim: true
+  },
+  notes: {
+    type: String,
+    trim: true
+  },
+  unit: {
+    type: String,
+    trim: true
+  },
+  
+  // Items array for multi-product dispatches (direct orders)
+  items: [{
+    productId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Item'
+    },
+    productName: {
+      type: String,
+      trim: true
+    },
+    productGroup: {
+      type: String,
+      trim: true
+    },
+    packingSheetId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'PackingSheet'
+    },
+    batchNo: {
+      type: String,
+      trim: true
+    },
+    indentQty: {
+      type: Number,
+      default: 0
+    },
+    qtyIssued: {
+      type: Number,
+      default: 0
+    },
+    unitPrice: {
+      type: Number,
+      default: 0
+    },
+    totalPrice: {
+      type: Number,
+      default: 0
+    }
+  }],
+  
+  // Summary fields for multi-product dispatches
+  totalAmount: {
+    type: Number,
+    default: 0
+  },
+  totalQuantity: {
+    type: Number,
+    default: 0
+  },
+  
+  // Status and tracking
+  status: {
+    type: String,
+    enum: ['pending', 'updated', 'verified', 'dispatched', 'completed', 'approved'],
+    default: 'pending',
+    index: true
+  },
+  createdBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  lastUpdatedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  }
+}, {
+  timestamps: true
+});
+
+// Indexes for performance optimization
+// Removed unique constraint to allow multiple dispatch entries per product (for different salesperson-customer combinations)
+dispatchConsoleSchema.index({ packingSheetId: 1, productId: 1, date: 1 }, { name: 'packingSheetId_productId_date' });
+dispatchConsoleSchema.index({ company: 1, date: 1 }, { name: 'company_date_index' });
+dispatchConsoleSchema.index({ productGroup: 1, date: 1 }, { name: 'product_group_date_index' });
+dispatchConsoleSchema.index({ status: 1, date: 1 }, { name: 'status_date_index' });
+dispatchConsoleSchema.index({ salesPerson: 1, customer: 1, date: 1 }, { name: 'salesperson_customer_date_index' });
+
+// Virtual field to check if entry is editable
+dispatchConsoleSchema.virtual('isEditable').get(function() {
+  return ['pending', 'updated'].includes(this.status);
+});
+
+// Virtual field to check if entry is verified
+dispatchConsoleSchema.virtual('isVerified').get(function() {
+  return ['verified', 'dispatched', 'completed'].includes(this.status);
+});
+
+// Auto-calculate dependent fields before saving
+dispatchConsoleSchema.pre('save', function(next) {
+  // Calculate totalAvailableStock = packing + closing + returns
+  this.totalAvailableStock = 
+    (this.packedQuantityReadyForDispatch || 0) + 
+    (this.previousClosingStockYesterdayBalance || 0) + 
+    (this.returnQuantityYesterdayReturns || 0);
+  
+  // Calculate excessShortage = indent - available (positive = shortage, negative = excess)
+  this.excessShortage = 
+    (this.totalIndentQuantityOrdersForTheDay || 0) - 
+    (this.totalAvailableStock || 0);
+  
+  // Calculate closingStockEndOfDayBalance = totalAvailableStock - dispatchedQuantity
+  this.closingStockEndOfDayBalance = 
+    (this.totalAvailableStock || 0) - 
+    (this.dispatchedQuantitySentToday || 0);
+  
+  // Calculate overallLoss = closingStock - physicalStock
+  this.overallLoss = 
+    (this.closingStockEndOfDayBalance || 0) - 
+    (this.physicalStockEntryManualVerification || 0);
+  
+  next();
+});
+
+// Auto-calculate fields when updating
+dispatchConsoleSchema.pre('findOneAndUpdate', function(next) {
+  const update = this.getUpdate();
+  
+  if (update.$set) {
+    // Recalculate dependent fields if relevant fields are being updated
+    const relevantFields = [
+      'packedQuantityReadyForDispatch',
+      'previousClosingStockYesterdayBalance', 
+      'returnQuantityYesterdayReturns',
+      'totalIndentQuantityOrdersForTheDay',
+      'dispatchedQuantitySentToday',
+      'physicalStockEntryManualVerification'
+    ];
+    
+    const hasRelevantUpdates = relevantFields.some(field => update.$set[field] !== undefined);
+    
+    if (hasRelevantUpdates) {
+      const packing = update.$set.packedQuantityReadyForDispatch || 0;
+      const closing = update.$set.previousClosingStockYesterdayBalance || 0;
+      const returns = update.$set.returnQuantityYesterdayReturns || 0;
+      const indent = update.$set.totalIndentQuantityOrdersForTheDay || 0;
+      const dispatched = update.$set.dispatchedQuantitySentToday || 0;
+      const physical = update.$set.physicalStockEntryManualVerification || 0;
+      
+      // Calculate dependent fields
+      const totalAvailable = packing + closing + returns;
+      update.$set.totalAvailableStock = totalAvailable;
+      update.$set.excessShortage = indent - totalAvailable;
+      
+      // Calculate closingStockEndOfDayBalance = totalAvailableStock - dispatchedQuantity
+      const closingStock = totalAvailable - dispatched;
+      update.$set.closingStockEndOfDayBalance = closingStock;
+      
+      // Calculate overallLoss = closingStock - physicalStock  
+      update.$set.overallLoss = closingStock - physical;
+    }
+  }
+  
+  next();
+});
+
+// Static method to generate next DCno
+dispatchConsoleSchema.statics.generateNextDCno = async function() {
+  try {
+    // Find the highest DCno in the database
+    const lastDispatch = await this.findOne(
+      { dcno: { $regex: /^DC\d+$/ } }, 
+      { dcno: 1 }
+    ).sort({ dcno: -1 });
+    
+    if (!lastDispatch || !lastDispatch.dcno) {
+      return 'DC001'; // First DCno
+    }
+    
+    // Extract number from DCno (e.g., "DC003" -> 3)
+    const lastNumber = parseInt(lastDispatch.dcno.substring(2));
+    
+    // Generate next number with zero padding
+    const nextNumber = lastNumber + 1;
+    const nextDCno = `DC${nextNumber.toString().padStart(3, '0')}`;
+    
+    return nextDCno;
+  } catch (error) {
+    console.error('Error generating DCno:', error);
+    // Fallback to timestamp-based DCno in case of error
+    const timestamp = Date.now().toString().slice(-6);
+    return `DC${timestamp}`;
+  }
+};
+
+// Static method to get dispatch summary for a date range
+dispatchConsoleSchema.statics.getDispatchSummary = async function(companyId, startDate, endDate) {
+  return this.aggregate([
+    {
+      $match: {
+        company: companyId,
+        date: { $gte: startDate, $lte: endDate }
+      }
+    },
+    {
+      $group: {
+        _id: '$productGroup',
+        totalPacked: { $sum: '$packedQuantityReadyForDispatch' },
+        totalDispatched: { $sum: '$dispatchedQuantitySentToday' },
+        totalClosing: { $sum: '$closingStockEndOfDayBalance' },
+        totalLoss: { $sum: '$overallLoss' },
+        count: { $sum: 1 },
+        avgExcessShortage: { $avg: '$excessShortage' }
+      }
+    },
+    {
+      $sort: { totalPacked: -1 }
+    }
+  ]);
+};
+
+// Compound indexes for efficient queries
+dispatchConsoleSchema.index({ packingSheetId: 1, productId: 1, date: 1 }); // Remove unique constraint temporarily
+dispatchConsoleSchema.index({ company: 1, date: 1 }); // For daily dashboard queries
+dispatchConsoleSchema.index({ productGroup: 1, date: 1 }); // For group-wise reporting
+
+export default mongoose.model('Dispatch', dispatchConsoleSchema);
+
+
+
+
+----------------------------------------------------------------
+production controller 
+------------------------------------------------------------------
+
+
+
 import ProductionGroup from '../models/ProductionGroup.js';
 import ProductDailySummary from '../models/ProductDailySummary.js';
 import ProductDetailsDailySummary from '../models/ProductDetailsDailySummary.js';

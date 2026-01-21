@@ -1131,7 +1131,7 @@ export default function PackingSheet() {
                     </td>
                     <td className="border border-gray-900 px-1 sm:px-2 py-2 text-center">
                       <span className="bg-blue-200 text-blue-800 px-2 py-1 rounded text-xs font-bold">
-                        {group.items.reduce((sum, i) => sum + (i.achievedQty || 0), 0)}
+                        {Number(group.items.reduce((sum, i) => sum + (i.achievedQty || 0), 0)).toFixed(2)}
                       </span>
                     </td>
                     
@@ -1220,7 +1220,7 @@ export default function PackingSheet() {
                                   type="number"
                                   min="0"
                                   step="0.1"
-                                  defaultValue={batch.packingLoss || 0}
+                                  defaultValue={batch.packingLoss !== undefined ? batch.packingLoss : 0}
                                   disabled={!isPunchedOut}
                                   className={`w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-center font-bold ${
                                     isPunchedOut 
@@ -1260,7 +1260,6 @@ export default function PackingSheet() {
                               const batchTiming = groupTimings[batchKey];
                               const isCompleted = batchTiming?.punchedOut;
                               const isAlreadyApproved = batch.status === 'approved' || batch.isApproved;
-                              const hasPackingLoss = (batch.packingLoss || 0) > 0;
                               const isApproving = approvingBatches[batchKey];
                               
                               // If already approved, show approved status
@@ -1272,38 +1271,31 @@ export default function PackingSheet() {
                                 );
                               }
                               
+                              // After punch out, show Approve button (regardless of packing loss value)
                               if (isCompleted) {
-                                if (hasPackingLoss) {
-                                  return (
-                                    <button
-                                      onClick={() => handleBatchApproval(groupIndex, itemIndex, batchIndex, batch)}
-                                      disabled={isApproving}
-                                      className={`px-2 sm:px-3 py-1 rounded text-xs transition-colors whitespace-nowrap ${
-                                        isApproving 
-                                          ? 'bg-gray-400 text-white cursor-not-allowed' 
-                                          : 'bg-green-500 text-white hover:bg-green-600'
-                                      }`}
-                                    >
-                                      {isApproving ? (
-                                        <span className="flex items-center gap-1">
-                                          <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                          </svg>
-                                          Approving...
-                                        </span>
-                                      ) : (
-                                        'Approve'
-                                      )}
-                                    </button>
-                                  );
-                                } else {
-                                  return (
-                                    <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs font-medium whitespace-nowrap">
-                                      ✅ Completed
-                                    </span>
-                                  );
-                                }
+                                return (
+                                  <button
+                                    onClick={() => handleBatchApproval(groupIndex, itemIndex, batchIndex, batch)}
+                                    disabled={isApproving}
+                                    className={`px-2 sm:px-3 py-1 rounded text-xs transition-colors whitespace-nowrap ${
+                                      isApproving 
+                                        ? 'bg-gray-400 text-white cursor-not-allowed' 
+                                        : 'bg-green-500 text-white hover:bg-green-600'
+                                    }`}
+                                  >
+                                    {isApproving ? (
+                                      <span className="flex items-center gap-1">
+                                        <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                        </svg>
+                                        Approving...
+                                      </span>
+                                    ) : (
+                                      'Approve'
+                                    )}
+                                  </button>
+                                );
                               }
                               
                               return (

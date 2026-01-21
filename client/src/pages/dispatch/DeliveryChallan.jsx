@@ -51,6 +51,7 @@ export default function DeliveryChallan() {
   const [orderSalesPersons, setOrderSalesPersons] = useState([]);
   const [orderCustomers, setOrderCustomers] = useState([]);
   const [orderProducts, setOrderProducts] = useState([]);
+  const [nextDirectOrderDC, setNextDirectOrderDC] = useState('');
   const [directOrderForm, setDirectOrderForm] = useState({
     salesPersonId: '',
     customerId: '',
@@ -58,6 +59,15 @@ export default function DeliveryChallan() {
     notes: '',
     selectedProducts: []
   });
+
+  // Invoice Generation State
+  const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
+  const [invoiceLoading, setInvoiceLoading] = useState(false);
+  const [invoiceForm, setInvoiceForm] = useState({
+    dcNo: '',
+    salesPersonId: ''
+  });
+  const [invoiceSalesPersons, setInvoiceSalesPersons] = useState([]);
 
   useEffect(() => {
     fetchSalespeople();
@@ -232,17 +242,22 @@ export default function DeliveryChallan() {
     }
   };
 
-  const fetchTodaysProducts = async () => {
+  const fetchTodaysProducts = async (overrideSalesman, overrideCustomer) => {
     try {
       setLoading(true);
+      
+      // Use override values if provided, otherwise use state
+      const salesmanToUse = overrideSalesman !== undefined ? overrideSalesman : selectedSalesman;
+      const customerToUse = overrideCustomer !== undefined ? overrideCustomer : selectedCustomer;
+      
       console.log('📦 Fetching today\'s products...');
-      console.log('Salesman:', selectedSalesman);
-      console.log('Customer:', selectedCustomer);
+      console.log('Salesman:', salesmanToUse);
+      console.log('Customer:', customerToUse);
       
       // Build query params - make salesman and customer optional
       const params = new URLSearchParams();
-      if (selectedSalesman?._id) params.append('salesmanId', selectedSalesman._id);
-      if (selectedCustomer?._id) params.append('customerId', selectedCustomer._id);
+      if (salesmanToUse?._id) params.append('salesmanId', salesmanToUse._id);
+      if (customerToUse?._id) params.append('customerId', customerToUse._id);
       
       const response = await fetch(
         `${config.baseURL}/api/dispatches/todays-products?${params.toString()}`,
@@ -784,12 +799,28 @@ export default function DeliveryChallan() {
     }
   };
 
-  const handleDirectOrderModalOpen = () => {
+  const handleDirectOrderModalOpen = async () => {
     setIsDirectOrderModalOpen(true);
     // Load sales persons and products; use existing customers from main component
     fetchOrderSalesPersons();
     setOrderCustomers(customers); // Use already loaded customers
     fetchOrderProducts();
+    
+    // Fetch next DC number
+    try {
+      const response = await fetch(`${config.baseURL}/api/dispatches/next-dc-number`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      const result = await response.json();
+      if (result.success) {
+        setNextDirectOrderDC(result.nextDCNumber);
+      }
+    } catch (error) {
+      console.error('Error fetching next DC number:', error);
+    }
   };
 
   const handleProductSelect = (product) => {
@@ -866,10 +897,11 @@ export default function DeliveryChallan() {
           productId: p._id,
           quantity: parseInt(p.quantity),
           unitPrice: parseFloat(p.price) || 0
-        }))
+        })),
+        autoDispatch: true // Flag to indicate direct dispatch
       };
 
-      console.log('Creating direct order:', orderData);
+      console.log('Creating and dispatching direct order:', orderData);
 
       const response = await fetch(`${config.baseURL}/api/dispatches/create-direct-order`, {
         method: 'POST',
@@ -883,13 +915,13 @@ export default function DeliveryChallan() {
       const result = await response.json();
 
       if (!response.ok) {
-        throw new Error(result.message || 'Failed to create order');
+        throw new Error(result.message || 'Failed to create and dispatch order');
       }
 
       if (result.success) {
         toast({
-          title: "Success",
-          description: `Order ${result.order.orderCode} created successfully`,
+          title: "✅ Dispatch Successful",
+          description: `Order ${result.order.orderCode} created and dispatched successfully with DC No: ${result.dcNo || 'Generated'}`,
         });
 
         // Reset form
@@ -907,14 +939,121 @@ export default function DeliveryChallan() {
         fetchTodaysProducts();
       }
     } catch (error) {
-      console.error('Error creating direct order:', error);
+      console.error('Error creating and dispatching direct order:', error);
       toast({
-        title: "Error",
-        description: error.message || "Failed to create order",
+        title: "❌ Dispatch Failed",
+        description: error.message || "Failed to create and dispatch order",
         variant: "destructive"
       });
     } finally {
       setDirectOrderLoading(false);
+    }
+  };
+
+  // Invoice Modal Handlers
+  const handleInvoiceModalOpen = async () => {
+    try {
+      // Reset invoice form and sales persons
+      setInvoiceForm({
+        dcNo: '',
+        salesPersonId: ''
+      });
+      setInvoiceSalesPersons([]);
+      
+      setIsInvoiceModalOpen(true);
+      
+      // Fetch salespeople for invoice
+      const response = await fetch(`${config.baseURL}/api/dispatches/sales-persons`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log('📋 Invoice sales persons response:', result);
+        if (result.success && Array.isArray(result.data)) {
+          setInvoiceSalesPersons(result.data);
+        } else {
+          setInvoiceSalesPersons([]);
+        }
+      } else {
+        setInvoiceSalesPersons([]);
+      }
+
+    } catch (error) {
+      console.error('Error opening invoice modal:', error);
+      setInvoiceSalesPersons([]);
+      toast({
+        title: "Error",
+        description: "Failed to open invoice modal",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleGenerateInvoiceByDC = async () => {
+    try {
+      if (!invoiceForm.dcNo || invoiceForm.dcNo.trim() === '') {
+        toast({
+          title: "Validation Error",
+          description: "Please enter DC Number",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      setInvoiceLoading(true);
+
+      const response = await fetch(`${config.baseURL}/api/dispatches/generate-invoice-by-dc`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(invoiceForm)
+      });
+
+      if (!response.ok) {
+        const result = await response.json();
+        throw new Error(result.message || 'Failed to generate invoice');
+      }
+
+      // Get the PDF blob
+      const blob = await response.blob();
+      
+      // Create a download link
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Invoice_${invoiceForm.dcNo}_${Date.now()}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+      toast({
+        title: "✅ Invoice Generated",
+        description: `Invoice for DC ${invoiceForm.dcNo} has been generated successfully`,
+      });
+
+      // Close modal and reset
+      setIsInvoiceModalOpen(false);
+      setInvoiceForm({
+        dcNo: '',
+        salesPersonId: ''
+      });
+
+    } catch (error) {
+      console.error('Error generating invoice:', error);
+      toast({
+        title: "❌ Invoice Generation Failed",
+        description: error.message || "Failed to generate invoice",
+        variant: "destructive"
+      });
+    } finally {
+      setInvoiceLoading(false);
     }
   };
 
@@ -1014,6 +1153,9 @@ export default function DeliveryChallan() {
             <Plus className="h-4 w-4 mr-2" />
             Create Dispatch Order
           </Button>
+          <Button onClick={handleInvoiceModalOpen} variant="default" className="bg-blue-600 hover:bg-blue-700">
+            Generate Invoice
+          </Button>
           <Button onClick={handleReset} variant="outline" disabled={loading}>
             <RefreshCw className="h-4 w-4 mr-2" />
             Reset Form
@@ -1079,6 +1221,8 @@ export default function DeliveryChallan() {
                       setSelectedSalesman(null);
                       setSalesmanSearchTerm('');
                       setIsSalesmanDropdownOpen(true);
+                      // Fetch latest data after clearing salesman filter - pass null to override
+                      fetchTodaysProducts(null, selectedCustomer);
                     }}
                     className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                   >
@@ -1121,18 +1265,40 @@ export default function DeliveryChallan() {
               Customer Name by dropdown search
             </div>
             <div className="relative dropdown-container">
-              <Input
-                placeholder="Select customer"
-                value={customerSearchTerm}
-                onChange={(e) => {
-                  setCustomerSearchTerm(e.target.value);
-                  setIsCustomerDropdownOpen(true);
-                }}
-                onFocus={() => setIsCustomerDropdownOpen(true)}
-                className="cursor-pointer"
-                disabled={isDispatched}
-              />
-              {isCustomerDropdownOpen && !isDispatched && (
+              <div className="relative">
+                <Input
+                  placeholder="Select customer"
+                  value={customerSearchTerm}
+                  onChange={(e) => {
+                    setCustomerSearchTerm(e.target.value);
+                    setSelectedCustomer(null);
+                    setIsCustomerDropdownOpen(true);
+                  }}
+                  onFocus={() => {
+                    if (!selectedCustomer) {
+                      setIsCustomerDropdownOpen(true);
+                    }
+                  }}
+                  className="cursor-pointer"
+                  disabled={isDispatched}
+                  readOnly={selectedCustomer !== null}
+                />
+                {selectedCustomer && !isDispatched && (
+                  <button
+                    onClick={() => {
+                      setSelectedCustomer(null);
+                      setCustomerSearchTerm('');
+                      setIsCustomerDropdownOpen(true);
+                      // Fetch latest data after clearing customer filter - pass null to override
+                      fetchTodaysProducts(selectedSalesman, null);
+                    }}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+              {isCustomerDropdownOpen && !isDispatched && !selectedCustomer && (
                 <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
                   {filteredCustomers.length > 0 ? (
                     filteredCustomers.map((customer) => (
@@ -1195,7 +1361,6 @@ export default function DeliveryChallan() {
               onClick={handleGenerateInvoice}
               disabled={loading || (!isDispatched && !isAlreadyDispatched) || !selectedSalesman || !selectedCustomer}
             >
-              <Receipt className="h-4 w-4 mr-2" />
               {loading ? 'Generating...' : 'Invoice'}
             </Button>
           </div>
@@ -1266,10 +1431,15 @@ export default function DeliveryChallan() {
                               👤 {product.salesPerson.fullName || product.salesPerson.username}
                             </Badge>
                           )}
+                          {isItemDispatched && product.dcno && (
+                            <Badge variant="outline" className="bg-green-100 text-green-700 font-semibold border-green-300">
+                              📋 {product.dcno}
+                            </Badge>
+                          )}
                           {isItemDispatched && (
-                            <span className="text-xs text-green-600 font-medium">
-                              Dispatched
-                            </span>
+                            <Badge variant="outline" className="bg-green-50 text-green-600 font-medium">
+                              ✓ Dispatched
+                            </Badge>
                           )}
                           {hasItems && (
                             <button
@@ -1335,7 +1505,7 @@ export default function DeliveryChallan() {
                               <span className="font-medium text-gray-700">{item.productName}</span>
                               <div className="flex items-center gap-3">
                                 <Badge variant="outline" className="bg-purple-100 text-purple-700 text-xs">
-                                  Batch: {item.batch || 'N/A'}
+                                  Batch/Qnt: {item.batch || 'N/A'}
                                 </Badge>
                                 <span className="text-gray-500 text-xs">Stock: {item.stock || 0}</span>
                               </div>
@@ -1560,6 +1730,20 @@ export default function DeliveryChallan() {
               />
             </div>
 
+            {/* DC Number (Auto-generated) */}
+            <div>
+              <Label htmlFor="dcNumber" className="text-sm font-medium">Next DC Number</Label>
+              <Input
+                id="dcNumber"
+                type="text"
+                value={nextDirectOrderDC}
+                readOnly
+                disabled
+                className="mt-1 bg-gray-100 cursor-not-allowed"
+                placeholder="Loading..."
+              />
+            </div>
+
             {/* Product Selection */}
             <div>
               <Label className="text-sm font-medium">Select Products *</Label>
@@ -1615,9 +1799,89 @@ export default function DeliveryChallan() {
               <Button
                 onClick={handleCreateDirectOrder}
                 disabled={directOrderLoading}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                {directOrderLoading ? 'Dispatching...' : 'Create & Dispatch'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Invoice Generation Modal */}
+      <Dialog open={isInvoiceModalOpen} onOpenChange={setIsInvoiceModalOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Generate Invoice</DialogTitle>
+            <DialogDescription>
+              Enter DC Number to generate invoice. Optionally select a sales person.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            {/* DC Number */}
+            <div>
+              <Label htmlFor="invoiceDcNo" className="text-sm font-medium">DC Number *</Label>
+              <Input
+                id="invoiceDcNo"
+                placeholder="Enter DC Number (e.g., DC001)"
+                value={invoiceForm.dcNo}
+                onChange={(e) => setInvoiceForm({ ...invoiceForm, dcNo: e.target.value.toUpperCase() })}
+                className="mt-1"
+              />
+            </div>
+
+            {/* Sales Person (Optional) */}
+            <div>
+              <Label htmlFor="invoiceSalesPerson" className="text-sm font-medium">Sales Person (Optional)</Label>
+              <Select
+                value={invoiceForm.salesPersonId}
+                onValueChange={(value) => setInvoiceForm({ ...invoiceForm, salesPersonId: value })}
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="None (Use Original)" />
+                </SelectTrigger>
+                <SelectContent>
+                  {Array.isArray(invoiceSalesPersons) && invoiceSalesPersons.length > 0 ? (
+                    invoiceSalesPersons.map((person) => (
+                      <SelectItem key={person._id} value={person._id}>
+                        {person.name}
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <SelectItem value="no-sales-person" disabled>
+                      No sales persons available
+                    </SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-gray-500 mt-1">
+                Leave empty to use the original sales person from the order
+              </p>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex justify-end gap-2 pt-4">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsInvoiceModalOpen(false);
+                  setInvoiceForm({
+                    dcNo: '',
+                    salesPersonId: ''
+                  });
+                }}
+                disabled={invoiceLoading}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleGenerateInvoiceByDC}
+                disabled={invoiceLoading}
                 className="bg-blue-600 hover:bg-blue-700"
               >
-                {directOrderLoading ? 'Creating...' : 'Create Order'}
+                <Receipt className="h-4 w-4 mr-2" />
+                {invoiceLoading ? 'Generating...' : 'Generate Invoice'}
               </Button>
             </div>
           </div>

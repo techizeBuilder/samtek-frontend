@@ -1803,11 +1803,6 @@ export const approvePackingSheet = async (req, res) => {
               date: { $gte: yesterdayStart, $lte: yesterdayEnd }
             });
             
-            // Use PRODUCTION batches for totalIndentQuantityOrdersForTheDay field
-            const itemIndentQuantity = totalProductionBatches;
-            console.log(`📊 GROUP: totalIndentQuantityOrdersForTheDay (production) = ${itemIndentQuantity}`);
-            console.log(`📊 GROUP: indentQty (orders) = ${totalIndentFromOrders}`);
-            
             const itemPreviousStock = yesterdayDispatch?.closingStockEndOfDayBalance || 
                                      yesterdayDispatch?.physicalStockEntryManualVerification ||
                                      yesterdayItemSummary?.physicalStock || 
@@ -1864,6 +1859,10 @@ export const approvePackingSheet = async (req, res) => {
                 }
               }
             }
+            
+            // Use ORDER quantity for totalIndentQuantityOrdersForTheDay (not production batches)
+            const itemIndentQuantity = totalIndentFromOrders;
+            console.log(`📊 GROUP: totalIndentQuantityOrdersForTheDay (orders) = ${itemIndentQuantity}`);
             
             // Check if dispatch entry already exists
             const existingDispatchEntry = await Dispatch.findOne({
@@ -1935,7 +1934,7 @@ export const approvePackingSheet = async (req, res) => {
                 previousClosingStockYesterdayBalance: Math.round(itemPreviousStock * 100) / 100,
                 returnQuantityYesterdayReturns: Math.round(itemReturnQuantity * 100) / 100,
                 totalIndentQuantityOrdersForTheDay: Math.round(itemIndentQuantity * 100) / 100,
-                indentQty: Math.round(totalIndentFromOrders * 100) / 100,
+                indentQty: Math.round(itemIndentQuantity * 100) / 100,
                 totalAvailableStock: Math.round(totalAvailable * 100) / 100,
                 excessShortage: excessShortageValue,
                 dispatchedQuantitySentToday: 0,
