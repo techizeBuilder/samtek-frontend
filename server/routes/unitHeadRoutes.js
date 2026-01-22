@@ -44,6 +44,7 @@ import {
   deleteUnitUser,
   getUnitUserById,
   getUnitHeadCompanyInfo,
+  bulkImportUnitUsers,
   // Keep existing functions for backward compatibility
   getUnitManagers,
   createUnitManager,
@@ -319,6 +320,11 @@ router.get('/unit-users/:userId',
 router.post('/unit-users', 
   checkPermission('unitHead', 'userManagement', 'add'), 
   createUnitUser
+);
+
+router.post('/unit-users/bulk-import', 
+  checkPermission('unitHead', 'userManagement', 'add'), 
+  bulkImportUnitUsers
 );
 
 router.put('/unit-users/:userId', 

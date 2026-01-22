@@ -446,6 +446,12 @@ export default function RolePermissionManagement() {
     setIsPasswordDialogOpen(true);
   };
 
+  // Validation toast helper
+  const showValidationToast = (errors, title) => {
+    const errorMessages = errors.map(err => err.message).join(', ');
+    showSmartToast({ message: errorMessages }, title || 'Validation Error');
+  };
+
   // Handle password form submission
   const handlePasswordSubmit = (e) => {
     e.preventDefault();

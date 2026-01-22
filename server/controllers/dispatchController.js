@@ -332,6 +332,7 @@ export const getDispatchDashboardData = async (req, res) => {
         select: 'username fullName'
       }
     })
+    .populate('productId', 'name code category batch unit') // Populate product details
     .populate('lastUpdatedBy', 'username fullName')
     .populate('company', 'name location')
     .sort({ createdAt: -1 });
@@ -389,6 +390,10 @@ export const getDispatchDashboardData = async (req, res) => {
         packingSheetBatchNo: entry.packingSheetId?.batchNo,
         packingDate: entry.packingSheetId?.packingDate,
         productGroup: entry.productGroup,
+        productId: entry.productId?._id,
+        productName: entry.productName || entry.productId?.name || entry.productGroup, // Show product name if available
+        productCode: entry.productId?.code,
+        productCategory: entry.productId?.category,
         
         // Main dispatch console columns - use calculated values
         packedQuantityReadyForDispatch: packedQty,
@@ -1110,7 +1115,7 @@ export const getDeliveryChallanData = async (req, res) => {
 // Update Qty Issued for Delivery Challan
 export const updateQtyIssued = async (req, res) => {
   try {
-    const { dcNo, qtyIssued, dispatchId } = req.body;
+    const { dcNo, qtyIssued, dispatchId, indentQty, forceUpdate } = req.body;
 
     if ((!dcNo && !dispatchId) || qtyIssued === undefined) {
       return res.status(400).json({ 
@@ -1135,12 +1140,30 @@ export const updateQtyIssued = async (req, res) => {
       });
     }
 
-    // Check if already dispatched or approved - prevent changes
-    if (dispatch.status === 'dispatched' || dispatch.status === 'approved') {
-      return res.status(400).json({
+    // Check if qty exceeds indent qty (if indent qty > 0)
+    const exceedsIndent = indentQty && indentQty > 0 && qtyIssued > indentQty;
+
+    // Check if already dispatched or approved - require confirmation unless forceUpdate is true
+    if (((dispatch.status === 'dispatched' || dispatch.status === 'approved') || exceedsIndent) && !forceUpdate) {
+      let message = '';
+      
+      if (exceedsIndent && (dispatch.status === 'dispatched' || dispatch.status === 'approved')) {
+        message = `This item is already ${dispatch.status} and the new quantity (${qtyIssued}) exceeds indent qty (${indentQty}). Do you want to proceed?`;
+      } else if (exceedsIndent) {
+        message = `The quantity issued (${qtyIssued}) exceeds indent qty (${indentQty}). This may result in excess stock. Do you want to proceed?`;
+      } else {
+        message = `This item is already ${dispatch.status}. Updating Qty Issued for dispatched items may affect stock calculations. Do you want to proceed?`;
+      }
+
+      return res.status(409).json({
         success: false,
-        message: `Cannot update Qty Issued. This item is already ${dispatch.status}. Qty changes are not allowed for dispatched or approved items.`,
-        currentStatus: dispatch.status
+        requiresConfirmation: true,
+        message: message,
+        currentStatus: dispatch.status,
+        currentQtyIssued: dispatch.qtyIssued,
+        newQtyIssued: qtyIssued,
+        indentQty: indentQty,
+        exceedsIndent: exceedsIndent
       });
     }
 
@@ -1164,6 +1187,9 @@ export const updateQtyIssued = async (req, res) => {
         console.error('Error checking item batch:', err);
       }
     }
+
+    // Store old qty for logging if this is a forced update
+    const oldQtyIssued = dispatch.qtyIssued;
 
     // Update qty issued and related stock fields
     dispatch.qtyIssued = qtyIssued;
@@ -1194,13 +1220,29 @@ export const updateQtyIssued = async (req, res) => {
     dispatch.updatedAt = new Date();
     const updatedDispatch = await dispatch.save();
 
+    // Log if this was a forced update
+    if (forceUpdate && ((dispatch.status === 'dispatched' || dispatch.status === 'approved') || exceedsIndent)) {
+      console.log(`⚠️ Forced qty update:`, {
+        dispatchId: dispatch._id,
+        dcNo: dispatch.dcno,
+        oldQty: oldQtyIssued,
+        newQty: qtyIssued,
+        indentQty: indentQty,
+        exceedsIndent: exceedsIndent,
+        status: dispatch.status
+      });
+    }
+
     // Populate related data
     await updatedDispatch.populate('productId', 'name code category unit');
 
     res.status(200).json({ 
       success: true, 
-      message: 'Qty issued updated successfully',
-      data: updatedDispatch
+      message: forceUpdate 
+        ? 'Qty issued updated successfully (with override)' 
+        : 'Qty issued updated successfully',
+      data: updatedDispatch,
+      wasForced: !!forceUpdate
     });
   } catch (error) {
     console.error('Error in updateQtyIssued:', error);
@@ -2384,7 +2426,7 @@ export const createDeliveryChallan = async (req, res) => {
           company: req.user.companyId,
           date: startOfDay,
           totalIndentQuantityOrdersForTheDay: item.indentQty || 0,
-          indentQty: item.indentQty || 0,
+          indentQty: 0,
           qtyIssued: item.qtyIssued || 0,
           dispatchedQuantitySentToday: item.qtyIssued || 0,
           packedQuantityReadyForDispatch: item.qtyIssued || 0,
@@ -3077,13 +3119,13 @@ export const generateInvoiceByDC = async (req, res) => {
     const tableTop = doc.y;
     doc.rect(30, tableTop, 535, 25).fillAndStroke('#1e3a8a', '#1e3a8a');
     doc.fontSize(9).font('Helvetica-Bold').fillColor('#ffffff');
-    doc.text('S.No', 40, tableTop + 8, { width: 40 });
-    doc.text('Product Name', 90, tableTop + 8, { width: 180 });
-    doc.text('Quantity', 280, tableTop + 8, { width: 60, align: 'right' });
-    doc.text('Rate', 350, tableTop + 8, { width: 60, align: 'right' });
-    doc.text('Amount', 420, tableTop + 8, { width: 60, align: 'right' });
-    doc.text('GST%', 490, tableTop + 8, { width: 35, align: 'right' });
-    doc.text('Total', 525, tableTop + 8, { width: 50, align: 'right' });
+    doc.text('S.No', 35, tableTop + 8, { width: 30, align: 'center' });
+    doc.text('Product Name', 70, tableTop + 8, { width: 160 });
+    doc.text('Quantity', 235, tableTop + 8, { width: 50, align: 'right' });
+    doc.text('Rate', 290, tableTop + 8, { width: 55, align: 'right' });
+    doc.text('Amount', 350, tableTop + 8, { width: 60, align: 'right' });
+    doc.text('GST%', 415, tableTop + 8, { width: 40, align: 'right' });
+    doc.text('Total', 460, tableTop + 8, { width: 100, align: 'right' });
 
     doc.fillColor('#000000');
     let yPosition = tableTop + 33;
@@ -3145,39 +3187,47 @@ export const generateInvoiceByDC = async (req, res) => {
       }
 
       doc.fontSize(8).font('Helvetica');
-      doc.text(index + 1, 40, yPosition, { width: 40 });
-      doc.text(productName, 90, yPosition, { width: 180 });
-      doc.text(quantity.toString(), 280, yPosition, { width: 60, align: 'right' });
-      doc.text(rate.toFixed(2), 350, yPosition, { width: 60, align: 'right' });
-      doc.text(amount.toFixed(2), 420, yPosition, { width: 60, align: 'right' });
-      doc.text(gstRate.toFixed(0) + '%', 490, yPosition, { width: 35, align: 'right' });
-      doc.text(total.toFixed(2), 525, yPosition, { width: 50, align: 'right' });
+      doc.text(index + 1, 35, yPosition, { width: 30, align: 'center' });
+      doc.text(productName, 70, yPosition, { width: 160, ellipsis: true });
+      doc.text(quantity.toString(), 235, yPosition, { width: 50, align: 'right' });
+      doc.text(rate.toFixed(2), 290, yPosition, { width: 55, align: 'right' });
+      doc.text(amount.toFixed(2), 350, yPosition, { width: 60, align: 'right' });
+      doc.text(gstRate.toFixed(0) + '%', 415, yPosition, { width: 40, align: 'right' });
+      doc.text(total.toFixed(2), 460, yPosition, { width: 100, align: 'right' });
 
       yPosition += 20;
     });
 
     // Totals Section
     doc.moveTo(30, yPosition).lineTo(565, yPosition).stroke();
-    yPosition += 10;
+    yPosition += 15;
 
     const grandTotal = subtotal + totalGST;
 
+    // Subtotal row
     doc.fontSize(9).font('Helvetica-Bold');
-    doc.text('Subtotal:', 420, yPosition, { width: 60, align: 'right' });
-    doc.text(`₹${subtotal.toFixed(2)}`, 490, yPosition, { width: 75, align: 'right' });
-    yPosition += 15;
+    doc.text('Subtotal:', 380, yPosition, { width: 80, align: 'right' });
+    doc.text('Rs.', 465, yPosition, { width: 25, align: 'left' });
+    doc.text(subtotal.toFixed(2), 490, yPosition, { width: 70, align: 'right' });
+    yPosition += 18;
 
-    doc.text('GST:', 420, yPosition, { width: 60, align: 'right' });
-    doc.text(`₹${totalGST.toFixed(2)}`, 490, yPosition, { width: 75, align: 'right' });
-    yPosition += 15;
+    // GST row
+    doc.text('GST:', 380, yPosition, { width: 80, align: 'right' });
+    doc.text('Rs.', 465, yPosition, { width: 25, align: 'left' });
+    doc.text(totalGST.toFixed(2), 490, yPosition, { width: 70, align: 'right' });
+    yPosition += 20;
 
-    doc.rect(420, yPosition - 5, 145, 25).fillAndStroke('#f3f4f6', '#d1d5db');
+    // Grand Total box with better alignment
+    doc.rect(380, yPosition - 5, 185, 28).fillAndStroke('#f3f4f6', '#1e3a8a');
     doc.fontSize(11).font('Helvetica-Bold').fillColor('#1e3a8a');
-    doc.text('Grand Total:', 430, yPosition + 3, { width: 60, align: 'left' });
-    doc.text(`₹${grandTotal.toFixed(2)}`, 490, yPosition + 3, { width: 75, align: 'right' });
+    doc.text('Grand', 390, yPosition + 2, { width: 40, align: 'left' });
+    doc.text('Total:', 390, yPosition + 14, { width: 40, align: 'left' });
+    doc.fontSize(12);
+    doc.text('Rs.', 465, yPosition + 7, { width: 25, align: 'left' });
+    doc.text(grandTotal.toFixed(2), 490, yPosition + 7, { width: 70, align: 'right' });
 
     doc.fillColor('#000000');
-    yPosition += 35;
+    yPosition += 40;
 
     // Amount in Words
     const amountInWords = convertNumberToWords(Math.round(grandTotal));
@@ -3462,7 +3512,7 @@ export const createDirectOrder = async (req, res) => {
           returnQuantityYesterdayReturns: 0,
           totalAvailableStock: 0,
           totalIndentQuantityOrdersForTheDay: totalIndentQty,
-          indentQty: indentQty,
+          indentQty: 0,
           qtyIssued: indentQty,
           dispatchedQuantitySentToday: indentQty,
           closingStockEndOfDayBalance: 0,
@@ -3529,9 +3579,33 @@ export const createDirectOrder = async (req, res) => {
 
   } catch (error) {
     console.error('❌ Error creating direct order from dispatch:', error);
+    
+    // Handle duplicate key error for DC number
+    if (error.code === 11000 && error.message.includes('dcno')) {
+      return res.status(409).json({
+        success: false,
+        message: 'DC Number already exists. Please try again.',
+        error: 'A dispatch with this DC number has already been created. The system will generate a new number on retry.'
+      });
+    }
+    
+    // Handle validation errors
+    if (error.name === 'ValidationError') {
+      const validationErrors = {};
+      Object.keys(error.errors).forEach(key => {
+        validationErrors[key] = error.errors[key].message;
+      });
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: validationErrors
+      });
+    }
+    
+    // Generic error
     res.status(500).json({
       success: false,
-      message: 'Internal server error',
+      message: 'Failed to create order and dispatch',
       error: error.message
     });
   }

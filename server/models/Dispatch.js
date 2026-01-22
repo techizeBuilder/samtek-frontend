@@ -278,26 +278,27 @@ dispatchConsoleSchema.pre('findOneAndUpdate', function(next) {
 });
 
 // Static method to generate next DCno
-dispatchConsoleSchema.statics.generateNextDCno = async function() {
+dispatchConsoleSchema.statics.generateNextDCno = async function(companyId) {
   try {
     // Find the highest DCno in the database
     const lastDispatch = await this.findOne(
       { dcno: { $regex: /^DC\d+$/ } }, 
       { dcno: 1 }
-    ).sort({ dcno: -1 });
+    ).sort({ dcno: -1 }).lean();
     
-    if (!lastDispatch || !lastDispatch.dcno) {
-      return 'DC001'; // First DCno
+    let nextNumber = 1;
+    if (lastDispatch && lastDispatch.dcno) {
+      // Extract number from DCno (e.g., "DC003" -> 3)
+      const lastNumber = parseInt(lastDispatch.dcno.substring(2));
+      nextNumber = lastNumber + 1;
     }
     
-    // Extract number from DCno (e.g., "DC003" -> 3)
-    const lastNumber = parseInt(lastDispatch.dcno.substring(2));
-    
-    // Generate next number with zero padding
-    const nextNumber = lastNumber + 1;
+    // Generate next DCno with zero padding
     const nextDCno = `DC${nextNumber.toString().padStart(3, '0')}`;
     
+    console.log(`✅ Generated DCno: ${nextDCno} (Note: Multiple products can share this DC number)`);
     return nextDCno;
+    
   } catch (error) {
     console.error('Error generating DCno:', error);
     // Fallback to timestamp-based DCno in case of error
@@ -336,5 +337,9 @@ dispatchConsoleSchema.statics.getDispatchSummary = async function(companyId, sta
 dispatchConsoleSchema.index({ packingSheetId: 1, productId: 1, date: 1 }); // Remove unique constraint temporarily
 dispatchConsoleSchema.index({ company: 1, date: 1 }); // For daily dashboard queries
 dispatchConsoleSchema.index({ productGroup: 1, date: 1 }); // For group-wise reporting
+
+// Note: If you have a unique index on dcno in your database, drop it using:
+// db.dispatches.dropIndex("dcno_1")
+// The dcno field should NOT be unique as multiple products can share the same DC number
 
 export default mongoose.model('Dispatch', dispatchConsoleSchema);

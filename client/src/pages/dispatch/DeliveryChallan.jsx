@@ -45,6 +45,10 @@ export default function DeliveryChallan() {
   const [selectedItems, setSelectedItems] = useState({}); // Track which items are selected for dispatch
   const [expandedGroup, setExpandedGroup] = useState({}); // Track which product groups are expanded
 
+  // Confirmation dialog for updating dispatched items
+  const [showUpdateConfirmation, setShowUpdateConfirmation] = useState(false);
+  const [pendingQtyUpdate, setPendingQtyUpdate] = useState(null);
+
   // Direct Order Creation State
   const [isDirectOrderModalOpen, setIsDirectOrderModalOpen] = useState(false);
   const [directOrderLoading, setDirectOrderLoading] = useState(false);
@@ -317,21 +321,8 @@ export default function DeliveryChallan() {
   };
 
   const handleQtyIssuedChange = (productId, value) => {
-    const product = products.find(p => p._id === productId);
-    const numValue = Number(value);
-    
-    // Only validate against indent qty if indent qty is greater than 0
-    // If indent qty is 0, allow any value up to stock
-    if (product && product.indentQty > 0 && numValue > product.indentQty) {
-      toast({
-        title: "Validation Error",
-        description: `Qty issued cannot exceed indent qty (${product.indentQty})`,
-        variant: "destructive",
-      });
-      return;
-    }
-
-    // Update local state immediately
+    // Always allow the value to be entered
+    // Validation will happen on blur with confirmation if needed
     setQtyIssuedMap(prev => ({
       ...prev,
       [productId]: value
@@ -358,11 +349,29 @@ export default function DeliveryChallan() {
         },
         body: JSON.stringify({
           dispatchId: productId,
-          qtyIssued: Number(value)
+          qtyIssued: Number(value),
+          indentQty: product.indentQty, // Send indent qty for validation
+          forceUpdate: false // Initially request without force
         })
       });
 
       const result = await response.json();
+
+      // Handle confirmation requirement (dispatched items OR exceeds indent qty)
+      if (response.status === 409 && result.requiresConfirmation) {
+        setPendingQtyUpdate({
+          productId,
+          value: Number(value),
+          message: result.message,
+          currentStatus: result.currentStatus,
+          currentQtyIssued: result.currentQtyIssued,
+          newQtyIssued: result.newQtyIssued,
+          indentQty: result.indentQty,
+          exceedsIndent: result.exceedsIndent
+        });
+        setShowUpdateConfirmation(true);
+        return;
+      }
 
       if (!response.ok || !result.success) {
         // Show specific error message from backend
@@ -377,7 +386,9 @@ export default function DeliveryChallan() {
       if (result.success) {
         toast({
           title: "Saved",
-          description: "Qty issued updated successfully",
+          description: result.wasForced 
+            ? "Qty issued updated (with override)"
+            : "Qty issued updated successfully",
           duration: 2000
         });
       }
@@ -389,6 +400,73 @@ export default function DeliveryChallan() {
         variant: "destructive",
       });
     }
+  };
+
+  // Confirm and proceed with qty update for dispatched item
+  const handleConfirmQtyUpdate = async () => {
+    if (!pendingQtyUpdate) return;
+
+    try {
+      console.log('✅ Forcing qty update for dispatched item:', pendingQtyUpdate);
+
+      const response = await fetch(`${config.baseURL}/api/dispatches/update-qty-issued`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          dispatchId: pendingQtyUpdate.productId,
+          qtyIssued: pendingQtyUpdate.value,
+          forceUpdate: true // Force update for dispatched items
+        })
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        toast({
+          title: "Error",
+          description: result.message || "Failed to update qty issued",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (result.success) {
+        toast({
+          title: "✅ Updated",
+          description: "Qty issued updated successfully for dispatched item",
+          duration: 3000
+        });
+
+        // Refresh products to show updated data
+        await fetchTodaysProducts();
+      }
+    } catch (error) {
+      console.error('❌ Error updating qty issued:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update qty issued",
+        variant: "destructive",
+      });
+    } finally {
+      setShowUpdateConfirmation(false);
+      setPendingQtyUpdate(null);
+    }
+  };
+
+  // Cancel qty update
+  const handleCancelQtyUpdate = () => {
+    // Revert the input value to original
+    if (pendingQtyUpdate) {
+      setQtyIssuedMap(prev => ({
+        ...prev,
+        [pendingQtyUpdate.productId]: pendingQtyUpdate.currentQtyIssued
+      }));
+    }
+    setShowUpdateConfirmation(false);
+    setPendingQtyUpdate(null);
   };
 
   const validateDCNumber = async (dcNo) => {
@@ -597,8 +675,12 @@ export default function DeliveryChallan() {
           description: `Delivery challan ${fullDCNumber} created successfully with ${items.length} items.`,
         });
 
-        // Lock all fields
+        // Lock all fields and refresh data to show updated state
         console.log('✅ Dispatch completed. All fields locked.');
+        
+        // Refresh data to show fresh dispatch state
+        await fetchTodaysProducts();
+        await fetchNextDCNumber();
       }
     } catch (error) {
       console.error('❌ Error creating delivery challan:', error);
@@ -903,41 +985,71 @@ export default function DeliveryChallan() {
 
       console.log('Creating and dispatching direct order:', orderData);
 
-      const response = await fetch(`${config.baseURL}/api/dispatches/create-direct-order`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(orderData)
-      });
+      let attempts = 0;
+      const maxAttempts = 3;
+      let lastError = null;
 
-      const result = await response.json();
+      // Retry logic for duplicate DC number errors
+      while (attempts < maxAttempts) {
+        try {
+          const response = await fetch(`${config.baseURL}/api/dispatches/create-direct-order`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${localStorage.getItem('token')}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(orderData)
+          });
 
-      if (!response.ok) {
-        throw new Error(result.message || 'Failed to create and dispatch order');
+          const result = await response.json();
+
+          // Check for duplicate DC number error
+          if (!response.ok && response.status === 409 && result.error?.includes('DC number')) {
+            console.log(`⚠️ Duplicate DC number detected, retrying... (Attempt ${attempts + 1}/${maxAttempts})`);
+            attempts++;
+            lastError = new Error(result.message || 'Duplicate DC number');
+            await new Promise(resolve => setTimeout(resolve, 500)); // Wait 500ms before retry
+            continue;
+          }
+
+          if (!response.ok) {
+            throw new Error(result.message || result.error || 'Failed to create and dispatch order');
+          }
+
+          if (result.success) {
+            toast({
+              title: "✅ Dispatch Successful",
+              description: `Order ${result.order.orderCode} created and dispatched successfully with DC No: ${result.dcNo || 'Generated'}`,
+            });
+
+            // Reset form
+            setDirectOrderForm({
+              salesPersonId: '',
+              customerId: '',
+              orderDate: new Date().toISOString().split('T')[0],
+              notes: '',
+              selectedProducts: []
+            });
+
+            setIsDirectOrderModalOpen(false);
+            
+            // Refresh all data to show fresh dispatch
+            await Promise.all([
+              fetchTodaysProducts(),
+              fetchNextDCNumber(),
+              fetchDirectOrderNextDC()
+            ]);
+            
+            return; // Success, exit the function
+          }
+        } catch (error) {
+          lastError = error;
+          break; // Exit retry loop for non-duplicate errors
+        }
       }
 
-      if (result.success) {
-        toast({
-          title: "✅ Dispatch Successful",
-          description: `Order ${result.order.orderCode} created and dispatched successfully with DC No: ${result.dcNo || 'Generated'}`,
-        });
-
-        // Reset form
-        setDirectOrderForm({
-          salesPersonId: '',
-          customerId: '',
-          orderDate: new Date().toISOString().split('T')[0],
-          notes: '',
-          selectedProducts: []
-        });
-
-        setIsDirectOrderModalOpen(false);
-        
-        // Refresh today's products
-        fetchTodaysProducts();
-      }
+      // If we get here, all retries failed
+      throw lastError || new Error('Failed to create and dispatch order after multiple attempts');
     } catch (error) {
       console.error('Error creating and dispatching direct order:', error);
       toast({
@@ -1480,17 +1592,11 @@ export default function DeliveryChallan() {
                         placeholder="Enter qty"
                         className="text-center"
                         min="0"
-                        max={product.indentQty > 0 ? product.indentQty : undefined}
                         value={qtyIssuedMap[product._id] || ''}
                         onChange={(e) => handleQtyIssuedChange(product._id, e.target.value)}
                         onBlur={(e) => handleQtyIssuedBlur(product._id, e.target.value)}
                         disabled={isDispatched}
                       />
-                      {qtyIssuedMap[product._id] && product.indentQty > 0 && Number(qtyIssuedMap[product._id]) > product.indentQty && (
-                        <div className="text-xs text-red-600 mt-1 text-center">
-                          Cannot exceed indent qty
-                        </div>
-                      )}
                     </div>
                   </div>
                   
@@ -1887,6 +1993,90 @@ export default function DeliveryChallan() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Qty Update Confirmation Dialog for Dispatched Items */}
+      {showUpdateConfirmation && pendingQtyUpdate && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-2xl max-w-md w-full">
+            {/* Header */}
+            <div className="bg-yellow-500 text-white p-4 rounded-t-lg flex items-center gap-3">
+              <AlertCircle className="h-6 w-6 flex-shrink-0" />
+              <h3 className="text-lg font-bold">Confirm Quantity Update</h3>
+            </div>
+
+            {/* Content */}
+            <div className="p-6 space-y-4">
+              <p className="text-gray-700">
+                {pendingQtyUpdate.message}
+              </p>
+
+              <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+                {pendingQtyUpdate.currentStatus && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm font-medium text-gray-600">Status:</span>
+                    <Badge variant="outline" className={
+                      pendingQtyUpdate.currentStatus === 'dispatched' 
+                        ? 'bg-green-100 text-green-700 border-green-300'
+                        : 'bg-blue-100 text-blue-700 border-blue-300'
+                    }>
+                      {pendingQtyUpdate.currentStatus}
+                    </Badge>
+                  </div>
+                )}
+                {pendingQtyUpdate.indentQty !== undefined && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm font-medium text-gray-600">Indent Qty:</span>
+                    <span className="text-lg font-semibold text-green-700">{pendingQtyUpdate.indentQty}</span>
+                  </div>
+                )}
+                {pendingQtyUpdate.currentQtyIssued !== undefined && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm font-medium text-gray-600">Current Qty:</span>
+                    <span className="text-lg font-bold text-gray-900">{pendingQtyUpdate.currentQtyIssued}</span>
+                  </div>
+                )}
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-medium text-gray-600">New Qty:</span>
+                  <span className={`text-lg font-bold ${
+                    pendingQtyUpdate.exceedsIndent ? 'text-red-600' : 'text-blue-600'
+                  }`}>
+                    {pendingQtyUpdate.newQtyIssued}
+                  </span>
+                </div>
+              </div>
+
+              <div className={`border rounded-lg p-3 text-sm ${
+                pendingQtyUpdate.exceedsIndent 
+                  ? 'bg-red-50 border-red-200 text-red-800'
+                  : 'bg-yellow-50 border-yellow-200 text-yellow-800'
+              }`}>
+                <strong>⚠️ Warning:</strong> {
+                  pendingQtyUpdate.exceedsIndent
+                    ? 'This quantity exceeds the indent quantity. Excess qty may not be needed.'
+                    : 'This will recalculate stock values for an already dispatched item.'
+                }
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-3 p-4 bg-gray-50 rounded-b-lg">
+              <Button
+                variant="outline"
+                onClick={handleCancelQtyUpdate}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleConfirmQtyUpdate}
+                className="flex-1 bg-yellow-600 hover:bg-yellow-700 text-white"
+              >
+                Yes, Update Qty
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

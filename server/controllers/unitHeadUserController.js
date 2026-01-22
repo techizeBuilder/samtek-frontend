@@ -994,3 +994,241 @@ export const deleteUnitUser = async (req, res) => {
     });
   }
 };
+
+// Helper function to get default permissions based on role
+const getDefaultPermissionsByRole = (role) => {
+  const defaultPermissions = {
+    role: role, // Required field in User model
+    canAccessAllUnits: false,
+    modules: []
+  };
+
+  switch (role) {
+    case 'Unit Manager':
+      defaultPermissions.modules = [{
+        name: 'unitManager',
+        dashboard: true,
+        features: [
+          { key: 'salesApproval', view: true, add: true, edit: true, delete: false },
+          { key: 'salesOrderList', view: true, add: false, edit: true, delete: false },
+          { key: 'productionGroup', view: true, add: true, edit: true, delete: false },
+          { key: 'returns', view: true, add: true, edit: true, delete: false }
+        ]
+      }];
+      break;
+
+    case 'Sales':
+      defaultPermissions.modules = [{
+        name: 'sales',
+        dashboard: true,
+        features: [
+          { key: 'orders', view: true, add: true, edit: true, delete: false },
+          { key: 'myCustomers', view: true, add: true, edit: true, delete: false },
+          { key: 'myDeliveries', view: true, add: false, edit: false, delete: false },
+          { key: 'myInvoices', view: true, add: false, edit: false, delete: false },
+          { key: 'returns', view: true, add: true, edit: true, delete: false }
+        ]
+      }];
+      break;
+
+    case 'Production':
+      defaultPermissions.modules = [{
+        name: 'production',
+        dashboard: true,
+        features: [
+          { key: 'productionDashboard', view: true, add: false, edit: false, delete: false },
+          { key: 'productionReports', view: true, add: false, edit: false, delete: false },
+          { key: 'productionSheet', view: true, add: true, edit: true, delete: false }
+        ]
+      }];
+      break;
+
+    case 'Packing':
+      defaultPermissions.modules = [{
+        name: 'packing',
+        dashboard: true,
+        features: [
+          { key: 'dashboard', view: true, add: false, edit: false, delete: false },
+          { key: 'packingSheet', view: true, add: true, edit: true, delete: false },
+          { key: 'packingHistory', view: true, add: false, edit: false, delete: false }
+        ]
+      }];
+      break;
+
+    case 'Accounts':
+      defaultPermissions.modules = [{
+        name: 'accounts',
+        dashboard: true,
+        features: [
+          { key: 'transactions', view: true, add: true, edit: true, delete: false },
+          { key: 'balanceSheet', view: true, add: false, edit: false, delete: false },
+          { key: 'reports', view: true, add: false, edit: false, delete: false },
+          { key: 'payments', view: true, add: true, edit: true, delete: false }
+        ]
+      }];
+      break;
+
+    case 'Dispatch':
+      defaultPermissions.modules = [{
+        name: 'dispatch',
+        dashboard: true,
+        features: [
+          { key: 'dashboard', view: true, add: false, edit: false, delete: false },
+          { key: 'deliveryChallan', view: true, add: true, edit: true, delete: false },
+          { key: 'dispatchHistory', view: true, add: false, edit: false, delete: false }
+        ]
+      }];
+      break;
+
+    default:
+      break;
+  }
+
+  return defaultPermissions;
+};
+
+// Bulk import unit users
+export const bulkImportUnitUsers = async (req, res) => {
+  try {
+    const { users } = req.body;
+
+    if (!Array.isArray(users) || users.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Users array is required and must not be empty'
+      });
+    }
+
+    const results = {
+      success: [],
+      failed: [],
+      skipped: [],
+      total: users.length
+    };
+
+    for (let i = 0; i < users.length; i++) {
+      const userData = users[i];
+      const rowNumber = i + 2; // Excel row number (accounting for header)
+
+      try {
+        // Validate required fields
+        const username = userData.username?.toString().trim();
+        const email = userData.email?.toString().trim();
+        const role = userData.role?.toString().trim();
+        const fullName = userData.fullName?.toString().trim() || username;
+
+        // Check for missing required fields
+        if (!username || !email || !role) {
+          results.failed.push({
+            row: rowNumber,
+            username: username || 'N/A',
+            email: email || 'N/A',
+            error: 'Missing required fields (username, email, or role)'
+          });
+          continue;
+        }
+
+        // Validate email format
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+          results.failed.push({
+            row: rowNumber,
+            username,
+            email,
+            error: 'Invalid email format'
+          });
+          continue;
+        }
+
+        // Validate role
+        if (!UNIT_HEAD_MANAGEABLE_ROLES.includes(role)) {
+          results.failed.push({
+            row: rowNumber,
+            username,
+            email,
+            error: `Invalid role. Must be one of: ${UNIT_HEAD_MANAGEABLE_ROLES.join(', ')}`
+          });
+          continue;
+        }
+
+        // Check for duplicate username or email in database
+        const existingUser = await User.findOne({
+          $or: [{ username }, { email }],
+          unit: req.user.unit,
+          companyId: req.user.companyId
+        });
+
+        if (existingUser) {
+          results.skipped.push({
+            row: rowNumber,
+            username,
+            email,
+            reason: existingUser.username === username 
+              ? 'Username already exists' 
+              : 'Email already exists'
+          });
+          continue;
+        }
+
+        // Get default permissions based on role
+        const defaultPermissions = getDefaultPermissionsByRole(role);
+
+        // Create new user with default password
+        const newUser = new User({
+          username,
+          email,
+          fullName,
+          role,
+          password: 'Welcome@123', // Default password
+          unit: req.user.unit,
+          companyId: req.user.companyId,
+          permissions: defaultPermissions,
+          isActive: userData.status?.toString().toLowerCase() !== 'inactive'
+        });
+
+        await newUser.save();
+
+        results.success.push({
+          row: rowNumber,
+          username,
+          email,
+          role,
+          fullName
+        });
+
+      } catch (error) {
+        results.failed.push({
+          row: rowNumber,
+          username: userData.username || 'N/A',
+          email: userData.email || 'N/A',
+          error: error.message || 'Unknown error occurred'
+        });
+      }
+    }
+
+    // Prepare response message
+    const message = `Import completed: ${results.success.length} created, ${results.skipped.length} skipped (duplicates), ${results.failed.length} failed`;
+
+    res.status(200).json({
+      success: true,
+      message,
+      data: {
+        summary: {
+          total: results.total,
+          successful: results.success.length,
+          skipped: results.skipped.length,
+          failed: results.failed.length
+        },
+        details: results
+      }
+    });
+
+  } catch (error) {
+    console.error('Bulk import error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to import users',
+      error: error.message
+    });
+  }
+};

@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
+import * as XLSX from 'xlsx';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -48,8 +49,12 @@ import {
   Settings,
   Lock,
   EyeOff,
+  Download,
+  Upload,
   Building2 as Building2Icon,
-  UserCheck
+  UserCheck,
+  RefreshCw,
+  AlertCircle
 } from 'lucide-react';
 import { showSuccessToast, showSmartToast } from '@/lib/toast-utils';
 
@@ -325,6 +330,9 @@ const UnitHeadRolePermissionManagement = () => {
   const [isAddingUser, setIsAddingUser] = useState(false);
   const [isEditingUser, setIsEditingUser] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
+  const [importResults, setImportResults] = useState(null);
+  const [isImporting, setIsImporting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   
@@ -468,6 +476,183 @@ const UnitHeadRolePermissionManagement = () => {
     setIsEditingUser(true);
   };
 
+  // Export users to Excel
+  const handleExportUsers = () => {
+    try {
+      // Get users from component state
+      const unitUsers = unitUsersData?.data?.users || [];
+      
+      // Prepare export data for Excel
+      const exportData = unitUsers.map(user => ({
+        'Username': user.username,
+        'Email': user.email,
+        'Full Name': user.fullName,
+        'Role': user.role,
+        'Unit': user.unit || '',
+        'Company': user.companyId?.name || '',
+        'Status': user.isActive ? 'Active' : 'Inactive',
+        'Created Date': user.createdAt ? new Date(user.createdAt).toLocaleDateString() : '',
+        'Last Login': user.lastLogin ? new Date(user.lastLogin).toLocaleDateString() : 'Never'
+      }));
+
+      // Create worksheet
+      const ws = XLSX.utils.json_to_sheet(exportData);
+      
+      // Set column widths
+      const colWidths = [
+        { wch: 15 }, // Username
+        { wch: 25 }, // Email
+        { wch: 20 }, // Full Name
+        { wch: 15 }, // Role
+        { wch: 12 }, // Unit
+        { wch: 20 }, // Company
+        { wch: 10 }, // Status
+        { wch: 15 }, // Created Date
+        { wch: 15 }  // Last Login
+      ];
+      ws['!cols'] = colWidths;
+
+      // Create workbook
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Users');
+
+      // Download file
+      XLSX.writeFile(wb, `unit_head_users_export_${new Date().toISOString().split('T')[0]}.xlsx`);
+
+      showSuccessToast('Export Successful', `Exported ${exportData.length} users to Excel file`);
+    } catch (error) {
+      console.error('Export error:', error);
+      showSmartToast(error, 'Failed to export users');
+    }
+  };
+
+  // Download sample template for import
+  const handleDownloadTemplate = () => {
+    try {
+      const sampleData = [
+        {
+          'Username': 'john.doe',
+          'Email': 'john.doe@example.com',
+          'Full Name': 'John Doe',
+          'Role': 'Unit Manager',
+          'Unit': 'Unit A',
+          'Status': 'Active'
+        },
+        {
+          'Username': 'jane.smith',
+          'Email': 'jane.smith@example.com',
+          'Full Name': 'Jane Smith',
+          'Role': 'Sales',
+          'Unit': 'Unit A',
+          'Status': 'Active'
+        }
+      ];
+
+      // Create worksheet
+      const ws = XLSX.utils.json_to_sheet(sampleData);
+      
+      // Set column widths
+      const colWidths = [
+        { wch: 15 }, // Username
+        { wch: 25 }, // Email
+        { wch: 20 }, // Full Name
+        { wch: 15 }, // Role
+        { wch: 12 }, // Unit
+        { wch: 10 }  // Status
+      ];
+      ws['!cols'] = colWidths;
+
+      // Create workbook
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Users Template');
+
+      // Download file
+      XLSX.writeFile(wb, `user_import_template.xlsx`);
+
+      showSuccessToast('Template Downloaded', 'Sample import template downloaded successfully');
+    } catch (error) {
+      console.error('Template download error:', error);
+      showSmartToast(error, 'Failed to download template');
+    }
+  };
+
+  // Import users from Excel
+  const handleImportUsers = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsImporting(true);
+    setImportResults(null); // Clear previous results
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        
+        // Get first sheet
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        
+        // Convert to JSON
+        const importedData = XLSX.utils.sheet_to_json(worksheet);
+        
+        if (!Array.isArray(importedData) || importedData.length === 0) {
+          setImportResults({
+            success: false,
+            message: 'No data found in Excel file. Please check the file and try again.'
+          });
+          setIsImporting(false);
+          return;
+        }
+
+        // Prepare users array for bulk import
+        const usersToImport = importedData.map(row => ({
+          username: row['Username'] || row['username'],
+          email: row['Email'] || row['email'],
+          fullName: row['Full Name'] || row['fullName'] || row['full name'],
+          role: row['Role'] || row['role'],
+          status: row['Status'] || row['status'] || 'Active'
+        }));
+
+        // Call bulk import API
+        const result = await apiRequest('POST', '/api/unit-head/unit-users/bulk-import', {
+          users: usersToImport
+        });
+
+        // Store results to display in dialog
+        setImportResults(result);
+
+        // Refresh users list if any successful imports
+        if (result.data?.summary?.successful > 0) {
+          queryClient.invalidateQueries(['unit-users']);
+          
+          // Show success toast only if all succeeded
+          if (result.data.summary.failed === 0 && result.data.summary.skipped === 0) {
+            showSuccessToast('Import Successful', `Successfully imported ${result.data.summary.successful} users!`);
+          }
+        }
+
+        // Log to console for debugging
+        console.log('📊 Import Results:', result);
+
+      } catch (error) {
+        console.error('Import error:', error);
+        setImportResults({
+          success: false,
+          message: error.message || 'Failed to import users. Please try again.',
+          error: true
+        });
+      } finally {
+        setIsImporting(false);
+      }
+    };
+
+    reader.readAsArrayBuffer(file);
+    // Reset file input
+    event.target.value = '';
+  };
+
   const handleDeleteUser = (user) => {
     const confirmDelete = window.confirm(
       `Are you sure you want to delete user "${String(user.fullName || user.username || '')}"? This action cannot be undone.`
@@ -590,16 +775,40 @@ const UnitHeadRolePermissionManagement = () => {
           <h1 className="text-3xl font-bold tracking-tight">User Management</h1>
           <p className="text-gray-600">Manage unit personnel and their permissions for {currentUnit}</p>
         </div>
-        <Button
-          onClick={() => {
-            resetForm();
-            setIsAddingUser(true);
-          }}
-          className="flex items-center gap-2"
-        >
-          <UserPlus className="w-4 h-4" />
-          Add User
-        </Button>
+        <div className="flex gap-2">
+          {/* Export Button */}
+          <Button
+            onClick={handleExportUsers}
+            variant="outline"
+            disabled={unitUsers.length === 0}
+            className="flex items-center gap-2"
+          >
+            <Download className="w-4 h-4" />
+            Export
+          </Button>
+
+          {/* Import Button */}
+          <Button
+            onClick={() => setIsImportDialogOpen(true)}
+            variant="outline"
+            className="flex items-center gap-2"
+          >
+            <Upload className="w-4 h-4" />
+            Import
+          </Button>
+
+          {/* Add User Button */}
+          <Button
+            onClick={() => {
+              resetForm();
+              setIsAddingUser(true);
+            }}
+            className="flex items-center gap-2"
+          >
+            <UserPlus className="w-4 h-4" />
+            Add User
+          </Button>
+        </div>
       </div>
 
      
@@ -1182,6 +1391,224 @@ const UnitHeadRolePermissionManagement = () => {
               </Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Import Users Dialog */}
+      <Dialog open={isImportDialogOpen} onOpenChange={(open) => {
+        setIsImportDialogOpen(open);
+        if (!open) {
+          setImportResults(null); // Clear results when closing
+          setIsImporting(false);
+        }
+      }}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Upload className="h-5 w-5" />
+              Import Users
+            </DialogTitle>
+            <DialogDescription>
+              Upload an Excel file to import multiple users at once
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            {/* Import Results Display */}
+            {importResults && (
+              <div className={`border rounded-lg p-4 ${
+                importResults.error 
+                  ? 'bg-red-50 border-red-200' 
+                  : importResults.data?.summary?.failed > 0 || importResults.data?.summary?.skipped > 0
+                  ? 'bg-yellow-50 border-yellow-200'
+                  : 'bg-green-50 border-green-200'
+              }`}>
+                <h4 className="font-semibold mb-3 flex items-center gap-2">
+                  {importResults.error ? (
+                    <>
+                      <XCircle className="h-5 w-5 text-red-600" />
+                      <span className="text-red-900">Import Failed</span>
+                    </>
+                  ) : importResults.data?.summary?.failed > 0 ? (
+                    <>
+                      <AlertCircle className="h-5 w-5 text-yellow-600" />
+                      <span className="text-yellow-900">Import Completed with Issues</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="h-5 w-5 text-green-600" />
+                      <span className="text-green-900">Import Successful</span>
+                    </>
+                  )}
+                </h4>
+
+                {/* Simple error message */}
+                {importResults.error && importResults.message && (
+                  <p className="text-sm text-red-800">{importResults.message}</p>
+                )}
+
+                {/* Summary Stats */}
+                {importResults.data?.summary && (
+                  <div className="grid grid-cols-4 gap-2 mb-3">
+                    <div className="bg-white rounded p-2 text-center border">
+                      <div className="text-xs text-gray-600">Total</div>
+                      <div className="text-lg font-bold text-gray-900">{importResults.data.summary.total}</div>
+                    </div>
+                    <div className="bg-white rounded p-2 text-center border border-green-300">
+                      <div className="text-xs text-green-600">Success</div>
+                      <div className="text-lg font-bold text-green-700">{importResults.data.summary.successful}</div>
+                    </div>
+                    <div className="bg-white rounded p-2 text-center border border-yellow-300">
+                      <div className="text-xs text-yellow-600">Skipped</div>
+                      <div className="text-lg font-bold text-yellow-700">{importResults.data.summary.skipped}</div>
+                    </div>
+                    <div className="bg-white rounded p-2 text-center border border-red-300">
+                      <div className="text-xs text-red-600">Failed</div>
+                      <div className="text-lg font-bold text-red-700">{importResults.data.summary.failed}</div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Failed Records */}
+                {importResults.data?.details?.failed && importResults.data.details.failed.length > 0 && (
+                  <div className="mt-3">
+                    <h5 className="text-sm font-semibold text-red-900 mb-2">Failed Records:</h5>
+                    <div className="bg-white rounded border border-red-200 max-h-48 overflow-y-auto">
+                      {importResults.data.details.failed.map((item, idx) => (
+                        <div key={idx} className="p-2 border-b border-red-100 last:border-0 text-xs">
+                          <div className="flex items-start gap-2">
+                            <Badge variant="destructive" className="text-xs">Row {item.row}</Badge>
+                            <div className="flex-1">
+                              <div className="font-medium text-gray-900">{item.username} ({item.email})</div>
+                              <div className="text-red-700 mt-1">{item.error}</div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Skipped Records */}
+                {importResults.data?.details?.skipped && importResults.data.details.skipped.length > 0 && (
+                  <div className="mt-3">
+                    <h5 className="text-sm font-semibold text-yellow-900 mb-2">Skipped Records (Duplicates):</h5>
+                    <div className="bg-white rounded border border-yellow-200 max-h-32 overflow-y-auto">
+                      {importResults.data.details.skipped.map((item, idx) => (
+                        <div key={idx} className="p-2 border-b border-yellow-100 last:border-0 text-xs">
+                          <div className="flex items-start gap-2">
+                            <Badge variant="outline" className="text-xs border-yellow-500 text-yellow-700">Row {item.row}</Badge>
+                            <div className="flex-1">
+                              <div className="font-medium text-gray-900">{item.username} ({item.email})</div>
+                              <div className="text-yellow-700 mt-1">{item.reason}</div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Success Records Summary */}
+                {importResults.data?.details?.success && importResults.data.details.success.length > 0 && (
+                  <div className="mt-3">
+                    <h5 className="text-sm font-semibold text-green-900">
+                      ✅ {importResults.data.details.success.length} users imported successfully
+                    </h5>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Instructions */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <h4 className="font-semibold text-blue-900 mb-2">Import Instructions:</h4>
+              <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
+                <li>Download the template file below</li>
+                <li>Fill in user details (Username, Email, Full Name, Role, Status)</li>
+                <li>Required fields: Username, Email, Role</li>
+                <li>Default password: Welcome@123</li>
+                <li>Status: Active or Inactive</li>
+                <li>Upload the completed file</li>
+              </ul>
+            </div>
+
+            {/* Available Roles */}
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+              <h4 className="font-semibold text-gray-900 mb-2">Available Roles:</h4>
+              <div className="flex flex-wrap gap-2">
+                {UNIT_HEAD_MANAGEABLE_ROLES.map(role => (
+                  <Badge key={role.value} variant="secondary">
+                    {role.label}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+
+            {/* Download Template Button */}
+            <Button
+              onClick={handleDownloadTemplate}
+              variant="outline"
+              className="w-full"
+            >
+              <Download className="w-4 h-4 mr-2" />
+              Download Template File
+            </Button>
+
+            {/* File Upload */}
+            <div>
+              <Label htmlFor="import-file" className="text-base font-semibold">
+                Upload Excel File
+              </Label>
+              <div className="mt-2">
+                <input
+                  type="file"
+                  id="import-file"
+                  accept=".xlsx,.xls"
+                  onChange={handleImportUsers}
+                  disabled={isImporting}
+                  className="block w-full text-sm text-gray-500
+                    file:mr-4 file:py-2 file:px-4
+                    file:rounded-md file:border-0
+                    file:text-sm file:font-semibold
+                    file:bg-blue-50 file:text-blue-700
+                    hover:file:bg-blue-100
+                    cursor-pointer
+                    disabled:opacity-50 disabled:cursor-not-allowed"
+                />
+              </div>
+              <p className="text-xs text-gray-500 mt-2">
+                Supported formats: .xlsx, .xls
+              </p>
+              {isImporting && (
+                <div className="mt-2 flex items-center gap-2 text-sm text-blue-600">
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                  <span>Importing users...</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 mt-4">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsImportDialogOpen(false);
+                setImportResults(null);
+                setIsImporting(false);
+              }}
+            >
+              Close
+            </Button>
+            {importResults && !isImporting && (
+              <Button
+                onClick={() => setImportResults(null)}
+                variant="default"
+              >
+                Import Another File
+              </Button>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </div>
