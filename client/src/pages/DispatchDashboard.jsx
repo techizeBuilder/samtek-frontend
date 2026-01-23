@@ -456,7 +456,7 @@ export default function DispatchDashboard() {
                     <tr key={entry.id || index}>
                       <td className="border border-gray-900 p-2">
                         <div>
-                          <div className="font-medium">{entry.productName || entry.productGroup}</div>
+                          <div className="font-medium">{entry.productGroup || 'N/A'}</div>
                           <div className="text-sm text-gray-600">
                             {entry.packingSheetSlNo ? `Sheet: ${entry.packingSheetSlNo}` : 'No Sheet'}
                             {entry.batchNo && ` • Batch: ${entry.batchNo}`}

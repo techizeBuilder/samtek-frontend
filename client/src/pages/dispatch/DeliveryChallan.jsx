@@ -56,6 +56,8 @@ export default function DeliveryChallan() {
   const [orderCustomers, setOrderCustomers] = useState([]);
   const [orderProducts, setOrderProducts] = useState([]);
   const [nextDirectOrderDC, setNextDirectOrderDC] = useState('');
+  const [todayOrderItems, setTodayOrderItems] = useState([]);
+  const [todayOrderItemsLoading, setTodayOrderItemsLoading] = useState(false);
   const [directOrderForm, setDirectOrderForm] = useState({
     salesPersonId: '',
     customerId: '',
@@ -881,6 +883,42 @@ export default function DeliveryChallan() {
     }
   };
 
+  // Fetch today's order items when sales person and customer are selected
+  useEffect(() => {
+    const fetchTodayOrderItems = async () => {
+      if (!directOrderForm.salesPersonId || !directOrderForm.customerId) {
+        setTodayOrderItems([]);
+        return;
+      }
+
+      try {
+        setTodayOrderItemsLoading(true);
+        const response = await fetch(
+          `${config.baseURL}/api/dispatches/today-order-items?salesPersonId=${directOrderForm.salesPersonId}&customerId=${directOrderForm.customerId}`,
+          {
+            headers: {
+              'Authorization': `Bearer ${localStorage.getItem('token')}`,
+              'Content-Type': 'application/json'
+            }
+          }
+        );
+        const result = await response.json();
+        if (result.success) {
+          setTodayOrderItems(result.data.items || []);
+        } else {
+          setTodayOrderItems([]);
+        }
+      } catch (error) {
+        console.error('Error fetching today order items:', error);
+        setTodayOrderItems([]);
+      } finally {
+        setTodayOrderItemsLoading(false);
+      }
+    };
+
+    fetchTodayOrderItems();
+  }, [directOrderForm.salesPersonId, directOrderForm.customerId]);
+
   const handleDirectOrderModalOpen = async () => {
     setIsDirectOrderModalOpen(true);
     // Load sales persons and products; use existing customers from main component
@@ -969,6 +1007,32 @@ export default function DeliveryChallan() {
 
     try {
       setDirectOrderLoading(true);
+
+      // Check for existing order for this sales person + customer + today
+      console.log('Checking for existing order...');
+      const checkResponse = await fetch(
+        `${config.baseURL}/api/orders/check-existing?salesPersonId=${directOrderForm.salesPersonId}&customerId=${directOrderForm.customerId}&orderDate=${directOrderForm.orderDate}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      const checkResult = await checkResponse.json();
+
+      if (checkResult.success && checkResult.data.exists) {
+        // Order already exists for this sales person + customer + today
+        toast({
+          title: "Order Already Exists",
+          description: "This customer already has an order for today. Please update the existing order instead of creating a new one.",
+          variant: "destructive",
+          duration: 5000
+        });
+        setDirectOrderLoading(false);
+        return;
+      }
 
       const orderData = {
         salesPersonId: directOrderForm.salesPersonId,
@@ -1253,44 +1317,46 @@ export default function DeliveryChallan() {
   });
 
   return (
-    <div className="p-6 max-w-8xl mx-auto space-y-6">
+    <div className="p-2 sm:p-4 md:p-6 max-w-8xl mx-auto space-y-4 md:space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3 mb-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Delivery Challan</h1>
-          <p className="text-gray-600 mt-1">Product Groups and Indent Quantities for Today</p>
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900">Delivery Challan</h1>
+          <p className="text-sm sm:text-base text-gray-600 mt-1">Product Groups and Indent Quantities for Today</p>
         </div>
-        <div className="flex gap-2">
-          <Button onClick={handleDirectOrderModalOpen} variant="default" className="bg-green-600 hover:bg-green-700">
-            <Plus className="h-4 w-4 mr-2" />
-            Create Dispatch Order
+        <div className="flex flex-wrap gap-2 w-full lg:w-auto">
+          <Button onClick={handleDirectOrderModalOpen} variant="default" className="bg-green-600 hover:bg-green-700 text-xs sm:text-sm flex-1 sm:flex-none">
+            <Plus className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+            <span className="hidden sm:inline">Create Dispatch Order</span>
+            <span className="sm:hidden">Dispatch Order</span>
           </Button>
-          <Button onClick={handleInvoiceModalOpen} variant="default" className="bg-blue-600 hover:bg-blue-700">
-            Generate Invoice
+          <Button onClick={handleInvoiceModalOpen} variant="default" className="bg-blue-600 hover:bg-blue-700 text-xs sm:text-sm flex-1 sm:flex-none">
+            <span className="hidden sm:inline">Generate Invoice</span>
+            <span className="sm:hidden">Invoice</span>
           </Button>
-          <Button onClick={handleReset} variant="outline" disabled={loading}>
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Reset Form
+          <Button onClick={handleReset} variant="outline" disabled={loading} className="text-xs sm:text-sm flex-1 sm:flex-none">
+            <RefreshCw className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+            Reset
           </Button>
         </div>
       </div>
 
       {/* Main Form Container */}
-      <div className="border border-gray-800">
+      <div className="border border-gray-800 rounded-lg overflow-hidden">
         
         {/* Control Row - DC Number, Salesman, Customer, Dispatch, Invoice */}
-        <div className="grid grid-cols-5 border-b border-gray-800">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 border-b border-gray-800">
           
           {/* DC Number */}
-          <div className="border-r border-gray-800 p-3 bg-gray-50">
-            <div className="text-center font-medium text-sm mb-2">
+          <div className="border-b sm:border-r border-gray-800 p-2 sm:p-3 bg-gray-50">
+            <div className="text-center font-medium text-xs sm:text-sm mb-2">
               DC Number
             </div>
             <div className="flex items-center gap-1">
               <Input
                 type="text"
                 placeholder="DC017"
-                className="w-full text-center font-semibold text-lg"
+                className="w-full text-center font-semibold text-base sm:text-lg"
                 value={dcNumber}
                 onChange={(e) => setDcNumber(e.target.value.toUpperCase())}
                 disabled={isDispatched}
@@ -1298,15 +1364,16 @@ export default function DeliveryChallan() {
             </div>
             {!isAlreadyDispatched && (
               <div className="text-xs text-blue-600 font-medium text-center mt-1">
-                Next DC number - {nextDCNumber || dcNumber}
+                Next: {nextDCNumber || dcNumber}
               </div>
             )}
           </div>
           
           {/* Salesman Dropdown */}
-          <div className="border-r border-gray-800 p-3 bg-gray-50">
-            <div className="text-center font-medium text-sm mb-2">
-              Salesman Name by Dropdown
+          <div className="border-b sm:border-b-0 lg:border-r border-gray-800 p-2 sm:p-3 bg-gray-50">
+            <div className="text-center font-medium text-xs sm:text-sm mb-2">
+              <span className="hidden sm:inline">Salesman Name by Dropdown</span>
+              <span className="sm:hidden">Salesman</span>
             </div>
             <div className="relative dropdown-container">
               <div className="relative">
@@ -1372,9 +1439,10 @@ export default function DeliveryChallan() {
           </div>
 
           {/* Customer Dropdown */}
-          <div className="border-r border-gray-800 p-3 bg-gray-50">
-            <div className="text-center font-medium text-sm mb-2">
-              Customer Name by dropdown search
+          <div className="border-b sm:border-r lg:border-r border-gray-800 p-2 sm:p-3 bg-gray-50">
+            <div className="text-center font-medium text-xs sm:text-sm mb-2">
+              <span className="hidden sm:inline">Customer Name by dropdown search</span>
+              <span className="sm:hidden">Customer</span>
             </div>
             <div className="relative dropdown-container">
               <div className="relative">
@@ -1440,12 +1508,13 @@ export default function DeliveryChallan() {
           </div>
 
           {/* Dispatch Button */}
-          <div className="border-r border-gray-800 p-3 bg-gray-50">
-            <div className="text-center font-medium text-sm mb-2">
-              Dispatch Action
+          <div className="border-b sm:border-b-0 sm:border-r lg:border-r border-gray-800 p-2 sm:p-3 bg-gray-50">
+            <div className="text-center font-medium text-xs sm:text-sm mb-2">
+              <span className="hidden sm:inline">Dispatch Action</span>
+              <span className="sm:hidden">Dispatch</span>
             </div>
             <Button 
-              className={`w-full text-sm ${
+              className={`w-full text-xs sm:text-sm ${
                 isAlreadyDispatched || isDispatched 
                   ? 'bg-gray-400 cursor-not-allowed' 
                   : 'bg-blue-600 hover:bg-blue-700'
@@ -1453,19 +1522,21 @@ export default function DeliveryChallan() {
               onClick={handleDispatch}
               disabled={loading || isDispatched || isAlreadyDispatched || !dcNumber || !selectedSalesman || !selectedCustomer || products.length === 0}
             >
-              <Truck className="h-4 w-4 mr-2" />
-              {loading ? 'Processing...' : (isDispatched || isAlreadyDispatched) ? 'Already Dispatched' : 'Dispatch'}
+              <Truck className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+              <span className="hidden sm:inline">{loading ? 'Processing...' : (isDispatched || isAlreadyDispatched) ? 'Already Dispatched' : 'Dispatch'}</span>
+              <span className="sm:hidden">{loading ? '...' : (isDispatched || isAlreadyDispatched) ? 'Done' : 'Send'}</span>
             </Button>
            
           </div>
 
           {/* Invoice Button */}
-          <div className="p-3 bg-gray-50">
-            <div className="text-center font-medium text-sm mb-2">
-              Generate Invoice
+          <div className="p-2 sm:p-3 bg-gray-50">
+            <div className="text-center font-medium text-xs sm:text-sm mb-2">
+              <span className="hidden sm:inline">Generate Invoice</span>
+              <span className="sm:hidden">Invoice</span>
             </div>
             <Button 
-              className={`w-full text-sm ${
+              className={`w-full text-xs sm:text-sm ${
                 (isDispatched || isAlreadyDispatched) && selectedSalesman && selectedCustomer
                   ? 'bg-green-600 hover:bg-green-700' 
                   : 'bg-gray-300 cursor-not-allowed'
@@ -1479,19 +1550,20 @@ export default function DeliveryChallan() {
         </div>
 
         {/* Product Table */}
-        <div>
+        <div className="overflow-x-auto">
           {/* Table Header */}
-          <div className="grid grid-cols-4 bg-yellow-300 border-b border-gray-800">
-            <div className="border-r border-gray-800 p-3 text-center font-medium">
-              Product Name / Product Group
+          <div className="grid grid-cols-4 bg-yellow-300 border-b border-gray-800 min-w-[600px]">
+            <div className="border-r border-gray-800 p-2 sm:p-3 text-center font-medium text-xs sm:text-sm">
+              <span className="hidden sm:inline">Product Name / Product Group</span>
+              <span className="sm:hidden">Product</span>
             </div>
-            <div className="border-r border-gray-800 p-3 text-center font-medium">
+            <div className="border-r border-gray-800 p-2 sm:p-3 text-center font-medium text-xs sm:text-sm">
               Stock / Batch
             </div>
-            <div className="border-r border-gray-800 p-3 text-center font-medium">
+            <div className="border-r border-gray-800 p-2 sm:p-3 text-center font-medium text-xs sm:text-sm">
               Indent Qty
             </div>
-            <div className="p-3 text-center font-medium">
+            <div className="p-2 sm:p-3 text-center font-medium text-xs sm:text-sm">
               Qty Issued
             </div>
           </div>
@@ -1515,12 +1587,12 @@ export default function DeliveryChallan() {
               return (
                 <div key={product._id} className="border-b border-gray-800">
                   {/* Main Row */}
-                  <div className="grid grid-cols-4 hover:bg-gray-50">
+                  <div className="grid grid-cols-4 hover:bg-gray-50 min-w-[600px]">
                     {/* Product Name with Checkbox */}
-                    <div className="border-r border-gray-800 p-3 flex items-center gap-3">
+                    <div className="border-r border-gray-800 p-2 sm:p-3 flex items-center gap-2 sm:gap-3">
                       <input
                         type="checkbox"
-                        className="w-5 h-5 cursor-pointer flex-shrink-0"
+                        className="w-4 h-4 sm:w-5 sm:h-5 cursor-pointer flex-shrink-0"
                         checked={selectedItems[product._id] || false}
                         onChange={(e) => {
                           setSelectedItems(prev => ({
@@ -1530,9 +1602,9 @@ export default function DeliveryChallan() {
                         }}
                         disabled={isDispatched || isItemDispatched}
                       />
-                      <div className="flex-1">
-                        <div className="font-medium">{product.productName}</div>
-                        <div className="text-sm text-blue-600 mt-1 flex items-center gap-2 flex-wrap">
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-sm sm:text-base truncate sm:whitespace-normal">{product.productName}</div>
+                        <div className="text-xs sm:text-sm text-blue-600 mt-1 flex items-center gap-1 sm:gap-2 flex-wrap">
                           {product.productGroup && (
                             <Badge variant="outline" className="bg-blue-50 text-blue-700">
                               {product.productGroup}
@@ -1568,9 +1640,9 @@ export default function DeliveryChallan() {
                       </div>
                     </div>
                     {/* Stock / Batch Column - Show totalItemBatch */}
-                    <div className="border-r border-gray-800 p-3 text-center flex flex-col items-center justify-center gap-1">
+                    <div className="border-r border-gray-800 p-2 sm:p-3 text-center flex flex-col items-center justify-center gap-1">
                       {product.totalItemBatch !== undefined && product.totalItemBatch !== null ? (
-                        <Badge variant="outline" className="bg-purple-50 text-purple-700 text-lg font-bold">
+                        <Badge variant="outline" className="bg-purple-50 text-purple-700 text-sm sm:text-lg font-bold">
                           Total: {product.totalItemBatch}
                         </Badge>
                       ) : product.batchNo ? (
@@ -1581,16 +1653,16 @@ export default function DeliveryChallan() {
                         <span className="text-gray-400 text-xs">N/A</span>
                       )}
                     </div>
-                    <div className="border-r border-gray-800 p-3 text-center flex items-center justify-center">
-                      <Badge variant="outline" className="bg-green-50 text-green-700 text-lg">
+                    <div className="border-r border-gray-800 p-2 sm:p-3 text-center flex items-center justify-center">
+                      <Badge variant="outline" className="bg-green-50 text-green-700 text-sm sm:text-lg">
                         {product.indentQty}
                       </Badge>
                     </div>
-                    <div className="p-3">
+                    <div className="p-2 sm:p-3">
                       <Input
                         type="number"
                         placeholder="Enter qty"
-                        className="text-center"
+                        className="text-center text-sm sm:text-base"
                         min="0"
                         value={qtyIssuedMap[product._id] || ''}
                         onChange={(e) => handleQtyIssuedChange(product._id, e.target.value)}
@@ -1824,6 +1896,73 @@ export default function DeliveryChallan() {
               </Select>
             </div>
 
+            {/* Today's Order Items Section */}
+            {directOrderForm.salesPersonId && directOrderForm.customerId && (
+              <div className="border rounded-lg p-4 bg-blue-50">
+                <div className="flex items-center gap-2 mb-3">
+                  <ShoppingCart className="h-4 w-4 text-blue-600" />
+                  <Label className="text-sm font-semibold text-blue-900">Today's Order Items</Label>
+                </div>
+                
+                {todayOrderItemsLoading ? (
+                  <div className="text-center py-4 text-gray-600">
+                    <div className="animate-pulse">Loading order items...</div>
+                  </div>
+                ) : todayOrderItems.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-blue-200">
+                          <th className="text-left py-2 px-2 font-medium text-blue-900">Item Name</th>
+                          <th className="text-left py-2 px-2 font-medium text-blue-900">Code</th>
+                          <th className="text-left py-2 px-2 font-medium text-blue-900">Category</th>
+                          <th className="text-right py-2 px-2 font-medium text-blue-900">Indent Qty</th>
+                          <th className="text-right py-2 px-2 font-medium text-blue-900">Batch</th>
+                          <th className="text-right py-2 px-2 font-medium text-blue-900">Order Value</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {todayOrderItems.map((item, index) => (
+                          <tr key={index} className="border-b border-blue-100 hover:bg-blue-100">
+                            <td className="py-2 px-2 text-gray-800">{item.name}</td>
+                            <td className="py-2 px-2 text-gray-700">{item.code}</td>
+                            <td className="py-2 px-2 text-gray-700">{item.category}</td>
+                            <td className="py-2 px-2 text-right text-gray-800 font-medium">
+                              {item.indentQty} {item.unit}
+                            </td>
+                            <td className="py-2 px-2 text-right text-gray-800 font-medium">
+                              {item.batch}
+                            </td>
+                            <td className="py-2 px-2 text-right text-gray-800 font-medium">
+                              ₹{item.orderValue.toFixed(2)}
+                            </td>
+                          </tr>
+                        ))}
+                        <tr className="bg-blue-100 font-semibold">
+                          <td colSpan="3" className="py-2 px-2 text-right text-blue-900">
+                            Total:
+                          </td>
+                          <td className="py-2 px-2 text-right text-blue-900">
+                            {todayOrderItems.reduce((sum, item) => sum + (parseFloat(item.indentQty) || 0), 0)} pieces
+                          </td>
+                          <td className="py-2 px-2 text-right text-blue-900">
+                            {todayOrderItems.reduce((sum, item) => sum + (parseFloat(item.batch) || 0), 0)}
+                          </td>
+                          <td className="py-2 px-2 text-right text-blue-900">
+                            ₹{todayOrderItems.reduce((sum, item) => sum + item.orderValue, 0).toFixed(2)}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="text-center py-4 text-gray-600">
+                    No orders placed today for this customer by this sales person.
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Order Date */}
             <div>
               <Label htmlFor="orderDate" className="text-sm font-medium">Order Date *</Label>
@@ -1938,7 +2077,7 @@ export default function DeliveryChallan() {
             </div>
 
             {/* Sales Person (Optional) */}
-            <div>
+            {/* <div>
               <Label htmlFor="invoiceSalesPerson" className="text-sm font-medium">Sales Person (Optional)</Label>
               <Select
                 value={invoiceForm.salesPersonId}
@@ -1964,7 +2103,7 @@ export default function DeliveryChallan() {
               <p className="text-xs text-gray-500 mt-1">
                 Leave empty to use the original sales person from the order
               </p>
-            </div>
+            </div> */}
 
             {/* Action Buttons */}
             <div className="flex justify-end gap-2 pt-4">

@@ -658,11 +658,63 @@ const updateOrderStatus = async (req, res) => {
   }
 };
 
+// Check if order exists for sales person + customer + date
+const checkExistingOrder = async (req, res) => {
+  try {
+    const { salesPersonId, customerId, orderDate } = req.query;
+
+    console.log('🔍 Checking for existing order:', { salesPersonId, customerId, orderDate });
+
+    if (!salesPersonId || !customerId || !orderDate) {
+      return res.status(400).json({
+        success: false,
+        message: 'Sales person, customer, and order date are required'
+      });
+    }
+
+    // Parse the order date
+    const targetDate = new Date(orderDate);
+    const startOfDay = new Date(targetDate.setHours(0, 0, 0, 0));
+    const endOfDay = new Date(targetDate.setHours(23, 59, 59, 999));
+
+    // Check if an order exists
+    const existingOrder = await Order.findOne({
+      salesPerson: salesPersonId,
+      customer: customerId,
+      orderDate: {
+        $gte: startOfDay,
+        $lte: endOfDay
+      },
+      companyId: req.user.companyId
+    }).lean();
+
+    console.log('🔍 Existing order found:', existingOrder ? 'YES' : 'NO');
+
+    res.json({
+      success: true,
+      data: {
+        exists: !!existingOrder,
+        orderId: existingOrder?._id,
+        orderCode: existingOrder?.orderCode
+      }
+    });
+
+  } catch (error) {
+    console.error('Error checking existing order:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to check existing order',
+      error: error.message
+    });
+  }
+};
+
 export {
   createOrder,
   getOrders,
   getOrderById,
   updateOrder,
   updateOrderStatus,
-  deleteOrder
+  deleteOrder,
+  checkExistingOrder
 };

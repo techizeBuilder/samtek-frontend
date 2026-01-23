@@ -76,7 +76,8 @@ export default function ProductionShift() {
               productionLoss: item.productionLoss || '',
               totalBatchAdjusted: item.totalBatchAdjusted !== undefined ? item.totalBatchAdjusted : 1,
               notes: item.notes || '', // Initialize notes field from API
-              qtyAchieved: Math.max(0, (item.qtyPerBatch || 0) - (item.productionLoss || 0))
+              // Use qtyAchieved from backend if available, otherwise calculate with totalBatchAdjusted
+              qtyAchieved: item.qtyAchieved !== undefined ? item.qtyAchieved : Math.max(0, ((item.totalBatchAdjusted || 1) * (item.qtyPerBatch || 0)) - (item.productionLoss || 0))
             };
           });
           setUngroupedBatchData(ungroupedBatchData);
@@ -411,14 +412,17 @@ export default function ProductionShift() {
       console.log('✅ Unified Production API Response:', result);
 
       if (result.success) {
-        console.log(`✅ Successfully auto-saved ${field}`);
+        console.log(`✅ Successfully auto-saved ${field}`, result);
         
-        // Update local batchData state immediately with the response
+        // Update local batchData state with response data including qtyAchieved
         setBatchData(prev => ({
           ...prev,
           [batchKey]: {
             ...prev[batchKey],
-            [field]: processedValue
+            [field]: processedValue,
+            // Update qtyAchieved from backend response if available
+            qtyAchieved: result.data?.qtyAchieved !== undefined ? result.data.qtyAchieved : prev[batchKey]?.qtyAchieved,
+            status: result.data?.status || prev[batchKey]?.status
           }
         }));
         
@@ -428,9 +432,8 @@ export default function ProductionShift() {
           duration: 2000
         });
         
-        // Refetch the production shift data to get updated values
-        console.log('🔄 Refetching production shift data after successful update...');
-        await fetchProductionShiftData();
+        // No need to refetch all data - local state is already updated
+        // This prevents slow page reloads after each Start/End click
       } else {
         console.error('❌ Auto-save failed:', result.message);
         toast({
@@ -656,13 +659,13 @@ export default function ProductionShift() {
           </div>
         </TableCell>
         
-        {/* Qty Achieved/Batch (auto-calculated) - Use individual batch's totalBatchAdjusted */}
+        {/* Qty Achieved/Batch (from backend) - Use actual qtyAchieved value */}
         <TableCell className="text-center">
           <span className="text-green-600 font-medium text-lg">
-            {Math.max(0, Math.round((batch.totalBatchAdjusted || 1) * (group.qtyPerBatch || 0)) - (batch.productionLoss || 0))}
+            {batch.qtyAchieved !== undefined ? batch.qtyAchieved : Math.max(0, Math.round((batch.totalBatchAdjusted || 1) * (batch.qtyBatch || 0)) - (batch.productionLoss || 0))}
           </span>
           <div className="text-xs text-gray-500">
-            ({batch.totalBatchAdjusted || 1} × {group.qtyPerBatch || 0}) - {batch.productionLoss || 0}
+            ({batch.totalBatchAdjusted || 1} × {batch.qtyBatch || 0}) - {batch.productionLoss || 0}
           </div>
         </TableCell>
 
@@ -1005,10 +1008,10 @@ export default function ProductionShift() {
                           </div>
                         </TableCell>
                         
-                        {/* Qty Achieved/Batch (auto-calculated) - Use batch's totalBatchAdjusted */}
+                        {/* Qty Achieved/Batch (from backend) - Use actual qtyAchieved value */}
                         <TableCell className="text-center">
                           <span className="text-green-600 font-medium">
-                            {Math.max(0, Math.round((batch.totalBatchAdjusted || 1) * (item.qtyPerBatch || 0)) - (parseFloat(batch.productionLoss) || 0))}
+                            {batch.qtyAchieved !== undefined ? batch.qtyAchieved : Math.max(0, Math.round((batch.totalBatchAdjusted || 1) * (item.qtyPerBatch || 0)) - (parseFloat(batch.productionLoss) || 0))}
                           </span>
                           <div className="text-xs text-gray-500">
                             ({batch.totalBatchAdjusted || 1} × {item.qtyPerBatch || 0}) - {batch.productionLoss || 0}

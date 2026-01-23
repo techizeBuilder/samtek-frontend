@@ -3688,37 +3688,77 @@ export const getProductsForDispatch = async (req, res) => {
     console.log('📦 Fetching products for dispatch order creation');
     console.log('👤 User company:', req.user.companyId);
 
+    // COMMENTED OUT: Previous logic that filtered only dispatched products
     // Step 1: Get all unique product IDs from dispatches collection filtered by company
-    const query = {};
-    if (req.user.companyId) {
-      query.company = req.user.companyId;
-    }
+    // const query = {};
+    // if (req.user.companyId) {
+    //   query.company = req.user.companyId;
+    // }
 
-    const allDispatches = await Dispatch.find(query).select('productId').lean();
-    console.log('📦 Total dispatch records for company:', allDispatches.length);
+    // const allDispatches = await Dispatch.find(query).select('productId').lean();
+    // console.log('📦 Total dispatch records for company:', allDispatches.length);
     
-    const dispatchedProductIds = [...new Set(allDispatches.map(d => d.productId?.toString()).filter(Boolean))];
-    console.log('📦 Unique dispatched product IDs:', dispatchedProductIds.length);
-    console.log('📦 Sample product IDs:', dispatchedProductIds.slice(0, 3));
+    // const dispatchedProductIds = [...new Set(allDispatches.map(d => d.productId?.toString()).filter(Boolean))];
+    // console.log('📦 Unique dispatched product IDs:', dispatchedProductIds.length);
 
-    if (dispatchedProductIds.length === 0) {
-      return res.json({
-        success: true,
-        data: {
-          products: [],
-          count: 0
-        }
-      });
+    // NEW LOGIC: Return ALL items for the company by default
+    let products = [];
+
+    // Always fetch all items filtered by store (company)
+    console.log('✅ Fetching ALL items for company store');
+    
+    const itemQuery = {};
+    if (req.user.companyId) {
+      // Filter by store field which contains company ID
+      itemQuery.store = req.user.companyId.toString();
+      console.log('🔍 Filtering items by store (companyId):', req.user.companyId);
     }
+    
+    products = await Item.find(itemQuery)
+      .select('_id name code category unit salePrice purchasePrice stock store batch')
+      .sort({ name: 1 })
+      .lean();
+    
+    console.log('📦 Found ALL items for company store:', products.length);
 
-    // Step 2: Get those products from Item collection
-    const products = await Item.find({
-      _id: { $in: dispatchedProductIds }
-    })
-    .select('_id name code category unit salePrice purchasePrice stock location')
-    .sort({ name: 1 });
+    // COMMENTED OUT: Previous logic for dispatched products only
+    // if (dispatchedProductIds.length === 0) {
+    //   // No dispatched products found - return items filtered by store (company)
+    //   console.log('⚠️ No dispatched products found - fetching items by store (company)');
+    //   
+    //   const itemQuery = {};
+    //   if (req.user.companyId) {
+    //     // Filter by store field which contains company ID
+    //     itemQuery.store = req.user.companyId.toString();
+    //     console.log('🔍 Filtering items by store (companyId):', req.user.companyId);
+    //   }
+    //   
+    //   products = await Item.find(itemQuery)
+    //     .select('_id name code category unit salePrice purchasePrice stock store batch')
+    //     .sort({ name: 1 })
+    //     .lean();
+    //   
+    //   console.log('📦 Found items for company store:', products.length);
+    // } else {
+    //   // Step 2: Get those products from Item collection, filtered by store (company)
+    //   const itemQuery = {
+    //     _id: { $in: dispatchedProductIds }
+    //   };
+    //   
+    //   if (req.user.companyId) {
+    //     // Also filter by store to ensure items belong to this company
+    //     itemQuery.store = req.user.companyId.toString();
+    //     console.log('🔍 Filtering dispatched items by store (companyId):', req.user.companyId);
+    //   }
+    //   
+    //   products = await Item.find(itemQuery)
+    //     .select('_id name code category unit salePrice purchasePrice stock store batch')
+    //     .sort({ name: 1 })
+    //     .lean();
 
-    console.log('📦 Found products:', products.length);
+    //   console.log('📦 Found dispatched products for company store:', products.length);
+    // }
+
     if (products.length > 0) {
       console.log('📦 Sample product:', products[0]);
     }
@@ -3735,7 +3775,8 @@ export const getProductsForDispatch = async (req, res) => {
           price: p.salePrice,
           salePrice: p.salePrice,
           stock: p.stock || 0,
-          location: p.location || 'N/A'
+          store: p.store || 'N/A',
+          batch: p.batch || null
         })),
         count: products.length
       }
@@ -3745,6 +3786,122 @@ export const getProductsForDispatch = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to fetch products',
+      error: error.message
+    });
+  }
+};
+/**
+ * Get today's order items for selected sales person and customer
+ * GET /api/dispatches/today-order-items?salesPersonId=xxx&customerId=xxx
+ */
+export const getTodayOrderItems = async (req, res) => {
+  try {
+    const { salesPersonId, customerId } = req.query;
+    
+    console.log('📦 Fetching today\'s order items');
+    console.log('👤 Sales Person:', salesPersonId);
+    console.log('👥 Customer:', customerId);
+
+    // Validation
+    if (!salesPersonId || !customerId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Sales Person ID and Customer ID are required'
+      });
+    }
+
+    // Get today's date in YYYY-MM-DD format
+    const todayString = new Date().toISOString().split('T')[0];
+    
+    // Create date range for today in UTC (since orderDate is stored as Date at 00:00:00 UTC)
+    const todayStart = new Date(todayString + 'T00:00:00.000Z');
+    const todayEnd = new Date(todayString + 'T23:59:59.999Z');
+
+    console.log('📅 Today:', todayString);
+    console.log('📅 Date range (UTC):', { from: todayStart, to: todayEnd });
+
+    // Find today's orders for this sales person + customer
+    const orders = await Order.find({
+      salesPerson: salesPersonId,
+      customer: customerId,
+      orderDate: {
+        $gte: todayStart,
+        $lte: todayEnd
+      }
+    })
+    .populate({
+      path: 'products.product',
+      select: 'name code category unit batch salePrice'
+    })
+    .lean();
+
+    console.log('📦 Found orders:', orders.length);
+
+    if (orders.length === 0) {
+      return res.json({
+        success: true,
+        data: {
+          items: [],
+          count: 0,
+          message: 'No orders found for today'
+        }
+      });
+    }
+
+    // Aggregate items from all orders
+    const itemsMap = new Map();
+
+    orders.forEach(order => {
+      order.products.forEach(orderProduct => {
+        const product = orderProduct.product;
+        if (!product) return;
+
+        const productId = product._id.toString();
+        
+        if (itemsMap.has(productId)) {
+          // Add to existing item
+          const existing = itemsMap.get(productId);
+          existing.indentQty += orderProduct.quantity;
+          existing.orderValue += orderProduct.total;
+        } else {
+          // Create new item entry
+          itemsMap.set(productId, {
+            _id: product._id,
+            name: product.name,
+            code: product.code,
+            category: product.category,
+            unit: product.unit,
+            batch: product.batch || null,
+            price: orderProduct.price,
+            indentQty: orderProduct.quantity,
+            orderValue: orderProduct.total
+          });
+        }
+      });
+    });
+
+    const items = Array.from(itemsMap.values());
+    
+    console.log('📦 Aggregated items:', items.length);
+    items.forEach(item => {
+      console.log(`   - ${item.name}: Qty=${item.indentQty}, Value=${item.orderValue}, Batch=${item.batch}`);
+    });
+
+    res.json({
+      success: true,
+      data: {
+        items: items,
+        count: items.length,
+        totalOrders: orders.length,
+        totalValue: items.reduce((sum, item) => sum + item.orderValue, 0)
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching today\'s order items:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch today\'s order items',
       error: error.message
     });
   }

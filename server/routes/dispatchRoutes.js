@@ -27,7 +27,8 @@ import {
   getSalesPersonsForDispatch,
   getCustomersForDispatch,
   getProductsForDispatch,
-  generateInvoiceByDC
+  generateInvoiceByDC,
+  getTodayOrderItems
 } from '../controllers/dispatchController.js';
 
 const router = express.Router();
@@ -61,6 +62,7 @@ router.post('/create-direct-order', createDirectOrder);         // POST /api/dis
 router.get('/sales-persons', getSalesPersonsForDispatch);       // GET /api/dispatches/sales-persons
 router.get('/customers', getCustomersForDispatch);              // GET /api/dispatches/customers
 router.get('/products', getProductsForDispatch);                // GET /api/dispatches/products
+router.get('/today-order-items', getTodayOrderItems);           // GET /api/dispatches/today-order-items
 
 router.put('/update-qty-issued', updateQtyIssued);              // PUT /api/dispatches/update-qty-issued
 router.post('/approve-product', approveProduct);                // POST /api/dispatches/approve-product

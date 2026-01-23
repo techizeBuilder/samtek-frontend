@@ -1595,7 +1595,33 @@ export const approvePackingSheet = async (req, res) => {
       });
     }
 
-    // Check if ready for approval - must have actual packing progress
+    // VALIDATION 1: Check if packing start time exists
+    if (!packingSheet.packingStartTime) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot approve: Packing start time is required',
+        error: 'MISSING_START_TIME',
+        details: {
+          hasStartTime: false,
+          hasEndTime: Boolean(packingSheet.packingEndTime)
+        }
+      });
+    }
+
+    // VALIDATION 2: Check if packing end time exists
+    if (!packingSheet.packingEndTime) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot approve: Packing end time is required. Please click "End Packing" before approving.',
+        error: 'MISSING_END_TIME',
+        details: {
+          hasStartTime: Boolean(packingSheet.packingStartTime),
+          hasEndTime: false
+        }
+      });
+    }
+
+    // VALIDATION 3: Check if ready for approval - must have actual packing progress
     const hasPackingProgress = packingSheet.items.some(item => {
       const packedQty = Number(item.packedQty) || 0;
       return packedQty > 0;
@@ -1603,9 +1629,8 @@ export const approvePackingSheet = async (req, res) => {
 
     const hasPackingLoss = Number(packingSheet.packingLoss) > 0;
     const hasNotes = packingSheet.notes && packingSheet.notes.trim().length > 0;
-    const hasStartTime = packingSheet.packingStartTime;
 
-    if (!hasPackingProgress && !hasPackingLoss && !hasNotes && !hasStartTime) {
+    if (!hasPackingProgress && !hasPackingLoss && !hasNotes) {
       return res.status(400).json({
         success: false,
         message: 'Cannot approve: No packing activity detected. Please update packed quantities, add notes, or record packing loss.',
@@ -1613,8 +1638,7 @@ export const approvePackingSheet = async (req, res) => {
         details: {
           packedItems: 0,
           packingLoss: packingSheet.packingLoss || 0,
-          hasNotes: Boolean(hasNotes),
-          hasStartTime: Boolean(hasStartTime)
+          hasNotes: Boolean(hasNotes)
         }
       });
     }
@@ -1773,11 +1797,12 @@ export const approvePackingSheet = async (req, res) => {
           const itemDetails = await Item.findById(firstCombinedItem.itemId).lean();
           
           if (itemDetails) {
-            // Use updatedPackedQty directly (already calculated when packingLoss was entered)
-            const actualPackedQty = packingSheet.updatedPackedQty || 0;
+            // Use totalPackedQty for GROUP sheets (this is the actual packed quantity)
+            const actualPackedQty = packingSheet.totalPackedQty || packingSheet.updatedPackedQty || 0;
             
             console.log(`📊 Group sheet - Combined items: ${validItems.length} products, Display: ${productNamesDisplay}`);
-            console.log(`📊 Group sheet - using updatedPackedQty:`, {
+            console.log(`📊 Group sheet - using totalPackedQty:`, {
+              totalPackedQty: packingSheet.totalPackedQty,
               updatedPackedQty: packingSheet.updatedPackedQty,
               actualPackedQty: actualPackedQty
             });
@@ -2034,11 +2059,11 @@ export const approvePackingSheet = async (req, res) => {
             date: { $gte: yesterdayStart, $lte: yesterdayEnd }
           });
 
-          // Get indent quantity from ProductDetailsDailySummary
-          let itemIndentQuantity = todayItemSummary?.productionFinalBatches || 0;
-          // Get ORDER quantity for indentQty field (from sales orders)
+          // Get ORDER quantity from sales orders (toBeProducedDay = actual indent from orders)
+          // BOTH fields should use the same value - the order-based indent quantity
+          let itemIndentQuantity = todayItemSummary?.toBeProducedDay || 0;
           let orderIndentQty = todayItemSummary?.toBeProducedDay || 0;
-          console.log(`📊 UNGROUPED ITEM ${item.productName}: productionFinalBatches = ${itemIndentQuantity}, orderQty = ${orderIndentQty}`);
+          console.log(`📊 UNGROUPED ITEM ${item.productName}: orderBasedIndent (toBeProducedDay) = ${itemIndentQuantity}`);
           
           // Try multiple fields for previous stock - priority order
           const itemPreviousStock = yesterdayDispatch?.closingStockEndOfDayBalance || 
