@@ -1552,7 +1552,7 @@ export default function DeliveryChallan() {
         {/* Product Table */}
         <div className="overflow-x-auto">
           {/* Table Header */}
-          <div className="grid grid-cols-4 bg-yellow-300 border-b border-gray-800 min-w-[600px]">
+          <div className="grid grid-cols-3 bg-yellow-300 border-b border-gray-800 min-w-[600px]">
             <div className="border-r border-gray-800 p-2 sm:p-3 text-center font-medium text-xs sm:text-sm">
               <span className="hidden sm:inline">Product Name / Product Group</span>
               <span className="sm:hidden">Product</span>
@@ -1560,9 +1560,9 @@ export default function DeliveryChallan() {
             <div className="border-r border-gray-800 p-2 sm:p-3 text-center font-medium text-xs sm:text-sm">
               Stock / Batch
             </div>
-            <div className="border-r border-gray-800 p-2 sm:p-3 text-center font-medium text-xs sm:text-sm">
+            {/* <div className="border-r border-gray-800 p-2 sm:p-3 text-center font-medium text-xs sm:text-sm">
               Indent Qty
-            </div>
+            </div> */}
             <div className="p-2 sm:p-3 text-center font-medium text-xs sm:text-sm">
               Qty Issued
             </div>
@@ -1587,7 +1587,7 @@ export default function DeliveryChallan() {
               return (
                 <div key={product._id} className="border-b border-gray-800">
                   {/* Main Row */}
-                  <div className="grid grid-cols-4 hover:bg-gray-50 min-w-[600px]">
+                  <div className="grid grid-cols-3 hover:bg-gray-50 min-w-[600px]">
                     {/* Product Name with Checkbox */}
                     <div className="border-r border-gray-800 p-2 sm:p-3 flex items-center gap-2 sm:gap-3">
                       <input
@@ -1652,11 +1652,6 @@ export default function DeliveryChallan() {
                       ) : (
                         <span className="text-gray-400 text-xs">N/A</span>
                       )}
-                    </div>
-                    <div className="border-r border-gray-800 p-2 sm:p-3 text-center flex items-center justify-center">
-                      <Badge variant="outline" className="bg-green-50 text-green-700 text-sm sm:text-lg">
-                        {product.indentQty}
-                      </Badge>
                     </div>
                     <div className="p-2 sm:p-3">
                       <Input

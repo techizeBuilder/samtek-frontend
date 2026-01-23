@@ -68,7 +68,8 @@ export default function DispatchHistory() {
     endDate: '',
     status: 'all',
     vehicleId: '',
-    customerId: ''
+    customerId: '',
+    search: ''
   });
 
   // Modal state
@@ -358,6 +359,16 @@ export default function DispatchHistory() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+              <div className="md:col-span-2">
+                <Label htmlFor="search">Search</Label>
+                <Input
+                  type="text"
+                  id="search"
+                  placeholder="Search by DC No, Customer, Product..."
+                  value={filters.search}
+                  onChange={(e) => handleFilterChange('search', e.target.value)}
+                />
+              </div>
               <div>
                 <Label htmlFor="startDate">Start Date</Label>
                 <Input
@@ -405,15 +416,14 @@ export default function DispatchHistory() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="flex items-end">
-                <Button 
-                  variant="outline" 
-                  onClick={clearFilters}
-                  className="w-full"
-                >
-                  Clear Filters
-                </Button>
-              </div>
+            </div>
+            <div className="flex justify-end">
+              <Button 
+                variant="outline" 
+                onClick={clearFilters}
+              >
+                Clear Filters
+              </Button>
             </div>
           </CardContent>
         </Card>
