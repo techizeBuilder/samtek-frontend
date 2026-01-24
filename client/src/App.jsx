@@ -66,6 +66,7 @@ import UnitManagerProductionGroup from "@/pages/unit-manager/UnitManagerProducti
 import UnitManagerReturns from "@/pages/unit-manager/UnitManagerReturns";
 import UnitManagerLayout from "@/components/layout/UnitManagerLayout";
 import RoleBasedLayout from "@/components/layout/RoleBasedLayout";
+import SuperAdminAccounts from "@/pages/super-admin/Accounts";
 
 function Router() {
   return (
@@ -228,6 +229,11 @@ function Router() {
       <Route path="/super-admin/dispatches">
         <ProtectedRoute requiredRole="Super Admin">
           <SuperAdminDispatches />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/super-admin/accounts">
+        <ProtectedRoute requiredRole="Super Admin">
+          <SuperAdminAccounts />
         </ProtectedRoute>
       </Route>
       <Route path="/super-admin/inventory">

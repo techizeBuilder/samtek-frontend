@@ -109,7 +109,7 @@ export const getSalesSummary = async (req, res) => {
       console.log('📦 Created empty daily details for:', dailyDetails.length, 'master products');
     }
 
-    // Step 3: Create a map of daily details by productId
+    // Step 3: Create a map of daily details to be used for lookup
     const dailyDetailsMap = new Map();
     dailyDetails.forEach(detail => {
       if (detail.productId && detail.productId._id) {
@@ -313,7 +313,7 @@ export const updateSalesSummary = async (req, res) => {
     const { date, productId, updates, orderIds } = req.body;
     const userRole = req.user.role;
     const userCompanyId = req.user.companyId;
-
+    console.log("Logged in Role:", userRole);
     console.log('📝 Update request received:', { date, productId, updates, orderIds });
 
     // Validate required fields
@@ -381,13 +381,11 @@ export const updateSalesSummary = async (req, res) => {
     }
 
     // Check permissions
-    if (userRole === 'Unit Manager' || userRole === 'Unit Head') {
-      if (!userCompanyId || masterProduct.companyId._id.toString() !== userCompanyId.toString()) {
-        return res.status(403).json({
-          success: false,
-          message: 'Insufficient permissions to update this product'
-        });
-      }
+   if (userRole !== 'Unit Manager' && userRole !== 'Unit Head') {
+      return res.status(403).json({
+        success: false,
+        message: 'Insufficient permissions to update this product'
+      });
     }
 
     console.log('✅ Master product found:', masterProduct.productName);
@@ -397,7 +395,7 @@ export const updateSalesSummary = async (req, res) => {
     let dailyDetails = await ProductDetailsDailySummary.findOne({
       date: summaryDate,
       productId: new mongoose.Types.ObjectId(actualProductId),
-      companyId: masterProduct.companyId._id
+      companyId: userCompanyId // FIX: always use user's companyId for lookup
     });
 
     if (!dailyDetails) {
@@ -406,7 +404,7 @@ export const updateSalesSummary = async (req, res) => {
         date: summaryDate,
         productId: new mongoose.Types.ObjectId(actualProductId),
         productDailySummaryId: masterProduct._id,
-        companyId: masterProduct.companyId._id,
+        companyId: userCompanyId, // FIX: always use user's companyId for creation
         orderIds: orderIds ? orderIds.map(id => new mongoose.Types.ObjectId(id)) : []
       });
       console.log('📝 Creating new daily details record with orderIds:', orderIds);
@@ -419,7 +417,6 @@ export const updateSalesSummary = async (req, res) => {
         console.log('📝 Updating existing daily details record');
       }
     }
-
     // 🔍 Capture the old status and batchAdjusted BEFORE applying updates (needed for batch logic)
     const oldStatus = dailyDetails.status;
     const oldBatchAdjusted = dailyDetails.batchAdjusted || 0;
@@ -808,19 +805,6 @@ export const updateSalesSummary = async (req, res) => {
                 _id: { $in: batchIds }
               });
               console.log(`   ✅ DELETED ${deleteResult.deletedCount} batches (kept first ${fullBatches} unchanged)`);
-              
-              // Verify deletion
-              const remainingBatches = await ProductionBatch.find({
-                groupId: productionGroup._id,
-                companyId: masterProduct.companyId._id,
-                productionDate: today,
-                status: { $ne: 'completed' }
-              }).sort({ batchNumber: 1 });
-              
-              console.log(`   ✅ REMAINING BATCHES AFTER DELETE:`);
-              remainingBatches.forEach(b => {
-                console.log(`      ${b.batchNo} (batchNumber: ${b.batchNumber}): totalBatchAdjusted=${b.totalBatchAdjusted}`);
-              });
             }
           }
           
@@ -1142,7 +1126,7 @@ export const updateSalesSummary = async (req, res) => {
             console.log(`   🗑️ Deleted all ${deleteResult.deletedCount} batches (no approved products left in group)`);
           }
         } else {
-          // Ungrouped product - delete only batches containing this product
+          // Ungrouped product - delete batches for this product
           const deletedBatches = await ProductionBatch.deleteMany({
             "combinedItems.itemId": actualProductId,
             companyId: masterProduct.companyId._id,
