@@ -395,13 +395,17 @@ export const getProductionShiftData = async (req, res) => {
         };
       });
 
+      // Calculate totalQuantity and qtyPerBatch from actual batch data
+      const totalQuantity = batches.reduce((sum, batch) => sum + (batch.qtyPerBatch || 0), 0);
+      const qtyPerBatch = batchCount > 0 ? Math.round(totalQuantity / batchCount) : 0;
+
       shiftData.push({
         _id: group._id,
         name: group.name,
         description: group.description || '',
         totalItems: batchCount, // Count of approved batches, not group items
-        totalQuantity: batches.reduce((sum, batch) => sum + (batch.qtyPerBatch || 0), 0),
-        qtyPerBatch: group.qtyPerBatch || 0,
+        totalQuantity: totalQuantity,
+        qtyPerBatch: qtyPerBatch,
         qtyAchievedPerBatch: group.qtyAchievedPerBatch || 0,
         noOfBatchesForProduction: batchCount,
         batchData: batchDataMap,

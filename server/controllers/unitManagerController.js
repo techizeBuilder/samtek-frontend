@@ -2054,41 +2054,129 @@ const createGroupedProductionBatchEntries = async ({
       });
     }
     
-    // Step 4: Process ungrouped products (old logic for individual products)
+    // Step 4: Process ungrouped products (ALWAYS SEPARATE ENTRIES - NEVER combine)
     if (ungroupedProducts.length > 0) {
       console.log(`\n🔹 Processing ${ungroupedProducts.length} ungrouped products...`);
       
       for (const product of ungroupedProducts) {
-        console.log(`   Processing: ${product.productName} (batchAdjusted: ${product.batchAdjusted})`);
-        
-        // For ungrouped products, create batches using intelligent grouping
-        const batchGroups = intelligentBatchGrouping([{
-          productId: product.productId,
-          batchAdjusted: product.batchAdjusted,
-          dailyDetailsId: product.dailyDetailsId,
-          approvedBy: product.approvedBy
-        }]);
-        
-        for (const batchGroup of batchGroups) {
-          const createdBatches = await createSingleProductionBatch({
-            productId: product.productId,
-            productName: product.productName,
-            masterQtyPerBatch: product.qtyPerBatch,
-            batchAdjustedTotal: batchGroup.totalQty,
+        try {
+          console.log(`   📦 UNGROUPED PRODUCT: ${product.productName}`);
+          console.log(`   📊 batchAdjusted: ${product.batchAdjusted}`);
+          console.log(`   📊 status: ${product.status}`);
+          
+          // ✅ CRITICAL: Skip if already approved - prevent duplicate batch creation
+          if (product.status === 'approved') {
+            console.log(`   ⏭️ SKIPPING - Product already approved, batches already exist`);
+            continue; // Skip to next product
+          }
+          
+          // ✅ CRITICAL: Delete existing batches for this ungrouped product to prevent duplicates
+          const deleteResult = await ProductionBatch.deleteMany({
+            "combinedItems.itemId": product.productId,
             companyId: companyId,
-            date: today,
-            groupId: null,
-            combinedItems: batchGroup.combinedItems,
-            approvedBy: batchGroup.approvedBy
+            productionDate: today,
+            groupId: null, // Only ungrouped products
+            status: { $ne: 'completed' } // Don't delete completed batches
           });
           
-          if (createdBatches.length > 0) {
-            results.push({
-              productId: product.productId,
-              productName: product.productName,
-              batchesCreated: 1
-            });
+          console.log(`   🗑️ Deleted ${deleteResult.deletedCount} existing batches for ${product.productName}`);
+          
+          // For ungrouped products: ALWAYS create SEPARATE entries
+          // Never combine with existing batches
+          const fullBatches = Math.floor(product.batchAdjusted);
+          const remainder = parseFloat((product.batchAdjusted - fullBatches).toFixed(2));
+          
+          console.log(`   📈 Splitting: ${fullBatches} full batch(es) + ${remainder} remainder`);
+          
+          // Get next batch number
+          const existingBatches = await ProductionBatch.find({
+            companyId: companyId,
+            productionDate: today
+          }).select('batchNumber').sort({ batchNumber: -1 }).limit(1);
+          
+          let nextBatchNumber = 1;
+          if (existingBatches.length > 0) {
+            nextBatchNumber = existingBatches[0].batchNumber + 1;
           }
+          
+          let batchCounter = 0;
+          
+          // Create full batches (each with totalBatchAdjusted = 1.0)
+          for (let i = 0; i < fullBatches; i++) {
+            const currentBatchNumber = nextBatchNumber + batchCounter;
+            const batchNo = `BATNO${String(currentBatchNumber).padStart(2, '0')}`;
+            
+            const batchEntry = {
+              companyId: companyId,
+              groupId: null, // Ungrouped - no group
+              batchNumber: currentBatchNumber,
+              batchNo: batchNo,
+              productionDate: today,
+              qtyPerBatch: product.qtyPerBatch || 0,
+              qtyAchieved: product.qtyPerBatch || 0, // Full batch = 1.0 * qtyPerBatch
+              totalBatchAdjusted: 1.0, // Full batch
+              status: 'pending',
+              mouldingTime: null,
+              unloadingTime: null,
+              productionLoss: 0,
+              createdBy: product.approvedBy || 'system',
+              combinedItems: [{
+                itemId: product.productId,
+                DailyProductionId: product.dailyDetailsId || null,
+                batchAdjustedValue: 1.0,
+                qtyContribution: product.qtyPerBatch || 0
+              }],
+              notes: `Ungrouped item - Full batch (${i + 1}/${fullBatches})`
+            };
+            
+            await ProductionBatch.create(batchEntry);
+            console.log(`   ✅ Created full batch ${batchNo}`);
+            batchCounter++;
+          }
+          
+          // Create remainder batch if exists
+          if (remainder > 0) {
+            const currentBatchNumber = nextBatchNumber + batchCounter;
+            const batchNo = `BATNO${String(currentBatchNumber).padStart(2, '0')}`;
+            
+            const batchEntry = {
+              companyId: companyId,
+              groupId: null,
+              batchNumber: currentBatchNumber,
+              batchNo: batchNo,
+              productionDate: today,
+              qtyPerBatch: product.qtyPerBatch || 0,
+              qtyAchieved: (product.qtyPerBatch || 0) * remainder, // Partial batch
+              totalBatchAdjusted: remainder, // Partial batch
+              status: 'pending',
+              mouldingTime: null,
+              unloadingTime: null,
+              productionLoss: 0,
+              createdBy: product.approvedBy || 'system',
+              combinedItems: [{
+                itemId: product.productId,
+                DailyProductionId: product.dailyDetailsId || null,
+                batchAdjustedValue: remainder,
+                qtyContribution: (product.qtyPerBatch || 0) * remainder
+              }],
+              notes: `Ungrouped item - Partial batch (${remainder.toFixed(2)})`
+            };
+            
+            await ProductionBatch.create(batchEntry);
+            console.log(`   ✅ Created remainder batch ${batchNo} with totalBatchAdjusted = ${remainder.toFixed(2)}`);
+            batchCounter++;
+          }
+          
+          results.push({
+            productId: product.productId,
+            productName: product.productName,
+            batchesCreated: batchCounter
+          });
+          
+          console.log(`   ✅ COMPLETE: Created ${batchCounter} separate batch entry(ies) for ${product.productName}`);
+        } catch (error) {
+          console.error(`   ❌ Error creating batches for ${product.productName}:`, error.message);
+          // Continue with next product
         }
       }
     }

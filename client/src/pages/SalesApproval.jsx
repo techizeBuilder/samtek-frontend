@@ -2108,13 +2108,13 @@ const SalesApproval = () => {
         </CardHeader>
         <CardContent className="p-0">
           {/* Responsive Table with Sticky Header */}
-          <div className="overflow-auto max-h-[80vh] relative">
+          <div className="overflow-auto max-h-[80vh]">
             <table className="w-full" style={{ minWidth: `${700 + (salesPersons.length * 150)}px` }}>
               {/* Header Row - Fixed 10 columns with Sticky positioning */}
-              <thead className="sticky top-0 z-10 bg-white shadow-sm">
+              <thead className="sticky top-0 z-20 bg-white shadow-md border-b-2">
                 <tr className="border-b bg-gray-50">
                   {/* 1. Selection Checkbox Column */}
-                  <th className="sticky top-0 bg-gray-50 p-1 lg:p-2 text-center font-semibold text-gray-900 border-r min-w-[50px]">
+                  <th className="sticky top-0 left-0 z-10 bg-gray-50 p-1 lg:p-2 text-center font-semibold text-gray-900 border-r min-w-[50px]">
                     <div className="flex items-center justify-center">
                       <input
                         type="checkbox"
@@ -2126,49 +2126,49 @@ const SalesApproval = () => {
                     </div>
                   </th>
                   {/* 2. Products Column */}
-                  <th className="sticky top-0 bg-gray-50 p-1 lg:p-2 text-left font-semibold text-gray-900 border-r min-w-[100px] lg:min-w-[160px]">
-                    <div className="flex items-center gap-1 lg:gap-2">
+                  <th className="sticky top-0 left-[50px] z-10 bg-gray-50 p-0.5 lg:p-1 text-left font-semibold text-gray-900 border-r min-w-[80px] lg:min-w-[120px]">
+                    <div className="flex items-center gap-0.5 lg:gap-1">
                       <Package className="h-3 w-3 lg:h-4 lg:w-4" />
-                      <span className="text-xs lg:text-sm">Products</span>
+                      <span className="text-xs">Products</span>
                     </div>
                   </th>
                   {/* 3. Production with final batches Column */}
-                  <th className="sticky top-0 bg-gray-50 p-1 lg:p-2 text-center font-semibold text-gray-900 border-r min-w-[90px] lg:min-w-[110px]">
-                    <div className="flex flex-col items-center gap-1">
-                      <Package className="h-3 w-3 lg:h-4 lg:w-4 text-green-600" />
+                  <th className="sticky top-0 bg-gray-50 p-0.5 lg:p-1 text-center font-semibold text-gray-900 border-r min-w-[70px] lg:min-w-[90px]">
+                    <div className="flex flex-col items-center gap-0.5">
+                      <Package className="h-2.5 w-2.5 lg:h-3 lg:w-3 text-green-600" />
                       <div className="text-xs font-semibold text-gray-900">Production</div>
                       <div className="text-xs font-semibold text-gray-900">with final</div>
                       <div className="text-xs font-semibold text-gray-900">batches</div>
                     </div>
                   </th>
                   {/* 4. Produce / Batches Column */}
-                  <th className="sticky top-0 bg-gray-50 p-1 lg:p-2 text-center font-semibold text-gray-900 border-r min-w-[90px] lg:min-w-[110px]">
-                    <div className="flex flex-col items-center gap-1">
-                      <Package className="h-3 w-3 lg:h-4 lg:w-4 text-purple-600" />
+                  <th className="sticky top-0 bg-gray-50 p-0.5 lg:p-1 text-center font-semibold text-gray-900 border-r min-w-[70px] lg:min-w-[90px]">
+                    <div className="flex flex-col items-center gap-0.5">
+                      <Package className="h-2.5 w-2.5 lg:h-3 lg:w-3 text-purple-600" />
                       <div className="text-xs font-semibold text-gray-900">Produce /</div>
                       <div className="text-xs font-semibold text-gray-900">Batches</div>
                     </div>
                   </th>
                   {/* 5. Physical Stock Column */}
-                  <th className="sticky top-0 bg-gray-50 p-1 lg:p-2 text-center font-semibold text-gray-900 border-r min-w-[80px] lg:min-w-[100px]">
-                    <div className="flex flex-col items-center gap-1">
-                      <Package className="h-3 w-3 lg:h-4 lg:w-4 text-indigo-600" />
+                  <th className="sticky top-0 bg-gray-50 p-0.5 lg:p-1 text-center font-semibold text-gray-900 border-r min-w-[65px] lg:min-w-[80px]">
+                    <div className="flex flex-col items-center gap-0.5">
+                      <Package className="h-2.5 w-2.5 lg:h-3 lg:w-3 text-indigo-600" />
                       <div className="text-xs font-semibold text-gray-900">Physical</div>
                       <div className="text-xs font-semibold text-gray-900">Stock</div>
                     </div>
                   </th>
                   {/* 6. Batch Adjusted Column */}
-                  <th className="sticky top-0 bg-gray-50 p-1 lg:p-2 text-center font-semibold text-gray-900 border-r min-w-[80px] lg:min-w-[100px]">
-                    <div className="flex flex-col items-center gap-1">
-                      <Package className="h-3 w-3 lg:h-4 lg:w-4 text-cyan-600" />
+                  <th className="sticky top-0 bg-gray-50 p-0.5 lg:p-1 text-center font-semibold text-gray-900 border-r min-w-[65px] lg:min-w-[80px]">
+                    <div className="flex flex-col items-center gap-0.5">
+                      <Package className="h-2.5 w-2.5 lg:h-3 lg:w-3 text-cyan-600" />
                       <div className="text-xs font-semibold text-gray-900">Batch</div>
                       <div className="text-xs font-semibold text-gray-900">Adjusted</div>
                     </div>
                   </th>
                   {/* 7. To be Produced/Day Column */}
-                  <th className="sticky top-0 bg-gray-50 p-1 lg:p-2 text-center font-semibold text-gray-900 border-r min-w-[90px] lg:min-w-[110px]">
-                    <div className="flex flex-col items-center gap-1">
-                      <Package className="h-3 w-3 lg:h-4 lg:w-4 text-amber-600" />
+                  <th className="sticky top-0 bg-gray-50 p-0.5 lg:p-1 text-center font-semibold text-gray-900 border-r min-w-[70px] lg:min-w-[90px]">
+                    <div className="flex flex-col items-center gap-0.5">
+                      <Package className="h-2.5 w-2.5 lg:h-3 lg:w-3 text-amber-600" />
                       <div className="text-xs font-semibold text-gray-900">To be Prod.</div>
                       <div className="text-xs font-semibold text-gray-900">/Day</div>
                     </div>
@@ -2176,10 +2176,10 @@ const SalesApproval = () => {
 
                   {/* Dynamic Sales Person Columns */}
                   {salesPersons.map((salesPersonName, index) => (
-                    <th key={salesPersonName} className="sticky top-0 bg-gray-50 p-1 lg:p-2 text-center font-semibold text-gray-900 border-r min-w-[120px] lg:min-w-[150px]">
-                      <div className="flex flex-col items-center gap-1">
-                        <User className="h-3 w-3 lg:h-4 lg:w-4 text-gray-600" />
-                        <div className="text-xs font-semibold text-gray-900 text-center leading-tight break-words max-w-[140px]">
+                    <th key={salesPersonName} className="sticky top-0 bg-gray-50 p-0.5 lg:p-1 text-center font-semibold text-gray-900 border-r min-w-[90px] lg:min-w-[120px]">
+                      <div className="flex flex-col items-center gap-0.5">
+                        <User className="h-2.5 w-2.5 lg:h-3 lg:w-3 text-gray-600" />
+                        <div className="text-xs font-semibold text-gray-900 text-center leading-tight break-words max-w-[110px]">
                           {salesPersonName}
                         </div>
                       </div>
@@ -2187,31 +2187,31 @@ const SalesApproval = () => {
                   ))}
 
                   {/* Total Indent Salesman Column */}
-                  <th className="sticky top-0 bg-gradient-to-r from-green-50 to-green-100 p-1 lg:p-2 text-center font-semibold text-gray-900 border-r min-w-[90px] lg:min-w-[120px]">
-                    <div className="flex flex-col items-center gap-1">
-                      <Package className="h-3 w-3 lg:h-4 lg:w-4 text-green-600" />
+                  <th className="sticky top-0 bg-gradient-to-r from-green-50 to-green-100 p-0.5 lg:p-1 text-center font-semibold text-gray-900 border-r min-w-[80px] lg:min-w-[100px]">
+                    <div className="flex flex-col items-center gap-0.5">
+                      <Package className="h-2.5 w-2.5 lg:h-3 lg:w-3 text-green-600" />
                       <div className="text-xs font-bold text-gray-900">Total Indent</div>
                       <div className="text-xs font-bold text-gray-900">Salesman</div>
                     </div>
                   </th>
                   {/* Qty/Batch Column */}
-                  <th className="sticky top-0 bg-gray-50 p-1 lg:p-2 text-center font-semibold text-gray-900 border-r min-w-[90px] lg:min-w-[110px]">
-                    <div className="flex flex-col items-center gap-1">
-                      <Package className="h-3 w-3 lg:h-4 lg:w-4 text-orange-600" />
+                  <th className="sticky top-0 bg-gray-50 p-0.5 lg:p-1 text-center font-semibold text-gray-900 border-r min-w-[70px] lg:min-w-[90px]">
+                    <div className="flex flex-col items-center gap-0.5">
+                      <Package className="h-2.5 w-2.5 lg:h-3 lg:w-3 text-orange-600" />
                       <div className="text-xs font-semibold text-gray-900">Qty/Batch</div>
                     </div>
                   </th>
                   {/* Status Column */}
-                  <th className="sticky top-0 bg-gray-50 p-1 lg:p-2 text-center font-semibold text-gray-900 border-r min-w-[80px] lg:min-w-[100px]">
-                    <div className="flex flex-col items-center gap-1">
-                      <CheckCircle className="h-3 w-3 lg:h-4 lg:w-4 text-blue-600" />
+                  <th className="sticky top-0 right-[100px] z-10 bg-gray-50 p-0.5 lg:p-1 text-center font-semibold text-gray-900 border-r min-w-[70px] lg:min-w-[85px]">
+                    <div className="flex flex-col items-center gap-0.5">
+                      <CheckCircle className="h-2.5 w-2.5 lg:h-3 lg:w-3 text-blue-600" />
                       <div className="text-xs font-semibold text-gray-900">Status</div>
                     </div>
                   </th>
                   {/* Actions Column - LAST COLUMN */}
-                  <th className="sticky top-0 bg-gray-50 p-1 lg:p-2 text-center font-semibold text-gray-900 min-w-[120px]">
-                    <div className="flex flex-col items-center gap-1">
-                      <Settings className="h-3 w-3 lg:h-4 lg:w-4 text-gray-600" />
+                  <th className="sticky top-0 right-0 z-10 bg-gray-50 p-0.5 lg:p-1 text-center font-semibold text-gray-900 min-w-[100px]">
+                    <div className="flex flex-col items-center gap-0.5">
+                      <Settings className="h-2.5 w-2.5 lg:h-3 lg:w-3 text-gray-600" />
                       <div className="text-xs font-semibold text-gray-900">Actions</div>
                     </div>
                   </th>
@@ -2395,7 +2395,7 @@ const SalesApproval = () => {
                         </div>
                       </td>
                       {/* Status Column */}
-                      <td className="p-1 lg:p-2 border-r text-center align-middle">
+                      <td className="sticky right-[100px] z-10 p-0.5 lg:p-1 border-r text-center align-middle bg-white">
                         <div className="text-center">
                           <Badge 
                             variant={getSummaryStatus(product.productName) === 'approved' ? 'default' : 'secondary'}
@@ -2406,7 +2406,7 @@ const SalesApproval = () => {
                         </div>
                       </td>
                       {/* Actions Column - LAST COLUMN */}
-                      <td className="p-1 lg:p-2 text-center align-middle">
+                      <td className="sticky right-0 z-10 p-1 lg:p-2 text-center align-middle bg-white">
                         {/* Always show individual approve button */}
                         <div className="flex items-center justify-center gap-1">
                           <Button

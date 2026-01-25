@@ -143,7 +143,7 @@ export default function ProductionSheet() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {productionGroups.reduce((sum, group) => sum + (group.qtyAchievedPerBatch || 0), 0)}
+              {parseFloat(productionGroups.reduce((sum, group) => sum + (group.qtyAchievedPerBatch || 0), 0).toFixed(2))}
             </div>
           </CardContent>
         </Card>
@@ -215,8 +215,8 @@ export default function ProductionSheet() {
                           </div>
                         </TableCell>
                         <TableCell className="text-center">
-                          <div className="font-semibold text-lg text-green-600">
-                            {group.qtyAchievedPerBatch || 0}
+                          <div className="font-semibold text-lg text-gray-900">
+                            {parseFloat((group.qtyAchievedPerBatch || 0).toFixed(2))}
                           </div>
                         </TableCell>
                         <TableCell className="text-center">
@@ -285,13 +285,13 @@ export default function ProductionSheet() {
                     <div>
                       <span className="font-medium">Qty/Batch:</span> 
                       <span className="text-blue-600 font-semibold ml-2 text-lg">
-                        {selectedGroup.qtyPerBatch || 0}
+                        {parseFloat((selectedGroup.qtyPerBatch || 0).toFixed(2))}
                       </span>
                     </div>
                     <div>
                       <span className="font-medium">Qty Achieved/Batch:</span> 
-                      <span className="text-green-600 font-semibold ml-2 text-lg">
-                        {selectedGroup.qtyAchievedPerBatch || 0}
+                      <span className="text-gray-900 font-semibold ml-2 text-lg">
+                        {parseFloat((selectedGroup.qtyAchievedPerBatch || 0).toFixed(2))}
                       </span>
                     </div>
                     <div>

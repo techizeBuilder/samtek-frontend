@@ -645,11 +645,12 @@ export default function SalesOrderList() {
                   <TableHeader>
                     <TableRow>
                       <TableHead className="min-w-[100px]">Date</TableHead>
+                      <TableHead className="min-w-[150px]">Customer Name</TableHead>
                       <TableHead className="min-w-[120px]">Salesperson</TableHead>
                       <TableHead className="min-w-[120px]">Total Qtys Indent</TableHead>
                       <TableHead className="min-w-[100px]">Order No.</TableHead>
                       <TableHead className="min-w-[100px]">Status</TableHead>
-                      <TableHead className="min-w-[140px]">Actions</TableHead>
+                      <TableHead className="min-w-[200px]">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -658,6 +659,7 @@ export default function SalesOrderList() {
                       return (
                         <TableRow key={order._id}>
                           <TableCell>{formatDate(order.createdAt)}</TableCell>
+                          <TableCell className="font-medium">{order.customer?.name || 'N/A'}</TableCell>
                           <TableCell>{getSalespersonDisplayName(order.salesPerson)}</TableCell>
                           <TableCell>
                             {order.products ? order.products.reduce((total, product) => total + (product.quantity || 0), 0) : 0}
@@ -666,7 +668,7 @@ export default function SalesOrderList() {
                             {order.orderCode || order._id.slice(-6)}
                           </TableCell>
                           <TableCell>
-                            <Badge className={`${statusColors[order.status]} flex items-center gap-1`}>
+                            <Badge className={`${statusColors[order.status]} flex items-center gap-1 w-fit`}>
                               <StatusIcon className="h-3 w-3" />
                               {order.status?.replace('_', ' ').toUpperCase()}
                             </Badge>
@@ -682,6 +684,22 @@ export default function SalesOrderList() {
                                 <Eye className="h-3 w-3" />
                                 View
                               </Button>
+                              {order.status !== 'approved' && (
+                                <Button
+                                  variant="default"
+                                  size="sm"
+                                  onClick={() => updateStatusMutation.mutate({
+                                    orderId: order._id,
+                                    status: 'approved',
+                                    notes: 'Direct approved from order list'
+                                  })}
+                                  disabled={updateStatusMutation.isPending}
+                                  className="flex items-center gap-1 bg-green-600 hover:bg-green-700"
+                                >
+                                  <CheckCircle className="h-3 w-3" />
+                                  Approve
+                                </Button>
+                              )}
                               <Button
                                 variant="outline"
                                 size="sm"
@@ -723,7 +741,11 @@ export default function SalesOrderList() {
                             </Badge>
                           </div>
 
-                          <div className="grid grid-cols-2 gap-3 text-sm">
+                          <div className="grid grid-cols-1 gap-2 text-sm border-t pt-3">
+                            <div>
+                              <p className="text-gray-600">Customer Name</p>
+                              <p className="font-medium">{order.customer?.name || 'N/A'}</p>
+                            </div>
                             <div>
                               <p className="text-gray-600">Salesperson</p>
                               <p className="font-medium">{getSalespersonDisplayName(order.salesPerson)}</p>
@@ -736,21 +758,37 @@ export default function SalesOrderList() {
                             </div>
                           </div>
 
-                          <div className="flex gap-2 pt-2">
+                          <div className="flex gap-2 pt-2 flex-wrap">
                             <Button
                               variant="outline"
                               size="sm"
                               onClick={() => handleViewOrder(order._id)}
-                              className="flex-1 flex items-center justify-center gap-1"
+                              className="flex-1 min-w-[70px] flex items-center justify-center gap-1"
                             >
                               <Eye className="h-3 w-3" />
                               View
                             </Button>
+                            {order.status !== 'approved' && (
+                              <Button
+                                variant="default"
+                                size="sm"
+                                onClick={() => updateStatusMutation.mutate({
+                                  orderId: order._id,
+                                  status: 'approved',
+                                  notes: 'Direct approved from order list'
+                                })}
+                                disabled={updateStatusMutation.isPending}
+                                className="flex-1 min-w-[70px] flex items-center justify-center gap-1 bg-green-600 hover:bg-green-700"
+                              >
+                                <CheckCircle className="h-3 w-3" />
+                                Approve
+                              </Button>
+                            )}
                             <Button
                               variant="outline"
                               size="sm"
                               onClick={() => handleOpenStatusUpdate(order._id, order.status)}
-                              className="flex-1 flex items-center justify-center gap-1"
+                              className="flex-1 min-w-[70px] flex items-center justify-center gap-1"
                             >
                               <Edit className="h-3 w-3" />
                               Update

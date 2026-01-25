@@ -661,8 +661,8 @@ export default function ProductionShift() {
         
         {/* Qty Achieved/Batch (from backend) - Use actual qtyAchieved value */}
         <TableCell className="text-center">
-          <span className="text-green-600 font-medium text-lg">
-            {batch.qtyAchieved !== undefined ? batch.qtyAchieved : Math.max(0, Math.round((batch.totalBatchAdjusted || 1) * (batch.qtyBatch || 0)) - (batch.productionLoss || 0))}
+          <span className="text-gray-600 font-medium text-lg">
+            {batch.qtyAchieved !== undefined ? parseFloat((batch.qtyAchieved || 0).toFixed(2)) : Math.max(0, Math.round((batch.totalBatchAdjusted || 1) * (batch.qtyBatch || 0)) - (batch.productionLoss || 0))}
           </span>
           <div className="text-xs text-gray-500">
             ({batch.totalBatchAdjusted || 1} × {batch.qtyBatch || 0}) - {batch.productionLoss || 0}
@@ -809,7 +809,7 @@ export default function ProductionShift() {
                     <TableHead>Unloading Time</TableHead>
                     <TableHead>Production Loss</TableHead>
                     <TableHead>Qty/Batch</TableHead>
-                    <TableHead className="text-green-700">Qty Achieved/Batch (auto)</TableHead>
+                    <TableHead className="text-gray-700">Qty Achieved/Batch</TableHead>
                     <TableHead>Note</TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
@@ -853,7 +853,7 @@ export default function ProductionShift() {
                     <TableHead>Unloading Time</TableHead>
                     <TableHead>Production Loss</TableHead>
                     <TableHead>Qty/Batch</TableHead>
-                    <TableHead className="text-green-700">Qty Achieved/Batch (auto)</TableHead>
+                    <TableHead className="text-gray-700">Qty Achieved/Batch</TableHead>
                     <TableHead>Note</TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
@@ -1010,8 +1010,8 @@ export default function ProductionShift() {
                         
                         {/* Qty Achieved/Batch (from backend) - Use actual qtyAchieved value */}
                         <TableCell className="text-center">
-                          <span className="text-green-600 font-medium">
-                            {batch.qtyAchieved !== undefined ? batch.qtyAchieved : Math.max(0, Math.round((batch.totalBatchAdjusted || 1) * (item.qtyPerBatch || 0)) - (parseFloat(batch.productionLoss) || 0))}
+                          <span className="text-gray-600 font-medium">
+                            {batch.qtyAchieved !== undefined ? parseFloat((batch.qtyAchieved || 0).toFixed(2)) : Math.max(0, Math.round((batch.totalBatchAdjusted || 1) * (item.qtyPerBatch || 0)) - (parseFloat(batch.productionLoss) || 0))}
                           </span>
                           <div className="text-xs text-gray-500">
                             ({batch.totalBatchAdjusted || 1} × {item.qtyPerBatch || 0}) - {batch.productionLoss || 0}
