@@ -2159,7 +2159,7 @@ const createGroupedProductionBatchEntries = async ({
                 batchAdjustedValue: remainder,
                 qtyContribution: (product.qtyPerBatch || 0) * remainder
               }],
-              notes: `Ungrouped item - Partial batch (${remainder.toFixed(2)})`
+              notes: ``
             };
             
             await ProductionBatch.create(batchEntry);

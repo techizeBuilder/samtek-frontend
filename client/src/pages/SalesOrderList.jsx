@@ -106,6 +106,7 @@ export default function SalesOrderList() {
   const [dateFrom, setDateFrom] = useState(null);
   const [dateTo, setDateTo] = useState(null);
   const [isBulkApproveOpen, setIsBulkApproveOpen] = useState(false);
+  const [processingAction, setProcessingAction] = useState({ orderId: null, action: null });
   const queryClient = useQueryClient();
 
   // Fetch orders
@@ -154,9 +155,11 @@ export default function SalesOrderList() {
       setIsStatusUpdateOpen(false);
       setSelectedOrder(null);
       setStatusUpdateForm({ orderId: null, newStatus: '', notes: '' });
+      setProcessingAction({ orderId: null, action: null });
     },
     onError: (error) => {
       showSmartToast(error, 'Failed to update order status');
+      setProcessingAction({ orderId: null, action: null });
     }
   });
 
@@ -688,16 +691,38 @@ export default function SalesOrderList() {
                                 <Button
                                   variant="default"
                                   size="sm"
-                                  onClick={() => updateStatusMutation.mutate({
-                                    orderId: order._id,
-                                    status: 'approved',
-                                    notes: 'Direct approved from order list'
-                                  })}
-                                  disabled={updateStatusMutation.isPending}
+                                  onClick={() => {
+                                    setProcessingAction({ orderId: order._id, action: 'approve' });
+                                    updateStatusMutation.mutate({
+                                      orderId: order._id,
+                                      status: 'approved',
+                                      notes: 'Direct approved from order list'
+                                    });
+                                  }}
+                                  disabled={processingAction.orderId === order._id && processingAction.action === 'approve'}
                                   className="flex items-center gap-1 bg-green-600 hover:bg-green-700"
                                 >
                                   <CheckCircle className="h-3 w-3" />
                                   Approve
+                                </Button>
+                              )}
+                              {order.status !== 'rejected' && (
+                                <Button
+                                  variant="destructive"
+                                  size="sm"
+                                  onClick={() => {
+                                    setProcessingAction({ orderId: order._id, action: 'reject' });
+                                    updateStatusMutation.mutate({
+                                      orderId: order._id,
+                                      status: 'rejected',
+                                      notes: 'Rejected from order list'
+                                    });
+                                  }}
+                                  disabled={processingAction.orderId === order._id && processingAction.action === 'reject'}
+                                  className="flex items-center gap-1 bg-red-600 hover:bg-red-700"
+                                >
+                                  <XCircle className="h-3 w-3" />
+                                  Reject
                                 </Button>
                               )}
                               <Button
@@ -772,16 +797,38 @@ export default function SalesOrderList() {
                               <Button
                                 variant="default"
                                 size="sm"
-                                onClick={() => updateStatusMutation.mutate({
-                                  orderId: order._id,
-                                  status: 'approved',
-                                  notes: 'Direct approved from order list'
-                                })}
-                                disabled={updateStatusMutation.isPending}
+                                onClick={() => {
+                                  setProcessingAction({ orderId: order._id, action: 'approve' });
+                                  updateStatusMutation.mutate({
+                                    orderId: order._id,
+                                    status: 'approved',
+                                    notes: 'Direct approved from order list'
+                                  });
+                                }}
+                                disabled={processingAction.orderId === order._id && processingAction.action === 'approve'}
                                 className="flex-1 min-w-[70px] flex items-center justify-center gap-1 bg-green-600 hover:bg-green-700"
                               >
                                 <CheckCircle className="h-3 w-3" />
                                 Approve
+                              </Button>
+                            )}
+                            {order.status !== 'rejected' && (
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => {
+                                  setProcessingAction({ orderId: order._id, action: 'reject' });
+                                  updateStatusMutation.mutate({
+                                    orderId: order._id,
+                                    status: 'rejected',
+                                    notes: 'Rejected from order list'
+                                  });
+                                }}
+                                disabled={processingAction.orderId === order._id && processingAction.action === 'reject'}
+                                className="flex-1 min-w-[70px] flex items-center justify-center gap-1 bg-red-600 hover:bg-red-700"
+                              >
+                                <XCircle className="h-3 w-3" />
+                                Reject
                               </Button>
                             )}
                             <Button

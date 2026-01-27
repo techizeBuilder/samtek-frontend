@@ -143,7 +143,7 @@ const SalesDashboard = () => {
   const isLoading = summaryLoading || ordersLoading;
 
   return (
-    <div className="p-4 space-y-6 max-w-7xl mx-auto">
+    <div className="p-4 space-y-6 w-full">
       {/* Header Section */}
       <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-6 rounded-lg">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">

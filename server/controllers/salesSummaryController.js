@@ -947,12 +947,69 @@ export const updateSalesSummary = async (req, res) => {
       }
       // CASE 3: Status changed to pending
       else if (updates.status === 'pending') {
-        console.log('⚠️ Unit Manager moved product back to pending - adjusting batches...');
+        console.log('⚠️ Unit Manager moved product back to pending - removing all ProductionBatch records...');
         
         const today = new Date(summaryDate);
         today.setUTCHours(0, 0, 0, 0);
         
-        // Check if product is in a production group
+        console.log(`🔍 Searching for ProductionBatch records for productId: ${actualProductId}`);
+        console.log(`   Date: ${today.toISOString()}`);
+        console.log(`   Company: ${masterProduct.companyId._id}`);
+        
+        // 🎯 AGGRESSIVE DELETE: Remove ALL ProductionBatch records for this product on this date
+        // Method 1: Delete by combinedItems.itemId (for grouped products)
+        const deletedByItemInArray = await ProductionBatch.deleteMany({
+          "combinedItems.itemId": actualProductId,
+          companyId: masterProduct.companyId._id,
+          productionDate: today
+        });
+        
+        console.log(`   Method 1 (combinedItems): Deleted ${deletedByItemInArray.deletedCount} records`);
+        
+        // Method 2: Delete by standalone itemId
+        const deletedByDirectId = await ProductionBatch.deleteMany({
+          itemId: actualProductId,
+          companyId: masterProduct.companyId._id,
+          productionDate: today
+        });
+        
+        console.log(`   Method 2 (direct itemId): Deleted ${deletedByDirectId.deletedCount} records`);
+        
+        // Method 3: Delete by looking up through productDetailsDailySummary
+        const dailyDetailsForDate = await ProductDetailsDailySummary.findOne({
+          productId: actualProductId,
+          date: today,
+          companyId: masterProduct.companyId._id
+        });
+        
+        if (dailyDetailsForDate) {
+          const deletedByDailyId = await ProductionBatch.deleteMany({
+            "combinedItems.DailyProductionId": dailyDetailsForDate._id,
+            companyId: masterProduct.companyId._id,
+            productionDate: today
+          });
+          console.log(`   Method 3 (by DailyProductionId): Deleted ${deletedByDailyId.deletedCount} records`);
+        }
+        
+        // Method 4: Final safety net - delete any batch containing this product in combinedItems
+        const allBatchesWithProduct = await ProductionBatch.find({
+          "combinedItems.itemId": actualProductId,
+          companyId: masterProduct.companyId._id,
+          productionDate: today
+        });
+        
+        if (allBatchesWithProduct.length > 0) {
+          console.log(`   ⚠️ Safety net: Found ${allBatchesWithProduct.length} remaining batches containing this product`);
+          for (const batch of allBatchesWithProduct) {
+            console.log(`      Deleting batch: ${batch.batchNo}`);
+            await ProductionBatch.deleteOne({ _id: batch._id });
+          }
+        }
+        
+        const totalDeleted = deletedByItemInArray.deletedCount + deletedByDirectId.deletedCount;
+        console.log(`✅ Total ProductionBatch records deleted: ${totalDeleted}`);
+        
+        // Check if product is in a group for additional cleanup
         const productionGroup = await ProductionGroup.findOne({
           company: masterProduct.companyId._id,
           items: new mongoose.Types.ObjectId(actualProductId),
@@ -1103,20 +1160,17 @@ export const updateSalesSummary = async (req, res) => {
                   qtyPerBatch: qtyPerBatch,
                   qtyAchieved: qtyAchieved,
                   totalBatchAdjusted: remainder,
-                  status: 'pending',
                   combinedItems: combinedItems,
-                  approvedBy: req.user.username,
-                  createdAt: new Date()
+                  status: 'pending',
+                  notes: `Remainder batch (${remainder}x${qtyPerBatch}=${qtyAchieved}) after removing ${actualProductId.toString().substring(0, 8)}`
                 });
                 
                 await newBatch.save();
-                console.log(`   ✅ Created batch ${batchNo} with remainder ${remainder}`);
+                console.log(`   ✅ Created new batch ${batchNo} for remainder ${remainder}`);
               }
-            } else {
-              console.log(`   ℹ️ No remainder - only ${fullBatches} full batches needed`);
             }
           } else {
-            // No approved products left in group - delete all batches for this group
+            // No approved products left in group - delete all group batches
             const deleteResult = await ProductionBatch.deleteMany({
               groupId: productionGroup._id,
               companyId: masterProduct.companyId._id,
@@ -1127,6 +1181,8 @@ export const updateSalesSummary = async (req, res) => {
           }
         } else {
           // Ungrouped product - delete batches for this product
+          console.log('   ⚠️ Product is NOT in a production group - deleting all its batches...');
+          
           const deletedBatches = await ProductionBatch.deleteMany({
             "combinedItems.itemId": actualProductId,
             companyId: masterProduct.companyId._id,
@@ -1134,7 +1190,49 @@ export const updateSalesSummary = async (req, res) => {
             status: { $ne: 'completed' }
           });
           
-          console.log(`🗑️ Removed ${deletedBatches.deletedCount} batches for ungrouped product`);
+          console.log(`   🗑️ Deleted ${deletedBatches.deletedCount} batches for ungrouped product`);
+          
+          // Also delete by itemId for standalone products
+          const deletedStandalone = await ProductionBatch.deleteMany({
+            itemId: actualProductId,
+            companyId: masterProduct.companyId._id,
+            productionDate: today,
+            status: { $ne: 'completed' }
+          });
+          
+          if (deletedStandalone.deletedCount > 0) {
+            console.log(`   🗑️ Deleted ${deletedStandalone.deletedCount} standalone batch records`);
+          }
+        }
+      }
+      // CASE 4: Fallback - Status changed to pending but no group found
+      // This handles edge case where product is not in any group
+      else if (updates.status === 'pending' && !productionGroup) {
+        console.log('⚠️ Status set to pending - removing any orphaned batch records...');
+        
+        const today = new Date(summaryDate);
+        today.setUTCHours(0, 0, 0, 0);
+        
+        // Unconditional delete for this product's batches
+        const deletedByItem = await ProductionBatch.deleteMany({
+          "combinedItems.itemId": actualProductId,
+          companyId: masterProduct.companyId._id,
+          productionDate: today,
+          status: { $ne: 'completed' }
+        });
+        
+        const deletedStandalone = await ProductionBatch.deleteMany({
+          itemId: actualProductId,
+          companyId: masterProduct.companyId._id,
+          productionDate: today,
+          status: { $ne: 'completed' }
+        });
+        
+        const totalDeleted = deletedByItem.deletedCount + deletedStandalone.deletedCount;
+        console.log(`   🗑️ Deleted ${totalDeleted} total batch records for pending product`);
+        
+        if (totalDeleted === 0) {
+          console.log('   ℹ️ No batch records found to delete');
         }
       }
       // CASE 4: Status changed to completed - remove batches from ProductionBatch

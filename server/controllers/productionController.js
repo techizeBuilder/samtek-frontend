@@ -424,6 +424,16 @@ export const getProductionShiftData = async (req, res) => {
       console.log(`✅ Added group: ${group.name} with ${batchCount} approved batches`);
     }
 
+    // 🔄 SORT SHIFT DATA BY qtyPerBatch IN ASCENDING ORDER
+    shiftData.sort((a, b) => {
+      const qtyA = a.qtyPerBatch || 0;
+      const qtyB = b.qtyPerBatch || 0;
+      return qtyA - qtyB; // Ascending order: smallest first
+    });
+    
+    console.log('✅ Sorted all production groups by qtyPerBatch in ascending order');
+    console.log('📊 Sorted order:', shiftData.map(group => `${group.name}: ${group.qtyPerBatch}`).join(' → '));
+
     // Get ungrouped items from ProductionBatch
     console.log('\n🔍 Adding ungrouped items from ProductionBatch...');
     
@@ -527,6 +537,16 @@ export const getProductionShiftData = async (req, res) => {
         productGroup: 'Ungrouped Items'
       };
     }).filter(Boolean);
+
+    // 🔄 SORT UNGROUPED ITEMS BY qtyPerBatch IN ASCENDING ORDER
+    formattedUngroupedItems.sort((a, b) => {
+      const qtyA = a.qtyPerBatch || 0;
+      const qtyB = b.qtyPerBatch || 0;
+      return qtyA - qtyB; // Ascending order: smallest first
+    });
+    
+    console.log('✅ Sorted all ungrouped items by qtyPerBatch in ascending order');
+    console.log('📊 Ungrouped items sorted order:', formattedUngroupedItems.map(item => `${item.name}: ${item.qtyPerBatch}`).join(' → '));
 
     res.json({
       success: true,
