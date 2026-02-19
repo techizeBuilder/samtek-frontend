@@ -188,13 +188,13 @@ export const getSalesChart = async (req, res) => {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
 
-    // Use Order data since we have actual orders
+    // Updated sales trend data to include approved orders
     const salesData = await Order.aggregate([
       {
         $match: {
           ...query,
           createdAt: { $gte: startDate },
-          status: { $in: ['Completed', 'Dispatched', 'Delivered'] } // Only completed sales
+          status: { $in: ['Completed', 'Dispatched', 'Delivered', 'approved'] } // Include approved orders
         }
       },
       {
@@ -205,32 +205,18 @@ export const getSalesChart = async (req, res) => {
           sales: { $sum: '$totalAmount' }
         }
       },
-      { $sort: { '_id.date': 1 } }
+      {
+        $sort: { '_id.date': 1 } // Sort by date
+      }
     ]);
 
-    const labels = [];
-    const salesValues = [];
+    const salesTrendData = salesData.map(data => ({
+      day: new Date(data._id.date).toLocaleDateString('en-US', { weekday: 'short' }),
+      date: data._id.date,
+      sales: data.sales / 100000 // Convert to lakhs
+    }));
 
-    for (let i = days - 1; i >= 0; i--) {
-      const date = new Date();
-      date.setDate(date.getDate() - i);
-      const dateString = date.toISOString().split('T')[0];
-      
-      labels.push(date.toLocaleDateString('en-US', { weekday: 'short' }));
-      
-      const dayData = salesData.find(d => d._id.date === dateString);
-      salesValues.push(dayData ? dayData.sales : 0);
-    }
-
-    res.json({
-      labels,
-      datasets: [
-        {
-          label: 'Sales (₹)',
-          data: salesValues
-        }
-      ]
-    });
+    res.json({ salesTrendData });
   } catch (error) {
     console.error('Get sales chart error:', error);
     res.status(500).json({ message: 'Internal server error' });

@@ -156,3 +156,86 @@ export const unitHeadCustomerApi = {
     });
   }
 };
+
+// Accounts Sales Persons API
+export const accountsSalesPersonsApi = {
+  // Get all sales persons for the company
+  getAll: (params = {}) => {
+    const queryParams = new URLSearchParams();
+    
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== '') {
+        queryParams.append(key, value);
+      }
+    });
+
+    const queryString = queryParams.toString();
+    const token = localStorage.getItem('token');
+    return apiRequest(`/accounts/sales-persons${queryString ? `?${queryString}` : ''}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+  },
+
+  // Get specific sales person details
+  getById: (salesPersonId) => {
+    const token = localStorage.getItem('token');
+    return apiRequest(`/accounts/sales-persons/${salesPersonId}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+  },
+
+  // Get all orders for a specific sales person
+  getOrders: (salesPersonId, params = {}) => {
+    const queryParams = new URLSearchParams();
+    
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== '') {
+        queryParams.append(key, value);
+      }
+    });
+
+    const queryString = queryParams.toString();
+    const token = localStorage.getItem('token');
+    return apiRequest(`/accounts/sales-persons/${salesPersonId}/orders${queryString ? `?${queryString}` : ''}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+  }
+};
+
+// Accounts Damage & Expiry API
+export const accountsDamageExpiryApi = {
+  // Get all damage and expiry items for the company
+  getAll: (params = {}) => {
+    const queryParams = new URLSearchParams();
+    
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== '') {
+        queryParams.append(key, value);
+      }
+    });
+
+    const queryString = queryParams.toString();
+    const token = localStorage.getItem('token');
+    return apiRequest(`/accounts/damage-expiry${queryString ? `?${queryString}` : ''}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+  },
+
+  // Get specific damage/expiry item details
+  getById: (id) => {
+    const token = localStorage.getItem('token');
+    return apiRequest(`/accounts/damage-expiry/${id}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+  }
+};

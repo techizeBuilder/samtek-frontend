@@ -493,7 +493,7 @@ const SuperAdminDispatches = () => {
                   <CardContent className="space-y-3">
                     <div>
                       <span className="text-sm font-medium text-gray-500">Order Code:</span>
-                      <p className="font-medium">{selectedDispatch.orderCode || 'N/A'}</p>
+                      <p className="font-medium">{selectedDispatch.packingSheetId?.orderCode || 'N/A'}</p>
                     </div>
                     <div>
                       <span className="text-sm font-medium text-gray-500">Batch No:</span>
@@ -504,10 +504,10 @@ const SuperAdminDispatches = () => {
                       <div className="mt-1">{getStatusBadge(selectedDispatch.status)}</div>
                     </div>
                     <div>
-                      <span className="text-sm font-medium text-gray-500">Dispatch Date:</span>
+                      <span className="text-sm font-medium text-gray-500">Date:</span>
                       <p className="font-medium">
-                        {selectedDispatch.dispatchDate 
-                          ? new Date(selectedDispatch.dispatchDate).toLocaleDateString() 
+                        {selectedDispatch.date 
+                          ? new Date(selectedDispatch.date).toLocaleDateString() 
                           : 'N/A'
                         }
                       </p>
@@ -525,19 +525,19 @@ const SuperAdminDispatches = () => {
                   <CardContent className="space-y-3">
                     <div>
                       <span className="text-sm font-medium text-gray-500">Company Name:</span>
-                      <p className="font-medium">{selectedDispatch.companyId?.name || 'N/A'}</p>
+                      <p className="font-medium">{selectedDispatch.company?.name || 'N/A'}</p>
                     </div>
                     <div>
                       <span className="text-sm font-medium text-gray-500">City:</span>
-                      <p className="font-medium">{selectedDispatch.companyId?.city || 'N/A'}</p>
+                      <p className="font-medium">{selectedDispatch.company?.city || 'N/A'}</p>
                     </div>
                     <div>
                       <span className="text-sm font-medium text-gray-500">State:</span>
-                      <p className="font-medium">{selectedDispatch.companyId?.state || 'N/A'}</p>
+                      <p className="font-medium">{selectedDispatch.company?.state || 'N/A'}</p>
                     </div>
                     <div>
                       <span className="text-sm font-medium text-gray-500">Phone:</span>
-                      <p className="font-medium">{selectedDispatch.companyId?.phone || 'N/A'}</p>
+                      <p className="font-medium">{selectedDispatch.company?.phone || 'N/A'}</p>
                     </div>
                   </CardContent>
                 </Card>
@@ -552,22 +552,22 @@ const SuperAdminDispatches = () => {
                   <CardContent className="space-y-3">
                     <div>
                       <span className="text-sm font-medium text-gray-500">Customer Name:</span>
-                      <p className="font-medium">{selectedDispatch.customerId?.name || selectedDispatch.customerName || 'N/A'}</p>
+                      <p className="font-medium">{selectedDispatch.customer?.name || 'N/A'}</p>
                     </div>
                     <div>
                       <span className="text-sm font-medium text-gray-500">Contact Person:</span>
-                      <p className="font-medium">{selectedDispatch.customerId?.contactPerson || 'N/A'}</p>
+                      <p className="font-medium">{selectedDispatch.customer?.contactPerson || 'N/A'}</p>
                     </div>
                     <div>
                       <span className="text-sm font-medium text-gray-500">Phone:</span>
                       <p className="font-medium flex items-center">
                         <Phone className="h-4 w-4 mr-1" />
-                        {selectedDispatch.customerId?.phone || 'N/A'}
+                        {selectedDispatch.customer?.phone || 'N/A'}
                       </p>
                     </div>
                     <div>
                       <span className="text-sm font-medium text-gray-500">Email:</span>
-                      <p className="font-medium">{selectedDispatch.customerId?.email || 'N/A'}</p>
+                      <p className="font-medium">{selectedDispatch.customer?.email || 'N/A'}</p>
                     </div>
                   </CardContent>
                 </Card>
@@ -582,7 +582,7 @@ const SuperAdminDispatches = () => {
                   <CardContent className="space-y-3">
                     <div>
                       <span className="text-sm font-medium text-gray-500">Packed Quantity:</span>
-                      <p className="font-medium text-blue-600">{selectedDispatch.packedQty || 0}</p>
+                      <p className="font-medium text-blue-600">{selectedDispatch.packedQuantityReadyForDispatch || 0}</p>
                     </div>
                     <div>
                       <span className="text-sm font-medium text-gray-500">Return Quantity:</span>
@@ -594,14 +594,14 @@ const SuperAdminDispatches = () => {
                     </div>
                     <div>
                       <span className="text-sm font-medium text-gray-500">Previous Closing:</span>
-                      <p className="font-medium">{selectedDispatch.previousClosing || 0}</p>
+                      <p className="font-medium">{selectedDispatch.previousClosingStockYesterdayBalance || 0}</p>
                     </div>
                   </CardContent>
                 </Card>
               </div>
 
               {/* Sales Person Information */}
-              {selectedDispatch.salesPersonId && (
+              {selectedDispatch.salesPerson && (
                 <Card>
                   <CardHeader>
                     <CardTitle className="text-lg flex items-center">
@@ -613,15 +613,15 @@ const SuperAdminDispatches = () => {
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div>
                         <span className="text-sm font-medium text-gray-500">Full Name:</span>
-                        <p className="font-medium">{selectedDispatch.salesPersonId.fullName || 'N/A'}</p>
+                        <p className="font-medium">{selectedDispatch.salesPerson.fullName || 'N/A'}</p>
                       </div>
                       <div>
                         <span className="text-sm font-medium text-gray-500">Username:</span>
-                        <p className="font-medium">{selectedDispatch.salesPersonId.username || 'N/A'}</p>
+                        <p className="font-medium">{selectedDispatch.salesPerson.username || 'N/A'}</p>
                       </div>
                       <div>
                         <span className="text-sm font-medium text-gray-500">Email:</span>
-                        <p className="font-medium">{selectedDispatch.salesPersonId.email || 'N/A'}</p>
+                        <p className="font-medium">{selectedDispatch.salesPerson.email || 'N/A'}</p>
                       </div>
                     </div>
                   </CardContent>

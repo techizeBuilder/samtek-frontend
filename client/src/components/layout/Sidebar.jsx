@@ -355,24 +355,78 @@ const accountsMenuItems = [
     label: 'Dashboard',
     path: '/accounts-dashboard',
     icon: LayoutDashboard,
-    module: 'dashboard'
-  },
-  {
-    label: 'Accounts',
-    path: '/accounts',
-    icon: Calculator,
     module: 'accounts',
-    submodules: [
-      { label: 'Payment Register', path: '/accounts/payments', feature: 'paymentRegister' },
-      { label: 'Credit Notes', path: '/accounts/credits', feature: 'creditNotes' },
-      { label: 'Ledger Report', path: '/accounts/ledger', feature: 'ledgerReport' }
-    ]
+    feature: 'dashboard'
   },
   {
-    label: 'Customers',
-    path: '/customers',
-    icon: Users,
-    module: 'customers'
+    label: 'Chart of Accounts',
+    path: '/accounts/chart-of-accounts',
+    icon: PieChart,
+    module: 'accounts',
+    feature: 'chartOfAccounts'
+  },
+  {
+    label: 'Sales',
+    path: '/accounts/sales',
+    icon: TrendingUp,
+    module: 'accounts',
+    feature: 'sales'
+  },
+  {
+    label: 'Purchases',
+    path: '/accounts/purchases',
+    icon: ShoppingCart,
+    module: 'accounts',
+    feature: 'purchases'
+  },
+  {
+    label: 'GST & TDS',
+    path: '/accounts/gst-tds',
+    icon: FileText,
+    module: 'accounts',
+    feature: 'gstAndTds'
+  },
+  {
+    label: 'Damage & Expiry',
+    path: '/accounts/damage-expiry',
+    icon: AlertTriangle,
+    module: 'accounts',
+    feature: 'damageAndExpiry'
+  },
+  {
+    label: 'Salesman Settlement',
+    path: '/accounts/salesman-settlement',
+    icon: Handshake,
+    module: 'accounts',
+    feature: 'salesmanSettlement'
+  },
+  {
+    label: 'Bank & Cash',
+    path: '/accounts/bank-cash',
+    icon: CreditCard,
+    module: 'accounts',
+    feature: 'bankAndCash'
+  },
+  {
+    label: 'Inter Unit',
+    path: '/accounts/inter-unit',
+    icon: Building,
+    module: 'accounts',
+    feature: 'interUnit'
+  },
+  {
+    label: 'Reports',
+    path: '/accounts/reports',
+    icon: BarChart,
+    module: 'accounts',
+    feature: 'reports'
+  },
+  {
+    label: 'Settings',
+    path: '/accounts/settings',
+    icon: Settings,
+    module: 'accounts',
+    feature: 'settings'
   }
 ];
 
@@ -487,6 +541,24 @@ export default function Sidebar({ isOpen, onClose }) {
       }
       
       return false; // Hide all non-dispatch items for Dispatch users
+    });
+  } else if (user?.role === 'Accounts') {
+    // For Accounts users, only show accounts-related items and profile
+    filteredMenuItems = roleMenuItems.filter(item => {
+      // Always show items without module restriction (like profile)
+      if (!item.module) return true;
+      
+      // Only show accounts module items
+      if (item.module === 'accounts') {
+        // If item has a specific feature requirement, check feature access
+        if (item.feature) {
+          const hasFeature = hasFeatureAccess(item.module, item.feature, 'view');
+          return hasFeature;
+        }
+        return true;
+      }
+      
+      return false; // Hide all non-accounts items for Accounts users
     });
   } else {
     // For other roles, use the existing filtering logic

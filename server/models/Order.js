@@ -110,6 +110,29 @@ const orderSchema = new mongoose.Schema({
   notes: {
     type: String,
     trim: true
+  },
+  discountAmount: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
+  gst: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
+  paymentStatus: {
+    type: String,
+    enum: ['Pending', 'Paid', 'Partial', 'Due'],
+    default: 'Pending'
+  },
+  paymentMethod: {
+    type: String,
+    enum: ['Cash', 'Credit Card', 'Bank Transfer', 'Check', 'Other'],
+    default: 'Cash'
+  },
+  paymentDate: {
+    type: Date
   }
 }, {
   timestamps: true

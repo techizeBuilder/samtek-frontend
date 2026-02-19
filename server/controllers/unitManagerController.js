@@ -2126,7 +2126,7 @@ const createGroupedProductionBatchEntries = async ({
                 batchAdjustedValue: 1.0,
                 qtyContribution: product.qtyPerBatch || 0
               }],
-              notes: `Ungrouped item - Full batch (${i + 1}/${fullBatches})`
+              notes: ``
             };
             
             await ProductionBatch.create(batchEntry);

@@ -57,6 +57,16 @@ import PackingDashboard from "@/pages/PackingDashboard";
 import PackingSheet from "@/pages/PackingSheet";
 import PackingHistory from "@/pages/packing/PackingHistory";
 import AccountsDashboard from "@/pages/AccountsDashboard";
+import ChartOfAccounts from "@/pages/accounts/ChartOfAccounts";
+import AccountsSales from "@/pages/accounts/Sales";
+import AccountsPurchases from "@/pages/accounts/Purchases";
+import GSTAndTDS from "@/pages/accounts/GSTAndTDS";
+import DamageAndExpiry from "@/pages/accounts/DamageAndExpiry";
+import SalesmanSettlement from "@/pages/accounts/SalesmanSettlement";
+import BankAndCash from "@/pages/accounts/BankAndCash";
+import InterUnit from "@/pages/accounts/InterUnit";
+import AccountsReports from "@/pages/accounts/Reports";
+import AccountsSettings from "@/pages/accounts/Settings";
 import DeliveryChallan from "@/pages/dispatch/DeliveryChallan";
 import DispatchHistory from "@/pages/dispatch/DispatchHistory";
 import SalesApproval from "@/pages/SalesApproval";
@@ -365,6 +375,56 @@ function Router() {
       <Route path="/accounts-dashboard">
         <ProtectedRoute requiredRole="Accounts">
           <AccountsDashboard />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/accounts/chart-of-accounts">
+        <ProtectedRoute requiredRole="Accounts">
+          <ChartOfAccounts />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/accounts/sales">
+        <ProtectedRoute requiredRole="Accounts">
+          <AccountsSales />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/accounts/purchases">
+        <ProtectedRoute requiredRole="Accounts">
+          <AccountsPurchases />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/accounts/gst-tds">
+        <ProtectedRoute requiredRole="Accounts">
+          <GSTAndTDS />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/accounts/damage-expiry">
+        <ProtectedRoute requiredRole="Accounts">
+          <DamageAndExpiry />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/accounts/salesman-settlement">
+        <ProtectedRoute requiredRole="Accounts">
+          <SalesmanSettlement />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/accounts/bank-cash">
+        <ProtectedRoute requiredRole="Accounts">
+          <BankAndCash />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/accounts/inter-unit">
+        <ProtectedRoute requiredRole="Accounts">
+          <InterUnit />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/accounts/reports">
+        <ProtectedRoute requiredRole="Accounts">
+          <AccountsReports />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/accounts/settings">
+        <ProtectedRoute requiredRole="Accounts">
+          <AccountsSettings />
         </ProtectedRoute>
       </Route>
       

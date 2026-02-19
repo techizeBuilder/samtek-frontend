@@ -1,6 +1,6 @@
 import Purchase from '../models/Purchase.js';
 import Supplier from '../models/Supplier.js';
-import { Inventory } from '../models/Inventory.js';
+import { Item } from '../models/Inventory.js';
 import { USER_ROLES } from '../../shared/schema.js';
 
 export const getPurchases = async (req, res) => {
@@ -397,5 +397,112 @@ export const getPurchaseStats = async (req, res) => {
   } catch (error) {
     console.error('Get purchase stats error:', error);
     res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+// Get inventory items for purchase (excluding Product type, only Material, Spares, Assemblies)
+export const getPurchaseItems = async (req, res) => {
+  try {
+    const { search = '', type = '', skip = 0, limit = 20 } = req.query;
+    
+    // Get user's company ID from request - it's the company/store filter
+    const userCompanyId = req.user.companyId;
+    const userCompanyIdString = userCompanyId ? userCompanyId.toString() : null;
+    
+    console.log('🔍 User company ID:', userCompanyId);
+    console.log('🔍 User company ID (string):', userCompanyIdString);
+    console.log('📊 Search:', search, 'Type:', type);
+    
+    // Build filter query - TWO conditions only:
+    // 1. Company filter (store matches user's companyId)
+    // 2. Type filter (only Material, Spares, Assemblies)
+    let filter = {
+      store: userCompanyIdString,  // Match company
+      type: { $in: ['Material', 'Spares', 'Assemblies'] }  // Only these types
+    };
+
+    // Add search filter if provided
+    if (search) {
+      filter.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { code: { $regex: search, $options: 'i' } },
+        { category: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    // Debug: count before and after filters - get breakdown by type
+    const typeBreakdown = await Item.aggregate([
+      {
+        $match: {
+          $or: [
+            { store: userCompanyIdString },
+            { store: userCompanyId }
+          ]
+        }
+      },
+      {
+        $group: {
+          _id: '$type',
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+    
+    console.log(`📊 Items breakdown by type:`, typeBreakdown);
+    
+    const allCompanyItems = await Item.countDocuments({
+      $or: [
+        { store: userCompanyIdString },
+        { store: userCompanyId }
+      ]
+    });
+    
+    console.log(`📈 Total items in company: ${allCompanyItems}`);
+
+    // Get items with pagination
+    const [items, total] = await Promise.all([
+      Item.find(filter)
+        .select('_id name code category type qty unit purchaseCost stdCost gst minStock store')
+        .skip(parseInt(skip))
+        .limit(parseInt(limit))
+        .sort({ name: 1 })
+        .lean(),
+      Item.countDocuments(filter)
+    ]);
+
+    console.log(`✅ Returning ${items.length} items (Total matching: ${total})`);
+
+    res.json({
+      success: true,
+      data: {
+        items: items.map(item => ({
+          _id: item._id,
+          name: item.name,
+          code: item.code,
+          category: item.category,
+          type: item.type,
+          currentQty: item.qty,
+          unit: item.unit,
+          purchaseCost: item.purchaseCost,
+          stdCost: item.stdCost,
+          gst: item.gst,
+          minStock: item.minStock,
+          store: item.store
+        })),
+        pagination: {
+          skip: parseInt(skip),
+          limit: parseInt(limit),
+          total,
+          hasMore: parseInt(skip) + parseInt(limit) < total
+        }
+      }
+    });
+  } catch (error) {
+    console.error('❌ Get purchase items error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch purchase items',
+      error: error.message
+    });
   }
 };

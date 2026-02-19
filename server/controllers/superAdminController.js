@@ -904,6 +904,8 @@ export const getSuperAdminDispatches = async (req, res) => {
       Dispatch.find(filter)
         .populate('company', 'name city state')
         .populate('packingSheetId', 'orderCode')
+        .populate('customer', 'name')
+        .populate('salesPerson', 'fullName')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
@@ -994,6 +996,9 @@ export const getSuperAdminDispatchById = async (req, res) => {
     const dispatch = await Dispatch.findById(id)
       .populate('company', 'name city state address phone')
       .populate('packingSheetId', 'orderCode')
+      .populate('customer', 'name contactPerson phone email')
+      .populate('salesPerson', 'fullName username email')
+      .populate('orderId', 'orderCode')
       .lean();
 
     if (!dispatch) {

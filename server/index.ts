@@ -200,10 +200,13 @@ app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
       const { default: orderRoutes } = await import('./routes/orderRoutes.js');
       const salesRouter = (await import('./routes/salesRoutes.js')).default;
+      const accountsRouter = (await import('./routes/accountsRoutes.js')).default;
       app.use('/api/orders', orderRoutes);
       app.use('/api/sales', salesRouter);
+      app.use('/api/accounts', accountsRouter);
       console.log('Order routes registered at /api/orders');
       console.log('Sales routes registered at /api/sales');
+      console.log('Accounts routes registered at /api/accounts');
 
       const returnRoutes = (await import('./routes/returnRoutes.js')).default;
       app.use('/api/returns', returnRoutes);

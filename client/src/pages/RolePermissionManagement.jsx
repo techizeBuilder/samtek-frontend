@@ -169,9 +169,17 @@ const MODULES = [
     name: 'accounts',
     label: 'Accounts',
     features: [
-      { key: 'transactions', label: 'Transactions' },
-      { key: 'balanceSheet', label: 'Balance Sheet' },
-      { key: 'reports', label: 'Financial Reports' }
+      { key: 'dashboard', label: 'Dashboard' },
+      { key: 'chartOfAccounts', label: 'Chart of Accounts' },
+      { key: 'sales', label: 'Sales' },
+      { key: 'purchases', label: 'Purchases' },
+      { key: 'gstAndTds', label: 'GST & TDS' },
+      { key: 'damageAndExpiry', label: 'Damage & Expiry' },
+      { key: 'salesmanSettlement', label: 'Salesman Settlement' },
+      { key: 'bankAndCash', label: 'Bank & Cash' },
+      { key: 'interUnit', label: 'Inter-Unit' },
+      { key: 'reports', label: 'Reports' },
+      { key: 'settings', label: 'Settings' }
     ]
   },
   // {
