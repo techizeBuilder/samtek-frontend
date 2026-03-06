@@ -53,6 +53,13 @@ const returnSchema = new mongoose.Schema({
     type: String,
     required: true
   },
+  order: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Order'
+  },
+  orderDate: {
+    type: Date
+  },
   returnDate: {
     type: Date,
     required: true,
@@ -118,11 +125,11 @@ const returnSchema = new mongoose.Schema({
 });
 
 // Calculate totals before saving
-returnSchema.pre('save', function(next) {
+returnSchema.pre('save', function (next) {
   if (this.items && this.items.length > 0) {
     this.totalAmount = this.items.reduce((sum, item) => sum + (item.pricePerUnit * item.quantity), 0);
     this.totalQuantity = this.items.reduce((sum, item) => sum + item.quantity, 0);
-    
+
     // Set totalAmount for each item
     this.items.forEach(item => {
       item.totalAmount = item.pricePerUnit * item.quantity;

@@ -78,12 +78,31 @@ const CreateReturnForm = ({
   const { toast } = useToast();
   const [formData, setFormData] = useState({
     customer: editData?.customerName || "",
+    order: editData?.order?._id || editData?.order || "",
     date: editData?.returnDate
       ? new Date(editData.returnDate).toISOString().split("T")[0]
       : new Date().toISOString().split("T")[0],
     reason: editData?.reason || "",
     products: [],
   });
+
+  const [selectedCustomerId, setSelectedCustomerId] = useState("");
+
+  // Initialize selectedCustomerId if editData exists
+  React.useEffect(() => {
+    if (editData?.customerId && customers.length > 0) {
+      setSelectedCustomerId(editData.customerId);
+    }
+  }, [editData, customers]);
+
+  // Fetch orders for selected customer
+  const { data: ordersResponse, isLoading: ordersLoading } = useQuery({
+    queryKey: ["/api/sales/orders", selectedCustomerId],
+    queryFn: () => apiRequest(`/api/sales/orders?customerId=${selectedCustomerId}&limit=1000`),
+    enabled: !!selectedCustomerId,
+  });
+
+  const customerOrders = ordersResponse?.orders || [];
 
   const [productQuantities, setProductQuantities] = useState({});
   const [expandedBrands, setExpandedBrands] = useState({});
@@ -154,8 +173,8 @@ const CreateReturnForm = ({
 
       editData.items.forEach((returnItem) => {
         // Find the API item by productId or productName
-        const apiItem = items.find((p) => 
-          p._id === returnItem.productId || 
+        const apiItem = items.find((p) =>
+          p._id === returnItem.productId ||
           p.name === returnItem.productName
         );
         if (apiItem) {
@@ -171,7 +190,19 @@ const CreateReturnForm = ({
   }, [editData, items]);
 
   const handleInputChange = (field, value) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
+    setFormData((prev) => {
+      const newData = { ...prev, [field]: value };
+
+      // Special handling for customer selection to fetch orders
+      if (field === 'customer') {
+        const selectedCustomer = customers.find(c => c.name === value);
+        if (selectedCustomer) {
+          setSelectedCustomerId(selectedCustomer._id);
+          newData.order = ""; // Reset order when customer changes
+        }
+      }
+      return newData;
+    });
   };
 
   const handleQuantityChange = (productId, value) => {
@@ -266,6 +297,7 @@ const CreateReturnForm = ({
     const apiPayload = {
       customerId: selectedCustomer._id,
       customerName: selectedCustomer.name, // Required by backend model
+      order: (formData.order && formData.order !== "none") ? formData.order : null,
       returnDate: formData.date,
       reason: formData.reason,
       type: "refund", // Backend expects 'refund' for returns
@@ -331,6 +363,28 @@ const CreateReturnForm = ({
           onChange={(e) => handleInputChange("date", e.target.value)}
           className="h-11"
         />
+      </div>
+
+      {/* Order Selection */}
+      <div>
+        <Label className="text-sm font-medium">Order (Optional)</Label>
+        <Select
+          value={formData.order}
+          onValueChange={(value) => handleInputChange("order", value)}
+          disabled={!selectedCustomerId || ordersLoading}
+        >
+          <SelectTrigger className="h-11">
+            <SelectValue placeholder={ordersLoading ? "Loading orders..." : "Select an order"} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">No specific order</SelectItem>
+            {customerOrders.map((order) => (
+              <SelectItem key={order._id} value={order._id}>
+                {order.orderCode} ({new Date(order.orderDate || order.createdAt).toLocaleDateString()})
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       {/* Products Section */}
@@ -409,7 +463,7 @@ const CreateReturnForm = ({
                                 }}
                               />
                             ) : null}
-                            <div 
+                            <div
                               className={`w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0 ${item.image ? 'hidden' : 'flex'}`}
                               style={{ display: item.image ? 'none' : 'flex' }}
                             >
@@ -610,7 +664,7 @@ const Returns = () => {
 
   const handleDeleteReturn = async (id) => {
     if (!confirm("Are you sure you want to delete this return?")) return;
-    
+
     try {
       await apiRequest(`/api/sales/delete-return/${id}`, {
         method: 'DELETE'
@@ -622,7 +676,7 @@ const Returns = () => {
       });
     } catch (error) {
       toast({
-        title: "Error", 
+        title: "Error",
         description: error.message || "Failed to delete return entry",
         variant: "destructive",
       });
@@ -780,6 +834,7 @@ const Returns = () => {
                           )}
                         </div>
                       </TableCell>
+
                       <TableCell>
                         <div className="text-sm">
                           {returnItem.returnDate ? new Date(returnItem.returnDate).toLocaleDateString('en-IN', {
@@ -790,7 +845,7 @@ const Returns = () => {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge 
+                        <Badge
                           variant={returnItem.type === 'refund' ? 'default' : 'secondary'}
                           className={returnItem.type === 'refund' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'}
                         >
@@ -818,22 +873,23 @@ const Returns = () => {
                             returnItem.status === "completed"
                               ? "default"
                               : returnItem.status === "pending"
-                              ? "secondary"
-                              : returnItem.status === "processing"
-                              ? "outline"
-                              : returnItem.status === "approved"
-                              ? "default"
-                              : "destructive"
+                                ? "secondary"
+                                : returnItem.status === "processing"
+                                  ? "outline"
+                                  : returnItem.status === "approved"
+                                    ? "default"
+                                    : "destructive"
                           }
                         >
                           {returnItem.status || 'Pending'}
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <div className="text-xs text-gray-500">
+                        <div className="text-xs text-gray-500 font-medium">
                           {returnItem.createdAt ? new Date(returnItem.createdAt).toLocaleDateString('en-IN', {
                             day: '2-digit',
-                            month: 'short'
+                            month: 'short',
+                            year: 'numeric'
                           }) : 'N/A'}
                         </div>
                       </TableCell>
@@ -949,6 +1005,8 @@ const Returns = () => {
                     {selectedEntry.customerName || 'N/A'}
                   </p>
                 </div>
+
+
                 <div className="space-y-1">
                   <Label className="text-sm font-medium text-gray-700">Return Date</Label>
                   <p className="text-sm bg-gray-50 p-2 rounded border">
@@ -963,7 +1021,7 @@ const Returns = () => {
                 <div className="space-y-1">
                   <Label className="text-sm font-medium text-gray-700">Type</Label>
                   <div>
-                    <Badge 
+                    <Badge
                       variant={selectedEntry.type === 'refund' ? 'default' : 'secondary'}
                       className={selectedEntry.type === 'refund' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'}
                     >
@@ -974,17 +1032,17 @@ const Returns = () => {
                 <div className="space-y-1">
                   <Label className="text-sm font-medium text-gray-700">Status</Label>
                   <div>
-                    <Badge 
+                    <Badge
                       variant={
                         selectedEntry.status === "completed"
                           ? "default"
                           : selectedEntry.status === "pending"
-                          ? "secondary"
-                          : selectedEntry.status === "processing"
-                          ? "outline"
-                          : selectedEntry.status === "approved"
-                          ? "default"
-                          : "destructive"
+                            ? "secondary"
+                            : selectedEntry.status === "processing"
+                              ? "outline"
+                              : selectedEntry.status === "approved"
+                                ? "default"
+                                : "destructive"
                       }
                     >
                       {selectedEntry.status || 'Pending'}
@@ -1002,7 +1060,7 @@ const Returns = () => {
               {/* Additional Details */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <Label className="text-sm font-medium text-gray-700">Created Date</Label>
+                  <Label className="text-sm font-medium text-gray-700">Date Created</Label>
                   <p className="text-sm bg-gray-50 p-2 rounded border">
                     {selectedEntry.createdAt ? new Date(selectedEntry.createdAt).toLocaleString('en-IN', {
                       year: 'numeric',

@@ -1,8 +1,8 @@
 import { useAuth } from '@/hooks/useAuth';
-import React, { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { apiRequest } from '@/lib/queryClient';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { accountsSalesPersonsApi } from '@/api/customerService';
+import { apiRequest } from '@/lib/queryClient';
 import {
   Card,
   CardContent,
@@ -30,35 +30,41 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from '@/components/ui/tabs';
 import {
   Search,
-  Filter,
-  TrendingUp,
-  DollarSign,
+  IndianRupee,
   Clock,
-  CheckCircle,
-  Users,
-  ShoppingCart,
-  Eye,
+  TrendingUp,
   X,
+  Users,
+  CheckCircle,
+  FileText,
+  Calculator,
+  Calendar as CalendarIcon,
+  RefreshCw,
+  Plus,
+  ArrowDownLeft,
+  ArrowUpRight,
+  Receipt,
+  RotateCcw,
 } from 'lucide-react';
 import { showSmartToast } from '@/lib/toast-utils';
-
-const SORT_OPTIONS = [
-  { value: 'createdAt', label: 'Date Created' },
-  { value: 'username', label: 'Username' },
-  { value: 'email', label: 'Email' },
-  { value: 'totalOrders', label: 'Total Orders' }
-];
+import { cn } from '@/lib/utils';
 
 export default function SalesmanSettlement() {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState('overview');
+
+  // Shared State
+  const [selectedSalesmanId, setSelectedSalesmanId] = useState('');
+
+  // 1. OVERVIEW TAB STATE
   const [filters, setFilters] = useState({
     page: 1,
     limit: 10,
@@ -66,662 +72,524 @@ export default function SalesmanSettlement() {
     sortBy: 'createdAt',
     sortOrder: 'desc'
   });
-  const [selectedSalesPerson, setSelectedSalesPerson] = useState(null);
-  const [isDetailsOpen, setIsDetailsOpen] = useState(false);
-  const [isOrdersOpen, setIsOrdersOpen] = useState(false);
-  const [ordersFilters, setOrdersFilters] = useState({
-    page: 1,
-    limit: 10,
-    status: 'All',
-    search: '',
-    sortBy: 'createdAt',
-    sortOrder: 'desc'
+
+  // 2. SETTLEMENT TAB STATE
+  const [settlementDate, setSettlementDate] = useState(new Date().toISOString().split('T')[0]);
+  const [settlementAmount, setSettlementAmount] = useState('');
+  const [transactionType, setTransactionType] = useState('Credit');
+  const [entryType, setEntryType] = useState('Cash Deposit');
+  const [bankAccountId, setBankAccountId] = useState('cash');
+  const [settlementNotes, setSettlementNotes] = useState('');
+  const [dailyCommRate, setDailyCommRate] = useState(5);
+
+  // 3. LEDGER TAB STATE
+  const [ledgerDates, setLedgerDates] = useState({
+    startDate: new Date(new Date().setDate(new Date().getDate() - 30)).toISOString().split('T')[0],
+    endDate: new Date().toISOString().split('T')[0]
   });
 
-  // Query for sales persons list
-  const { data: salesPersonsData, isLoading, error, refetch } = useQuery({
+  // QUERIES
+  const { data: salesPersonsData, isLoading: isListLoading } = useQuery({
     queryKey: ['/accounts/sales-persons', filters],
     queryFn: () => accountsSalesPersonsApi.getAll(filters),
-    retry: 1,
-    refetchOnWindowFocus: false,
-    onError: (error) => {
-      showSmartToast({
-        variant: 'destructive',
-        title: 'Error',
-        description: `Failed to fetch sales persons: ${error.message}`
-      });
-    }
   });
-
-  // Query for sales person details
-  const { data: detailsData } = useQuery({
-    queryKey: ['/accounts/sales-persons', selectedSalesPerson?._id],
-    queryFn: () => accountsSalesPersonsApi.getById(selectedSalesPerson._id),
-    enabled: !!selectedSalesPerson && isDetailsOpen,
-    retry: 1
-  });
-
-  // Query for sales person orders
-  const { data: ordersData } = useQuery({
-    queryKey: ['/accounts/sales-persons', selectedSalesPerson?._id, 'orders', ordersFilters],
-    queryFn: () => accountsSalesPersonsApi.getOrders(selectedSalesPerson._id, ordersFilters),
-    enabled: !!selectedSalesPerson && isOrdersOpen,
-    retry: 1
-  });
-
   const salesPersons = salesPersonsData?.data?.salesPersons || [];
-  const pagination = salesPersonsData?.data?.pagination || {};
-  const summary = salesPersonsData?.data?.summary || {};
-  const salesPersonDetails = detailsData?.data;
-  const ordersData_list = ordersData?.data?.orders || [];
-  const ordersPagination = ordersData?.data?.pagination || {};
-  const ordersStats = ordersData?.data?.statistics || {};
 
-  // Handler Functions
-  const handleFilterChange = (key, value) => {
-    setFilters(prev => ({
-      ...prev,
-      [key]: value,
-      page: key !== 'page' ? 1 : value
-    }));
-  };
+  const { data: dailyStats, isLoading: isStatsLoading } = useQuery({
+    queryKey: ['salesman/daily-stats', selectedSalesmanId, settlementDate],
+    queryFn: () => accountsSalesPersonsApi.getDailyStats(selectedSalesmanId, settlementDate),
+    enabled: !!selectedSalesmanId && activeTab === 'settlement'
+  });
+  const stats = dailyStats?.data || null;
 
-  const handleOrdersFilterChange = (key, value) => {
-    setOrdersFilters(prev => ({
-      ...prev,
-      [key]: value,
-      page: key !== 'page' ? 1 : value
-    }));
-  };
+  const { data: ledgerData, isLoading: isLedgerLoading, refetch: refetchLedger } = useQuery({
+    queryKey: ['salesman/ledger', selectedSalesmanId, ledgerDates],
+    queryFn: () => accountsSalesPersonsApi.getLedger(selectedSalesmanId, ledgerDates),
+    enabled: !!selectedSalesmanId && (activeTab === 'ledger' || activeTab === 'overview')
+  });
+  const ledgerEntries = ledgerData?.data || [];
 
-  const handleViewDetails = (salesPerson) => {
-    setSelectedSalesPerson(salesPerson);
-    setIsDetailsOpen(true);
-  };
+  // Fetch Bank Accounts for dropdown
+  const { data: bankSummary } = useQuery({
+    queryKey: ['/accounts/bank-cash/summary'],
+    queryFn: () => queryClient.getQueryData(['/accounts/bank-cash/summary']) || apiRequest('GET', '/api/accounts/bank-cash/summary'),
+    enabled: activeTab === 'settlement'
+  });
+  const bankAccounts = bankSummary?.data?.accounts || [];
 
-  const handleViewOrders = (salesPerson) => {
-    setSelectedSalesPerson(salesPerson);
-    setOrdersFilters({
-      page: 1,
-      limit: 10,
-      status: 'All',
-      search: '',
-      sortBy: 'createdAt',
-      sortOrder: 'desc'
-    });
-    setIsOrdersOpen(true);
-  };
 
-  const handleCloseDetails = () => {
-    setIsDetailsOpen(false);
-    setSelectedSalesPerson(null);
-  };
 
-  const handleCloseOrders = () => {
-    setIsOrdersOpen(false);
-    setSelectedSalesPerson(null);
-  };
+  // MUTATIONS
+  const saveSettlementMutation = useMutation({
+    mutationFn: (data) => accountsSalesPersonsApi.saveDailySettlement(data),
+    onSuccess: () => {
+      showSmartToast({ success: true, message: 'Settlement recorded successfully' });
+      queryClient.invalidateQueries(['salesman/ledger']);
+      queryClient.invalidateQueries(['/accounts/sales-persons']);
+      queryClient.invalidateQueries(['/accounts/bank-cash/summary']);
+      setSettlementAmount('');
+      setSettlementNotes('');
+      setActiveTab('ledger');
+    },
+    onError: (err) => showSmartToast({ variant: 'destructive', title: 'Error', description: err.message })
+  });
 
-  // Utility Functions
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR'
-    }).format(amount || 0);
-  };
 
-  const formatDate = (date) => {
-    return new Date(date).toLocaleDateString('en-IN', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
+  // HANDLERS
+  const handleSaveSettlement = () => {
+    if (!settlementAmount) return showSmartToast({ variant: 'destructive', title: 'Required', description: 'Please enter amount' });
+    saveSettlementMutation.mutate({
+      salesmanId: selectedSalesmanId,
+      date: settlementDate,
+      ...stats,
+      amount: parseFloat(settlementAmount),
+      transactionType,
+      entryType,
+      bankAccountId: bankAccountId === 'cash' ? null : bankAccountId,
+      notes: settlementNotes
     });
   };
 
-  if (error) {
-    return (
-      <div className="p-6">
-        <Card>
-          <CardContent className="p-6">
-            <div className="text-center text-red-600">
-              <p>Error loading sales persons: {String(error?.message || 'Unknown error')}</p>
-              <Button onClick={refetch} className="mt-4">
-                Retry
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
 
-  if (isLoading) {
-    return (
-      <div className="p-6">
-        <div className="animate-pulse space-y-4">
-          <div className="h-8 bg-gray-200 rounded w-1/3"></div>
-          <div className="h-64 bg-gray-200 rounded"></div>
-        </div>
-      </div>
-    );
-  }
+  const formatCurrency = (amt) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(amt || 0);
+
   return (
-    <div className="space-y-6 p-4 sm:p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <div className="p-4 sm:p-6 space-y-6">
+      <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Sales Team</h1>
-          <p className="text-muted-foreground">
-            View and manage sales persons for your company
-          </p>
+          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+            <Users className="h-6 w-6 text-blue-600" />
+            Salesman Management
+          </h1>
+          <p className="text-sm text-gray-500">Manage settlements, ledgers and commissions</p>
+        </div>
+        <div className="w-64">
+          <Select value={selectedSalesmanId} onValueChange={setSelectedSalesmanId}>
+            <SelectTrigger className="bg-white border-gray-300">
+              <SelectValue placeholder="Select Salesman" />
+            </SelectTrigger>
+            <SelectContent>
+              {salesPersons.map(sp => (
+                <SelectItem key={sp._id} value={sp._id}>{sp.fullName}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Sales Persons</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{summary.totalSalesPersons || 0}</div>
-            <p className="text-xs text-muted-foreground">
-              Sales team members
-            </p>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Orders</CardTitle>
-            <ShoppingCart className="h-4 w-4 text-blue-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{summary.totalOrders || 0}</div>
-            <p className="text-xs text-muted-foreground">
-              All sales orders
-            </p>
-          </CardContent>
-        </Card>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="grid w-full grid-cols-3 lg:w-[450px] mb-6">
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="settlement">Daily Settlement</TabsTrigger>
+          <TabsTrigger value="ledger">Ledger</TabsTrigger>
+        </TabsList>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(summary.totalRevenue || 0)}</div>
-            <p className="text-xs text-muted-foreground">
-              Overall revenue
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Avg Order Value</CardTitle>
-            <TrendingUp className="h-4 w-4 text-purple-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(summary.averageOrderValue || 0)}</div>
-            <p className="text-xs text-muted-foreground">
-              Per order average
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Filters */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Filters & Search</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex flex-col gap-4 sm:flex-row">
-            <div className="flex-1">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                <Input
-                  placeholder="Search by name, username, or email..."
-                  value={filters.search}
-                  onChange={(e) => handleFilterChange('search', e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-            </div>
-            <Select 
-              value={filters.sortBy} 
-              onValueChange={(value) => handleFilterChange('sortBy', value)}
-            >
-              <SelectTrigger className="w-full sm:w-48">
-                <SelectValue placeholder="Sort by" />
-              </SelectTrigger>
-              <SelectContent>
-                {SORT_OPTIONS.map(option => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select 
-              value={filters.sortOrder} 
-              onValueChange={(value) => handleFilterChange('sortOrder', value)}
-            >
-              <SelectTrigger className="w-full sm:w-32">
-                <SelectValue placeholder="Order" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="asc">Ascending</SelectItem>
-                <SelectItem value="desc">Descending</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Sales Persons Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Sales Team</CardTitle>
-          <CardDescription>
-            View and manage sales team performance
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {salesPersons.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>No sales persons found</p>
-            </div>
-          ) : (
-            <>
-              <div className="overflow-x-auto">
-                <Table className="min-w-[800px]">
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Sales Person</TableHead>
-                      <TableHead>Total Orders</TableHead>
-                      <TableHead>Revenue</TableHead>
-                      <TableHead>Avg Order Value</TableHead>
-                      <TableHead>Success Rate</TableHead>
-                      <TableHead>Last Order</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {salesPersons.map((salesPerson) => (
-                      <TableRow key={salesPerson._id}>
-                        <TableCell>
-                          <div>
-                            <div className="font-medium">
-                              {salesPerson.fullName || salesPerson.username}
-                            </div>
-                            <div className="text-sm text-muted-foreground">
-                              {salesPerson.email}
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline">
-                            {salesPerson.totalOrders || 0}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div className="font-medium">
-                            {formatCurrency(salesPerson.totalRevenue)}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="font-medium">
-                            {formatCurrency(salesPerson.averageOrderValue)}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center">
-                            <div className="text-sm font-medium">
-                              {salesPerson.successRate || 0}%
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="text-sm">
-                            {salesPerson.lastOrderDate ? formatDate(salesPerson.lastOrderDate) : 'No orders'}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                            onClick={() => handleViewOrders(salesPerson)}
-                            title="View Orders"
-                          >
-                            <ShoppingCart className="w-4 h-4 text-blue-600" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleViewDetails(salesPerson)}
-                            title="View Details"
-                          >
-                            <Eye className="w-4 h-4 text-green-600" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-
-              {/* Pagination */}
-              {pagination.pages > 1 && (
-                <div className="flex items-center justify-between mt-6">
-                  <p className="text-sm text-muted-foreground">
-                    Page {pagination.currentPage} of {pagination.pages} 
-                    ({pagination.total} total)
-                  </p>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleFilterChange('page', filters.page - 1)}
-                      disabled={filters.page === 1}
-                    >
-                      Previous
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleFilterChange('page', filters.page + 1)}
-                      disabled={filters.page === pagination.pages}
-                    >
-                      Next
-                    </Button>
-                  </div>
+        <TabsContent value="overview">
+          <Card className="border-gray-200">
+            <CardHeader className="bg-gray-50/50 border-b">
+              <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+                <div>
+                  <CardTitle>Sales Team Overview</CardTitle>
+                  <CardDescription>Overall performance and settlement status</CardDescription>
                 </div>
-              )}
-            </>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Sales Person Details Modal */}
-      <Dialog open={isDetailsOpen} onOpenChange={handleCloseDetails}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Sales Person Details</DialogTitle>
-            <DialogDescription>
-              {salesPersonDetails?.fullName || salesPersonDetails?.username}
-            </DialogDescription>
-          </DialogHeader>
-
-          {salesPersonDetails && (
-            <div className="space-y-6">
-              {/* Personal Information */}
-              <div className="space-y-4">
-                <h3 className="font-semibold text-lg">Personal Information</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Username</p>
-                    <p className="font-medium">{salesPersonDetails.username}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Full Name</p>
-                    <p className="font-medium">{salesPersonDetails.fullName || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Email</p>
-                    <p className="font-medium">{salesPersonDetails.email}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Phone</p>
-                    <p className="font-medium">{salesPersonDetails.phone || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Status</p>
-                    <Badge variant={salesPersonDetails.isActive ? 'default' : 'secondary'}>
-                      {salesPersonDetails.isActive ? 'Active' : 'Inactive'}
-                    </Badge>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Member Since</p>
-                    <p className="font-medium">{formatDate(salesPersonDetails.createdAt)}</p>
-                  </div>
+                <div className="relative w-full md:w-80">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <Input
+                    placeholder="Search salesman..."
+                    className="pl-9"
+                    value={filters.search}
+                    onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
+                  />
                 </div>
               </div>
-
-              {/* Performance Metrics */}
-              <div className="space-y-4">
-                <h3 className="font-semibold text-lg">Performance Metrics</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <Card>
-                    <CardContent className="pt-4">
-                      <p className="text-sm text-muted-foreground">Total Orders</p>
-                      <p className="text-2xl font-bold">{salesPersonDetails.totalOrders}</p>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardContent className="pt-4">
-                      <p className="text-sm text-muted-foreground">Total Revenue</p>
-                      <p className="text-2xl font-bold">{formatCurrency(salesPersonDetails.totalRevenue)}</p>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardContent className="pt-4">
-                      <p className="text-sm text-muted-foreground">Avg Order Value</p>
-                      <p className="text-2xl font-bold">{formatCurrency(salesPersonDetails.averageOrderValue)}</p>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardContent className="pt-4">
-                      <p className="text-sm text-muted-foreground">Success Rate</p>
-                      <p className="text-2xl font-bold">{salesPersonDetails.successRate}%</p>
-                    </CardContent>
-                  </Card>
-                </div>
-              </div>
-
-              {/* Orders Status Breakdown */}
-              {salesPersonDetails.ordersByStatus && (
-                <div className="space-y-4">
-                  <h3 className="font-semibold text-lg">Orders by Status</h3>
-                  <div className="grid grid-cols-3 gap-2">
-                    <div className="bg-blue-50 p-3 rounded">
-                      <p className="text-xs text-muted-foreground">Pending</p>
-                      <p className="font-bold">{salesPersonDetails.ordersByStatus.pending}</p>
-                    </div>
-                    <div className="bg-yellow-50 p-3 rounded">
-                      <p className="text-xs text-muted-foreground">Approved</p>
-                      <p className="font-bold">{salesPersonDetails.ordersByStatus.approved}</p>
-                    </div>
-                    <div className="bg-orange-50 p-3 rounded">
-                      <p className="text-xs text-muted-foreground">In Production</p>
-                      <p className="font-bold">{salesPersonDetails.ordersByStatus.inProduction}</p>
-                    </div>
-                    <div className="bg-purple-50 p-3 rounded">
-                      <p className="text-xs text-muted-foreground">Shipped</p>
-                      <p className="font-bold">{salesPersonDetails.ordersByStatus.shipped}</p>
-                    </div>
-                    <div className="bg-green-50 p-3 rounded">
-                      <p className="text-xs text-muted-foreground">Delivered</p>
-                      <p className="font-bold">{salesPersonDetails.ordersByStatus.delivered}</p>
-                    </div>
-                    <div className="bg-red-50 p-3 rounded">
-                      <p className="text-xs text-muted-foreground">Cancelled</p>
-                      <p className="font-bold">{salesPersonDetails.ordersByStatus.cancelled}</p>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Recent Orders */}
-              {salesPersonDetails.recentOrders && salesPersonDetails.recentOrders.length > 0 && (
-                <div className="space-y-4">
-                  <h3 className="font-semibold text-lg">Recent Orders</h3>
-                  <div className="space-y-2 max-h-48 overflow-y-auto">
-                    {salesPersonDetails.recentOrders.map(order => (
-                      <div key={order._id} className="flex justify-between items-center p-2 bg-gray-50 rounded">
-                        <div>
-                          <p className="font-medium">{order.orderCode}</p>
-                          <p className="text-sm text-muted-foreground">{order.customer?.name}</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-medium">{formatCurrency(order.totalAmount)}</p>
-                          <Badge variant="outline">{order.status}</Badge>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* Sales Person Orders Modal */}
-      <Dialog open={isOrdersOpen} onOpenChange={handleCloseOrders}>
-        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>
-              Orders - {salesPersonDetails?.fullName || salesPersonDetails?.username}
-            </DialogTitle>
-            <DialogDescription>
-              View all orders for this sales person
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            {/* Filters */}
-            <div className="flex gap-2 flex-wrap">
-              <Input
-                placeholder="Search orders..."
-                value={ordersFilters.search}
-                onChange={(e) => handleOrdersFilterChange('search', e.target.value)}
-                className="flex-1 min-w-[200px]"
-              />
-              <Select 
-                value={ordersFilters.status} 
-                onValueChange={(value) => handleOrdersFilterChange('status', value)}
-              >
-                <SelectTrigger className="w-32">
-                  <SelectValue placeholder="Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="All">All Status</SelectItem>
-                  <SelectItem value="Pending">Pending</SelectItem>
-                  <SelectItem value="Approved">Approved</SelectItem>
-                  <SelectItem value="In Production">In Production</SelectItem>
-                  <SelectItem value="Shipped">Shipped</SelectItem>
-                  <SelectItem value="Delivered">Delivered</SelectItem>
-                  <SelectItem value="Cancelled">Cancelled</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Orders Stats */}
-            {ordersStats && (
-              <div className="grid grid-cols-4 gap-2">
-                <Card>
-                  <CardContent className="pt-3">
-                    <p className="text-xs text-muted-foreground">Total Orders</p>
-                    <p className="font-bold text-lg">{ordersStats.totalOrders}</p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="pt-3">
-                    <p className="text-xs text-muted-foreground">Total Revenue</p>
-                    <p className="font-bold text-sm">{formatCurrency(ordersStats.totalAmount)}</p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="pt-3">
-                    <p className="text-xs text-muted-foreground">Avg Order</p>
-                    <p className="font-bold text-sm">{formatCurrency(ordersStats.averageOrderValue)}</p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="pt-3">
-                    <p className="text-xs text-muted-foreground">Final Amount</p>
-                    <p className="font-bold text-sm">{formatCurrency(ordersStats.totalFinal)}</p>
-                  </CardContent>
-                </Card>
-              </div>
-            )}
-
-            {/* Orders Table */}
-            <div className="overflow-x-auto">
-              <Table className="min-w-[800px]">
+            </CardHeader>
+            <CardContent className="p-0">
+              <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Order Code</TableHead>
-                    <TableHead>Customer</TableHead>
-                    <TableHead>Amount</TableHead>
+                    <TableHead>Salesman</TableHead>
+                    <TableHead>Gross Sales</TableHead>
+                    <TableHead>Returns</TableHead>
+                    <TableHead>Expected Cash</TableHead>
+                    <TableHead>Collected</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>Payment</TableHead>
-                    <TableHead>Date</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {ordersData_list.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan="6" className="text-center py-4">
-                        No orders found
+                  {isListLoading ? (
+                    <TableRow><TableCell colSpan={7} className="text-center py-10">Loading...</TableCell></TableRow>
+                  ) : salesPersons.length === 0 ? (
+                    <TableRow><TableCell colSpan={7} className="text-center py-10 text-gray-500">No records found</TableCell></TableRow>
+                  ) : salesPersons.map((sp) => (
+                    <TableRow key={sp._id}>
+                      <TableCell className="font-medium text-blue-900">{sp.fullName}</TableCell>
+                      <TableCell>{formatCurrency(sp.totalGrossSales)}</TableCell>
+                      <TableCell className="text-red-600">{formatCurrency(sp.totalReturns)}</TableCell>
+                      <TableCell className="font-bold">{formatCurrency(sp.netReceivable)}</TableCell>
+                      <TableCell className="text-green-700 font-bold">{formatCurrency(sp.totalCollected)}</TableCell>
+                      <TableCell>
+                        <Badge variant={sp.settlementStatus === 'Paid' ? 'default' : 'secondary'} className={sp.settlementStatus === 'Paid' ? 'bg-green-500' : ''}>
+                          {sp.settlementStatus}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="outline" size="sm" onClick={() => { setSelectedSalesmanId(sp._id); setActiveTab('settlement'); }}>
+                          Settle
+                        </Button>
                       </TableCell>
                     </TableRow>
-                  ) : (
-                    ordersData_list.map(order => (
-                      <TableRow key={order._id}>
-                        <TableCell className="font-medium">{order.orderCode}</TableCell>
-                        <TableCell>{order.customerName}</TableCell>
-                        <TableCell>{formatCurrency(order.amount)}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline">{order.status}</Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={order.paymentStatus === 'Paid' ? 'default' : 'secondary'}>
-                            {order.paymentStatus}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>{formatDate(order.date)}</TableCell>
-                      </TableRow>
-                    ))
-                  )}
+                  ))}
                 </TableBody>
               </Table>
-            </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-            {/* Pagination */}
-            {ordersPagination.pages > 1 && (
-              <div className="flex items-center justify-between mt-4">
-                <p className="text-sm text-muted-foreground">
-                  Page {ordersPagination.currentPage} of {ordersPagination.pages}
-                </p>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleOrdersFilterChange('page', ordersFilters.page - 1)}
-                    disabled={ordersFilters.page === 1}
-                  >
-                    Previous
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleOrdersFilterChange('page', ordersFilters.page + 1)}
-                    disabled={ordersFilters.page === ordersPagination.pages}
-                  >
-                    Next
-                  </Button>
+        <TabsContent value="settlement">
+          {!selectedSalesmanId ? (
+            <div className="p-20 text-center bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
+              <p className="text-gray-400">Please select a salesman to start settlement</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2 space-y-6">
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between border-b bg-gray-50/50">
+                    <div>
+                      <CardTitle className="text-lg">Daily Statistics</CardTitle>
+                      <CardDescription>Summary for {settlementDate}</CardDescription>
+                    </div>
+                    <Input
+                      type="date"
+                      className="w-40"
+                      value={settlementDate}
+                      onChange={(e) => setSettlementDate(e.target.value)}
+                    />
+                  </CardHeader>
+                  <CardContent className="p-6">
+                    {isStatsLoading ? <div className="p-10 text-center">Loading stats...</div> : (
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                        <div className="p-4 border rounded-lg bg-white">
+                          <p className="text-xs text-gray-500 font-bold uppercase">Gross Sales</p>
+                          <p className="text-xl font-bold">{formatCurrency(stats?.totalInvoiceSale)}</p>
+                        </div>
+                        <div className="p-4 border rounded-lg bg-white">
+                          <p className="text-xs text-red-500 font-bold uppercase border-red-100">Returns</p>
+                          <p className="text-xl font-bold text-red-600">-{formatCurrency(stats?.totalReturn)}</p>
+                        </div>
+                        <div className="p-4 border rounded-lg bg-blue-50 border-blue-200">
+                          <p className="text-xs text-blue-600 font-bold uppercase">Net Sale</p>
+                          <p className="text-xl font-bold text-blue-700">{formatCurrency(stats?.netSale)}</p>
+                        </div>
+                        <div className="p-4 border rounded-lg bg-white">
+                          <p className="text-xs text-green-600 font-bold uppercase">Cash Sale</p>
+                          <p className="text-xl font-bold text-green-700">{formatCurrency(stats?.cashSale)}</p>
+                        </div>
+                        <div className="p-4 border rounded-lg bg-white">
+                          <p className="text-xs text-orange-600 font-bold uppercase">Credit Sale</p>
+                          <p className="text-xl font-bold text-orange-600">{formatCurrency(stats?.creditSale)}</p>
+                        </div>
+                        <div className="p-4 border rounded-lg bg-indigo-600 text-white">
+                          <p className="text-xs text-indigo-100 font-bold uppercase">Expected Cash</p>
+                          <p className="text-xl font-bold">{formatCurrency(stats?.expectedCash)}</p>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="mt-8 space-y-6">
+                      <div className="space-y-4">
+                        <h4 className="text-sm font-bold flex items-center gap-2">
+                          <Receipt className="h-4 w-4 text-gray-400" />
+                          Order List
+                        </h4>
+                        <div className="border rounded-lg overflow-hidden">
+                          <Table>
+                            <TableHeader className="bg-gray-50">
+                              <TableRow>
+                                <TableHead>Code</TableHead>
+                                <TableHead>Customer</TableHead>
+                                <TableHead>Payment</TableHead>
+                                <TableHead className="text-right">Amount</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {stats?.orders?.map(o => (
+                                <TableRow key={o._id}>
+                                  <TableCell className="font-medium">{o.orderCode}</TableCell>
+                                  <TableCell>{o.customerName}</TableCell>
+                                  <TableCell>
+                                    <Badge variant="outline" className={o.paymentMethod === 'Cash' || o.paymentMethod === 'Other' ? 'text-green-600' : 'text-orange-600'}>
+                                      {o.paymentMethod}
+                                    </Badge>
+                                  </TableCell>
+                                  <TableCell className="text-right font-bold">{formatCurrency(o.totalAmount)}</TableCell>
+                                </TableRow>
+                              )) || <TableRow><TableCell colSpan={4} className="text-center py-4 text-gray-400">No orders</TableCell></TableRow>}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      </div>
+
+                      {stats?.returns?.length > 0 && (
+                        <div className="space-y-4">
+                          <h4 className="text-sm font-bold text-red-600 flex items-center gap-2">
+                            <RotateCcw className="h-4 w-4" />
+                            Return List
+                          </h4>
+                          <div className="border border-red-100 rounded-lg overflow-hidden">
+                            <Table>
+                              <TableHeader className="bg-red-50/50">
+                                <TableRow>
+                                  <TableHead>Return#</TableHead>
+                                  <TableHead>Customer</TableHead>
+                                  <TableHead className="text-right">Amount</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {stats.returns.map(r => (
+                                  <TableRow key={r._id}>
+                                    <TableCell className="font-medium">{r.returnNumber}</TableCell>
+                                    <TableCell>{r.customerName}</TableCell>
+                                    <TableCell className="text-right font-bold text-red-600">-{formatCurrency(r.totalAmount)}</TableCell>
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <div className="space-y-6">
+                <Card className="border-blue-200 shadow-lg overflow-hidden">
+                  <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white border-b-0 space-y-0">
+                    <div className="flex items-center gap-3">
+                      <div className="bg-white/20 p-2 rounded-lg">
+                        <IndianRupee className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-lg">Settlement Entry</CardTitle>
+                        <CardDescription className="text-blue-100">Manual adjustments & collections</CardDescription>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="p-6 space-y-5">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-bold text-slate-500 uppercase">Type</Label>
+                        <div className="flex p-1 bg-slate-100 rounded-lg">
+                          <button
+                            onClick={() => setTransactionType('Credit')}
+                            className={cn(
+                              "flex-1 py-1.5 text-xs font-bold rounded-md transition-all",
+                              transactionType === 'Credit' ? "bg-white text-green-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                            )}
+                          >
+                            Credit (Add to Bank)
+                          </button>
+                          <button
+                            onClick={() => setTransactionType('Debit')}
+                            className={cn(
+                              "flex-1 py-1.5 text-xs font-bold rounded-md transition-all",
+                              transactionType === 'Debit' ? "bg-white text-red-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                            )}
+                          >
+                            Debit (Cut from Bank)
+                          </button>
+                        </div>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-bold text-slate-500 uppercase">Category</Label>
+                        <Select value={entryType} onValueChange={setEntryType}>
+                          <SelectTrigger className="h-9">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {transactionType === 'Credit' ? (
+                              <>
+                                <SelectItem value="Cash Deposit">Cash Deposit</SelectItem>
+                                <SelectItem value="Opening Balance">Opening Balance</SelectItem>
+                                <SelectItem value="Adjustment (In)">Adjustment (In)</SelectItem>
+                              </>
+                            ) : (
+                              <>
+                                <SelectItem value="Salary">Salary Payment</SelectItem>
+                                <SelectItem value="Commission">Commission</SelectItem>
+                                <SelectItem value="Advance">Advance Taken</SelectItem>
+                                <SelectItem value="Incentive">Incentive</SelectItem>
+                                <SelectItem value="Expense Reimbursement">Expense Reimb.</SelectItem>
+                                <SelectItem value="Shortage">Shortage</SelectItem>
+                              </>
+                            )}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-bold text-slate-500 uppercase">Amount (₹)</Label>
+                      <Input
+                        placeholder="0.00"
+                        className="text-2xl font-black py-6 text-center border-slate-200 focus:ring-blue-500 rounded-xl"
+                        type="number"
+                        value={settlementAmount}
+                        onChange={(e) => setSettlementAmount(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-bold text-slate-500 uppercase">Bank Account</Label>
+                      <Select value={bankAccountId} onValueChange={setBankAccountId}>
+                        <SelectTrigger className={cn("h-10", bankAccountId !== 'cash' && "border-blue-300 bg-blue-50/50")}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="cash">Internal Cash Registry</SelectItem>
+                          {bankAccounts.map(acc => (
+                            <SelectItem key={acc.id} value={acc.id}>
+                              {acc.name} (₹{acc.balance?.toLocaleString()})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {bankAccountId !== 'cash' && (
+                        <p className="text-[10px] text-blue-600 font-medium italic">
+                          ℹ️ Bank Action: {transactionType === 'Credit' ? 'ADD' : 'DEDUCT'} ₹{settlementAmount || '0'} {transactionType === 'Credit' ? 'to' : 'from'} account.
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-bold text-slate-500 uppercase">Remarks</Label>
+                      <Input
+                        placeholder="Optional details..."
+                        className="h-9 text-xs"
+                        value={settlementNotes}
+                        onChange={(e) => setSettlementNotes(e.target.value)}
+                      />
+                    </div>
+
+
+                    <Button
+                      className={cn(
+                        "w-full h-12 font-bold text-white shadow-lg transition-all",
+                        transactionType === 'Credit' ? "bg-green-600 hover:bg-green-700" : "bg-red-600 hover:bg-red-700"
+                      )}
+                      disabled={!settlementAmount || saveSettlementMutation.isPending}
+                      onClick={handleSaveSettlement}
+                    >
+                      {saveSettlementMutation.isPending ? <RefreshCw className="animate-spin mr-2" /> : <CheckCircle className="mr-2 h-4 w-4" />}
+                      Post {transactionType} Entry
+                    </Button>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="ledger">
+          {!selectedSalesmanId ? (
+            <div className="p-20 text-center bg-gray-50 border-2 border-dashed rounded-xl">
+              <p className="text-gray-400">Select a salesman to view statement</p>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              <div className="flex flex-col md:flex-row justify-between items-end gap-4 p-4 bg-white border rounded-xl shadow-sm">
+                <div className="flex gap-4">
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-500">From</Label>
+                    <Input type="date" value={ledgerDates.startDate} onChange={(e) => setLedgerDates(p => ({ ...p, startDate: e.target.value }))} className="w-40" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-500">To</Label>
+                    <Input type="date" value={ledgerDates.endDate} onChange={(e) => setLedgerDates(p => ({ ...p, endDate: e.target.value }))} className="w-40" />
+                  </div>
+                  <div className="mt-5">
+                    <Button variant="outline" onClick={refetchLedger} className="h-10">
+                      <RefreshCw className={`h-4 w-4 mr-2 ${isLedgerLoading ? 'animate-spin' : ''}`} />
+                      Reload
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="text-right">
+                  <p className="text-xs text-gray-400 font-bold uppercase">Balance</p>
+                  <div className={`text-2xl font-bold ${ledgerEntries[0]?.runningBalance >= 0 ? 'text-red-600' : 'text-green-600'}`}>
+                    {formatCurrency(Math.abs(ledgerEntries[0]?.runningBalance || 0))}
+                  </div>
                 </div>
               </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+
+              <Card className="border-0 shadow-lg overflow-hidden">
+                <CardHeader className="bg-white border-b px-6 py-4">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <CardTitle className="text-lg">Ledger Transactions</CardTitle>
+                      <CardDescription>Detailed statement of accounts</CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader className="bg-slate-50">
+                        <TableRow>
+                          <TableHead className="font-semibold px-6">Date</TableHead>
+                          <TableHead className="font-semibold">Transaction Details</TableHead>
+                          <TableHead className="font-semibold text-right text-red-600">Debit (DR)</TableHead>
+                          <TableHead className="font-semibold text-right text-green-600">Credit (CR)</TableHead>
+                          <TableHead className="text-right pr-6 font-semibold">Balance</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {isLedgerLoading ? (
+                          <TableRow><TableCell colSpan={5} className="text-center py-10 text-slate-400">Loading ledger entries...</TableCell></TableRow>
+                        ) : ledgerEntries.length === 0 ? (
+                          <TableRow><TableCell colSpan={5} className="text-center py-10 text-slate-400 italic">No transactions found for this period</TableCell></TableRow>
+                        ) : ledgerEntries.map(entry => (
+                          <TableRow key={entry._id} className="hover:bg-slate-50/50 transition-colors">
+                            <TableCell className="px-6 py-4">
+                              <span className="text-slate-900 font-medium">
+                                {new Date(entry.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                              </span>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex flex-col">
+                                <span className="font-bold text-slate-900">{entry.entryType}</span>
+                                <span className="text-xs text-slate-500 italic max-w-xs truncate">{entry.description}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right font-bold text-red-600">
+                              {entry.transactionType === 'Debit' ? formatCurrency(entry.amount) : '-'}
+                            </TableCell>
+                            <TableCell className="text-right font-bold text-green-700">
+                              {entry.transactionType === 'Credit' ? formatCurrency(entry.amount) : '-'}
+                            </TableCell>
+                            <TableCell className="text-right pr-6">
+                              <span className={cn(
+                                "font-bold text-lg",
+                                entry.runningBalance >= 0 ? "text-red-600" : "text-green-600"
+                              )}>
+                                ₹{Math.abs(entry.runningBalance || 0).toLocaleString('en-IN')}
+                              </span>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+        </TabsContent>
+
+      </Tabs>
     </div>
   );
 }

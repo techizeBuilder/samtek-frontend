@@ -60,6 +60,12 @@ import AccountsDashboard from "@/pages/AccountsDashboard";
 import ChartOfAccounts from "@/pages/accounts/ChartOfAccounts";
 import AccountsSales from "@/pages/accounts/Sales";
 import AccountsPurchases from "@/pages/accounts/Purchases";
+import VendorMaster from "@/pages/accounts/VendorMaster";
+import PurchaseInvoices from "@/pages/accounts/PurchaseInvoices";
+import PurchaseReturns from "@/pages/accounts/PurchaseReturns";
+import PurchaseReports from "@/pages/accounts/PurchaseReports";
+import VendorPayments from "@/pages/accounts/VendorPayments";
+import PayableAgeing from "@/pages/accounts/PayableAgeing";
 import GSTAndTDS from "@/pages/accounts/GSTAndTDS";
 import DamageAndExpiry from "@/pages/accounts/DamageAndExpiry";
 import SalesmanSettlement from "@/pages/accounts/SalesmanSettlement";
@@ -67,6 +73,16 @@ import BankAndCash from "@/pages/accounts/BankAndCash";
 import InterUnit from "@/pages/accounts/InterUnit";
 import AccountsReports from "@/pages/accounts/Reports";
 import AccountsSettings from "@/pages/accounts/Settings";
+
+// Sales Account Module (New)
+import CustomerMaster from "@/pages/accounts/CustomerMaster";
+import SalesInvoices from "@/pages/accounts/SalesInvoices";
+import SalesReturns from "@/pages/accounts/SalesReturns";
+import CustomerPayments from "@/pages/accounts/CustomerPayments";
+import ReceivableAgeing from "@/pages/accounts/ReceivableAgeing";
+import SalesReports from "@/pages/accounts/SalesReports";
+import Expenses from "@/pages/accounts/Expenses";
+import FinancialSummary from "@/pages/accounts/FinancialSummary";
 import DeliveryChallan from "@/pages/dispatch/DeliveryChallan";
 import DispatchHistory from "@/pages/dispatch/DispatchHistory";
 import SalesApproval from "@/pages/SalesApproval";
@@ -100,7 +116,7 @@ function Router() {
           <Manufacturing />
         </RoleBasedProtectedRoute>
       </Route>
-      
+
       {/* Production Module Routes - Must come before specific routes */}
       <Route path="/production/:rest*">
         <ProtectedRoute>
@@ -117,7 +133,7 @@ function Router() {
           <ProductionModule />
         </ProtectedRoute>
       </Route>
-      
+
       <Route path="/production/history">
         <ProtectedRoute requiredRole="Production">
           <ProductionHistoryPage />
@@ -156,21 +172,21 @@ function Router() {
           <Damages />
         </ProtectedRoute>
       </Route>
-      
+
       {/* Main Sales route */}
       <Route path="/sales">
         <ProtectedRoute>
           <Sales />
         </ProtectedRoute>
       </Route>
-      
+
       {/* Sales Dashboard route */}
       <Route path="/sales-dashboard">
         <ProtectedRoute>
           <SalesDashboard />
         </ProtectedRoute>
       </Route>
-      
+
       <Route path="/accounts">
         <ProtectedRoute>
           <Accounts />
@@ -251,7 +267,7 @@ function Router() {
           <ModernInventoryUI />
         </ProtectedRoute>
       </Route>
-      
+
       <Route path="/super-admin/settings">
         <ProtectedRoute requiredRole="Super Admin">
           <SuperAdminSettings />
@@ -267,14 +283,14 @@ function Router() {
           <NotificationsPage />
         </ProtectedRoute>
       </Route>
-      
+
       {/* Role-specific Dashboard routes */}
       <Route path="/unit-head-dashboard">
         <ProtectedRoute requiredRole="Unit Head">
           <UnitHeadDashboard />
         </ProtectedRoute>
       </Route>
-      
+
       {/* Unit Head specific routes */}
       <Route path="/unit-head/orders">
         <ProtectedRoute requiredRole="Unit Head">
@@ -311,20 +327,20 @@ function Router() {
           <UnitHeadCutoffTime />
         </ProtectedRoute>
       </Route>
-      
+
       {/* Unit Manager specific routes with dedicated layout */}
       <Route path="/unit-manager/dashboard">
         <UnitManagerProtectedRoute requiredRole="Unit Manager">
           <UnitManagerDashboard />
         </UnitManagerProtectedRoute>
       </Route>
-      
+
       <Route path="/unit-manager/indent-summary">
         <UnitManagerProtectedRoute requiredRole="Unit Manager">
           <SalesApproval />
         </UnitManagerProtectedRoute>
       </Route>
-      
+
       <Route path="/unit-manager/sales-order-list">
         <UnitManagerProtectedRoute requiredRole="Unit Manager">
           <SalesOrderList />
@@ -335,13 +351,13 @@ function Router() {
           <UnitManagerProductionGroup />
         </UnitManagerProtectedRoute>
       </Route>
-      
+
       <Route path="/unit-manager/returns">
         <UnitManagerProtectedRoute requiredRole="Unit Manager">
           <UnitManagerReturns />
         </UnitManagerProtectedRoute>
       </Route>
-      
+
       <Route path="/packing-dashboard">
         <ProtectedRoute requiredRole="Packing">
           <PackingDashboard />
@@ -387,9 +403,71 @@ function Router() {
           <AccountsSales />
         </ProtectedRoute>
       </Route>
+
+      {/* Sales Account Module (New Routes) */}
+      <Route path="/accounts/sales/customers">
+        <ProtectedRoute requiredRole="Accounts">
+          <CustomerMaster />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/accounts/sales/invoices">
+        <ProtectedRoute requiredRole="Accounts">
+          <SalesInvoices />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/accounts/sales/returns">
+        <ProtectedRoute requiredRole="Accounts">
+          <SalesReturns />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/accounts/sales/payments">
+        <ProtectedRoute requiredRole="Accounts">
+          <CustomerPayments />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/accounts/sales/ageing">
+        <ProtectedRoute requiredRole="Accounts">
+          <ReceivableAgeing />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/accounts/sales/reports">
+        <ProtectedRoute requiredRole="Accounts">
+          <SalesReports />
+        </ProtectedRoute>
+      </Route>
       <Route path="/accounts/purchases">
         <ProtectedRoute requiredRole="Accounts">
           <AccountsPurchases />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/accounts/purchases/vendors">
+        <ProtectedRoute requiredRole="Accounts">
+          <VendorMaster />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/accounts/purchases/invoices">
+        <ProtectedRoute requiredRole="Accounts">
+          <PurchaseInvoices />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/accounts/purchases/returns">
+        <ProtectedRoute requiredRole="Accounts">
+          <PurchaseReturns />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/accounts/purchases/payments">
+        <ProtectedRoute requiredRole="Accounts">
+          <VendorPayments />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/accounts/purchases/ageing">
+        <ProtectedRoute requiredRole="Accounts">
+          <PayableAgeing />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/accounts/purchases/reports">
+        <ProtectedRoute requiredRole="Accounts">
+          <PurchaseReports />
         </ProtectedRoute>
       </Route>
       <Route path="/accounts/gst-tds">
@@ -417,6 +495,16 @@ function Router() {
           <InterUnit />
         </ProtectedRoute>
       </Route>
+      <Route path="/accounts/expenses">
+        <ProtectedRoute requiredRole="Accounts">
+          <Expenses />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/accounts/financial-summary">
+        <ProtectedRoute requiredRole="Accounts">
+          <FinancialSummary />
+        </ProtectedRoute>
+      </Route>
       <Route path="/accounts/reports">
         <ProtectedRoute requiredRole="Accounts">
           <AccountsReports />
@@ -427,7 +515,7 @@ function Router() {
           <AccountsSettings />
         </ProtectedRoute>
       </Route>
-      
+
       <Route component={NotFound} />
     </Switch>
   );

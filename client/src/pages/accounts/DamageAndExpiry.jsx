@@ -350,8 +350,8 @@ export default function DamageAndExpiry() {
 
       {/* Detail Modal */}
       <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
+        <DialogContent className="max-w-2xl w-full flex flex-col max-h-[90vh] my-4 overflow-hidden p-0">
+          <DialogHeader className="px-6 pt-6 pb-4 border-b shrink-0">
             <DialogTitle className="flex items-center gap-2">
               {selectedItem && getTypeIcon(selectedItem.type)}
               {selectedItem?.type === 'damage' ? 'Damage' : 'Expired'} Item Details
@@ -362,74 +362,76 @@ export default function DamageAndExpiry() {
           </DialogHeader>
 
           {selectedItem && (
-            <div className="space-y-4">
-              {/* General Info */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-gray-600">Customer</p>
-                  <p className="font-medium">{selectedItem.customerName}</p>
+            <div className="overflow-y-auto flex-1 min-h-0 p-6">
+              <div className="space-y-4">
+                {/* General Info */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm text-gray-600">Customer</p>
+                    <p className="font-medium">{selectedItem.customerName}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Date</p>
+                    <p className="font-medium">{formatDate(selectedItem.returnDate)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Status</p>
+                    <span className={`px-2 py-1 rounded text-xs font-medium ${getStatusColor(selectedItem.status)}`}>
+                      {selectedItem.status.charAt(0).toUpperCase() + selectedItem.status.slice(1)}
+                    </span>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Total Amount</p>
+                    <p className="font-medium text-lg">{formatCurrency(selectedItem.totalAmount)}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-sm text-gray-600">Date</p>
-                  <p className="font-medium">{formatDate(selectedItem.returnDate)}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600">Status</p>
-                  <span className={`px-2 py-1 rounded text-xs font-medium ${getStatusColor(selectedItem.status)}`}>
-                    {selectedItem.status.charAt(0).toUpperCase() + selectedItem.status.slice(1)}
-                  </span>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600">Total Amount</p>
-                  <p className="font-medium text-lg">{formatCurrency(selectedItem.totalAmount)}</p>
-                </div>
-              </div>
 
-              {/* Reason */}
-              <div>
-                <p className="text-sm text-gray-600">Reason</p>
-                <p className="font-medium">{selectedItem.reason}</p>
-              </div>
-
-              {/* Notes */}
-              {selectedItem.notes && (
+                {/* Reason */}
                 <div>
-                  <p className="text-sm text-gray-600">Notes</p>
-                  <p className="text-sm">{selectedItem.notes}</p>
+                  <p className="text-sm text-gray-600">Reason</p>
+                  <p className="font-medium">{selectedItem.reason}</p>
                 </div>
-              )}
 
-              {/* Items Table */}
-              <div>
-                <p className="text-sm font-medium mb-3">Items ({selectedItem.items?.length || 0})</p>
-                <div className="bg-gray-50 rounded border overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-gray-100">
-                        <TableHead>Product</TableHead>
-                        <TableHead>Quantity</TableHead>
-                        <TableHead>Unit Price</TableHead>
-                        <TableHead className="text-right">Total</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {selectedItem.items?.map((item, idx) => (
-                        <TableRow key={idx}>
-                          <TableCell>
-                            <p className="font-medium">{item.productName}</p>
-                            {item.categoryName && (
-                              <p className="text-sm text-gray-600">{item.categoryName}</p>
-                            )}
-                          </TableCell>
-                          <TableCell>{item.quantity} {item.unit}</TableCell>
-                          <TableCell>{formatCurrency(item.pricePerUnit)}</TableCell>
-                          <TableCell className="text-right font-medium">
-                            {formatCurrency(item.totalAmount)}
-                          </TableCell>
+                {/* Notes */}
+                {selectedItem.notes && (
+                  <div>
+                    <p className="text-sm text-gray-600">Notes</p>
+                    <p className="text-sm">{selectedItem.notes}</p>
+                  </div>
+                )}
+
+                {/* Items Table */}
+                <div>
+                  <p className="text-sm font-medium mb-3">Items ({selectedItem.items?.length || 0})</p>
+                  <div className="bg-gray-50 rounded border overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-gray-100">
+                          <TableHead>Product</TableHead>
+                          <TableHead>Quantity</TableHead>
+                          <TableHead>Unit Price</TableHead>
+                          <TableHead className="text-right">Total</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {selectedItem.items?.map((item, idx) => (
+                          <TableRow key={idx}>
+                            <TableCell>
+                              <p className="font-medium">{item.productName}</p>
+                              {item.categoryName && (
+                                <p className="text-sm text-gray-600">{item.categoryName}</p>
+                              )}
+                            </TableCell>
+                            <TableCell>{item.quantity} {item.unit}</TableCell>
+                            <TableCell>{formatCurrency(item.pricePerUnit)}</TableCell>
+                            <TableCell className="text-right font-medium">
+                              {formatCurrency(item.totalAmount)}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
                 </div>
               </div>
             </div>

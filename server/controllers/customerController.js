@@ -1,12 +1,13 @@
 import Customer from '../models/Customer.js';
 import User from '../models/User.js';
+import Sale from '../models/Sale.js';
 import * as XLSX from 'xlsx';
 import multer from 'multer';
 import { body, validationResult, query } from 'express-validator';
 import notificationService from '../services/notificationService.js';
 
 // Configure multer for file upload
-const upload = multer({ 
+const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
   fileFilter: (req, file, cb) => {
@@ -30,18 +31,18 @@ export const validateCustomer = [
     .withMessage('Name is required')
     .isLength({ min: 2, max: 100 })
     .withMessage('Name must be between 2 and 100 characters'),
-  
+
   body('category')
     .notEmpty()
     .withMessage('Category is required')
     .isIn(['Distributor', 'Retailer', 'Wholesaler', 'End User'])
     .withMessage('Category must be one of: Distributor, Retailer, Wholesaler, End User'),
-  
+
   body('active')
     .optional()
     .isIn(['Yes', 'No'])
     .withMessage('Active must be either Yes or No'),
-  
+
   body('gstin')
     .optional()
     .custom((value) => {
@@ -50,29 +51,39 @@ export const validateCustomer = [
       }
       return true;
     }),
-  
+
   body('mobile')
     .notEmpty()
     .withMessage('Mobile number is required')
     .matches(/^[0-9]{10}$/)
     .withMessage('Mobile number must be exactly 10 digits'),
-  
+
   body('email')
     .notEmpty()
     .withMessage('Email is required')
     .isEmail()
     .withMessage('Please enter a valid email address')
     .normalizeEmail(),
-  
+
   body('pin')
     .optional()
     .matches(/^\d{6}$/)
     .withMessage('PIN code must be exactly 6 digits'),
-  
+
   body('notes')
     .optional()
     .isLength({ max: 500 })
-    .withMessage('Notes cannot exceed 500 characters')
+    .withMessage('Notes cannot exceed 500 characters'),
+
+  body('entityType')
+    .optional()
+    .isIn(['Individual', 'HUF', 'Company', 'Firm', 'Others'])
+    .withMessage('Invalid Entity Type'),
+
+  body('tdsSection')
+    .optional()
+    .isIn(['194C', '194J', '194Q', '206C_1H', 'None'])
+    .withMessage('Invalid TDS Section')
 ];
 
 // Validation rules for queries
@@ -81,27 +92,27 @@ export const validateCustomerQuery = [
     .optional()
     .isInt({ min: 1 })
     .withMessage('Page must be a positive integer'),
-  
+
   query('limit')
     .optional()
     .isInt({ min: 1, max: 100 })
     .withMessage('Limit must be between 1 and 100'),
-  
+
   query('status')
     .optional()
     .isIn(['Active', 'Inactive'])
     .withMessage('Status filter must be Active or Inactive'),
-  
+
   query('customerType')
     .optional()
     .isIn(['Distributor', 'Retailer', 'Wholesaler', 'End User'])
     .withMessage('Customer type filter is invalid'),
-  
+
   query('sortBy')
     .optional()
     .isIn(['createdAt', 'name', 'category', 'active'])
     .withMessage('Sort field must be one of: createdAt, name, category, active'),
-  
+
   query('sortOrder')
     .optional()
     .isIn(['asc', 'desc'])
@@ -142,9 +153,9 @@ export const getCustomers = [
 
       // Build filter object
       const filter = {};
-      
+
       console.log('🔍 getCustomers called by user:', req.user?.username, 'Role:', req.user?.role);
-      
+
       // STRICT company filtering based on user role
       if (req.user.role === 'Super Admin') {
         // Super Admin can see all customers
@@ -161,7 +172,7 @@ export const getCustomers = [
         filter.companyId = req.user.companyId;
         console.log('✅ Company filtering applied for role', req.user.role, ':', req.user.companyId);
       }
-      
+
       if (status) {
         // Handle status filter - backend stores 'Yes'/'No' but query might send 'Active'/'Inactive'
         if (status === 'Active') filter.active = 'Yes';
@@ -223,7 +234,7 @@ export const getCustomers = [
 export const getCustomerById = async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     if (!id.match(/^[0-9a-fA-F]{24}$/)) {
       return res.status(400).json({
         success: false,
@@ -317,7 +328,7 @@ export const createCustomer = [
       });
     } catch (error) {
       console.error('Error creating customer:', error);
-      
+
       if (error.name === 'ValidationError') {
         const errors = Object.values(error.errors).map(err => ({
           field: err.path,
@@ -355,7 +366,7 @@ export const updateCustomer = [
 
       // Check for duplicate mobile number (excluding current customer)
       if (req.body.mobile) {
-        const existingCustomer = await Customer.findOne({ 
+        const existingCustomer = await Customer.findOne({
           mobile: req.body.mobile,
           _id: { $ne: id }
         });
@@ -370,7 +381,7 @@ export const updateCustomer = [
 
       // Check for duplicate email if provided (excluding current customer)
       if (req.body.email) {
-        const existingEmail = await Customer.findOne({ 
+        const existingEmail = await Customer.findOne({
           email: req.body.email,
           _id: { $ne: id }
         });
@@ -385,7 +396,7 @@ export const updateCustomer = [
 
       // Prepare update data with proper salesContact handling
       const updateData = { ...req.body };
-      
+
       // Handle salesContact field - convert username to ObjectId if needed
       if (req.body.salesContact !== undefined) {
         if (req.body.salesContact === '' || req.body.salesContact === null) {
@@ -429,7 +440,7 @@ export const updateCustomer = [
       });
     } catch (error) {
       console.error('Error updating customer:', error);
-      
+
       if (error.name === 'ValidationError') {
         const errors = Object.values(error.errors).map(err => ({
           field: err.path,
@@ -530,7 +541,7 @@ export const getCustomerStats = async (req, res) => {
 export const exportCustomersToExcel = async (req, res) => {
   try {
     const customers = await Customer.find({}).sort({ createdAt: -1 });
-    
+
     const excelData = customers.map(customer => ({
       'Customer Code': customer.customerCode || '',
       'Customer Name': customer.customerName || '',
@@ -560,7 +571,7 @@ export const exportCustomersToExcel = async (req, res) => {
 
     const workbook = XLSX.utils.book_new();
     const worksheet = XLSX.utils.json_to_sheet(excelData);
-    
+
     // Auto-size columns
     const colWidths = [];
     Object.keys(excelData[0] || {}).forEach(key => {
@@ -573,14 +584,14 @@ export const exportCustomersToExcel = async (req, res) => {
     worksheet['!cols'] = colWidths;
 
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Customers');
-    
+
     const excelBuffer = XLSX.write(workbook, {
       type: 'buffer',
       bookType: 'xlsx'
     });
 
     const filename = `customers_export_${Date.now()}.xlsx`;
-    
+
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(excelBuffer);
@@ -703,12 +714,12 @@ export const importCustomersFromExcel = [upload.single('file'), async (req, res)
       } catch (rowError) {
         console.error(`Error processing row ${rowNumber}:`, rowError);
         let errorMessage = rowError.message;
-        
+
         if (rowError.name === 'ValidationError') {
           const validationErrors = Object.values(rowError.errors).map(err => err.message);
           errorMessage = validationErrors.join(', ');
         }
-        
+
         results.errors.push(`Row ${rowNumber}: ${errorMessage}`);
         results.failed++;
       }
@@ -722,9 +733,9 @@ export const importCustomersFromExcel = [upload.single('file'), async (req, res)
 
   } catch (error) {
     console.error('Error importing Excel file:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      message: 'Error importing Excel file', 
+      message: 'Error importing Excel file',
       error: error.message
     });
   }
@@ -734,9 +745,9 @@ export const importCustomersFromExcel = [upload.single('file'), async (req, res)
 export const getSalespeople = async (req, res) => {
   try {
     console.log('👥 Getting salespeople list for dropdown');
-    
+
     const salespeople = await User.find({
-      role: 'Sales'
+      role: { $in: ['Sales', 'Sales Person', 'Salesman', 'Agent'] }
     }).select('_id fullName username email').sort({ fullName: 1 });
 
     console.log(`📋 Found ${salespeople.length} salespeople`);
@@ -749,9 +760,9 @@ export const getSalespeople = async (req, res) => {
 
   } catch (error) {
     console.error('❌ Error fetching salespeople:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      message: 'Error fetching salespeople', 
+      message: 'Error fetching salespeople',
       error: error.message
     });
   }
@@ -761,10 +772,10 @@ export const getSalespeople = async (req, res) => {
 export const getCustomerDropdownList = async (req, res) => {
   try {
     console.log('📋 Getting customer dropdown list');
-    
+
     const customers = await Customer.find({
       active: 'Yes'
-    }).select('_id name customerCode category').sort({ name: 1 });
+    }).select('_id name customerCode category entityType tdsSection').sort({ name: 1 });
 
     console.log(`👥 Found ${customers.length} active customers`);
 
@@ -776,9 +787,9 @@ export const getCustomerDropdownList = async (req, res) => {
 
   } catch (error) {
     console.error('❌ Error fetching customer dropdown list:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      message: 'Error fetching customer dropdown list', 
+      message: 'Error fetching customer dropdown list',
       error: error.message
     });
   }
@@ -789,7 +800,7 @@ export const getCustomersBySalesperson = async (req, res) => {
   try {
     const { salespersonId } = req.params;
     console.log(`🎯 Getting customers for salesperson: ${salespersonId}`);
-    
+
     if (!salespersonId) {
       return res.status(400).json({
         success: false,
@@ -813,9 +824,9 @@ export const getCustomersBySalesperson = async (req, res) => {
 
   } catch (error) {
     console.error('❌ Error fetching customers by salesperson:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      message: 'Error fetching customers by salesperson', 
+      message: 'Error fetching customers by salesperson',
       error: error.message
     });
   }

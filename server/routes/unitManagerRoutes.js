@@ -124,7 +124,7 @@ router.get('/items', async (req, res) => {
   try {
     // Import necessary modules
     const { Item } = await import('../models/Inventory.js');
-    
+
     const user = req.user;
     console.log('🔍 Unit Manager Items API:', {
       role: user.role,
@@ -144,14 +144,14 @@ router.get('/items', async (req, res) => {
     const items = await Item.find({
       store: user.companyId // Items use 'store' field, not 'companyId'
     })
-    .select('name code category subCategory batch qty unit price image salePrice stdCost')
-    .sort({ name: 1 })
-    .lean();
+      .select('name code category subCategory batch qty unit price image salePrice stdCost')
+      .sort({ name: 1 })
+      .lean();
 
     console.log(`Unit Manager items API: Found ${items.length} items for company ${user.companyId}`);
 
-    res.json({ 
-      success: true, 
+    res.json({
+      success: true,
       data: items,
       items: items // Also include 'items' for backward compatibility
     });
@@ -227,7 +227,7 @@ router.post('/bulk-approve-group', (req, res) => {
   console.log('🎯 POST /unit-manager/bulk-approve-group called');
   console.log('User:', req.user ? { id: req.user.id, role: req.user.role } : 'No user');
   console.log('Body:', req.body);
-  
+
   try {
     bulkApproveGroup(req, res);
   } catch (error) {
@@ -296,11 +296,61 @@ router.post('/update-return-status/:id', async (req, res) => {
       });
     }
 
+    // If status is being updated to 'approved', deduct amount from customer outstanding and sync with Invoices
+    if (status === 'approved' && returnRecord.status !== 'approved') {
+      try {
+        const Customer = (await import('../models/Customer.js')).default;
+        const customer = await Customer.findById(returnRecord.customerId);
+        if (customer) {
+          const oldBalance = customer.outstandingAmount || 0;
+          customer.outstandingAmount = oldBalance - (returnRecord.totalAmount || 0);
+          await customer.save();
+          console.log(`💰 Updated Customer ${customer.name} balance via inline route: ${oldBalance} -> ${customer.outstandingAmount}`);
+
+          // SYNC INVOICE BALANCES FOR AGEING REPORT
+          let remainingReturnAmount = returnRecord.totalAmount || 0;
+
+          // 1. Try targeted invoice if order is linked
+          if (returnRecord.order) {
+            const Sale = (await import('../models/Sale.js')).default;
+            const targetInvoice = await Sale.findOne({ order: returnRecord.order });
+            if (targetInvoice && targetInvoice.balanceAmount > 0) {
+              const reduction = Math.min(targetInvoice.balanceAmount, remainingReturnAmount);
+              targetInvoice.balanceAmount -= reduction;
+              remainingReturnAmount -= reduction;
+              await targetInvoice.save();
+              console.log(`📑 Reduced targeted invoice ${targetInvoice.invoiceNumber} balance by ${reduction}`);
+            }
+          }
+
+          // 2. FIFO reduction
+          if (remainingReturnAmount > 0) {
+            const Sale = (await import('../models/Sale.js')).default;
+            const unpaidInvoices = await Sale.find({
+              customer: returnRecord.customerId,
+              balanceAmount: { $gt: 0 }
+            }).sort({ saleDate: 1 });
+
+            for (const inv of unpaidInvoices) {
+              if (remainingReturnAmount <= 0) break;
+              const reduction = Math.min(inv.balanceAmount, remainingReturnAmount);
+              inv.balanceAmount -= reduction;
+              remainingReturnAmount -= reduction;
+              await inv.save();
+              console.log(`📑 Reduced invoice ${inv.invoiceNumber} balance by ${reduction} (FIFO)`);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('❌ Error updating customer balance in inline status update:', err);
+      }
+    }
+
     // Update status
     returnRecord.status = status;
     returnRecord.updatedAt = new Date();
     returnRecord.updatedBy = user._id;
-    
+
     await returnRecord.save();
 
     console.log('✅ Return status updated successfully');

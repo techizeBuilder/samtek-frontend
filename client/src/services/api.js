@@ -12,7 +12,7 @@ class APIService {
   getInventoryApiPath() {
     const userStr = localStorage.getItem('user');
     if (!userStr) return '';
-    
+
     try {
       const user = JSON.parse(userStr);
       switch (user.role) {
@@ -46,17 +46,17 @@ class APIService {
 
     try {
       const response = await fetch(url, config);
-      
+
       // Check if response is JSON
       const contentType = response.headers.get('content-type');
       let data;
-      
+
       if (contentType && contentType.includes('application/json')) {
         data = await response.json();
       } else {
         data = { message: await response.text() };
       }
-      
+
       if (!response.ok) {
         // Create a detailed error object with server response
         const error = new Error(data.message || `HTTP error! status: ${response.status}`);
@@ -65,18 +65,18 @@ class APIService {
         error.success = data.success || false;
         throw error;
       }
-      
+
       return data;
     } catch (error) {
       console.error('API Request Error:', error);
-      
+
       // If it's a network error (no response), mark it as such
       if (!error.status && error.message.includes('fetch')) {
         error.isNetworkError = true;
         error.message = 'Unable to connect to the server. Please check your internet connection.';
         console.error('[NETWORK] Connection Problem:', error);
       }
-      
+
       throw error;
     }
   }
@@ -202,12 +202,12 @@ class APIService {
 
     try {
       const response = await fetch(url, config);
-      
+
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
       }
-      
+
       // Get filename from Content-Disposition header
       const contentDisposition = response.headers.get('Content-Disposition');
       let filename = 'export.xlsx';
@@ -217,7 +217,7 @@ class APIService {
           filename = filenameMatch[1];
         }
       }
-      
+
       // Convert response to blob and trigger download
       const blob = await response.blob();
       const downloadUrl = window.URL.createObjectURL(blob);
@@ -228,7 +228,7 @@ class APIService {
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(downloadUrl);
-      
+
       return { success: true, message: 'File downloaded successfully' };
     } catch (error) {
       console.error('File download error:', error);
@@ -257,11 +257,11 @@ class APIService {
       }
     });
     const queryString = queryParams.toString();
-    
+
     // Use role-based customer endpoint
     const userStr = localStorage.getItem('user');
     let endpoint = '/customers';
-    
+
     if (userStr) {
       try {
         const user = JSON.parse(userStr);
@@ -285,7 +285,7 @@ class APIService {
         // fallback to default
       }
     }
-    
+
     return this.get(`${endpoint}${queryString ? `?${queryString}` : ''}`);
   }
 
@@ -299,7 +299,7 @@ class APIService {
     // Don't set Content-Type manually, let browser set it with boundary
     const headers = { ...this.getAuthHeaders() };
     delete headers['Content-Type'];
-    
+
     const inventoryPath = this.getInventoryApiPath();
     return this.request(`${inventoryPath}/items/import`, {
       method: 'POST',
@@ -311,10 +311,10 @@ class APIService {
   async importCustomersFromExcel(file) {
     const formData = new FormData();
     formData.append('file', file);
-    
+
     const headers = { ...this.getAuthHeaders() };
     delete headers['Content-Type'];
-    
+
     return this.request('/customers/import', {
       method: 'POST',
       body: formData,
@@ -325,10 +325,10 @@ class APIService {
   async importSuppliersFromExcel(file) {
     const formData = new FormData();
     formData.append('file', file);
-    
+
     const headers = { ...this.getAuthHeaders() };
     delete headers['Content-Type'];
-    
+
     return this.request('/suppliers/import', {
       method: 'POST',
       body: formData,
@@ -452,10 +452,10 @@ class APIService {
     const inventoryPath = this.getInventoryApiPath();
     const formData = new FormData();
     formData.append('file', file);
-    
+
     const headers = { ...this.getAuthHeaders() };
     delete headers['Content-Type'];
-    
+
     return this.request(`${inventoryPath}/items/import`, {
       method: 'POST',
       body: formData,
@@ -467,7 +467,7 @@ class APIService {
   getOrdersApiPath() {
     const userStr = localStorage.getItem('user');
     if (!userStr) return '/orders';
-    
+
     try {
       const user = JSON.parse(userStr);
       switch (user.role) {
@@ -532,7 +532,7 @@ class APIService {
   async getOrderCustomers() {
     const userStr = localStorage.getItem('user');
     if (!userStr) return this.get('/api/customers');
-    
+
     try {
       const user = JSON.parse(userStr);
       switch (user.role) {
@@ -596,7 +596,7 @@ class APIService {
   }
 
   // ============ CUTOFF TIME MANAGEMENT APIs ============
-  
+
   // Get current cutoff time setting for unit head's company
   async getCutoffTime() {
     return this.get('/unit-head/cutoff-time');
@@ -609,7 +609,7 @@ class APIService {
       cutoffTime: data.time,  // Map 'time' to 'cutoffTime'
       description: data.description
     };
-    
+
     // Use POST - backend handles both create and update logic
     return this.post('/unit-head/cutoff-time', requestData);
   }
@@ -645,6 +645,90 @@ class APIService {
   // Sales-specific cutoff time status check
   async getSalesCutoffTimeStatus() {
     return this.get('/sales/cutoff-time-status');
+  }
+
+  // ============ EXPENSE & FINANCE APIs ============
+  async getExpenses(params = {}) {
+    const queryParams = new URLSearchParams();
+    Object.keys(params).forEach(key => {
+      if (params[key] !== undefined && params[key] !== '' && params[key] !== 'all') {
+        queryParams.append(key, params[key]);
+      }
+    });
+    return this.get(`/expenses?${queryParams.toString()}`);
+  }
+
+  async createExpense(data) {
+    return this.post('/expenses', data);
+  }
+
+  async updateExpense(id, data) {
+    return this.put(`/expenses/${id}`, data);
+  }
+
+  async deleteExpense(id) {
+    return this.delete(`/expenses/${id}`);
+  }
+
+  async getExpenseStats(params = {}) {
+    const queryParams = new URLSearchParams();
+    Object.keys(params).forEach(key => {
+      if (params[key] !== undefined && params[key] !== '') {
+        queryParams.append(key, params[key]);
+      }
+    });
+    return this.get(`/expenses/stats?${queryParams.toString()}`);
+  }
+
+  async getFinanceSummary(params = {}) {
+    const queryParams = new URLSearchParams();
+    Object.keys(params).forEach(key => {
+      if (params[key] !== undefined && params[key] !== '') {
+        queryParams.append(key, params[key]);
+      }
+    });
+    return this.get(`/finance/summary?${queryParams.toString()}`);
+  }
+
+  // ============ BANK & CASH APIs ============
+  async getAccounts(params = {}) {
+    const queryParams = new URLSearchParams();
+    Object.keys(params).forEach(key => {
+      if (params[key] !== undefined && params[key] !== '') {
+        queryParams.append(key, params[key]);
+      }
+    });
+    return this.get(`/accounts?${queryParams.toString()}`);
+  }
+
+  async createAccount(data) {
+    return this.post('/accounts', data);
+  }
+
+  async updateAccount(id, data) {
+    return this.put(`/accounts/${id}`, data);
+  }
+
+  async getAccountById(id) {
+    return this.get(`/accounts/${id}`);
+  }
+
+  async deleteAccount(id) {
+    return this.delete(`/accounts/${id}`);
+  }
+
+  async getBankCashSummary(params = {}) {
+    const queryParams = new URLSearchParams();
+    Object.keys(params).forEach(key => {
+      if (params[key] !== undefined && params[key] !== '') {
+        queryParams.append(key, params[key]);
+      }
+    });
+    return this.get(`/accounts/bank-cash/summary?${queryParams.toString()}`);
+  }
+
+  async reconcileTransaction(id, data) {
+    return this.put(`/accounts/bank-cash/reconcile/${id}`, data);
   }
 }
 

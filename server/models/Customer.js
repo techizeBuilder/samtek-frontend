@@ -46,13 +46,13 @@ const customerSchema = new mongoose.Schema({
     },
     default: 'Yes'
   },
-  
+
   // Contact Information
   mobile: {
     type: String,
     required: [true, 'Mobile number is required'],
     validate: {
-      validator: function(v) {
+      validator: function (v) {
         return /^[0-9]{10}$/.test(v); // 10 digit mobile number
       },
       message: 'Mobile number must be exactly 10 digits'
@@ -64,7 +64,7 @@ const customerSchema = new mongoose.Schema({
     trim: true,
     lowercase: true,
     validate: {
-      validator: function(v) {
+      validator: function (v) {
         return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
       },
       message: 'Please enter a valid email address'
@@ -74,7 +74,7 @@ const customerSchema = new mongoose.Schema({
     type: String,
     trim: true,
     validate: {
-      validator: function(v) {
+      validator: function (v) {
         if (!v) return true; // Optional field
         return v.length === 15; // Just check length
       },
@@ -123,7 +123,7 @@ const customerSchema = new mongoose.Schema({
     type: String,
     trim: true,
     validate: {
-      validator: function(v) {
+      validator: function (v) {
         if (!v) return true; // Optional field
         return /^\d{6}$/.test(v);
       },
@@ -140,6 +140,16 @@ const customerSchema = new mongoose.Schema({
   outstandingAmount: {
     type: Number,
     default: 0
+  },
+  entityType: {
+    type: String,
+    enum: ['Individual', 'HUF', 'Company', 'Firm', 'Others'],
+    default: 'Others'
+  },
+  tdsSection: {
+    type: String,
+    enum: ['194C', '194J', '194Q', '206C_1H', 'None'],
+    default: 'None'
   }
 }, {
   timestamps: true,
@@ -148,7 +158,7 @@ const customerSchema = new mongoose.Schema({
 });
 
 // Auto-generate customer code before saving
-customerSchema.pre('save', function(next) {
+customerSchema.pre('save', function (next) {
   if (!this.customerCode) {
     const timestamp = Date.now().toString().slice(-8);
     const random = Math.random().toString(36).substr(2, 4).toUpperCase();

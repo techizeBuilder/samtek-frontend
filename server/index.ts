@@ -1,9 +1,11 @@
-import express, { type Request, Response, NextFunction } from "express";
+import { type Request, Response, NextFunction } from "express";
 import { createServer } from "http";
 // Import environment configuration
 import { config } from "./config/environment.js";
 // Removed cookieParser - using JWT Bearer tokens only
-import cors from "cors";
+// Main entry point - Trigger restart
+import express from 'express';
+import cors from 'cors';
 import path from "path";
 import { setupVite, serveStatic, log } from "./vite";
 
@@ -65,7 +67,7 @@ app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
     const Order = (await import('./models/Order.js')).default;
     const Customer = (await import('./models/Customer.js')).default;
     const Sale = (await import('./models/Sale.js')).default;
-    
+
     console.log('✅ Models registered:', {
       User: !!User,
       Item: !!Item,
@@ -104,7 +106,7 @@ app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
     app.get('/api/fix-sales-permissions', async (req, res) => {
       try {
         const User = (await import('./models/User.js')).default;
-        
+
         const result = await User.updateMany(
           { role: 'Sales' },
           {
@@ -139,7 +141,7 @@ app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
           message: 'Sales permissions updated successfully',
           result
         });
-      } catch (error) {
+      } catch (error: any) {
         console.error('Error fixing sales permissions:', error);
         res.status(500).json({
           success: false,
@@ -152,12 +154,12 @@ app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
     // Fix Production permissions endpoint (development only - no auth required)
     app.get('/api/fix-production-permissions', async (req, res) => {
       try {
-        const { updateUsersWithProductionPermissions, migrateOldProductionPermissions } = 
+        const { updateUsersWithProductionPermissions, migrateOldProductionPermissions } =
           await import('./utils/updateProductionPermissions.js');
-        
+
         // First migrate old permissions
         const migrationResult = await migrateOldProductionPermissions();
-        
+
         // Then add production permissions to users who don't have them
         const updateResult = await updateUsersWithProductionPermissions();
 
@@ -167,7 +169,7 @@ app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
           migration: migrationResult,
           update: updateResult
         });
-      } catch (error) {
+      } catch (error: any) {
         console.error('Error fixing production permissions:', error);
         res.status(500).json({
           success: false,
@@ -201,12 +203,18 @@ app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
       const { default: orderRoutes } = await import('./routes/orderRoutes.js');
       const salesRouter = (await import('./routes/salesRoutes.js')).default;
       const accountsRouter = (await import('./routes/accountsRoutes.js')).default;
+      const expenseRouter = (await import('./routes/expenseRoutes.js')).default;
+      const financeRouter = (await import('./routes/financeRoutes.js')).default;
       app.use('/api/orders', orderRoutes);
       app.use('/api/sales', salesRouter);
       app.use('/api/accounts', accountsRouter);
+      app.use('/api/expenses', expenseRouter);
+      app.use('/api/finance', financeRouter);
       console.log('Order routes registered at /api/orders');
       console.log('Sales routes registered at /api/sales');
       console.log('Accounts routes registered at /api/accounts');
+      console.log('Expense routes registered at /api/expenses');
+      console.log('Finance routes registered at /api/finance');
 
       const returnRoutes = (await import('./routes/returnRoutes.js')).default;
       app.use('/api/returns', returnRoutes);
@@ -260,7 +268,7 @@ app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
       const { authenticateToken } = await import('./middleware/auth.js');
       const { getAllOrders } = await import('./controllers/unitManagerController.js');
       const { getUnitHeadOrders } = await import('./controllers/unitHeadController.js');
-      
+
       // Direct route for sales-order-list (bypasses /api/unit-manager prefix)
       app.get('/sales-order-list', authenticateToken, getAllOrders);
       console.log('Direct sales-order-list route registered');
@@ -277,7 +285,7 @@ app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
           const { seedCustomersDirectly } = await import('./utils/seedCustomersDirect.js');
           const result = await seedCustomersDirectly();
           res.json(result);
-        } catch (error) {
+        } catch (error: any) {
           console.error('Error seeding customers:', error);
           res.status(500).json({
             success: false,
@@ -292,7 +300,7 @@ app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
           const { seedCustomersDirectly } = await import('./utils/seedCustomersDirect.js');
           const result = await seedCustomersDirectly();
           res.json(result);
-        } catch (error) {
+        } catch (error: any) {
           console.error('Error seeding customers:', error);
           res.status(500).json({
             success: false,
@@ -308,7 +316,7 @@ app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
           const { seedOrdersData } = await import('./seed/seedOrders.js');
           const result = await seedOrdersData();
           res.json(result);
-        } catch (error) {
+        } catch (error: any) {
           console.error('Error seeding orders:', error);
           res.status(500).json({
             success: false,
@@ -322,7 +330,7 @@ app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
       app.post('/api/direct-seed-customers', async (req, res) => {
         try {
           const Customer = (await import('./models/Customer.js')).default;
-          
+
           // Clear existing customers
           await Customer.deleteMany({});
           console.log('Cleared existing customers');
@@ -355,7 +363,7 @@ app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
             message: `Successfully seeded ${insertedCustomers.length} customers`,
             customers: insertedCustomers
           });
-        } catch (error) {
+        } catch (error: any) {
           console.error('Error seeding customers:', error);
           res.status(500).json({
             success: false,
@@ -366,7 +374,7 @@ app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
       });
 
       log("API routes registered successfully");
-    } catch (error) {
+    } catch (error: any) {
       log(`Error importing routes: ${error.message}`);
       throw error;
     }

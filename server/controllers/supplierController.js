@@ -3,7 +3,7 @@ import * as XLSX from 'xlsx';
 import multer from 'multer';
 
 // Configure multer for file upload
-const upload = multer({ 
+const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
   fileFilter: (req, file, cb) => {
@@ -21,7 +21,10 @@ const upload = multer({
 
 export const getSuppliers = async (req, res) => {
   try {
-    const suppliers = await Supplier.find({}).sort({ createdAt: -1 });
+    const unit = req.user.unit;
+    const suppliers = await Supplier.find({
+      unit: { $in: [unit, 'Main'] }
+    }).sort({ createdAt: -1 });
     res.json({ suppliers });
   } catch (error) {
     console.error('Error fetching suppliers:', error);
@@ -44,12 +47,16 @@ export const getSupplierById = async (req, res) => {
 
 export const createSupplier = async (req, res) => {
   try {
-    const supplier = new Supplier(req.body);
+    const supplierData = { ...req.body, unit: req.user.unit };
+    const supplier = new Supplier(supplierData);
     await supplier.save();
     res.status(201).json({ message: 'Supplier created successfully', supplier });
   } catch (error) {
     console.error('Error creating supplier:', error);
-    res.status(500).json({ message: 'Error creating supplier' });
+    res.status(error.name === 'ValidationError' ? 400 : 500).json({
+      message: error.message || 'Error creating supplier',
+      errors: error.errors
+    });
   }
 };
 
@@ -85,9 +92,13 @@ export const deleteSupplier = async (req, res) => {
 
 export const getSupplierStats = async (req, res) => {
   try {
-    const totalSuppliers = await Supplier.countDocuments();
-    const activeSuppliers = await Supplier.countDocuments({ status: 'active' });
-    
+    const unit = req.user.unit;
+    const totalSuppliers = await Supplier.countDocuments({ unit: { $in: [unit, 'Main'] } });
+    const activeSuppliers = await Supplier.countDocuments({
+      unit: { $in: [unit, 'Main'] },
+      status: 'active'
+    });
+
     res.json({
       total: totalSuppliers,
       active: activeSuppliers,
@@ -102,10 +113,13 @@ export const getSupplierStats = async (req, res) => {
 // Export suppliers to Excel
 export const exportSuppliersToExcel = async (req, res) => {
   try {
-    const suppliers = await Supplier.find({}).sort({ createdAt: -1 });
-    
+    const unit = req.user.unit;
+    const suppliers = await Supplier.find({
+      unit: { $in: [unit, 'Main'] }
+    }).sort({ createdAt: -1 });
+
     const excelData = suppliers.map(supplier => ({
-      'Supplier Name': supplier.name,
+      'Supplier Name': supplier.supplierName || supplier.name,
       'Contact Person': supplier.contactPerson || '',
       'Email': supplier.email || '',
       'Phone': supplier.phone || '',
@@ -123,7 +137,7 @@ export const exportSuppliersToExcel = async (req, res) => {
 
     const workbook = XLSX.utils.book_new();
     const worksheet = XLSX.utils.json_to_sheet(excelData);
-    
+
     const colWidths = [];
     Object.keys(excelData[0] || {}).forEach(key => {
       const maxLength = Math.max(
@@ -135,14 +149,14 @@ export const exportSuppliersToExcel = async (req, res) => {
     worksheet['!cols'] = colWidths;
 
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Suppliers');
-    
+
     const excelBuffer = XLSX.write(workbook, {
       type: 'buffer',
       bookType: 'xlsx'
     });
 
     const filename = `suppliers_${Date.now()}.xlsx`;
-    
+
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(excelBuffer);
@@ -183,7 +197,7 @@ export const importSuppliersFromExcel = [upload.single('file'), async (req, res)
 
       try {
         const supplierData = {
-          name: row['Supplier Name'] || row['Name'] || '',
+          supplierName: row['Supplier Name'] || row['Name'] || '',
           contactPerson: row['Contact Person'] || '',
           email: row['Email'] || '',
           phone: row['Phone'] || '',
@@ -195,10 +209,11 @@ export const importSuppliersFromExcel = [upload.single('file'), async (req, res)
           postalCode: row['Postal Code'] || row['Zip Code'] || '',
           taxId: row['Tax ID'] || '',
           paymentTerms: row['Payment Terms'] || '',
-          status: row['Status'] || 'active'
+          status: row['Status'] || 'active',
+          unit: req.user.unit // Important: Assign to current user's unit
         };
 
-        if (!supplierData.name) {
+        if (!supplierData.supplierName) {
           results.errors.push(`Row ${rowNumber}: Supplier name is required`);
           results.failed++;
           continue;
@@ -232,8 +247,8 @@ export const importSuppliersFromExcel = [upload.single('file'), async (req, res)
 
   } catch (error) {
     console.error('Error importing Excel file:', error);
-    res.status(500).json({ 
-      message: 'Error importing Excel file', 
+    res.status(500).json({
+      message: 'Error importing Excel file',
       error: error.message,
       success: false
     });

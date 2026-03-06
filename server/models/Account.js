@@ -33,6 +33,17 @@ const accountSchema = new mongoose.Schema({
   },
   description: {
     type: String
+  },
+  isBankOrCash: {
+    type: Boolean,
+    default: false
+  },
+  bankDetails: {
+    bankName: String,
+    accountNumber: String,
+    ifsc: String,
+    branch: String,
+    upiId: String
   }
 }, {
   timestamps: true
@@ -83,7 +94,7 @@ const transactionSchema = new mongoose.Schema({
   },
   relatedDocument: {
     type: String,
-    enum: ['Sale', 'Purchase', 'Order', 'Payment', 'Receipt']
+    enum: ['Sale', 'Purchase', 'Order', 'Payment', 'Receipt', 'PurchaseReturn', 'SalesReturn']
   },
   relatedDocumentId: {
     type: mongoose.Schema.Types.ObjectId
@@ -100,12 +111,27 @@ const transactionSchema = new mongoose.Schema({
   approvedBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
+  },
+  isReconciled: {
+    type: Boolean,
+    default: false
+  },
+  reconciliationDate: {
+    type: Date
+  },
+  clearedAmount: {
+    type: Number
+  },
+  mode: {
+    type: String,
+    enum: ['Cash', 'Bank Transfer', 'Cheque', 'UPI', 'NEFT', 'Other'],
+    default: 'Cash'
   }
 }, {
   timestamps: true
 });
 
-transactionSchema.pre('save', function(next) {
+transactionSchema.pre('save', function (next) {
   if (!this.transactionNumber) {
     this.transactionNumber = `TXN-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
   }

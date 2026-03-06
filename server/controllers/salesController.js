@@ -145,6 +145,11 @@ export const createSale = async (req, res) => {
       { path: 'customer', select: 'customerName contactPerson email phone' }
     ]);
 
+    // Update customer outstanding balance
+    await Customer.findByIdAndUpdate(customer, {
+      $inc: { outstandingAmount: totalAmount }
+    });
+
     res.status(201).json({
       message: 'Sale created successfully',
       sale
@@ -202,6 +207,14 @@ export const updateSale = async (req, res) => {
       { path: 'dispatch', select: 'dispatchNumber' }
     ]);
 
+    // Verify change in total amount to update outstanding balance
+    const amountDifference = updatedSale.totalAmount - sale.totalAmount;
+    if (Math.abs(amountDifference) > 0.01) {
+      await Customer.findByIdAndUpdate(sale.customer, {
+        $inc: { outstandingAmount: amountDifference }
+      });
+    }
+
     res.json({
       message: 'Sale updated successfully',
       sale: updatedSale
@@ -231,6 +244,15 @@ export const deleteSale = async (req, res) => {
     }
 
     await Sale.findByIdAndDelete(id);
+
+    await Sale.findByIdAndDelete(id);
+
+    // Reduce customer outstanding by the deleted sale amount
+    // If it was partially paid, the payment remains valid as credit/advance, 
+    // so we reduce the full sale liability.
+    await Customer.findByIdAndUpdate(sale.customer, {
+      $inc: { outstandingAmount: -sale.totalAmount }
+    });
 
     res.json({ message: 'Sale deleted successfully' });
   } catch (error) {
@@ -310,11 +332,11 @@ export const getSalesStats = async (req, res) => {
 // Salesperson-specific controller functions
 export const getSalespersonCustomers = async (req, res) => {
   try {
-    const { 
-      page = 1, 
-      limit = 10, 
-      search = '', 
-      category = '', 
+    const {
+      page = 1,
+      limit = 10,
+      search = '',
+      category = '',
       status = '',
       customerType = '',
       name = '',
@@ -374,7 +396,7 @@ export const getSalespersonCustomers = async (req, res) => {
           { mobile: { $regex: searchTerm, $options: 'i' } }
         ]
       };
-      
+
       if (query.$and) {
         query.$and.push(searchQuery);
       } else {
@@ -404,9 +426,9 @@ export const getSalespersonCustomers = async (req, res) => {
       sortOptions,
       skip,
       limit: parseInt(limit),
-      filters: { 
-        status, 
-        customerType, 
+      filters: {
+        status,
+        customerType,
         category,
         categoryFilterUsed: category || customerType
       }
@@ -544,7 +566,7 @@ export const getSalespersonInvoices = async (req, res) => {
     else if (userRole !== 'Super Admin' && userRole !== 'Unit Manager') {
       orderQuery.salesPerson = salespersonId;
     }
-    
+
     const salespersonOrders = await Order.find(orderQuery).select('_id');
     const orderIds = salespersonOrders.map(order => order._id);
 
@@ -618,7 +640,7 @@ export const getSalespersonRefundReturns = async (req, res) => {
     else if (userRole !== 'Super Admin' && userRole !== 'Unit Manager') {
       orderQuery.salesPerson = salespersonId;
     }
-    
+
     const salespersonOrders = await Order.find(orderQuery).select('_id');
     const orderIds = salespersonOrders.map(order => order._id);
 
@@ -644,7 +666,7 @@ export const getSalespersonRefundReturns = async (req, res) => {
     // Check if Return model exists and has documents
     try {
       refundReturns = await Return.find(query)
-        .populate('order', 'orderCode')
+        .populate('order', 'orderCode orderDate')
         .populate('customer', 'name email mobile')
         .sort({ createdAt: -1 })
         .skip(skip)
@@ -701,6 +723,7 @@ export const getSalespersonReturns = async (req, res) => {
 
     try {
       returns = await Return.find(query)
+        .populate('order', 'orderCode orderDate')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(parseInt(limit));
@@ -756,6 +779,7 @@ export const getSalespersonDamages = async (req, res) => {
 
     try {
       damages = await Return.find(query)
+        .populate('order', 'orderCode orderDate')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(parseInt(limit));
@@ -790,13 +814,13 @@ export const getSalespersonItems = async (req, res) => {
     const userRole = req.user.role;
     const userCompanyId = req.user.companyId;
 
-    const { 
-      page = 1, 
-      limit = 20, 
-      search, 
-      type, 
-      category, 
-      subCategory, 
+    const {
+      page = 1,
+      limit = 20,
+      search,
+      type,
+      category,
+      subCategory,
       lowStock,
       sortBy = 'name',
       sortOrder = 'asc'
@@ -863,7 +887,7 @@ export const getSalespersonItems = async (req, res) => {
 
     // Sort options - default to category A-Z for sales items
     let sortOptions = { category: 1, name: 1 }; // Default: category A-Z, then name A-Z
-    
+
     if (sortBy && sortBy !== 'createdAt') {
       if (sortBy === 'name') {
         sortOptions.name = sortOrder === 'desc' ? -1 : 1;
@@ -878,13 +902,13 @@ export const getSalespersonItems = async (req, res) => {
 
     const items = await Item.find(query)
       .sort(sortOptions);
-      // No skip or limit - return all items
+    // No skip or limit - return all items
 
     // Resolve company names for store locations
     const itemsWithCompanyNames = await Promise.all(
       items.map(async (item) => {
         const itemObj = item.toObject();
-        
+
         // If store field contains an ObjectId, resolve the company name
         if (itemObj.store && itemObj.store.match(/^[0-9a-fA-F]{24}$/)) {
           try {
@@ -903,7 +927,7 @@ export const getSalespersonItems = async (req, res) => {
           // For backward compatibility with string store names
           itemObj.storeLocation = itemObj.store || 'No Location';
         }
-        
+
         return itemObj;
       })
     );
@@ -922,9 +946,9 @@ export const getSalespersonItems = async (req, res) => {
     });
   } catch (error) {
     console.error('Get salesperson items error:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      message: 'Internal server error' 
+      message: 'Internal server error'
     });
   }
 };
@@ -934,19 +958,19 @@ export const getSalesSummary = async (req, res) => {
   try {
     const salespersonId = req.user._id || req.user.id;
     const userCompanyId = req.user.companyId;
-    
+
     console.log('📊 getSalesSummary called:', {
       userId: salespersonId,
       role: req.user.role,
       companyId: userCompanyId
     });
-    
+
     // Always filter by salesperson for sales users
     const filter = {
       salesPerson: salespersonId,
       companyId: userCompanyId
     };
-    
+
     const [totalOrders, pendingOrders, completedOrders, approvedOrders, inProgressOrders] = await Promise.all([
       Order.countDocuments(filter),
       Order.countDocuments({ ...filter, status: { $in: ['pending', 'Pending'] } }),
@@ -954,24 +978,24 @@ export const getSalesSummary = async (req, res) => {
       Order.countDocuments({ ...filter, status: { $in: ['approved', 'Approved'] } }),
       Order.countDocuments({ ...filter, status: { $in: ['in_production', 'In_Production'] } })
     ]);
-    
+
     const revenueResult = await Order.aggregate([
       { $match: { ...filter, status: { $in: ['completed', 'Completed', 'approved', 'Approved'] } } },
       { $group: { _id: null, total: { $sum: '$totalAmount' } } }
     ]);
-    
+
     const totalRevenue = revenueResult[0]?.total || 0;
-    
+
     console.log('📊 Sales Summary Results:', {
       totalOrders,
-      pendingOrders, 
+      pendingOrders,
       completedOrders,
       approvedOrders,
       inProgressOrders,
       totalRevenue,
       filter
     });
-    
+
     res.json({
       success: true,
       data: {
@@ -983,7 +1007,7 @@ export const getSalesSummary = async (req, res) => {
         totalRevenue
       }
     });
-    
+
   } catch (error) {
     console.error('Error in getSalesSummary:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });
@@ -995,19 +1019,19 @@ export const getSalesRecentOrders = async (req, res) => {
     const { limit = 5 } = req.query;
     const salespersonId = req.user._id || req.user.id;
     const userCompanyId = req.user.companyId;
-    
+
     console.log('📋 getSalesRecentOrders called:', {
       userId: salespersonId,
       role: req.user.role,
       companyId: userCompanyId,
       limit
     });
-    
+
     const filter = {
       salesPerson: salespersonId,
       companyId: userCompanyId
     };
-    
+
     const recentOrders = await Order.find(filter)
       .populate('customer', 'name contactPerson email mobile')
       .populate('salesPerson', 'fullName username')
@@ -1015,7 +1039,7 @@ export const getSalesRecentOrders = async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(parseInt(limit))
       .lean();
-      
+
     // Transform orders to ensure frontend compatibility
     const transformedOrders = recentOrders.map(order => ({
       _id: order._id,
@@ -1041,12 +1065,12 @@ export const getSalesRecentOrders = async (req, res) => {
       createdAt: order.createdAt,
       products: order.products || [],
       items: Array.isArray(order.products) ? order.products.length : 0,  // Frontend expects 'items' count
-      totalQuantity: Array.isArray(order.products) ? 
+      totalQuantity: Array.isArray(order.products) ?
         order.products.reduce((sum, p) => sum + (p.quantity || 0), 0) : 0,
       totalItems: Array.isArray(order.products) ? order.products.length : 0,
       notes: order.notes
     }));
-      
+
     console.log('📋 Recent Orders Results:', {
       count: transformedOrders.length,
       orders: transformedOrders.map(order => ({
@@ -1057,19 +1081,19 @@ export const getSalesRecentOrders = async (req, res) => {
         totalAmount: order.totalAmount
       }))
     });
-    
-    res.json({ 
-      success: true, 
+
+    res.json({
+      success: true,
       orders: transformedOrders,  // Changed from 'data' to 'orders' to match frontend expectation
       count: transformedOrders.length
     });
-    
+
   } catch (error) {
     console.error('Error in getSalesRecentOrders:', error);
-    res.status(500).json({ 
-      success: false, 
+    res.status(500).json({
+      success: false,
       message: 'Internal server error',
-      error: error.message 
+      error: error.message
     });
   }
 };
@@ -1173,7 +1197,7 @@ export const getSalesOrders = async (req, res) => {
       createdAt: order.createdAt,
       updatedAt: order.updatedAt,
       products: order.products || [],
-      totalQuantity: Array.isArray(order.products) ? 
+      totalQuantity: Array.isArray(order.products) ?
         order.products.reduce((sum, p) => sum + (p.quantity || 0), 0) : 0,
       totalItems: Array.isArray(order.products) ? order.products.length : 0,
       notes: order.notes,
@@ -1237,14 +1261,14 @@ export const getPriorityProducts = async (req, res) => {
       companyId: req.user.companyId,
       isActive: true
     })
-    .populate({
-      path: 'productId',
-      select: 'name code category subCategory price stock image unit'
-    })
-    .sort({ priority: -1, lastUsed: -1 })
-    .skip(skip)
-    .limit(parseInt(limit))
-    .lean();
+      .populate({
+        path: 'productId',
+        select: 'name code category subCategory price stock image unit'
+      })
+      .sort({ priority: -1, lastUsed: -1 })
+      .skip(skip)
+      .limit(parseInt(limit))
+      .lean();
 
     const totalCount = await PriorityProduct.countDocuments({
       userId: req.user._id,
@@ -1351,7 +1375,7 @@ export const addPriorityProduct = async (req, res) => {
         existingPriority.isActive = true;
         existingPriority.priority = priority;
         await existingPriority.save();
-        
+
         return res.json({
           success: true,
           message: 'Product reactivated in priority list',
@@ -1370,7 +1394,7 @@ export const addPriorityProduct = async (req, res) => {
     });
 
     await priorityProduct.save();
-    
+
     // Populate product details for response
     await priorityProduct.populate('productId', 'name code category price');
 
@@ -1486,7 +1510,7 @@ export const updatePriorityProductUsage = async (req, res) => {
 export const getSalesCutoffTimeStatus = async (req, res) => {
   try {
     const salesPerson = req.user;
-    
+
     console.log('🕐 Getting cutoff time status for sales person:', salesPerson.username);
 
     // Validation
@@ -1499,10 +1523,10 @@ export const getSalesCutoffTimeStatus = async (req, res) => {
 
     // Get current order status for the company
     const orderStatus = await CutoffTime.canPlaceOrder(salesPerson.companyId);
-    
+
     // Get cutoff time setting for additional details
     const cutoffSetting = await CutoffTime.findOne({ companyId: salesPerson.companyId });
-    
+
     console.log('✅ Cutoff time status retrieved:', {
       allowed: orderStatus.allowed,
       cutoffTime: cutoffSetting?.cutoffTime || null,
@@ -1553,6 +1577,19 @@ export const createSalespersonReturn = async (req, res) => {
       createdBy: salespersonId
     };
 
+    // If order ID is provided, fetch order to get orderDate
+    if (req.body.order) {
+      try {
+        const orderDoc = await Order.findById(req.body.order);
+        if (orderDoc) {
+          returnData.orderDate = orderDoc.orderDate || orderDoc.createdAt;
+          console.log(`✅ Linked orderDate found: ${returnData.orderDate}`);
+        }
+      } catch (err) {
+        console.error('Error fetching order for return date:', err);
+      }
+    }
+
     const newReturn = new Return(returnData);
     const savedReturn = await newReturn.save();
 
@@ -1563,10 +1600,10 @@ export const createSalespersonReturn = async (req, res) => {
     });
   } catch (error) {
     console.error('Create salesperson return error:', error);
-    res.status(500).json({ 
-      success: false, 
+    res.status(500).json({
+      success: false,
       message: 'Failed to create return',
-      error: error.message 
+      error: error.message
     });
   }
 };
@@ -1588,7 +1625,7 @@ export const updateSalespersonReturn = async (req, res) => {
 
     // More flexible access control - try to find the return first
     let findQuery = { _id: id };
-    
+
     // Only apply company filtering if user has a companyId
     if (userCompanyId) {
       findQuery.$or = [
@@ -1597,7 +1634,7 @@ export const updateSalespersonReturn = async (req, res) => {
         { companyId: null }
       ];
     }
-    
+
     // Additional role-based filtering only for Sales role
     if (userRole === 'Sales') {
       // For sales users, also allow returns they created or are assigned to
@@ -1616,8 +1653,8 @@ export const updateSalespersonReturn = async (req, res) => {
 
     const updatedReturn = await Return.findOneAndUpdate(
       findQuery,
-      { 
-        ...req.body, 
+      {
+        ...req.body,
         updatedBy: salespersonId,
         // Ensure these fields are set if missing
         companyId: req.body.companyId || userCompanyId,
@@ -1640,10 +1677,10 @@ export const updateSalespersonReturn = async (req, res) => {
     });
   } catch (error) {
     console.error('Update salesperson return error:', error);
-    res.status(500).json({ 
-      success: false, 
+    res.status(500).json({
+      success: false,
       message: 'Failed to update return',
-      error: error.message 
+      error: error.message
     });
   }
 };
@@ -1670,6 +1707,19 @@ export const createSalespersonDamage = async (req, res) => {
       createdBy: salespersonId
     };
 
+    // If order ID is provided, fetch order to get orderDate
+    if (req.body.order) {
+      try {
+        const orderDoc = await Order.findById(req.body.order);
+        if (orderDoc) {
+          damageData.orderDate = orderDoc.orderDate || orderDoc.createdAt;
+          console.log(`✅ Linked orderDate found for damage: ${damageData.orderDate}`);
+        }
+      } catch (err) {
+        console.error('Error fetching order for damage return date:', err);
+      }
+    }
+
     const newDamage = new Return(damageData);
     const savedDamage = await newDamage.save();
 
@@ -1680,10 +1730,10 @@ export const createSalespersonDamage = async (req, res) => {
     });
   } catch (error) {
     console.error('Create salesperson damage error:', error);
-    res.status(500).json({ 
-      success: false, 
+    res.status(500).json({
+      success: false,
       message: 'Failed to create damage',
-      error: error.message 
+      error: error.message
     });
   }
 };
@@ -1705,12 +1755,12 @@ export const updateSalespersonDamage = async (req, res) => {
 
     // Find damage with proper access control
     let findQuery = { _id: id };
-    
+
     // Company filtering
     if (userCompanyId) {
       findQuery.companyId = userCompanyId;
     }
-    
+
     // Role-based filtering
     if (userRole === 'Sales') {
       findQuery.salesPerson = salespersonId;
@@ -1736,10 +1786,10 @@ export const updateSalespersonDamage = async (req, res) => {
     });
   } catch (error) {
     console.error('Update salesperson damage error:', error);
-    res.status(500).json({ 
-      success: false, 
+    res.status(500).json({
+      success: false,
       message: 'Failed to update damage',
-      error: error.message 
+      error: error.message
     });
   }
 };
@@ -1775,10 +1825,10 @@ export const deleteSalespersonReturn = async (req, res) => {
 
   } catch (error) {
     console.error('❌ Error deleting return:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
       message: 'Failed to delete return',
-      error: error.message 
+      error: error.message
     });
   }
 };
@@ -1822,10 +1872,10 @@ export const deleteSalespersonDamage = async (req, res) => {
 
   } catch (error) {
     console.error('❌ Error deleting damage:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
       message: 'Failed to delete damage',
-      error: error.message 
+      error: error.message
     });
   }
 };

@@ -272,7 +272,7 @@ export const receivePurchase = async (req, res) => {
 
     // Update received quantities and inventory
     for (const receivedItem of receivedItems) {
-      const purchaseItem = purchase.items.find(item => 
+      const purchaseItem = purchase.items.find(item =>
         item.item._id.toString() === receivedItem.itemId
       );
 
@@ -404,15 +404,15 @@ export const getPurchaseStats = async (req, res) => {
 export const getPurchaseItems = async (req, res) => {
   try {
     const { search = '', type = '', skip = 0, limit = 20 } = req.query;
-    
+
     // Get user's company ID from request - it's the company/store filter
     const userCompanyId = req.user.companyId;
     const userCompanyIdString = userCompanyId ? userCompanyId.toString() : null;
-    
+
     console.log('🔍 User company ID:', userCompanyId);
     console.log('🔍 User company ID (string):', userCompanyIdString);
     console.log('📊 Search:', search, 'Type:', type);
-    
+
     // Build filter query - TWO conditions only:
     // 1. Company filter (store matches user's companyId)
     // 2. Type filter (only Material, Spares, Assemblies)
@@ -447,16 +447,16 @@ export const getPurchaseItems = async (req, res) => {
         }
       }
     ]);
-    
+
     console.log(`📊 Items breakdown by type:`, typeBreakdown);
-    
+
     const allCompanyItems = await Item.countDocuments({
       $or: [
         { store: userCompanyIdString },
         { store: userCompanyId }
       ]
     });
-    
+
     console.log(`📈 Total items in company: ${allCompanyItems}`);
 
     // Get items with pagination

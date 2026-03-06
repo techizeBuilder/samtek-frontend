@@ -2,14 +2,14 @@ import express from 'express';
 import User from './models/User.js';
 import { generateToken, authenticateToken } from './middleware/auth.js';
 
-import { 
-  getUsers, 
-  getUserById, 
-  createUser, 
-  updateUser, 
-  deleteUser, 
+import {
+  getUsers,
+  getUserById,
+  createUser,
+  updateUser,
+  deleteUser,
   resetUserPassword,
-  updateUserPassword 
+  updateUserPassword
 } from './controllers/userController.js';
 import {
   getSettings,
@@ -51,10 +51,10 @@ router.get('/companies/public', async (req, res) => {
   try {
     const { Company } = await import('./models/Company.js');
     const { search, limit = 100 } = req.query;
-    
+
     // Build filter object - only active companies
     const filter = { isActive: true };
-    
+
     // Global search
     if (search) {
       filter.$or = [
@@ -87,9 +87,9 @@ router.get('/companies/public', async (req, res) => {
     });
   } catch (error) {
     console.error('Get companies public error:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      message: 'Internal server error' 
+      message: 'Internal server error'
     });
   }
 });
@@ -115,7 +115,7 @@ router.post('/auth/login', async (req, res) => {
   try {
     console.log('=== LOGIN ROUTE HIT ===');
     console.log('Request body:', req.body);
-    
+
     const { username, password } = req.body;
 
     if (!username || !password) {
@@ -123,12 +123,12 @@ router.post('/auth/login', async (req, res) => {
     }
 
     console.log('Looking for user with username:', username);
-    
+
     // Check all users first
     const allUsers = await User.find({}, 'username email role');
     console.log('All users in database:', allUsers);
-    
-    const user = await User.findOne({ 
+
+    const user = await User.findOne({
       $or: [
         { username: username },
         { email: username }
@@ -147,23 +147,23 @@ router.post('/auth/login', async (req, res) => {
         companyLocation: user.companyId ? `${user.companyId.city}, ${user.companyId.state}` : 'No company assigned',
         passwordHash: user.password.substring(0, 20) + '...'
       });
-      
+
       // Auto-assign company if user doesn't have one (for development/testing)
       if (!user.companyId && (user.role === 'Unit Manager' || user.role === 'Unit Head' || user.role === 'Sales')) {
         console.log('⚠️ User has no company assigned, attempting auto-assignment...');
-        
+
         try {
           const { Company } = await import('./models/Company.js');
           const defaultCompany = await Company.findOne({}).select('name unitName city state country locationPin address');
-          
+
           if (defaultCompany) {
             user.companyId = defaultCompany._id;
             await user.save();
-            
+
             // Reload user with populated company
             const updatedUser = await User.findById(user._id).populate('companyId', 'name unitName city state country locationPin address');
             Object.assign(user, updatedUser._doc);
-            
+
             console.log('✅ Auto-assigned company:', {
               companyName: defaultCompany.name,
               location: `${defaultCompany.city}, ${defaultCompany.state}`
@@ -183,7 +183,7 @@ router.post('/auth/login', async (req, res) => {
     console.log('Comparing password with hash...');
     const isValidPassword = await bcrypt.compare(password, user.password);
     console.log('Password valid:', isValidPassword);
-    
+
     if (!isValidPassword) {
       console.log('Invalid password');
       return res.status(401).json({ message: 'Invalid credentials' });
@@ -198,31 +198,31 @@ router.post('/auth/login', async (req, res) => {
 
     // Filter permissions based on user role - remove inappropriate modules
     let filteredPermissions = { ...user.permissions };
-    
+
     console.log('🔍 BEFORE FILTERING - User Role:', user.role);
     console.log('🔍 BEFORE FILTERING - Modules:', user.permissions.modules.map(m => m.name));
-    
+
     if (user.role === 'Super Admin') {
       console.log('✅ Applying Super Admin filtering');
       // Super Admin should only have superAdmin module
-      filteredPermissions.modules = user.permissions.modules.filter(module => 
+      filteredPermissions.modules = user.permissions.modules.filter(module =>
         module.name === 'superAdmin'
       );
     } else if (user.role === 'Unit Head') {
       console.log('✅ Applying Unit Head filtering');
       // Unit Head should only have unitHead module  
-      filteredPermissions.modules = user.permissions.modules.filter(module => 
+      filteredPermissions.modules = user.permissions.modules.filter(module =>
         module.name === 'unitHead'
       );
     } else if (user.role === 'Production') {
       console.log('✅ Applying Production filtering');
       // Production should only have production module
-      filteredPermissions.modules = user.permissions.modules.filter(module => 
+      filteredPermissions.modules = user.permissions.modules.filter(module =>
         module.name === 'production'
       );
     }
     // For other roles, keep all their modules as-is
-    
+
     console.log('🔍 AFTER FILTERING - Modules:', filteredPermissions.modules.map(m => m.name));
 
     const userResponse = {
@@ -233,7 +233,7 @@ router.post('/auth/login', async (req, res) => {
       profilePicture: user.profilePicture ? `/uploads/profiles/${user.profilePicture}` : null,
       role: user.role,
       permissions: filteredPermissions,
-      unit: user.unit,
+      unit: user.unit || user.companyId?.unitName || 'Main Unit',
       companyId: user.companyId?._id,
       company: user.companyId ? {
         id: user.companyId._id,
@@ -244,7 +244,7 @@ router.post('/auth/login', async (req, res) => {
         country: user.companyId.country,
         locationPin: user.companyId.locationPin,
         address: user.companyId.address,
-        location: `${user.companyId.city}, ${user.companyId.state}` // Combined location string
+        location: `${user.companyId.city}, ${user.companyId.state}`
       } : null,
       profile: {
         firstName: user.firstName,
@@ -259,11 +259,7 @@ router.post('/auth/login', async (req, res) => {
       user: userResponse,
       token
     };
-    
-    console.log('=== LOGIN SUCCESS ===');
-    console.log('User:', userResponse.username, 'Role:', userResponse.role);
-    console.log('Company:', userResponse.company ? userResponse.company.location : 'No company assigned');
-    
+
     res.status(200).json(response);
   } catch (error) {
     console.error('Login error:', error);
@@ -275,9 +271,10 @@ router.post('/auth/login', async (req, res) => {
 router.get('/auth/me', authenticateToken, async (req, res) => {
   try {
     console.log('=== AUTH/ME ROUTE HIT ===');
-    
+
     const userId = req.user.userId || req.user._id;
-    const user = await User.findById(userId).select('-password');
+    const user = await User.findById(userId).select('-password').populate('companyId', 'name unitName city state country locationPin address');
+
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
@@ -290,7 +287,19 @@ router.get('/auth/me', authenticateToken, async (req, res) => {
       profilePicture: user.profilePicture ? `/uploads/profiles/${user.profilePicture}` : null,
       role: user.role,
       permissions: user.permissions,
-      unit: user.unit,
+      unit: user.unit || user.companyId?.unitName || 'Main Unit',
+      companyId: user.companyId?._id,
+      company: user.companyId ? {
+        id: user.companyId._id,
+        name: user.companyId.name,
+        unitName: user.companyId.unitName,
+        city: user.companyId.city,
+        state: user.companyId.state,
+        country: user.companyId.country,
+        locationPin: user.companyId.locationPin,
+        address: user.companyId.address,
+        location: `${user.companyId.city}, ${user.companyId.state}`
+      } : null,
       profile: {
         firstName: user.firstName,
         lastName: user.lastName,
@@ -315,7 +324,7 @@ router.post('/auth/logout', (req, res) => {
 router.post('/auth/change-password', authenticateToken, async (req, res) => {
   try {
     console.log('=== CHANGE PASSWORD ROUTE HIT ===');
-    
+
     const { currentPassword, newPassword } = req.body;
 
     if (!currentPassword || !newPassword) {

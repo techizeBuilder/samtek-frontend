@@ -36,8 +36,7 @@ const saleSchema = new mongoose.Schema({
   },
   order: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Order',
-    required: true
+    ref: 'Order'
   },
   customer: {
     type: mongoose.Schema.Types.ObjectId,
@@ -58,6 +57,16 @@ const saleSchema = new mongoose.Schema({
   totalAmount: {
     type: Number,
     required: true,
+    min: 0
+  },
+  tdsAmount: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
+  tdsPercent: {
+    type: Number,
+    default: 0,
     min: 0
   },
   paymentStatus: {
@@ -85,9 +94,22 @@ const saleSchema = new mongoose.Schema({
     default: 0,
     min: 0
   },
+  balanceAmount: {
+    type: Number,
+    default: 0
+  },
   unit: {
     type: String,
     required: true
+  },
+  companyId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Company',
+    required: true
+  },
+  createdBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
   },
   dispatch: {
     type: mongoose.Schema.Types.ObjectId,
@@ -100,10 +122,27 @@ const saleSchema = new mongoose.Schema({
   timestamps: true
 });
 
-saleSchema.pre('save', function(next) {
+saleSchema.pre('save', function (next) {
   if (!this.invoiceNumber) {
     this.invoiceNumber = `INV-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
   }
+
+  // Calculate balance and update payment status
+  this.balanceAmount = this.totalAmount - this.paidAmount;
+
+  if (this.balanceAmount <= 0) {
+    this.paymentStatus = 'Paid';
+  } else if (this.paidAmount > 0) {
+    this.paymentStatus = 'Partially Paid';
+  } else {
+    // Check for overdue (simplified: if dueDate is in the past)
+    if (this.dueDate && new Date(this.dueDate) < new Date()) {
+      this.paymentStatus = 'Overdue';
+    } else {
+      this.paymentStatus = 'Pending';
+    }
+  }
+
   next();
 });
 

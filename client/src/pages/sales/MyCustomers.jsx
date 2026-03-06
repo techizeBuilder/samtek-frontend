@@ -5,11 +5,11 @@ import { useToast } from '@/hooks/use-toast';
 import { usePermissions } from '@/hooks/usePermissions';
 import { salesApi } from '@/api/salesService';
 import { customerApi } from '@/api/customerService';
-import { 
-  Card, 
-  CardContent, 
-  CardHeader, 
-  CardTitle 
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle
 } from '@/components/ui/card';
 import {
   Table,
@@ -52,7 +52,7 @@ const MyCustomers = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { hasFeatureAccess } = usePermissions();
-  
+
   // States
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
@@ -252,8 +252,8 @@ const MyCustomers = () => {
         </Select>
         <div className="flex gap-2">
           {canAdd && (
-            <CreateCustomerDialog 
-              isOpen={isCreateModalOpen} 
+            <CreateCustomerDialog
+              isOpen={isCreateModalOpen}
               onOpenChange={setIsCreateModalOpen}
               onSuccess={() => {
                 queryClient.invalidateQueries(['/api/sales/my-customers']);
@@ -276,109 +276,109 @@ const MyCustomers = () => {
       <div className="bg-white rounded-lg border overflow-hidden">
         <div className="overflow-x-auto">
           <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Customer</TableHead>
-              <TableHead className="hidden md:table-cell">Contact</TableHead>
-              <TableHead className="hidden lg:table-cell">Category</TableHead>
-              <TableHead className="hidden lg:table-cell">Location</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading ? (
-              Array.from({ length: 5 }).map((_, index) => (
-                <TableRow key={index}>
-                  <TableCell colSpan={6}>
-                    <div className="animate-pulse bg-gray-200 h-4 rounded w-full"></div>
-                  </TableCell>
-                </TableRow>
-              ))
-            ) : customersData.length === 0 ? (
+            <TableHeader>
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-8">
-                  <div className="text-gray-500">
-                    <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                    <p className="text-lg font-medium">No customers found</p>
-                    <p className="text-sm">Try adjusting your search or filters</p>
-                  </div>
-                </TableCell>
+                <TableHead>Customer</TableHead>
+                <TableHead className="hidden md:table-cell">Contact</TableHead>
+                <TableHead className="hidden lg:table-cell">Category</TableHead>
+                <TableHead className="hidden lg:table-cell">Location</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Actions</TableHead>
               </TableRow>
-            ) : (
-              customersData.map((customer) => (
-                <TableRow key={customer._id}>
-                  <TableCell>
-                    <div className="font-medium">{customer.name}</div>
-                    <div className="text-sm text-gray-500 md:hidden">
-                      {customer.mobile} • {customer.email}
-                    </div>
-                  </TableCell>
-                  <TableCell className="hidden md:table-cell">
-                    <div className="text-sm">
-                      <div className="flex items-center gap-1">
-                        <Phone className="h-3 w-3" />
-                        {customer.mobile}
-                      </div>
-                      <div className="flex items-center gap-1 text-gray-500">
-                        <Mail className="h-3 w-3" />
-                        {customer.email}
-                      </div>
-                    </div>
-                  </TableCell>
-                  <TableCell className="hidden lg:table-cell">
-                    <Badge variant="outline">{customer.category}</Badge>
-                  </TableCell>
-                  <TableCell className="hidden lg:table-cell">
-                    <div className="text-sm">
-                      <div>{customer.city}, {customer.state}</div>
-                      <div className="text-gray-500">{customer.pin}</div>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={customer.active === 'Yes' ? 'default' : 'secondary'}>
-                      {customer.active === 'Yes' ? 'Active' : 'Inactive'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1">
-                      {canView && (
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          className="h-8 w-8 p-0" 
-                          onClick={() => handleViewCustomer(customer)}
-                        >
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                      )}
-                      {canEdit && (
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          className="h-8 w-8 p-0" 
-                          onClick={() => handleEditCustomer(customer)}
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                      )}
-                      {canDelete && (
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          className="h-8 w-8 p-0 text-red-600 hover:text-red-700" 
-                          onClick={() => handleDeleteCustomer(customer)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      )}
+            </TableHeader>
+            <TableBody>
+              {isLoading ? (
+                Array.from({ length: 5 }).map((_, index) => (
+                  <TableRow key={index}>
+                    <TableCell colSpan={6}>
+                      <div className="animate-pulse bg-gray-200 h-4 rounded w-full"></div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              ) : customersData.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center py-8">
+                    <div className="text-gray-500">
+                      <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                      <p className="text-lg font-medium">No customers found</p>
+                      <p className="text-sm">Try adjusting your search or filters</p>
                     </div>
                   </TableCell>
                 </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
+              ) : (
+                customersData.map((customer) => (
+                  <TableRow key={customer._id}>
+                    <TableCell>
+                      <div className="font-medium">{customer.name}</div>
+                      <div className="text-sm text-gray-500 md:hidden">
+                        {customer.mobile} • {customer.email}
+                      </div>
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell">
+                      <div className="text-sm">
+                        <div className="flex items-center gap-1">
+                          <Phone className="h-3 w-3" />
+                          {customer.mobile}
+                        </div>
+                        <div className="flex items-center gap-1 text-gray-500">
+                          <Mail className="h-3 w-3" />
+                          {customer.email}
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell className="hidden lg:table-cell">
+                      <Badge variant="outline">{customer.category}</Badge>
+                    </TableCell>
+                    <TableCell className="hidden lg:table-cell">
+                      <div className="text-sm">
+                        <div>{customer.city}, {customer.state}</div>
+                        <div className="text-gray-500">{customer.pin}</div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={customer.active === 'Yes' ? 'default' : 'secondary'}>
+                        {customer.active === 'Yes' ? 'Active' : 'Inactive'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1">
+                        {canView && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0"
+                            onClick={() => handleViewCustomer(customer)}
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                        )}
+                        {canEdit && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0"
+                            onClick={() => handleEditCustomer(customer)}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                        )}
+                        {canDelete && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
+                            onClick={() => handleDeleteCustomer(customer)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
         </div>
       </div>
 
@@ -535,8 +535,8 @@ const MyCustomers = () => {
                 <Button variant="outline" onClick={() => setIsDeleteModalOpen(false)}>
                   Cancel
                 </Button>
-                <Button 
-                  variant="destructive" 
+                <Button
+                  variant="destructive"
                   onClick={confirmDelete}
                   disabled={deleteMutation.isPending}
                 >
@@ -550,7 +550,7 @@ const MyCustomers = () => {
 
       {/* Edit Customer Modal */}
       {selectedCustomer && (
-        <EditCustomerDialog 
+        <EditCustomerDialog
           isOpen={isEditModalOpen}
           onOpenChange={setIsEditModalOpen}
           customer={selectedCustomer}
@@ -591,7 +591,9 @@ const CreateCustomerDialog = ({ isOpen, onOpenChange, onSuccess }) => {
     state: '',
     country: 'India',
     pin: '',
-    salesContact: ''
+    salesContact: '',
+    entityType: 'Others',
+    tdsSection: 'None'
   });
 
   // Create mutation
@@ -606,19 +608,19 @@ const CreateCustomerDialog = ({ isOpen, onOpenChange, onSuccess }) => {
       console.log('Full API Error Object:', error);
       console.log('Error validationErrors:', error.validationErrors);
       console.log('Error allErrorMessages:', error.allErrorMessages);
-      
+
       // Check if error has validationErrors (processed by API)
       if (error?.validationErrors && typeof error.validationErrors === 'object') {
         const fieldErrors = error.validationErrors;
-        
+
         // Set field errors for inline display
         setErrors(fieldErrors);
-        
+
         // Use allErrorMessages if available, otherwise build from validationErrors
         const toastMessages = error.allErrorMessages && error.allErrorMessages.length > 0
           ? error.allErrorMessages
           : Object.entries(fieldErrors).map(([field, message]) => message);
-        
+
         // Show all validation errors in toast
         toast({
           title: "Validation Errors",
@@ -626,7 +628,7 @@ const CreateCustomerDialog = ({ isOpen, onOpenChange, onSuccess }) => {
           variant: "destructive",
           duration: 15000, // Longer for multiple messages
         });
-        
+
         console.log('Set field errors:', fieldErrors);
         console.log('Toast will show:', toastMessages.join(". "));
       } else {
@@ -658,7 +660,9 @@ const CreateCustomerDialog = ({ isOpen, onOpenChange, onSuccess }) => {
       state: '',
       country: 'India',
       pin: '',
-      salesContact: ''
+      salesContact: '',
+      entityType: 'Others',
+      tdsSection: 'None'
     });
     setErrors({});
     setIsSubmitting(false);
@@ -697,7 +701,7 @@ const CreateCustomerDialog = ({ isOpen, onOpenChange, onSuccess }) => {
             Fill in the details to add a new customer.
           </DialogDescription>
         </DialogHeader>
-        
+
         <div className="space-y-6">
           {/* Primary Details Section */}
           <div className="border border-gray-200 rounded-lg p-4">
@@ -909,6 +913,36 @@ const CreateCustomerDialog = ({ isOpen, onOpenChange, onSuccess }) => {
                   className="mt-1"
                 />
               </div>
+              <div>
+                <Label htmlFor="entityType" className="text-sm font-medium text-gray-700">Entity Type</Label>
+                <Select value={formData.entityType} onValueChange={(value) => handleInputChange('entityType', value)}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue placeholder="Select entity type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Individual">Individual</SelectItem>
+                    <SelectItem value="HUF">HUF</SelectItem>
+                    <SelectItem value="Company">Company</SelectItem>
+                    <SelectItem value="Firm">Firm</SelectItem>
+                    <SelectItem value="Others">Others</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="tdsSection" className="text-sm font-medium text-gray-700">TDS Section</Label>
+                <Select value={formData.tdsSection} onValueChange={(value) => handleInputChange('tdsSection', value)}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue placeholder="Select TDS section" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="194C">Section 194C (Contract)</SelectItem>
+                    <SelectItem value="194J">Section 194J (Prof.)</SelectItem>
+                    <SelectItem value="194Q">Section 194Q (Goods Sale)</SelectItem>
+                    <SelectItem value="206C_1H">Section 206C(1H)</SelectItem>
+                    <SelectItem value="None">None</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
 
@@ -957,7 +991,9 @@ const EditCustomerDialog = ({ isOpen, onOpenChange, customer, onSuccess }) => {
     state: customer?.state || '',
     country: 'India',
     pin: customer?.pin || '',
-    salesContact: customer?.salesContact?.username || customer?.salesContact || ''
+    salesContact: customer?.salesContact?.username || customer?.salesContact || '',
+    entityType: customer?.entityType || 'Others',
+    tdsSection: customer?.tdsSection || 'None'
   });
 
   // Update form data when customer changes
@@ -979,7 +1015,9 @@ const EditCustomerDialog = ({ isOpen, onOpenChange, customer, onSuccess }) => {
         state: customer.state || '',
         country: 'India',
         pin: customer.pin || '',
-        salesContact: customer.salesContact?.username || customer.salesContact || ''
+        salesContact: customer.salesContact?.username || customer.salesContact || '',
+        entityType: customer.entityType || 'Others',
+        tdsSection: customer.tdsSection || 'None'
       });
       setErrors({});
     }
@@ -995,15 +1033,15 @@ const EditCustomerDialog = ({ isOpen, onOpenChange, customer, onSuccess }) => {
       console.log('Edit API Error Object:', error);
       console.log('Error validationErrors:', error.validationErrors);
       console.log('Error allErrorMessages:', error.allErrorMessages);
-      
+
       if (error?.validationErrors && typeof error.validationErrors === 'object') {
         const fieldErrors = error.validationErrors;
         setErrors(fieldErrors);
-        
+
         const toastMessages = error.allErrorMessages && error.allErrorMessages.length > 0
           ? error.allErrorMessages
           : Object.entries(fieldErrors).map(([field, message]) => message);
-        
+
         toast({
           title: "Validation Errors",
           description: toastMessages.join(". "),
@@ -1066,7 +1104,7 @@ const EditCustomerDialog = ({ isOpen, onOpenChange, customer, onSuccess }) => {
             Update customer information.
           </DialogDescription>
         </DialogHeader>
-        
+
         <div className="space-y-6">
           {/* Primary Details Section */}
           <div className="border border-gray-200 rounded-lg p-4">
@@ -1277,6 +1315,36 @@ const EditCustomerDialog = ({ isOpen, onOpenChange, customer, onSuccess }) => {
                   placeholder="Enter sales contact"
                   className="mt-1"
                 />
+              </div>
+              <div>
+                <Label htmlFor="edit-entityType" className="text-sm font-medium text-gray-700">Entity Type</Label>
+                <Select value={formData.entityType} onValueChange={(value) => handleInputChange('entityType', value)}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue placeholder="Select entity type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Individual">Individual</SelectItem>
+                    <SelectItem value="HUF">HUF</SelectItem>
+                    <SelectItem value="Company">Company</SelectItem>
+                    <SelectItem value="Firm">Firm</SelectItem>
+                    <SelectItem value="Others">Others</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="edit-tdsSection" className="text-sm font-medium text-gray-700">TDS Section</Label>
+                <Select value={formData.tdsSection} onValueChange={(value) => handleInputChange('tdsSection', value)}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue placeholder="Select TDS section" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="194C">Section 194C (Contract)</SelectItem>
+                    <SelectItem value="194J">Section 194J (Prof.)</SelectItem>
+                    <SelectItem value="194Q">Section 194Q (Goods Sale)</SelectItem>
+                    <SelectItem value="206C_1H">Section 206C(1H)</SelectItem>
+                    <SelectItem value="None">None</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
           </div>
