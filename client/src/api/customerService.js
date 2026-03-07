@@ -4,7 +4,7 @@ export const customerApi = {
   // Get all customers
   getAll: (params = {}) => {
     const queryParams = new URLSearchParams();
-    
+
     Object.entries(params).forEach(([key, value]) => {
       if (value !== undefined && value !== '') {
         queryParams.append(key, value);
@@ -73,7 +73,7 @@ export const unitHeadCustomerApi = {
   // Get all customers for Unit Head
   getAll: (params = {}) => {
     const queryParams = new URLSearchParams();
-    
+
     Object.entries(params).forEach(([key, value]) => {
       if (value !== undefined && value !== '') {
         queryParams.append(key, value);
@@ -162,7 +162,7 @@ export const accountsSalesPersonsApi = {
   // Get all sales persons for the company
   getAll: (params = {}) => {
     const queryParams = new URLSearchParams();
-    
+
     Object.entries(params).forEach(([key, value]) => {
       if (value !== undefined && value !== '') {
         queryParams.append(key, value);
@@ -191,7 +191,7 @@ export const accountsSalesPersonsApi = {
   // Get all orders for a specific sales person
   getOrders: (salesPersonId, params = {}) => {
     const queryParams = new URLSearchParams();
-    
+
     Object.entries(params).forEach(([key, value]) => {
       if (value !== undefined && value !== '') {
         queryParams.append(key, value);
@@ -205,6 +205,72 @@ export const accountsSalesPersonsApi = {
         'Authorization': `Bearer ${token}`
       }
     });
+  },
+
+  // NEW: Get daily stats for settlement
+  getDailyStats: (salesmanId, date) => {
+    const token = localStorage.getItem('token');
+    return apiRequest(`/accounts/sales-persons/daily-settlement/stats?salesmanId=${salesmanId}&date=${date}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+  },
+
+  // NEW: Save daily settlement
+  saveDailySettlement: (data) => {
+    const token = localStorage.getItem('token');
+    return apiRequest('/accounts/sales-persons/daily-settlement', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(data)
+    });
+  },
+
+  // NEW: Get ledger
+  getLedger: (salesmanId, params = {}) => {
+    const queryParams = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== '') {
+        queryParams.append(key, value);
+      }
+    });
+    const queryString = queryParams.toString();
+    const token = localStorage.getItem('token');
+    return apiRequest(`/accounts/sales-persons/${salesmanId}/ledger${queryString ? `?${queryString}` : ''}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+  },
+
+  // NEW: Calculate commission
+  calculateCommission: (data) => {
+    const token = localStorage.getItem('token');
+    return apiRequest('/accounts/sales-persons/commission/calculate', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(data)
+    });
+  },
+
+  // NEW: Post commission to ledger
+  postCommission: (data) => {
+    const token = localStorage.getItem('token');
+    return apiRequest('/accounts/sales-persons/commission/post', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(data)
+    });
   }
 };
 
@@ -213,7 +279,7 @@ export const accountsDamageExpiryApi = {
   // Get all damage and expiry items for the company
   getAll: (params = {}) => {
     const queryParams = new URLSearchParams();
-    
+
     Object.entries(params).forEach(([key, value]) => {
       if (value !== undefined && value !== '') {
         queryParams.append(key, value);

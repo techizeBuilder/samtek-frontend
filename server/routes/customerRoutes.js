@@ -18,6 +18,7 @@ import {
 import { resetCustomerCollectionRoute } from '../utils/resetCustomerCollection.js';
 import { inspectDatabaseRoute } from '../utils/inspectDatabase.js';
 import { seedCustomersRoute } from '../seed/seedCustomers.js';
+import { recalculateCustomerBalances } from '../controllers/customerBalanceController.js';
 
 const router = express.Router();
 
@@ -27,6 +28,7 @@ router.post('/customers/seed', auth, seedCustomersRoute);
 router.get('/customers/stats', auth, getCustomerStats);
 router.get('/customers/export', auth, exportCustomersToExcel);
 router.post('/customers/import', auth, importCustomersFromExcel);
+router.get('/customers/recalc-balances', auth, recalculateCustomerBalances);
 
 // New dropdown and salesperson-customer APIs
 router.get('/customers/dropdown/list', auth, getCustomerDropdownList);

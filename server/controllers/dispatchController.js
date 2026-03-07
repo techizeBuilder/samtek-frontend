@@ -324,18 +324,18 @@ export const getDispatchDashboardData = async (req, res) => {
       company: req.user.companyId,
       date: { $gte: startOfDay, $lte: endOfDay }
     })
-    .populate({
-      path: 'packingSheetId',
-      select: 'slNo productionGroupName batchNo totalPackedQty packingDate status items createdBy',
-      populate: {
-        path: 'createdBy',
-        select: 'username fullName'
-      }
-    })
-    .populate('productId', 'name code category batch unit') // Populate product details
-    .populate('lastUpdatedBy', 'username fullName')
-    .populate('company', 'name location')
-    .sort({ createdAt: -1 });
+      .populate({
+        path: 'packingSheetId',
+        select: 'slNo productionGroupName batchNo totalPackedQty packingDate status items createdBy',
+        populate: {
+          path: 'createdBy',
+          select: 'username fullName'
+        }
+      })
+      .populate('productId', 'name code category batch unit') // Populate product details
+      .populate('lastUpdatedBy', 'username fullName')
+      .populate('company', 'name location')
+      .sort({ createdAt: -1 });
 
     // Get approved packing sheets that don't have dispatch entries yet
     const PackingSheet = (await import('../models/Packing.js')).default;
@@ -345,9 +345,9 @@ export const getDispatchDashboardData = async (req, res) => {
       approvedAt: { $gte: startOfDay, $lte: endOfDay },
       _id: { $nin: dispatchConsoleData.map(d => d.packingSheetId?._id).filter(Boolean) }
     })
-    .populate('createdBy', 'username fullName')
-    .populate('approvedBy', 'username fullName')
-    .select('slNo productionGroupName batchNo totalPackedQty approvedAt createdBy approvedBy');
+      .populate('createdBy', 'username fullName')
+      .populate('approvedBy', 'username fullName')
+      .select('slNo productionGroupName batchNo totalPackedQty approvedAt createdBy approvedBy');
 
     console.log('📊 Dashboard data summary:', {
       dispatchEntries: dispatchConsoleData.length,
@@ -363,26 +363,26 @@ export const getDispatchDashboardData = async (req, res) => {
       const totalIndent = entry.totalIndentQuantityOrdersForTheDay || 0;
       const dispatched = entry.dispatchedQuantitySentToday || 0;
       const physicalStock = entry.physicalStockEntryManualVerification || 0;
-      
+
       // Calculate totalAvailableStock = Packed + Previous Closing + Returns
       const calculatedTotalAvailable = packedQty + previousClosing + returns;
-      
+
       // Calculate excessShortage = Total Indent - Total Available (positive = shortage, negative = excess)
       const calculatedExcessShortage = totalIndent - calculatedTotalAvailable;
-      
+
       // Calculate overallLoss = Total Available - Dispatched - Physical Stock
       const calculatedOverallLoss = calculatedTotalAvailable - dispatched - physicalStock;
-      
+
       console.log(`🧮 Calculating for ${entry.productGroup}:`, {
         packed: packedQty,
-        previousClosing: previousClosing, 
+        previousClosing: previousClosing,
         returns: returns,
         calculated_total: calculatedTotalAvailable,
         stored_total: entry.totalAvailableStock,
         totalIndent: totalIndent,
         excessShortage: calculatedExcessShortage
       });
-      
+
       return {
         id: entry._id,
         packingSheetId: entry.packingSheetId?._id,
@@ -394,7 +394,7 @@ export const getDispatchDashboardData = async (req, res) => {
         productName: entry.productName || entry.productId?.name || entry.productGroup, // Show product name if available
         productCode: entry.productId?.code,
         productCategory: entry.productId?.category,
-        
+
         // Main dispatch console columns - use calculated values
         packedQuantityReadyForDispatch: packedQty,
         previousClosingStockYesterdayBalance: previousClosing,
@@ -406,7 +406,7 @@ export const getDispatchDashboardData = async (req, res) => {
         closingStockEndOfDayBalance: entry.closingStockEndOfDayBalance || 0,
         physicalStockEntryManualVerification: physicalStock,
         overallLoss: calculatedOverallLoss, // ✅ Now calculated!
-        
+
         // Additional tracking info
         batchNo: entry.batchNo,
         status: entry.status,
@@ -415,7 +415,7 @@ export const getDispatchDashboardData = async (req, res) => {
         company: entry.company,
         createdAt: entry.createdAt,
         updatedAt: entry.updatedAt,
-        
+
         // Packing sheet creator info
         packingSheetCreator: entry.packingSheetId?.createdBy
       };
@@ -473,7 +473,7 @@ export const getDispatchDashboardData = async (req, res) => {
 // Update manual stock entry for dispatch - ONLY updates physical stock field
 export const updateManualStock = async (req, res) => {
   try {
-    const { 
+    const {
       packingSheetId,
       productId,
       productGroup,
@@ -503,11 +503,11 @@ export const updateManualStock = async (req, res) => {
     if (packingSheetId) {
       query.packingSheetId = packingSheetId;
     }
-    
+
     if (productId) {
       query.productId = productId;
     }
-    
+
     if (productGroup) {
       query.productGroup = productGroup;
     }
@@ -527,24 +527,24 @@ export const updateManualStock = async (req, res) => {
     // Update fields based on what was provided
     if (physicalStockEntryManualVerification !== undefined && physicalStockEntryManualVerification !== null) {
       existingDispatch.physicalStockEntryManualVerification = physicalStockEntryManualVerification;
-      
+
       // Recalculate overallLoss = Closing Stock - Physical Stock
       existingDispatch.overallLoss = existingDispatch.closingStockEndOfDayBalance - physicalStockEntryManualVerification;
     }
-    
+
     if (dispatchedQuantitySentToday !== undefined && dispatchedQuantitySentToday !== null) {
       existingDispatch.dispatchedQuantitySentToday = dispatchedQuantitySentToday;
       existingDispatch.qtyIssued = dispatchedQuantitySentToday;
-      
+
       // Recalculate closing stock
-      const totalAvailableStock = 
+      const totalAvailableStock =
         (existingDispatch.packedQuantityReadyForDispatch || 0) +
         (existingDispatch.previousClosingStockYesterdayBalance || 0) +
         (existingDispatch.returnQuantityYesterdayReturns || 0);
-      
+
       existingDispatch.closingStockEndOfDayBalance = totalAvailableStock - dispatchedQuantitySentToday;
     }
-    
+
     existingDispatch.lastUpdatedBy = req.user._id;
     existingDispatch.updatedAt = new Date();
 
@@ -885,7 +885,7 @@ export const checkExistingDispatch = async (req, res) => {
     }
 
     // Check by packing sheet ID in notes field
-    const existingDispatch = await Dispatch.findOne({ 
+    const existingDispatch = await Dispatch.findOne({
       notes: { $regex: packingSheetId, $options: 'i' }
     }).select('_id dispatchNumber status createdAt');
 
@@ -916,7 +916,7 @@ export const createDispatchFromPacking = async (req, res) => {
 
     // Get the approved packing sheet with full details
     const PackingSheet = (await import('../models/Packing.js')).default;
-    
+
     const packingSheet = await PackingSheet.findById(packingSheetId)
       .populate({
         path: 'productionGroup',
@@ -938,14 +938,14 @@ export const createDispatchFromPacking = async (req, res) => {
     }
 
     // Check if dispatch already exists for this packing sheet
-    const existingDispatch = await Dispatch.findOne({ 
-      notes: { $regex: packingSheetId, $options: 'i' } 
+    const existingDispatch = await Dispatch.findOne({
+      notes: { $regex: packingSheetId, $options: 'i' }
     });
 
     if (existingDispatch) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         message: 'Dispatch already exists for this packing sheet',
-        existingDispatch: existingDispatch.dispatchNumber 
+        existingDispatch: existingDispatch.dispatchNumber
       });
     }
 
@@ -966,27 +966,27 @@ export const createDispatchFromPacking = async (req, res) => {
     const dispatchData = {
       // Auto-generate dispatch number
       dispatchNumber: `DISP-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
-      
+
       // Company info
       company: packingSheet.company._id,
       unit: req.user?.unit || 'default',
-      
+
       // Items to dispatch
       items: dispatchItems,
-      
+
       // Dates
       dispatchDate: new Date(),
       expectedDeliveryDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days from now
-      
+
       // Status
       status: 'PENDING',
-      
+
       // Tracking info
       assignedTo: req.user?._id,
-      
+
       // Reference to source packing sheet
       notes: `Auto-created from approved packing sheet: ${packingSheet.productionGroupName} (ID: ${packingSheetId})`,
-      
+
       // Additional metadata for tracking
       sourcePackingSheetId: packingSheetId,
       sourceProductionGroup: packingSheet.productionGroupName
@@ -1041,13 +1041,13 @@ export const getDeliveryChallanData = async (req, res) => {
       company: req.user.companyId,
       date: { $gte: startOfDay, $lte: endOfDay }
     })
-    .populate({
-      path: 'packingSheetId',
-      select: 'productionGroupName batchNo'
-    })
-    .populate('company', 'name')
-    .select('productGroup productName totalIndentQuantityOrdersForTheDay batchNo packingSheetId dcno qtyIssued status indentQty')
-    .sort({ productGroup: 1, productName: 1 });
+      .populate({
+        path: 'packingSheetId',
+        select: 'productionGroupName batchNo'
+      })
+      .populate('company', 'name')
+      .select('productGroup productName totalIndentQuantityOrdersForTheDay batchNo packingSheetId dcno qtyIssued status indentQty')
+      .sort({ productGroup: 1, productName: 1 });
 
     console.log('📋 Found delivery challan entries:', deliveryChallanData.length);
 
@@ -1118,9 +1118,9 @@ export const updateQtyIssued = async (req, res) => {
     const { dcNo, qtyIssued, dispatchId, indentQty, forceUpdate } = req.body;
 
     if ((!dcNo && !dispatchId) || qtyIssued === undefined) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'DC No or Dispatch ID and Qty Issued are required' 
+      return res.status(400).json({
+        success: false,
+        message: 'DC No or Dispatch ID and Qty Issued are required'
       });
     }
 
@@ -1134,9 +1134,9 @@ export const updateQtyIssued = async (req, res) => {
     }
 
     if (!dispatch) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Delivery challan not found' 
+      return res.status(404).json({
+        success: false,
+        message: 'Delivery challan not found'
       });
     }
 
@@ -1146,7 +1146,7 @@ export const updateQtyIssued = async (req, res) => {
     // Check if already dispatched or approved - require confirmation unless forceUpdate is true
     if (((dispatch.status === 'dispatched' || dispatch.status === 'approved') || exceedsIndent) && !forceUpdate) {
       let message = '';
-      
+
       if (exceedsIndent && (dispatch.status === 'dispatched' || dispatch.status === 'approved')) {
         message = `This item is already ${dispatch.status} and the new quantity (${qtyIssued}) exceeds indent qty (${indentQty}). Do you want to proceed?`;
       } else if (exceedsIndent) {
@@ -1173,7 +1173,7 @@ export const updateQtyIssued = async (req, res) => {
         const item = await Item.findById(dispatch.productId);
         if (item) {
           const availableBatch = parseInt(item.batch) || 0;
-          
+
           if (qtyIssued > availableBatch) {
             return res.status(400).json({
               success: false,
@@ -1194,29 +1194,29 @@ export const updateQtyIssued = async (req, res) => {
     // Update qty issued and related stock fields
     dispatch.qtyIssued = qtyIssued;
     dispatch.dispatchedQuantitySentToday = qtyIssued;
-    
+
     // Recalculate all stock fields properly
     // Total Available Stock = Packed + Previous Closing + Returns
-    const totalAvailableStock = 
+    const totalAvailableStock =
       (dispatch.packedQuantityReadyForDispatch || 0) +
       (dispatch.previousClosingStockYesterdayBalance || 0) +
       (dispatch.returnQuantityYesterdayReturns || 0);
-    
+
     dispatch.totalAvailableStock = totalAvailableStock;
-    
+
     // Closing Stock End of Day = Total Available - Dispatched
     dispatch.closingStockEndOfDayBalance = totalAvailableStock - (qtyIssued || 0);
-    
+
     // If closing stock would be negative, set it to 0
     if (dispatch.closingStockEndOfDayBalance < 0) {
       dispatch.closingStockEndOfDayBalance = 0;
     }
-    
+
     // Overall Loss = Closing Stock - Physical Stock Entry
     if (dispatch.physicalStockEntryManualVerification !== undefined) {
       dispatch.overallLoss = dispatch.closingStockEndOfDayBalance - (dispatch.physicalStockEntryManualVerification || 0);
     }
-    
+
     dispatch.updatedAt = new Date();
     const updatedDispatch = await dispatch.save();
 
@@ -1236,20 +1236,20 @@ export const updateQtyIssued = async (req, res) => {
     // Populate related data
     await updatedDispatch.populate('productId', 'name code category unit');
 
-    res.status(200).json({ 
-      success: true, 
-      message: forceUpdate 
-        ? 'Qty issued updated successfully (with override)' 
+    res.status(200).json({
+      success: true,
+      message: forceUpdate
+        ? 'Qty issued updated successfully (with override)'
         : 'Qty issued updated successfully',
       data: updatedDispatch,
       wasForced: !!forceUpdate
     });
   } catch (error) {
     console.error('Error in updateQtyIssued:', error);
-    res.status(500).json({ 
-      success: false, 
+    res.status(500).json({
+      success: false,
       message: 'Internal server error',
-      error: error.message 
+      error: error.message
     });
   }
 };
@@ -1260,9 +1260,9 @@ export const approveProduct = async (req, res) => {
     const { dcNo } = req.body;
 
     if (!dcNo) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'DC No is required' 
+      return res.status(400).json({
+        success: false,
+        message: 'DC No is required'
       });
     }
 
@@ -1270,9 +1270,9 @@ export const approveProduct = async (req, res) => {
     const dispatch = await Dispatch.findOne({ dcno: dcNo });
 
     if (!dispatch) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Delivery challan not found with DC No: ' + dcNo 
+      return res.status(404).json({
+        success: false,
+        message: 'Delivery challan not found with DC No: ' + dcNo
       });
     }
 
@@ -1287,17 +1287,17 @@ export const approveProduct = async (req, res) => {
     await updatedDispatch.populate('productId', 'name code category unit');
     await updatedDispatch.populate('customerId', 'name address phone email');
 
-    res.status(200).json({ 
-      success: true, 
+    res.status(200).json({
+      success: true,
       message: 'Product approved successfully',
       data: updatedDispatch
     });
   } catch (error) {
     console.error('Error in approveProduct:', error);
-    res.status(500).json({ 
-      success: false, 
+    res.status(500).json({
+      success: false,
       message: 'Internal server error',
-      error: error.message 
+      error: error.message
     });
   }
 };
@@ -1308,9 +1308,9 @@ export const generateInvoice = async (req, res) => {
     const { dcNo } = req.body;
 
     if (!dcNo) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'DC No is required' 
+      return res.status(400).json({
+        success: false,
+        message: 'DC No is required'
       });
     }
 
@@ -1323,44 +1323,44 @@ export const generateInvoice = async (req, res) => {
       .populate('company', 'name address phone email');
 
     if (!dispatch) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Delivery challan not found with DC No: ' + dcNo 
+      return res.status(404).json({
+        success: false,
+        message: 'Delivery challan not found with DC No: ' + dcNo
       });
     }
 
     // Check if approved
     if (dispatch.status !== 'approved') {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Please approve the product before generating invoice' 
+      return res.status(400).json({
+        success: false,
+        message: 'Please approve the product before generating invoice'
       });
     }
 
     // Fetch customer and order information based on company and today's date
     const Order = (await import('../models/Order.js')).default;
     const Customer = (await import('../models/Customer.js')).default;
-    
+
     // Find orders for today with this company and product
     const today = new Date(dispatch.date);
     const startOfDay = new Date(today.setHours(0, 0, 0, 0));
     const endOfDay = new Date(today.setHours(23, 59, 59, 999));
-    
+
     const orders = await Order.find({
       companyId: dispatch.company,
       orderDate: { $gte: startOfDay, $lte: endOfDay },
       'products.product': dispatch.productId
     })
-    .populate('customer', 'name address phone email customerCode')
-    .populate('salesPerson', 'fullName username')
-    .sort({ createdAt: -1 })
-    .limit(5);
+      .populate('customer', 'name address phone email customerCode')
+      .populate('salesPerson', 'fullName username')
+      .sort({ createdAt: -1 })
+      .limit(5);
 
     // Get customer info from first order or use company info
     let customerInfo = null;
     let orderCount = 0;
     let orderDetails = null;
-    
+
     if (orders.length > 0) {
       customerInfo = orders[0].customer;
       orderDetails = orders[0];
@@ -1369,7 +1369,7 @@ export const generateInvoice = async (req, res) => {
         orderCount = await Order.countDocuments({ customer: customerInfo._id });
       }
     }
-    
+
     // If no customer found, try to get any customer associated with this company
     if (!customerInfo) {
       const anyCustomer = await Customer.findOne({ companyId: dispatch.company });
@@ -1380,48 +1380,48 @@ export const generateInvoice = async (req, res) => {
 
     // Create PDF document
     const doc = new PDFDocument({ margin: 50, size: 'A4' });
-    
+
     // Set response headers for PDF download
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename=invoice-${dcNo}.pdf`);
-    
+
     // Pipe PDF to response
     doc.pipe(res);
 
     // Add company header
     doc.fontSize(22)
-       .font('Helvetica-Bold')
-       .text(dispatch.company?.name || 'SUNRISE BAKERY', { align: 'center' })
-       .fontSize(10)
-       .font('Helvetica')
-       .text('Premium Quality Bakery Products', { align: 'center' });
-    
+      .font('Helvetica-Bold')
+      .text(dispatch.company?.name || 'SUNRISE BAKERY', { align: 'center' })
+      .fontSize(10)
+      .font('Helvetica')
+      .text('Premium Quality Bakery Products', { align: 'center' });
+
     if (dispatch.company?.address) {
       doc.text(`Address: ${dispatch.company.address}`, { align: 'center' });
     } else {
       doc.text('Address: Your Company Address, City, State - PIN', { align: 'center' });
     }
-    
+
     if (dispatch.company?.phone) {
       doc.text(`Phone: ${dispatch.company.phone} | Email: ${dispatch.company.email || 'info@sunrise.com'}`, { align: 'center' });
     } else {
       doc.text('Phone: +91 XXXXXXXXXX | Email: info@sunrise.com', { align: 'center' });
     }
-    
+
     doc.text('GSTIN: XXXXXXXXXXXX', { align: 'center' })
-       .moveDown(0.5);
+      .moveDown(0.5);
 
     // Add invoice title
     doc.fontSize(18)
-       .font('Helvetica-Bold')
-       .text('DELIVERY INVOICE', { align: 'center' })
-       .moveDown(0.5);
+      .font('Helvetica-Bold')
+      .text('DELIVERY INVOICE', { align: 'center' })
+      .moveDown(0.5);
 
     // Add horizontal line
     doc.moveTo(50, doc.y)
-       .lineTo(550, doc.y)
-       .stroke()
-       .moveDown(0.5);
+      .lineTo(550, doc.y)
+      .stroke()
+      .moveDown(0.5);
 
     // Invoice details - Left side
     const leftColumn = 50;
@@ -1429,62 +1429,62 @@ export const generateInvoice = async (req, res) => {
     let yPosition = doc.y;
 
     doc.fontSize(11)
-       .font('Helvetica-Bold')
-       .text('Invoice Details:', leftColumn, yPosition);
-    
+      .font('Helvetica-Bold')
+      .text('Invoice Details:', leftColumn, yPosition);
+
     yPosition += 18;
     doc.font('Helvetica')
-       .text(`DC No: `, leftColumn, yPosition, { continued: true })
-       .font('Helvetica-Bold')
-       .text(`${dispatch.dcNo || dcNo}`);
-    
+      .text(`DC No: `, leftColumn, yPosition, { continued: true })
+      .font('Helvetica-Bold')
+      .text(`${dispatch.dcNo || dcNo}`);
+
     yPosition += 15;
     doc.font('Helvetica')
-       .text(`Invoice Date: ${new Date().toLocaleDateString('en-IN')}`, leftColumn, yPosition);
-    
+      .text(`Invoice Date: ${new Date().toLocaleDateString('en-IN')}`, leftColumn, yPosition);
+
     yPosition += 15;
     doc.text(`Dispatch Date: ${new Date(dispatch.createdAt).toLocaleDateString('en-IN')}`, leftColumn, yPosition);
-    
+
     yPosition += 15;
     doc.font('Helvetica-Bold')
-       .fillColor('#228B22')
-       .text(`Status: ${dispatch.status.toUpperCase()}`, leftColumn, yPosition)
-       .fillColor('#000000');
+      .fillColor('#228B22')
+      .text(`Status: ${dispatch.status.toUpperCase()}`, leftColumn, yPosition)
+      .fillColor('#000000');
 
     if (dispatch.orderId?.orderNo) {
       yPosition += 15;
       doc.font('Helvetica')
-         .text(`Order No: ${dispatch.orderId.orderNo}`, leftColumn, yPosition);
+        .text(`Order No: ${dispatch.orderId.orderNo}`, leftColumn, yPosition);
     } else if (orderDetails?.orderCode) {
       yPosition += 15;
       doc.font('Helvetica')
-         .text(`Order No: ${orderDetails.orderCode}`, leftColumn, yPosition);
+        .text(`Order No: ${orderDetails.orderCode}`, leftColumn, yPosition);
     }
 
     // Customer details - Right side
     yPosition = doc.y - 90;
     doc.font('Helvetica-Bold')
-       .text('Bill To:', rightColumn, yPosition);
-    
+      .text('Bill To:', rightColumn, yPosition);
+
     yPosition += 18;
     doc.font('Helvetica-Bold')
-       .fontSize(11)
-       .text(`${customerInfo?.name || dispatch.company?.name || 'Walk-in Customer'}`, rightColumn, yPosition);
-    
+      .fontSize(11)
+      .text(`${customerInfo?.name || dispatch.company?.name || 'Walk-in Customer'}`, rightColumn, yPosition);
+
     yPosition += 15;
     doc.font('Helvetica')
-       .fontSize(10);
-    
+      .fontSize(10);
+
     if (customerInfo?.customerCode) {
       doc.text(`Customer Code: ${customerInfo.customerCode}`, rightColumn, yPosition);
       yPosition += 15;
     }
-    
+
     if (customerInfo?.address) {
       doc.text(`Address: ${customerInfo.address}`, rightColumn, yPosition, { width: 230 });
       yPosition += 25;
     }
-    
+
     if (customerInfo?.phone) {
       doc.text(`Phone: ${customerInfo.phone}`, rightColumn, yPosition);
       yPosition += 15;
@@ -1498,32 +1498,32 @@ export const generateInvoice = async (req, res) => {
     // Order information
     if (orderCount > 0) {
       doc.font('Helvetica-Bold')
-         .text(`Total Orders: ${orderCount}`, rightColumn, yPosition);
+        .text(`Total Orders: ${orderCount}`, rightColumn, yPosition);
       yPosition += 15;
     }
 
     if (orders.length > 0) {
       doc.font('Helvetica')
-         .text(`Today's Orders: ${orders.length}`, rightColumn, yPosition);
+        .text(`Today's Orders: ${orders.length}`, rightColumn, yPosition);
     }
 
     doc.moveDown(1);
 
     // Add horizontal line
     doc.moveTo(50, doc.y)
-       .lineTo(550, doc.y)
-       .stroke()
-       .moveDown(0.5);
+      .lineTo(550, doc.y)
+      .stroke()
+      .moveDown(0.5);
 
     // Product table header
     const tableTop = doc.y;
     doc.fontSize(10)
-       .font('Helvetica-Bold')
-       .fillColor('#000000');
+      .font('Helvetica-Bold')
+      .fillColor('#000000');
 
     // Table headers with borders
     doc.rect(50, tableTop - 5, 500, 20).stroke();
-    
+
     doc.text('S.No', 55, tableTop, { width: 30 });
     doc.text('Product Name / Group', 100, tableTop, { width: 180 });
     doc.text('Batch No', 290, tableTop, { width: 70 });
@@ -1533,29 +1533,29 @@ export const generateInvoice = async (req, res) => {
     // Product details
     let productY = tableTop + 25;
     doc.fontSize(10)
-       .font('Helvetica');
+      .font('Helvetica');
 
     // Draw row border
     doc.rect(50, productY - 5, 500, 45).stroke();
 
     doc.text('1', 55, productY, { width: 30 });
-    
+
     const productName = dispatch.productId?.name || dispatch.productName || 'N/A';
     const productGroup = dispatch.productGroup || '';
-    
+
     doc.text(productName, 100, productY, { width: 180 });
     if (productGroup) {
       doc.fontSize(8)
-         .fillColor('#666666')
-         .text(productGroup, 100, productY + 12, { width: 180 })
-         .fillColor('#000000')
-         .fontSize(10);
+        .fillColor('#666666')
+        .text(productGroup, 100, productY + 12, { width: 180 })
+        .fillColor('#000000')
+        .fontSize(10);
     }
-    
+
     doc.text(dispatch.batchNo || 'N/A', 290, productY, { width: 70 });
     doc.text((dispatch.indentQty || dispatch.totalIndentQuantityOrdersForTheDay || 0).toString(), 370, productY, { width: 80, align: 'center' });
     doc.font('Helvetica-Bold')
-       .text((dispatch.qtyIssued || 0).toString(), 460, productY, { width: 80, align: 'center' });
+      .text((dispatch.qtyIssued || 0).toString(), 460, productY, { width: 80, align: 'center' });
 
     doc.font('Helvetica');
     productY += 45;
@@ -1565,27 +1565,27 @@ export const generateInvoice = async (req, res) => {
     // Summary section
     const summaryY = productY + 10;
     doc.fontSize(10)
-       .font('Helvetica-Bold')
-       .text('Summary:', leftColumn, summaryY);
-    
+      .font('Helvetica-Bold')
+      .text('Summary:', leftColumn, summaryY);
+
     doc.font('Helvetica')
-       .text(`Total Indent Quantity: ${dispatch.indentQty || dispatch.totalIndentQuantityOrdersForTheDay || 0}`, leftColumn, summaryY + 20);
-    
+      .text(`Total Indent Quantity: ${dispatch.indentQty || dispatch.totalIndentQuantityOrdersForTheDay || 0}`, leftColumn, summaryY + 20);
+
     doc.font('Helvetica-Bold')
-       .text(`Total Issued Quantity: ${dispatch.qtyIssued || 0}`, leftColumn, summaryY + 35);
+      .text(`Total Issued Quantity: ${dispatch.qtyIssued || 0}`, leftColumn, summaryY + 35);
 
     // Additional information
     doc.moveDown(1);
     doc.fontSize(9)
-       .font('Helvetica')
-       .text('Additional Information:', leftColumn, doc.y);
-    
+      .font('Helvetica')
+      .text('Additional Information:', leftColumn, doc.y);
+
     doc.moveDown(0.3);
-    
+
     if (dispatch.unit) {
       doc.text(`Unit: ${dispatch.unit}`, leftColumn);
     }
-    
+
     if (dispatch.vehicleNumber) {
       doc.moveDown(0.3);
       doc.text(`Vehicle Number: ${dispatch.vehicleNumber}`, leftColumn);
@@ -1595,7 +1595,7 @@ export const generateInvoice = async (req, res) => {
       doc.moveDown(0.3);
       doc.text(`Transporter: ${dispatch.transporterName}`, leftColumn);
     }
-    
+
     if (dispatch.notes) {
       doc.moveDown(0.5);
       doc.text(`Notes: ${dispatch.notes}`, leftColumn, doc.y, { width: 500 });
@@ -1604,48 +1604,48 @@ export const generateInvoice = async (req, res) => {
     // Terms and conditions
     doc.moveDown(1);
     doc.fontSize(8)
-       .font('Helvetica-Bold')
-       .text('Terms & Conditions:', leftColumn, doc.y);
-    
+      .font('Helvetica-Bold')
+      .text('Terms & Conditions:', leftColumn, doc.y);
+
     doc.font('Helvetica')
-       .fontSize(7)
-       .text('1. All goods once sold are not returnable.', leftColumn, doc.y + 8)
-       .text('2. Delivery subject to availability.', leftColumn, doc.y + 13)
-       .text('3. Disputes if any subject to local jurisdiction.', leftColumn, doc.y + 18);
+      .fontSize(7)
+      .text('1. All goods once sold are not returnable.', leftColumn, doc.y + 8)
+      .text('2. Delivery subject to availability.', leftColumn, doc.y + 13)
+      .text('3. Disputes if any subject to local jurisdiction.', leftColumn, doc.y + 18);
 
     // Footer with signature
     doc.moveDown(1.5);
-    
+
     const footerY = doc.y;
-    
+
     // Authorized Signature - Left
     doc.fontSize(9)
-       .font('Helvetica')
-       .text('Received By:', leftColumn, footerY)
-       .moveTo(leftColumn, footerY + 50)
-       .lineTo(leftColumn + 150, footerY + 50)
-       .stroke()
-       .text('Customer Signature', leftColumn, footerY + 55);
+      .font('Helvetica')
+      .text('Received By:', leftColumn, footerY)
+      .moveTo(leftColumn, footerY + 50)
+      .lineTo(leftColumn + 150, footerY + 50)
+      .stroke()
+      .text('Customer Signature', leftColumn, footerY + 55);
 
     // Company Signature - Right
     doc.text('For Sunrise Bakery:', rightColumn + 80, footerY)
-       .moveTo(rightColumn + 80, footerY + 50)
-       .lineTo(rightColumn + 230, footerY + 50)
-       .stroke()
-       .text('Authorized Signatory', rightColumn + 80, footerY + 55);
+      .moveTo(rightColumn + 80, footerY + 50)
+      .lineTo(rightColumn + 230, footerY + 50)
+      .stroke()
+      .text('Authorized Signatory', rightColumn + 80, footerY + 55);
 
     // Bottom border line
     doc.moveDown(1);
     doc.moveTo(50, doc.y)
-       .lineTo(550, doc.y)
-       .stroke();
+      .lineTo(550, doc.y)
+      .stroke();
 
     // Computer generated invoice note
     doc.moveDown(0.5);
     doc.fontSize(7)
-       .font('Helvetica-Oblique')
-       .fillColor('#666666')
-       .text(`This is a computer generated invoice and does not require a signature. Generated on: ${new Date().toLocaleString('en-IN')}`, { align: 'center' });
+      .font('Helvetica-Oblique')
+      .fillColor('#666666')
+      .text(`This is a computer generated invoice and does not require a signature. Generated on: ${new Date().toLocaleString('en-IN')}`, { align: 'center' });
 
     // Finalize PDF
     doc.end();
@@ -1658,13 +1658,13 @@ export const generateInvoice = async (req, res) => {
 
   } catch (error) {
     console.error('Error in generateInvoice:', error);
-    
+
     // Check if response headers are already sent
     if (!res.headersSent) {
-      res.status(500).json({ 
-        success: false, 
+      res.status(500).json({
+        success: false,
         message: 'Failed to generate invoice',
-        error: error.message 
+        error: error.message
       });
     }
   }
@@ -1676,17 +1676,17 @@ export const getNextDCNumber = async (req, res) => {
     // Use the static method from Dispatch model to generate next DCno
     const nextDCno = await Dispatch.generateNextDCno(req.user.companyId);
 
-    res.status(200).json({ 
-      success: true, 
+    res.status(200).json({
+      success: true,
       nextDCNumber: nextDCno,
       dcNo: nextDCno // Keep both for compatibility
     });
   } catch (error) {
     console.error('Error getting next DC number:', error);
-    res.status(500).json({ 
-      success: false, 
+    res.status(500).json({
+      success: false,
       message: 'Failed to generate DC number',
-      error: error.message 
+      error: error.message
     });
   }
 };
@@ -1698,9 +1698,9 @@ export const createDispatchOrder = async (req, res) => {
 
     // Validate required fields
     if (!salesmanId || !customerId) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Salesman and customer are required' 
+      return res.status(400).json({
+        success: false,
+        message: 'Salesman and customer are required'
       });
     }
 
@@ -1711,18 +1711,18 @@ export const createDispatchOrder = async (req, res) => {
     // Verify salesman exists
     const salesman = await User.findById(salesmanId);
     if (!salesman) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Salesman not found' 
+      return res.status(404).json({
+        success: false,
+        message: 'Salesman not found'
       });
     }
 
     // Verify customer exists
     const customer = await Customer.findById(customerId);
     if (!customer) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Customer not found' 
+      return res.status(404).json({
+        success: false,
+        message: 'Customer not found'
       });
     }
 
@@ -1736,13 +1736,13 @@ export const createDispatchOrder = async (req, res) => {
       customer: customerId,
       orderDate: { $gte: startOfDay, $lte: endOfDay }
     })
-    .populate('products.product', 'name code category productGroup')
-    .populate('companyId', 'name');
+      .populate('products.product', 'name code category productGroup')
+      .populate('companyId', 'name');
 
     if (!orders || orders.length === 0) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'No orders found for this customer today' 
+      return res.status(404).json({
+        success: false,
+        message: 'No orders found for this customer today'
       });
     }
 
@@ -1789,8 +1789,8 @@ export const createDispatchOrder = async (req, res) => {
       }
     }
 
-    res.status(201).json({ 
-      success: true, 
+    res.status(201).json({
+      success: true,
       message: `Dispatch order created successfully with DC No: ${finalDCNo}`,
       dcNo: finalDCNo,
       dispatchCount: dispatchEntries.length,
@@ -1799,10 +1799,10 @@ export const createDispatchOrder = async (req, res) => {
 
   } catch (error) {
     console.error('Error creating dispatch order:', error);
-    res.status(500).json({ 
-      success: false, 
+    res.status(500).json({
+      success: false,
       message: 'Failed to create dispatch order',
-      error: error.message 
+      error: error.message
     });
   }
 };
@@ -1862,7 +1862,7 @@ export const getTodaysProducts = async (req, res) => {
       .sort({ createdAt: -1 });
 
     console.log(`✅ Found ${dispatchProducts.length} dispatch products for today with filters`);
-    
+
     // If no results, check what statuses exist for today
     if (dispatchProducts.length === 0 && todayDispatches > 0) {
       const todayDispatchSample = await Dispatch.find({
@@ -1883,38 +1883,38 @@ export const getTodaysProducts = async (req, res) => {
 
     // Group dispatches by packingSheetId
     const groupedByPackingSheet = {};
-    
+
     console.log(`\n🔍 DEBUG: Processing ${dispatchProducts.length} dispatches...`);
-    
+
     for (const dispatch of dispatchProducts) {
       const packingSheetId = dispatch.packingSheetId?._id?.toString() || dispatch.packingSheetId?.toString();
-      
+
       console.log(`\n📋 Dispatch ${dispatch._id}:`);
       console.log(`   Product: ${dispatch.productName || dispatch.productGroup}`);
       console.log(`   PackingSheetId: ${packingSheetId || 'NULL/UNDEFINED'}`);
       console.log(`   Has packingSheetId? ${!!packingSheetId}`);
-      
+
       if (!packingSheetId) {
         // Handle ungrouped items (no packing sheet) - Each dispatch is a separate entry
         console.log(`   ✅ THIS IS AN UNGROUPED ITEM`);
         const key = `ungrouped_${dispatch._id}`;
-        
+
         // Add item details for ungrouped item
         let itemDetails = null;
         if (dispatch.productId) {
           try {
             itemDetails = await Item.findById(dispatch.productId).select('name stock batch location qty').lean();
-            console.log(`✅ Fetched ungrouped item details:`, { 
-              productId: dispatch.productId, 
-              name: itemDetails?.name, 
+            console.log(`✅ Fetched ungrouped item details:`, {
+              productId: dispatch.productId,
+              name: itemDetails?.name,
               batch: itemDetails?.batch,
-              stock: itemDetails?.stock 
+              stock: itemDetails?.stock
             });
           } catch (err) {
             console.error(`❌ Could not fetch item details for productId: ${dispatch.productId}`, err.message);
           }
         }
-        
+
         // Create a separate entry for each ungrouped item (no grouping)
         groupedByPackingSheet[key] = {
           _id: dispatch._id,
@@ -2029,9 +2029,9 @@ export const getTodaysProducts = async (req, res) => {
 
     // For each packing sheet, get production batch details and items
     const products = [];
-    
+
     console.log(`🔄 Processing ${Object.keys(groupedByPackingSheet).length} grouped packing sheets...`);
-    
+
     for (const [key, group] of Object.entries(groupedByPackingSheet)) {
       if (key.startsWith('ungrouped_')) {
         // Already processed ungrouped items
@@ -2039,23 +2039,23 @@ export const getTodaysProducts = async (req, res) => {
         products.push(group);
         continue;
       }
-      
+
       console.log(`  🔍 Processing packing sheet: ${group.packingSheetId}`);
       try {
         // Get packing sheet details
         const packingSheet = await PackingSheet.findById(group.packingSheetId);
-        
+
         if (!packingSheet) {
           console.log(`  ⚠️ Packing sheet not found: ${group.packingSheetId}, skipping...`);
           continue;
         }
-        
+
         // If packing sheet has no production group, treat as ungrouped
         if (!packingSheet.productionGroup) {
           console.log(`  ⚠️ Packing sheet has no production group - UNGROUPED ITEM`);
           console.log(`  🔍 ProductId from group: ${group.productId}`);
           console.log(`  🔍 ProductId type: ${typeof group.productId}`);
-          
+
           // Simple: Get batch from Item table using productId
           let batchValue = 0;
           if (group.productId) {
@@ -2063,7 +2063,7 @@ export const getTodaysProducts = async (req, res) => {
               console.log(`  📡 Querying Item collection for ID: ${group.productId}`);
               const item = await Item.findById(group.productId).select('name batch stock qty').lean();
               console.log(`  📦 Item query result:`, item);
-              
+
               if (item) {
                 if (item.batch) {
                   batchValue = parseFloat(item.batch);
@@ -2080,59 +2080,59 @@ export const getTodaysProducts = async (req, res) => {
           } else {
             console.log(`  ❌ No productId in group!`);
           }
-          
+
           // Set totalItemBatch directly
           group.totalItemBatch = batchValue;
           group.indentQty = group.indentQty || 0;
           group.isUngrouped = true;
-          
+
           console.log(`  ✅ FINAL UNGROUPED RESULT - totalItemBatch: ${group.totalItemBatch}, indentQty: ${group.indentQty}`);
           products.push(group);
           continue;
         }
-        
+
         console.log(`  📄 Found packing sheet with productionGroup: ${packingSheet.productionGroup}`);
-        
+
         // Get ALL production batches for this productionGroup for TODAY only
         const productionBatches = await ProductionBatch.find({
           groupId: packingSheet.productionGroup,
           companyId: req.user.companyId,
           productionDate: { $gte: startOfDay, $lte: endOfDay }
         }).populate('combinedItems.itemId');
-        
+
         if (!productionBatches || productionBatches.length === 0) {
           console.log(`  ⚠️ No production batches found for group: ${packingSheet.productionGroup}, skipping...`);
           continue;
         }
-        
+
         console.log(`  📦 Found ${productionBatches.length} production batch(es) for packing sheet ${group.packingSheetId}`);
-        
+
         // Get dispatch details for this packing sheet to get indent quantities
         const relatedDispatches = dispatchProducts.filter(d => {
           const dPackingSheetId = d.packingSheetId?._id?.toString() || d.packingSheetId?.toString();
           return dPackingSheetId === group.packingSheetId;
         });
-        
+
         // Track unique items to avoid duplicates
         const addedItemIds = new Set();
-        
+
         // Build items array from ALL production batches
         for (const productionBatch of productionBatches) {
           if (!productionBatch.combinedItems || productionBatch.combinedItems.length === 0) {
             console.log(`⚠️ Batch ${productionBatch.batchNo} has no combined items`);
             continue;
           }
-          
+
           console.log(`  📦 Processing batch ${productionBatch.batchNo} with ${productionBatch.combinedItems.length} items`);
-          
+
           for (const combinedItem of productionBatch.combinedItems) {
             const item = combinedItem.itemId;
-            
+
             if (!item) {
               console.log(`  ⚠️ Item not found in combinedItems`);
               continue;
             }
-            
+
             // Skip if we've already added this item
             const itemIdStr = item._id.toString();
             if (addedItemIds.has(itemIdStr)) {
@@ -2140,7 +2140,7 @@ export const getTodaysProducts = async (req, res) => {
               continue;
             }
             addedItemIds.add(itemIdStr);
-            
+
             // Fetch fresh item details from Item collection to get current batch number
             let itemBatch = null;
             let itemStock = 0;
@@ -2153,12 +2153,12 @@ export const getTodaysProducts = async (req, res) => {
             } catch (err) {
               console.log(`  ⚠️ Could not fetch fresh item data for ${item._id}`);
             }
-            
+
             // Find matching dispatch entry for this item
-            const matchingDispatch = relatedDispatches.find(d => 
+            const matchingDispatch = relatedDispatches.find(d =>
               d.productId?.toString() === item._id.toString()
             );
-            
+
             group.items.push({
               itemId: item._id,
               productName: item.name || 'Unknown',
@@ -2168,22 +2168,22 @@ export const getTodaysProducts = async (req, res) => {
               status: matchingDispatch?.status || 'pending',
               totalAvailableStock: matchingDispatch?.totalAvailableStock || itemStock || 0
             });
-            
+
             console.log(`  ✅ Added item: ${item.name} (Batch: ${itemBatch}, Stock: ${itemStock})`);
           }
         }
-        
+
         // ✅ Keep existing indentQty from dispatch (already set from database)
-        
+
         // ✅ Calculate totalItemBatch: sum of all item.batch values in this group
         const totalItemBatch = group.items.reduce((sum, item) => {
           const batchValue = parseFloat(item.batch) || 0;
           return sum + batchValue;
         }, 0);
         group.totalItemBatch = totalItemBatch;
-        
+
         products.push(group);
-        
+
       } catch (err) {
         console.error(`❌ Error processing packing sheet ${group.packingSheetId}:`, err);
       }
@@ -2274,7 +2274,7 @@ export const createDeliveryChallan = async (req, res) => {
     // Validate DC number is the next expected number
     const nextExpectedDCno = await Dispatch.generateNextDCno(req.user.companyId);
     console.log('🔍 DC Number validation:', { provided: dcNo, expected: nextExpectedDCno });
-    
+
     if (dcNo !== nextExpectedDCno) {
       return res.status(400).json({
         success: false,
@@ -2300,9 +2300,9 @@ export const createDeliveryChallan = async (req, res) => {
     // Get salesman and customer details
     const User = (await import('../models/User.js')).default;
     const Customer = (await import('../models/Customer.js')).default;
-    
+
     const salesman = await User.findById(salesmanId).select('fullName username email');
-    const customer = await Customer.findById(customerId).select('name customerCode');
+    const customer = await Customer.findById(customerId).select('name customerCode category outstandingAmount state tdsSection entityType');
 
     console.log('👤 Salesman lookup:', { salesmanId, found: !!salesman });
     console.log('🏢 Customer lookup:', { customerId, found: !!customer });
@@ -2320,6 +2320,10 @@ export const createDeliveryChallan = async (req, res) => {
 
     // Create dispatch entries for all items with the same DC number
     const dispatchEntries = [];
+    const saleItems = [];
+    let totalChallanAmount = 0;
+    let totalTaxAmount = 0;
+    let totalSubtotal = 0;
     const today = new Date();
     const startOfDay = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate(), 0, 0, 0, 0));
 
@@ -2327,18 +2331,18 @@ export const createDeliveryChallan = async (req, res) => {
       // PRIMARY METHOD: Frontend should pass dispatchId (_id from dispatch table)
       // This is the expected and preferred way
       let existingDispatch = null;
-      
+
       if (item.dispatchId || item._id || item.id) {
         // Use dispatchId from frontend (primary method)
         const dispatchIdToUse = item.dispatchId || item._id || item.id;
-        
+
         console.log(`🎯 PRIMARY: Looking for dispatch by _id: ${dispatchIdToUse}`);
-        
+
         existingDispatch = await Dispatch.findOne({
           _id: dispatchIdToUse,
           company: req.user.companyId
         });
-        
+
         if (existingDispatch) {
           console.log(`✅ Found dispatch record by _id: ${existingDispatch._id}`);
         } else {
@@ -2347,13 +2351,13 @@ export const createDeliveryChallan = async (req, res) => {
       } else {
         // FALLBACK: If dispatchId not provided, try to find by productId and today's date
         console.log(`⚠️ No dispatchId provided for ${item.productName}, using fallback search by productId`);
-        
+
         existingDispatch = await Dispatch.findOne({
           productId: item.productId,
           company: req.user.companyId,
           date: startOfDay
         });
-        
+
         if (existingDispatch) {
           console.log(`✅ FALLBACK: Found dispatch by productId: ${item.productId}`);
         } else {
@@ -2373,10 +2377,10 @@ export const createDeliveryChallan = async (req, res) => {
             productName: item.productName
           });
         }
-        
+
         // Update existing dispatch entry with delivery challan details
         console.log(`🔄 Updating dispatch entry ${existingDispatch._id} with DC details`);
-        
+
         existingDispatch.dcno = dcNo;
         existingDispatch.qtyIssued = item.qtyIssued;
         existingDispatch.dispatchedQuantitySentToday = item.qtyIssued;
@@ -2388,9 +2392,9 @@ export const createDeliveryChallan = async (req, res) => {
 
         await existingDispatch.save();
         dispatchEntries.push(existingDispatch);
-        
+
         console.log(`✅ Successfully updated dispatch ${existingDispatch._id} with DC ${dcNo}`);
-        
+
         // Reduce item stock/batch quantity
         if (item.productId && item.qtyIssued > 0) {
           try {
@@ -2400,15 +2404,35 @@ export const createDeliveryChallan = async (req, res) => {
               const previousStock = itemToUpdate.stock || itemToUpdate.qty || 0;
               itemToUpdate.stock = Math.max(0, previousStock - item.qtyIssued);
               itemToUpdate.qty = itemToUpdate.stock;
-              
+
               // Reduce batch number (stored as string number)
               if (itemToUpdate.batch) {
                 const previousBatch = parseInt(itemToUpdate.batch) || 0;
                 itemToUpdate.batch = Math.max(0, previousBatch - item.qtyIssued).toString();
               }
-              
+
               await itemToUpdate.save();
               console.log(`📉 Reduced inventory for ${item.productName}: stock ${previousStock} → ${itemToUpdate.stock}, batch ${itemToUpdate.batch} (dispatched: ${item.qtyIssued})`);
+
+              // Calculate price for Account integration
+              const priceObj = itemToUpdate.customerPrices?.find(p => p.category === customer.category);
+              const unitPrice = priceObj ? priceObj.price : (itemToUpdate.salePrice || 0);
+              const gstPercent = itemToUpdate.gst || 0;
+              const itemSubtotal = unitPrice * item.qtyIssued;
+              const itemTax = itemSubtotal * (gstPercent / 100);
+              const itemTotal = itemSubtotal + itemTax;
+
+              totalSubtotal += itemSubtotal;
+              totalTaxAmount += itemTax;
+              totalChallanAmount += itemTotal;
+
+              saleItems.push({
+                productName: item.productName,
+                quantity: item.qtyIssued,
+                unitPrice: unitPrice,
+                totalPrice: itemSubtotal,
+                tax: gstPercent
+              });
             }
           } catch (err) {
             console.error(`⚠️ Could not reduce stock for productId ${item.productId}:`, err.message);
@@ -2417,7 +2441,7 @@ export const createDeliveryChallan = async (req, res) => {
       } else {
         // Create new dispatch entry only if no existing record found
         console.log(`✨ Creating NEW dispatch entry for product: ${item.productName}`);
-        
+
         const dispatchEntry = new Dispatch({
           dcno: dcNo,
           productId: item.productId,
@@ -2438,9 +2462,9 @@ export const createDeliveryChallan = async (req, res) => {
 
         await dispatchEntry.save();
         dispatchEntries.push(dispatchEntry);
-        
+
         console.log(`✅ Created new dispatch entry with _id: ${dispatchEntry._id}`);
-        
+
         // Reduce item stock/batch quantity
         if (item.productId && item.qtyIssued > 0) {
           try {
@@ -2450,20 +2474,165 @@ export const createDeliveryChallan = async (req, res) => {
               const previousStock = itemToUpdate.stock || itemToUpdate.qty || 0;
               itemToUpdate.stock = Math.max(0, previousStock - item.qtyIssued);
               itemToUpdate.qty = itemToUpdate.stock;
-              
+
               // Reduce batch number (stored as string number)
               if (itemToUpdate.batch) {
                 const previousBatch = parseInt(itemToUpdate.batch) || 0;
                 itemToUpdate.batch = Math.max(0, previousBatch - item.qtyIssued).toString();
               }
-              
+
               await itemToUpdate.save();
               console.log(`📉 Reduced inventory for ${item.productName}: stock ${previousStock} → ${itemToUpdate.stock}, batch ${itemToUpdate.batch} (dispatched: ${item.qtyIssued})`);
+
+              // Calculate price for Account integration
+              const priceObj = itemToUpdate.customerPrices?.find(p => p.category === customer.category);
+              const unitPrice = priceObj ? priceObj.price : (itemToUpdate.salePrice || 0);
+              const gstPercent = itemToUpdate.gst || 0;
+              const itemSubtotal = unitPrice * item.qtyIssued;
+              const itemTax = itemSubtotal * (gstPercent / 100);
+              const itemTotal = itemSubtotal + itemTax;
+
+              totalSubtotal += itemSubtotal;
+              totalTaxAmount += itemTax;
+              totalChallanAmount += itemTotal;
+
+              saleItems.push({
+                productName: item.productName,
+                quantity: item.qtyIssued,
+                unitPrice: unitPrice,
+                totalPrice: itemSubtotal,
+                tax: gstPercent
+              });
             }
           } catch (err) {
             console.error(`⚠️ Could not reduce stock for productId ${item.productId}:`, err.message);
           }
         }
+      }
+    }
+
+    // Connect to Accounts: Create Sale record and Update Customer Outstanding
+    if (totalChallanAmount > 0) {
+      try {
+        const Sale = (await import('../models/Sale.js')).default;
+        const { Transaction, Account: LedgerAccount } = await import('../models/Account.js');
+        const { Company } = await import('../models/Company.js');
+        const unit = req.user.unit || 'default';
+        const companyId = req.user.companyId;
+
+        // Fetch Company to get state for GST calculation
+        const company = await Company.findById(companyId);
+        const companyState = (company?.state || '').toLowerCase().trim();
+        const customerState = (customer?.state || '').toLowerCase().trim();
+        const isSameState = companyState && customerState && (companyState === customerState);
+        const gstType = isSameState ? 'CGST_SGST' : 'IGST';
+
+        // Calculate TDS
+        let tdsPercent = 0;
+        let tdsAmount = 0;
+        if (customer.tdsSection && customer.tdsSection !== 'None') {
+          switch (customer.tdsSection) {
+            case '194C':
+              tdsPercent = (customer.entityType === 'Individual' || customer.entityType === 'HUF') ? 1 : 2;
+              break;
+            case '194J':
+              tdsPercent = 10;
+              break;
+            case '194Q':
+            case '206C_1H':
+              tdsPercent = 0.1;
+              break;
+          }
+          tdsAmount = (totalSubtotal * tdsPercent) / 100;
+        }
+
+        const netReceivable = totalChallanAmount - tdsAmount;
+
+        // 1. Create Sale Record (Invoice)
+        const sale = new Sale({
+          invoiceNumber: `INV-${dcNo}`,
+          customer: customerId,
+          saleDate: today,
+          dueDate: new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000), // 30 days default
+          items: saleItems,
+          subtotal: totalSubtotal,
+          taxAmount: totalTaxAmount,
+          totalAmount: totalChallanAmount,
+          tdsAmount: tdsAmount,
+          tdsPercent: tdsPercent,
+          gstType: gstType,
+          paidAmount: 0,
+          balanceAmount: netReceivable, // Outstanding is net of TDS
+          unit: unit,
+          companyId: companyId,
+          createdBy: req.user.id,
+          dispatch: dispatchEntries[0]?._id,
+          notes: `Created from Delivery Challan: ${dcNo} (TDS Section: ${customer.tdsSection || 'None'})`
+        });
+        await sale.save();
+        console.log(`💰 Created Sale record for DC ${dcNo}, Net Receivable: ${netReceivable} (GST: ${gstType}, TDS: ${tdsAmount})`);
+
+        // 2. Ledger Posting
+        const receivableAccount = await LedgerAccount.findOne({ accountName: 'Accounts Receivable', unit });
+        const salesAccount = await LedgerAccount.findOne({ accountName: 'Sales Account', unit });
+        const gstAccount = await LedgerAccount.findOne({ accountName: 'Output GST', unit });
+        const tdsReceivableAccount = await LedgerAccount.findOne({ accountName: 'TDS Receivable', unit });
+
+        if (receivableAccount && salesAccount && gstAccount) {
+          const entries = [
+            { account: receivableAccount._id, debit: netReceivable, credit: 0 },
+            { account: salesAccount._id, debit: 0, credit: totalSubtotal },
+            { account: gstAccount._id, debit: 0, credit: totalTaxAmount }
+          ];
+
+          if (tdsAmount > 0 && tdsReceivableAccount) {
+            entries.push({ account: tdsReceivableAccount._id, debit: tdsAmount, credit: 0 });
+          }
+
+          const txn = new Transaction({
+            transactionNumber: `TXN-DSP-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`,
+            description: `Sales Invoice: ${sale.invoiceNumber} to ${customer.name} (DC: ${dcNo})${tdsAmount > 0 ? ' (Includes TDS Receivable)' : ''}`,
+            reference: dcNo,
+            totalAmount: totalChallanAmount, // Total transaction value
+            unit,
+            relatedDocument: 'Sale',
+            relatedDocumentId: sale._id,
+            createdBy: req.user.id,
+            entries
+          });
+          await txn.save();
+
+          // Update ledger balances
+          receivableAccount.balance += netReceivable;
+          salesAccount.balance += totalSubtotal;
+          gstAccount.balance += totalTaxAmount;
+          if (tdsAmount > 0 && tdsReceivableAccount) {
+            tdsReceivableAccount.balance += tdsAmount;
+            await tdsReceivableAccount.save();
+          }
+
+          await receivableAccount.save();
+          await salesAccount.save();
+          await gstAccount.save();
+          console.log(`📊 Posted to Ledger for DC ${dcNo}`);
+        }
+
+        // 3. Update Customer Outstanding Amount (Net Receivable)
+        await Customer.findByIdAndUpdate(customerId, {
+          $inc: { outstandingAmount: netReceivable }
+        });
+        console.log(`✅ Updated Customer ${customer.name} outstanding by ${netReceivable}`);
+
+        // 4. Update Dispatch records with invoiceGenerated: true
+        for (const entry of dispatchEntries) {
+          entry.invoiceGenerated = true;
+          entry.invoiceGeneratedAt = new Date();
+          await entry.save();
+        }
+
+      } catch (accErr) {
+        console.error('❌ Error in Account integration:', accErr);
+        // We don't fail the whole dispatch if account integration fails, but we log it
       }
     }
 
@@ -2482,7 +2651,7 @@ export const createDeliveryChallan = async (req, res) => {
 
   } catch (error) {
     console.error('❌ Error creating delivery challan:', error);
-    
+
     // Handle validation errors specifically
     if (error.name === 'ValidationError') {
       const validationErrors = Object.values(error.errors).map(err => err.message);
@@ -2493,7 +2662,7 @@ export const createDeliveryChallan = async (req, res) => {
         details: error.message
       });
     }
-    
+
     // Handle duplicate DC number error
     if (error.code === 11000) {
       return res.status(400).json({
@@ -2502,7 +2671,7 @@ export const createDeliveryChallan = async (req, res) => {
         error: 'Duplicate DC number'
       });
     }
-    
+
     res.status(500).json({
       success: false,
       message: 'Failed to create delivery challan',
@@ -2537,7 +2706,7 @@ export const generateInvoiceForDC = async (req, res) => {
     // Get full company details
     const { Company } = await import('../models/Company.js');
     const companyDetails = await Company.findById(req.user.companyId);
-    
+
     if (!companyDetails) {
       return res.status(404).json({
         success: false,
@@ -2568,20 +2737,20 @@ export const generateInvoiceForDC = async (req, res) => {
       dcno: dispatch.dcno,
       company: req.user.companyId
     })
-    .populate('productId', 'name code category unit price salePrice gst')
-    .populate('salesPerson', 'fullName username email')
-    .populate('customer', 'name customerCode address phone email')
-    .populate({
-      path: 'orderId',
-      populate: {
-        path: 'products.product',
-        model: 'Item'
-      }
-    })
-    .lean();
+      .populate('productId', 'name code category unit price salePrice gst')
+      .populate('salesPerson', 'fullName username email')
+      .populate('customer', 'name customerCode address phone email')
+      .populate({
+        path: 'orderId',
+        populate: {
+          path: 'products.product',
+          model: 'Item'
+        }
+      })
+      .lean();
 
     console.log('🔍 Found', allDCItems.length, 'items for DC:', dispatch.dcno);
-    
+
     // If productId populate failed but we have productId references, fetch them manually
     for (let i = 0; i < allDCItems.length; i++) {
       const item = allDCItems[i];
@@ -2594,7 +2763,7 @@ export const generateInvoiceForDC = async (req, res) => {
         }
       }
     }
-    
+
     // Log first item details for debugging
     if (allDCItems.length > 0) {
       const firstItem = allDCItems[0];
@@ -2610,52 +2779,52 @@ export const generateInvoiceForDC = async (req, res) => {
     }
 
     // Use items from request if provided, otherwise use database items
-    const items = requestBody.items && requestBody.items.length > 0 
-      ? requestBody.items 
+    const items = requestBody.items && requestBody.items.length > 0
+      ? requestBody.items
       : allDCItems.map(item => {
-          // Try multiple sources for product name
-          const productName = item.productId?.name || item.productName || 'Product Name Not Set';
-          
-          // Get rate from order or product
-          let rate = 0;
-          if (item.orderId && item.orderId.products && Array.isArray(item.orderId.products)) {
-            const orderProduct = item.orderId.products.find(
-              p => p.product && item.productId && 
-                   p.product.toString() === item.productId._id.toString()
-            );
-            if (orderProduct) {
-              rate = orderProduct.price || 0;
-            }
+        // Try multiple sources for product name
+        const productName = item.productId?.name || item.productName || 'Product Name Not Set';
+
+        // Get rate from order or product
+        let rate = 0;
+        if (item.orderId && item.orderId.products && Array.isArray(item.orderId.products)) {
+          const orderProduct = item.orderId.products.find(
+            p => p.product && item.productId &&
+              p.product.toString() === item.productId._id.toString()
+          );
+          if (orderProduct) {
+            rate = orderProduct.price || 0;
           }
-          // Fallback to product's sale price
-          if (rate === 0 && item.productId) {
-            rate = item.productId.salePrice || item.productId.price || 0;
-          }
-          
-          // Get GST from product
-          const gst = item.productId?.gst || 0;
-          
-          console.log('📋 Mapping item:', {
-            hasProductId: !!item.productId,
-            productIdName: item.productId?.name,
-            productName: item.productName,
-            finalName: productName,
-            indentQty: item.indentQty || item.totalIndentQuantityOrdersForTheDay,
-            qtyIssued: item.qtyIssued || item.dispatchedQuantitySentToday,
-            rate: rate,
-            gst: gst
-          });
-          
-          return {
-            productName: productName,
-            productGroup: item.productGroup || '',
-            indentQty: item.indentQty || item.totalIndentQuantityOrdersForTheDay || 0,
-            qtyIssued: item.qtyIssued || item.packedQuantityReadyForDispatch || item.dispatchedQuantitySentToday || 0,
-            unit: item.productId?.unit || item.unit || 'Pcs',
-            rate: rate,
-            gst: gst
-          };
+        }
+        // Fallback to product's sale price
+        if (rate === 0 && item.productId) {
+          rate = item.productId.salePrice || item.productId.price || 0;
+        }
+
+        // Get GST from product
+        const gst = item.productId?.gst || 0;
+
+        console.log('📋 Mapping item:', {
+          hasProductId: !!item.productId,
+          productIdName: item.productId?.name,
+          productName: item.productName,
+          finalName: productName,
+          indentQty: item.indentQty || item.totalIndentQuantityOrdersForTheDay,
+          qtyIssued: item.qtyIssued || item.dispatchedQuantitySentToday,
+          rate: rate,
+          gst: gst
         });
+
+        return {
+          productName: productName,
+          productGroup: item.productGroup || '',
+          indentQty: item.indentQty || item.totalIndentQuantityOrdersForTheDay || 0,
+          qtyIssued: item.qtyIssued || item.packedQuantityReadyForDispatch || item.dispatchedQuantitySentToday || 0,
+          unit: item.productId?.unit || item.unit || 'Pcs',
+          rate: rate,
+          gst: gst
+        };
+      });
 
     // Don't update status - keep it as dispatched
     // Invoice generation should not change dispatch status
@@ -2676,15 +2845,15 @@ export const generateInvoiceForDC = async (req, res) => {
     // Modern Professional Header with Company Branding
     // Header background with gradient effect
     doc.rect(30, 30, 535, 120).fillAndStroke('#1e3a8a', '#1e3a8a');
-    
+
     // Company Name - Large and Bold
     doc.fontSize(28).font('Helvetica-Bold').fillColor('#ffffff')
-       .text((companyDetails.name || 'SUNRISE BAKERY').toUpperCase(), 40, 50, { align: 'center' });
-    
+      .text((companyDetails.name || 'SUNRISE BAKERY').toUpperCase(), 40, 50, { align: 'center' });
+
     // Tagline
     doc.fontSize(10).font('Helvetica').fillColor('#e0e7ff')
-       .text(companyDetails.tagline || 'Premium Quality Baked Goods Since 2020', 40, 85, { align: 'center' });
-    
+      .text(companyDetails.tagline || 'Premium Quality Baked Goods Since 2020', 40, 85, { align: 'center' });
+
     // Company Details - Left Side
     doc.fontSize(8).fillColor('#ffffff');
     const companyAddress = companyDetails.address || 'Company Address Not Set';
@@ -2692,31 +2861,31 @@ export const generateInvoiceForDC = async (req, res) => {
     const companyPincode = companyDetails.pincode || '';
     const fullAddress = `${companyAddress}${companyCity ? ', ' + companyCity : ''}${companyPincode ? ' - ' + companyPincode : ''}`;
     doc.text(fullAddress, 40, 105, { align: 'left', width: 350 });
-    
+
     const companyPhone = companyDetails.phone || 'Not Available';
     const companyEmail = companyDetails.email || 'Not Available';
     doc.text(`${companyPhone} |${companyEmail}`, 40, 118, { align: 'left', width: 350 });
-    
+
     // GST Details - Right Side
     const gstin = companyDetails.gstin || 'GSTIN Not Set';
     const pan = companyDetails.pan || 'PAN Not Set';
     doc.text(`GSTIN: ${gstin}`, 400, 105, { align: 'left' });
     doc.text(`PAN: ${pan}`, 400, 118, { align: 'left' });
-    
+
     doc.fillColor('#000000');
     doc.y = 160;
 
     // Invoice Title Banner
     doc.rect(30, doc.y, 535, 35).fillAndStroke('#f3f4f6', '#d1d5db');
     doc.fontSize(18).font('Helvetica-Bold').fillColor('#1e3a8a')
-       .text('TAX INVOICE / DELIVERY CHALLAN', 40, doc.y + 10, { align: 'center' });
-    
+      .text('TAX INVOICE / DELIVERY CHALLAN', 40, doc.y + 10, { align: 'center' });
+
     doc.fillColor('#000000');
     doc.y += 45;
 
     // Invoice Details Section - Modern Grid Layout
     const invoiceDetailsY = doc.y;
-    
+
     // Left Box - Invoice Info
     doc.rect(30, invoiceDetailsY, 260, 85).stroke();
     doc.fontSize(11).font('Helvetica-Bold').text('Invoice Details', 40, invoiceDetailsY + 8);
@@ -2727,7 +2896,7 @@ export const generateInvoiceForDC = async (req, res) => {
     doc.text(`Invoice Time: ${new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}`, 40, invoiceDetailsY + 58);
     const placeOfSupply = companyDetails.state || 'Maharashtra';
     doc.text(`Place of Supply: ${placeOfSupply}`, 40, invoiceDetailsY + 73);
-    
+
     // Right Box - Payment Terms
     doc.rect(305, invoiceDetailsY, 260, 85).stroke();
     doc.fontSize(11).font('Helvetica-Bold').text('Payment Terms', 315, invoiceDetailsY + 8);
@@ -2737,62 +2906,62 @@ export const generateInvoiceForDC = async (req, res) => {
     doc.text(`Terms: Payment within 7 days`, 315, invoiceDetailsY + 58);
     doc.text(`Status: `, 315, invoiceDetailsY + 73, { continued: true });
     doc.font('Helvetica-Bold').fillColor('#059669').text('PAID');
-    
+
     doc.fillColor('#000000');
     doc.y = invoiceDetailsY + 95;
 
     // Bill To and Ship To Section
     const partyDetailsY = doc.y;
-    
+
     // Bill To - Customer Details (Left)
     doc.rect(30, partyDetailsY, 260, 120).stroke();
     doc.fontSize(11).font('Helvetica-Bold').fillColor('#1e3a8a')
-       .text('BILL TO', 40, partyDetailsY + 8);
+      .text('BILL TO', 40, partyDetailsY + 8);
     doc.fillColor('#000000').fontSize(10).font('Helvetica-Bold');
     doc.text(customerName, 40, partyDetailsY + 28, { width: 240 });
-    
+
     doc.fontSize(8).font('Helvetica');
     let billY = partyDetailsY + 45;
     doc.text(`Customer Code: ${customerCode}`, 40, billY);
     billY += 12;
-    
+
     const customerPhone = dispatch.customer?.phone || requestBody.customerPhone || 'N/A';
     doc.text(`Phone: ${customerPhone}`, 40, billY);
     billY += 12;
-    
+
     const customerEmail = dispatch.customer?.email || requestBody.customerEmail || '';
     if (customerEmail) {
       doc.text(`Email: ${customerEmail}`, 40, billY, { width: 240 });
       billY += 12;
     }
-    
+
     const customerAddress = dispatch.customer?.address || requestBody.customerAddress || '';
     if (customerAddress) {
       doc.text(`Address: ${customerAddress}`, 40, billY, { width: 240 });
     }
-    
+
     // Ship To - Salesman Details (Right)
     doc.rect(305, partyDetailsY, 260, 120).stroke();
     doc.fontSize(11).font('Helvetica-Bold').fillColor('#1e3a8a')
-       .text('HANDLED BY', 315, partyDetailsY + 8);
+      .text('HANDLED BY', 315, partyDetailsY + 8);
     doc.fillColor('#000000').fontSize(10).font('Helvetica-Bold');
     doc.text(salesmanName, 315, partyDetailsY + 28, { width: 240 });
-    
+
     doc.fontSize(8).font('Helvetica');
     let shipY = partyDetailsY + 45;
-    
+
     const salesmanUsername = dispatch.salesPerson?.username || requestBody.salesmanUsername || '';
     if (salesmanUsername && salesmanUsername !== salesmanName) {
       doc.text(`Username: ${salesmanUsername}`, 315, shipY, { width: 240 });
       shipY += 12;
     }
-    
+
     const salesmanEmail = dispatch.salesPerson?.email || requestBody.salesmanEmail || '';
     if (salesmanEmail) {
       doc.text(`Email: ${salesmanEmail}`, 315, shipY, { width: 240 });
       shipY += 12;
     }
-    
+
     doc.text(`Company: ${companyDetails.name}`, 315, shipY, { width: 240 });
     shipY += 12;
     doc.text(`Role: Sales Representative`, 315, shipY, { width: 240 });
@@ -2803,10 +2972,10 @@ export const generateInvoiceForDC = async (req, res) => {
 
     // Items Table - Modern Professional Design
     const tableTop = doc.y;
-    
+
     // Table Header with Blue Background
     doc.rect(30, tableTop, 535, 25).fillAndStroke('#1e3a8a', '#1e3a8a');
-    
+
     // Column positions for professional layout with financial columns
     const slCol = 40;
     const itemCol = 80;
@@ -2815,7 +2984,7 @@ export const generateInvoiceForDC = async (req, res) => {
     const amountCol = 380;
     const gstCol = 450;
     const totalCol = 500;
-    
+
     doc.fontSize(9).font('Helvetica-Bold').fillColor('#ffffff');
     doc.text('S.No', slCol, tableTop + 8, { width: 30 });
     doc.text('Product Name', itemCol, tableTop + 8, { width: 170 });
@@ -2842,16 +3011,16 @@ export const generateInvoiceForDC = async (req, res) => {
       }
 
       const rowHeight = 28;
-      
+
       // Alternating row colors for better readability
       if (index % 2 === 0) {
         doc.rect(30, currentY, 535, rowHeight).fillAndStroke('#f9fafb', '#e5e7eb');
       } else {
         doc.rect(30, currentY, 535, rowHeight).stroke('#e5e7eb');
       }
-      
+
       doc.fillColor('#000000');
-      
+
       // Get quantity, rate, and GST
       const quantity = item.qtyIssued || 0;
       const rate = item.rate || item.price || 0;
@@ -2859,7 +3028,7 @@ export const generateInvoiceForDC = async (req, res) => {
       const amount = quantity * rate;
       const gstAmount = amount * (gstRate / 100);
       const totalAmount = amount + gstAmount;
-      
+
       // Row data with financial columns
       doc.text(`${index + 1}`, slCol, currentY + 10, { width: 30 });
       doc.text(item.productName || 'N/A', itemCol, currentY + 6, { width: 170, ellipsis: true });
@@ -2883,55 +3052,55 @@ export const generateInvoiceForDC = async (req, res) => {
     doc.text(`₹${totalGST.toFixed(2)}`, gstCol, currentY + 8, { width: 40, align: 'right' });
     const grandTotal = subtotal + totalGST;
     doc.text(`₹${grandTotal.toFixed(2)}`, totalCol, currentY + 8, { width: 55, align: 'right' });
-    
+
     currentY += 25;
 
     // Tax Calculation Section
     const taxY = currentY + 15;
-    
+
     // Right side - Tax breakdown box
     doc.rect(350, taxY, 215, 85).stroke();
     doc.fontSize(9).font('Helvetica').fillColor('#000000');
-    
+
     let taxLineY = taxY + 10;
     doc.fillColor('#000000').text('Subtotal (Taxable):', 360, taxLineY);
     doc.text(`₹${subtotal.toFixed(2)}`, 500, taxLineY, { width: 55, align: 'right' });
-    
+
     taxLineY += 18;
     doc.fillColor('#000000').text('Total GST:', 360, taxLineY);
     doc.text(`₹${totalGST.toFixed(2)}`, 500, taxLineY, { width: 55, align: 'right' });
-    
+
     taxLineY += 18;
     doc.moveTo(360, taxLineY).lineTo(555, taxLineY).stroke();
     taxLineY += 8;
-    
+
     doc.fontSize(11).font('Helvetica-Bold').fillColor('#000000');
     doc.text('Grand Total:', 360, taxLineY);
     doc.text(`₹${grandTotal.toFixed(2)}`, 500, taxLineY, { width: 55, align: 'right' });
-    
+
     // Left side - Amount in words
     doc.fontSize(9).font('Helvetica-Bold').fillColor('#000000');
     doc.text('Amount in Words:', 40, taxY + 10);
     doc.fontSize(8).font('Helvetica').fillColor('#000000');
     const amountInWords = convertNumberToWords(Math.round(grandTotal));
     doc.text(`${amountInWords} Rupees Only`, 40, taxY + 28, { width: 290 });
-    
+
     doc.y = taxY + 100;
 
-  
-    
+
+
     doc.y += 50;
 
     // Signature Section
     const signY = doc.y;
-    
+
     // Customer Signature
-  doc.fontSize(8).font('Helvetica').fillColor('#000000');
+    doc.fontSize(8).font('Helvetica').fillColor('#000000');
     doc.text('Received By:', 40, signY);
     doc.moveTo(40, signY + 40).lineTo(180, signY + 40).stroke();
     doc.text('Customer Signature', 40, signY + 45);
     doc.text(`Date: ${new Date().toLocaleDateString('en-IN')}`, 40, signY + 58);
-    
+
     // Company Stamp
     doc.text(`For ${companyDetails.name}:`, 380, signY);
     doc.moveTo(380, signY + 40).lineTo(520, signY + 40).stroke();
@@ -2993,7 +3162,7 @@ export const generateInvoiceByDC = async (req, res) => {
 
     // Use the first dispatch for common details
     const firstDispatch = dispatches[0];
-    
+
     // Override salesperson if provided
     let salesPerson = firstDispatch.salesPerson;
     if (salesPersonId) {
@@ -3039,31 +3208,31 @@ export const generateInvoiceByDC = async (req, res) => {
     // Header
     doc.rect(30, 30, 535, 120).fillAndStroke('#1e3a8a', '#1e3a8a');
     doc.fontSize(28).font('Helvetica-Bold').fillColor('#ffffff')
-       .text(companyDetails.name.toUpperCase(), 40, 50, { align: 'center' });
+      .text(companyDetails.name.toUpperCase(), 40, 50, { align: 'center' });
     doc.fontSize(10).font('Helvetica').fillColor('#e0e7ff')
-       .text(companyDetails.tagline, 40, 85, { align: 'center' });
-    
+      .text(companyDetails.tagline, 40, 85, { align: 'center' });
+
     doc.fontSize(8).fillColor('#ffffff');
     const fullAddress = `${companyDetails.address}${companyDetails.city ? ', ' + companyDetails.city : ''}${companyDetails.pincode ? ' - ' + companyDetails.pincode : ''}`;
     doc.text(fullAddress, 40, 105, { align: 'left', width: 350 });
     doc.text(`${companyDetails.phone} | ${companyDetails.email}`, 40, 118, { align: 'left', width: 350 });
     doc.text(`GSTIN: ${companyDetails.gstin}`, 400, 105, { align: 'left' });
     doc.text(`PAN: ${companyDetails.pan}`, 400, 118, { align: 'left' });
-    
+
     doc.fillColor('#000000');
     doc.y = 160;
 
     // Invoice Title
     doc.rect(30, doc.y, 535, 35).fillAndStroke('#f3f4f6', '#d1d5db');
     doc.fontSize(18).font('Helvetica-Bold').fillColor('#1e3a8a')
-       .text('TAX INVOICE / DELIVERY CHALLAN', 40, doc.y + 10, { align: 'center' });
-    
+      .text('TAX INVOICE / DELIVERY CHALLAN', 40, doc.y + 10, { align: 'center' });
+
     doc.fillColor('#000000');
     doc.y += 45;
 
     // Invoice Details & Party Information Section
     const invoiceDetailsY = doc.y;
-    
+
     // Left Box - Invoice Info and Sales Person
     doc.rect(30, invoiceDetailsY, 260, 120).stroke();
     doc.fontSize(11).font('Helvetica-Bold').fillColor('#1e3a8a').text('Invoice Details', 40, invoiceDetailsY + 8);
@@ -3072,10 +3241,10 @@ export const generateInvoiceByDC = async (req, res) => {
     doc.font('Helvetica-Bold').text(`${dcNo}`);
     doc.font('Helvetica').text(`Date: ${new Date(firstDispatch.date).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}`, 40, invoiceDetailsY + 43);
     doc.text(`Time: ${new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}`, 40, invoiceDetailsY + 58);
-    
+
     // Divider line
     doc.moveTo(40, invoiceDetailsY + 75).lineTo(280, invoiceDetailsY + 75).stroke();
-    
+
     // Sales Person info
     doc.fontSize(10).font('Helvetica-Bold').fillColor('#1e3a8a').text('Sales Person', 40, invoiceDetailsY + 82);
     doc.fillColor('#000000').fontSize(9).font('Helvetica');
@@ -3087,18 +3256,18 @@ export const generateInvoiceByDC = async (req, res) => {
     doc.fontSize(11).font('Helvetica-Bold').fillColor('#1e3a8a').text('Bill To', 315, invoiceDetailsY + 8);
     doc.fillColor('#000000').fontSize(10).font('Helvetica-Bold');
     doc.text(customer.name || 'N/A', 315, invoiceDetailsY + 28, { width: 240, ellipsis: true });
-    
+
     doc.fontSize(8).font('Helvetica');
     let customerY = invoiceDetailsY + 45;
-    
+
     const customerCode = customer.customerCode || 'N/A';
     doc.text(`Code: ${customerCode}`, 315, customerY);
     customerY += 13;
-    
+
     const customerPhone = customer.phone || 'N/A';
     doc.text(`Phone: ${customerPhone}`, 315, customerY);
     customerY += 13;
-    
+
     const customerAddress = customer.address || '';
     if (customerAddress && customerAddress.trim() !== '') {
       // Use text with proper wrapping
@@ -3137,41 +3306,41 @@ export const generateInvoiceByDC = async (req, res) => {
     dispatches.forEach((dispatch, index) => {
       // Get product name from populated productId or fallback to productName field
       const productName = dispatch.productId?.name || dispatch.productName || 'Unknown Product';
-      
+
       // Get quantity from qtyIssued or indentQty
       const quantity = dispatch.qtyIssued || dispatch.indentQty || 0;
-      
+
       // Get rate and GST
       let rate = 0;
       let gstRate = 0;
-      
+
       // Try to get from the order first
       if (dispatch.orderId && dispatch.orderId.products && Array.isArray(dispatch.orderId.products)) {
         // Find the matching product in the order
         const orderProduct = dispatch.orderId.products.find(
-          p => p.product && dispatch.productId && 
-               p.product.toString() === dispatch.productId._id.toString()
+          p => p.product && dispatch.productId &&
+            p.product.toString() === dispatch.productId._id.toString()
         );
-        
+
         if (orderProduct) {
           // Order stores 'price' field (not unitPrice)
           rate = orderProduct.price || 0;
           console.log(`📊 Found rate ${rate} from order for ${productName}`);
         }
       }
-      
+
       // Get GST from product model (Item has 'gst' field)
       if (dispatch.productId && dispatch.productId.gst !== undefined) {
         gstRate = dispatch.productId.gst || 0;
         console.log(`📊 Found GST ${gstRate}% from product for ${productName}`);
       }
-      
+
       // If no rate found in order, use product's salePrice
       if (rate === 0 && dispatch.productId) {
         rate = dispatch.productId.salePrice || dispatch.productId.price || 0;
         console.log(`📊 Using product salePrice ${rate} for ${productName}`);
       }
-      
+
       const amount = quantity * rate;
       const gstAmount = (amount * gstRate) / 100;
       const total = amount + gstAmount;
@@ -3242,7 +3411,7 @@ export const generateInvoiceByDC = async (req, res) => {
     doc.moveTo(40, yPosition + 40).lineTo(180, yPosition + 40).stroke();
     doc.text('Customer Signature', 40, yPosition + 45);
     doc.text(`Date: ${new Date().toLocaleDateString('en-IN')}`, 40, yPosition + 58);
-    
+
     doc.text(`For ${companyDetails.name}:`, 380, yPosition);
     doc.moveTo(380, yPosition + 40).lineTo(520, yPosition + 40).stroke();
     doc.text('Authorized Signatory', 380, yPosition + 45);
@@ -3300,7 +3469,7 @@ export const createDirectOrder = async (req, res) => {
         if (!product.productId) {
           errors[`products[${i}].productId`] = 'Product ID is required';
         }
-        
+
         if (!product.quantity || product.quantity <= 0) {
           errors[`products[${i}].quantity`] = 'Quantity must be greater than 0';
         }
@@ -3326,7 +3495,7 @@ export const createDirectOrder = async (req, res) => {
     for (const productItem of products) {
       const itemTotal = productItem.unitPrice * productItem.quantity;
       totalAmount += itemTotal;
-      
+
       orderProducts.push({
         product: productItem.productId,
         quantity: productItem.quantity,
@@ -3339,11 +3508,11 @@ export const createDirectOrder = async (req, res) => {
     let orderCode;
     let isUnique = false;
     let attempts = 0;
-    
+
     while (!isUnique && attempts < 10) {
       const orderCount = await Order.countDocuments();
       orderCode = `ORD-${String(orderCount + 1 + attempts).padStart(4, '0')}`;
-      
+
       const existingOrder = await Order.findOne({ orderCode });
       if (!existingOrder) {
         isUnique = true;
@@ -3351,7 +3520,7 @@ export const createDirectOrder = async (req, res) => {
         attempts++;
       }
     }
-    
+
     if (!isUnique) {
       orderCode = `ORD-${Date.now().toString().slice(-6)}`;
     }
@@ -3394,20 +3563,20 @@ export const createDirectOrder = async (req, res) => {
     // Use the parsed order date for dispatch entries, not today's date
     const dispatchDate = new Date(parsedOrderDate);
     const dispatchStartOfDay = new Date(Date.UTC(
-      dispatchDate.getUTCFullYear(), 
-      dispatchDate.getUTCMonth(), 
-      dispatchDate.getUTCDate(), 
+      dispatchDate.getUTCFullYear(),
+      dispatchDate.getUTCMonth(),
+      dispatchDate.getUTCDate(),
       0, 0, 0, 0
     ));
     console.log('📅 Dispatch date:', { orderDate: parsedOrderDate, dispatchDate: dispatchStartOfDay });
-    
+
     // Generate DC number if auto-dispatch is requested
     let dcNumber = null;
     if (autoDispatch) {
       dcNumber = await Dispatch.generateNextDCno(req.user.companyId);
       console.log('📋 Generated DC number for auto-dispatch:', dcNumber);
     }
-    
+
     const dispatchEntries = [];
 
     for (const orderProduct of order.products) {
@@ -3437,7 +3606,7 @@ export const createDirectOrder = async (req, res) => {
           }
         }
       ]);
-      
+
       const totalIndentQty = totalOrderQtyForProduct.length > 0 ? totalOrderQtyForProduct[0].totalQty : indentQty;
       console.log(`📊 Total indent qty for ${productName} from all orders today: ${totalIndentQty}`);
 
@@ -3453,39 +3622,39 @@ export const createDirectOrder = async (req, res) => {
       if (existingDispatch) {
         // Use existing dispatch data as template
         console.log(`📋 Found existing dispatch for product ${productName}, copying data...`);
-        
+
         newDispatchData = {
           productId: productId,
           productName: productName,
           productGroup: existingDispatch.productGroup,
           company: req.user.companyId,
           date: dispatchStartOfDay,
-          
+
           // Copy existing stock data
           packedQuantityReadyForDispatch: existingDispatch.packedQuantityReadyForDispatch || 0,
           previousClosingStockYesterdayBalance: existingDispatch.previousClosingStockYesterdayBalance || 0,
           returnQuantityYesterdayReturns: existingDispatch.returnQuantityYesterdayReturns || 0,
           totalAvailableStock: existingDispatch.totalAvailableStock || 0,
           physicalStockEntryManualVerification: existingDispatch.physicalStockEntryManualVerification || 0,
-          
+
           // Add new order data
           totalIndentQuantityOrdersForTheDay: totalIndentQty,
           indentQty: 0,
           qtyIssued: indentQty,
           dispatchedQuantitySentToday: indentQty,
-          
+
           // Recalculate closing stock
           closingStockEndOfDayBalance: existingDispatch.closingStockEndOfDayBalance || 0,
-          
+
           // Copy other fields
           batchNo: existingDispatch.batchNo,
           packingSheetId: existingDispatch.packingSheetId,
-          
+
           // New order references
           salesPerson: salesPersonId,
           customer: customerId,
           orderId: order._id,
-          
+
           // Auto-dispatch fields
           dcno: autoDispatch ? dcNumber : null,
           status: autoDispatch ? 'dispatched' : 'pending',
@@ -3495,17 +3664,17 @@ export const createDirectOrder = async (req, res) => {
       } else {
         // Create new dispatch entry with basic data
         console.log(`✨ Creating new dispatch entry for product ${productName}...`);
-        
+
         // Get product details for additional info
         const productDetails = await Item.findById(productId).select('category unit');
-        
+
         newDispatchData = {
           productId: productId,
           productName: productName,
           productGroup: productDetails?.category || orderProduct.product.category || 'N/A',
           company: req.user.companyId,
           date: dispatchStartOfDay,
-          
+
           // Basic stock data
           packedQuantityReadyForDispatch: 0,
           previousClosingStockYesterdayBalance: 0,
@@ -3517,15 +3686,15 @@ export const createDirectOrder = async (req, res) => {
           dispatchedQuantitySentToday: indentQty,
           closingStockEndOfDayBalance: 0,
           physicalStockEntryManualVerification: 0,
-          
+
           // Order references
           salesPerson: salesPersonId,
           customer: customerId,
           orderId: order._id,
-          
+
           // No packing sheet for direct orders
           packingSheetId: null,
-          
+
           // Auto-dispatch fields
           dcno: autoDispatch ? dcNumber : null,
           status: autoDispatch ? 'dispatched' : 'pending',
@@ -3538,7 +3707,7 @@ export const createDirectOrder = async (req, res) => {
       const dispatchEntry = new Dispatch(newDispatchData);
       await dispatchEntry.save();
       dispatchEntries.push(dispatchEntry);
-      
+
       console.log(`✅ Created dispatch entry for ${productName} with indent qty: ${indentQty}`);
     }
 
@@ -3551,8 +3720,8 @@ export const createDirectOrder = async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: autoDispatch 
-        ? `Order created and dispatched successfully with DC No: ${dcNumber}` 
+      message: autoDispatch
+        ? `Order created and dispatched successfully with DC No: ${dcNumber}`
         : 'Order created successfully from dispatch.',
       order: {
         _id: order._id,
@@ -3579,7 +3748,7 @@ export const createDirectOrder = async (req, res) => {
 
   } catch (error) {
     console.error('❌ Error creating direct order from dispatch:', error);
-    
+
     // Handle duplicate key error for DC number
     if (error.code === 11000 && error.message.includes('dcno')) {
       return res.status(409).json({
@@ -3588,7 +3757,7 @@ export const createDirectOrder = async (req, res) => {
         error: 'A dispatch with this DC number has already been created. The system will generate a new number on retry.'
       });
     }
-    
+
     // Handle validation errors
     if (error.name === 'ValidationError') {
       const validationErrors = {};
@@ -3601,7 +3770,7 @@ export const createDirectOrder = async (req, res) => {
         errors: validationErrors
       });
     }
-    
+
     // Generic error
     res.status(500).json({
       success: false,
@@ -3617,7 +3786,7 @@ export const getSalesPersonsForDispatch = async (req, res) => {
     console.log('👥 Fetching sales persons for dispatch');
 
     const query = { role: 'Sales', isActive: true };
-    
+
     // Filter by company if user has companyId
     if (req.user.companyId) {
       query.companyId = req.user.companyId;
@@ -3650,7 +3819,7 @@ export const getCustomersForDispatch = async (req, res) => {
     console.log('👥 Fetching all customers for dispatch (no salesperson filter)');
 
     const query = { isActive: true };
-    
+
     // Filter by company if user has companyId
     if (req.user.companyId) {
       query.companyId = req.user.companyId;
@@ -3697,7 +3866,7 @@ export const getProductsForDispatch = async (req, res) => {
 
     // const allDispatches = await Dispatch.find(query).select('productId').lean();
     // console.log('📦 Total dispatch records for company:', allDispatches.length);
-    
+
     // const dispatchedProductIds = [...new Set(allDispatches.map(d => d.productId?.toString()).filter(Boolean))];
     // console.log('📦 Unique dispatched product IDs:', dispatchedProductIds.length);
 
@@ -3706,19 +3875,19 @@ export const getProductsForDispatch = async (req, res) => {
 
     // Always fetch all items filtered by store (company)
     console.log('✅ Fetching ALL items for company store');
-    
+
     const itemQuery = {};
     if (req.user.companyId) {
       // Filter by store field which contains company ID
       itemQuery.store = req.user.companyId.toString();
       console.log('🔍 Filtering items by store (companyId):', req.user.companyId);
     }
-    
+
     products = await Item.find(itemQuery)
       .select('_id name code category unit salePrice purchasePrice stock store batch')
       .sort({ name: 1 })
       .lean();
-    
+
     console.log('📦 Found ALL items for company store:', products.length);
 
     // COMMENTED OUT: Previous logic for dispatched products only
@@ -3797,7 +3966,7 @@ export const getProductsForDispatch = async (req, res) => {
 export const getTodayOrderItems = async (req, res) => {
   try {
     const { salesPersonId, customerId } = req.query;
-    
+
     console.log('📦 Fetching today\'s order items');
     console.log('👤 Sales Person:', salesPersonId);
     console.log('👥 Customer:', customerId);
@@ -3812,7 +3981,7 @@ export const getTodayOrderItems = async (req, res) => {
 
     // Get today's date in YYYY-MM-DD format
     const todayString = new Date().toISOString().split('T')[0];
-    
+
     // Create date range for today in UTC (since orderDate is stored as Date at 00:00:00 UTC)
     const todayStart = new Date(todayString + 'T00:00:00.000Z');
     const todayEnd = new Date(todayString + 'T23:59:59.999Z');
@@ -3829,11 +3998,11 @@ export const getTodayOrderItems = async (req, res) => {
         $lte: todayEnd
       }
     })
-    .populate({
-      path: 'products.product',
-      select: 'name code category unit batch salePrice'
-    })
-    .lean();
+      .populate({
+        path: 'products.product',
+        select: 'name code category unit batch salePrice'
+      })
+      .lean();
 
     console.log('📦 Found orders:', orders.length);
 
@@ -3857,7 +4026,7 @@ export const getTodayOrderItems = async (req, res) => {
         if (!product) return;
 
         const productId = product._id.toString();
-        
+
         if (itemsMap.has(productId)) {
           // Add to existing item
           const existing = itemsMap.get(productId);
@@ -3881,7 +4050,7 @@ export const getTodayOrderItems = async (req, res) => {
     });
 
     const items = Array.from(itemsMap.values());
-    
+
     console.log('📦 Aggregated items:', items.length);
     items.forEach(item => {
       console.log(`   - ${item.name}: Qty=${item.indentQty}, Value=${item.orderValue}, Batch=${item.batch}`);

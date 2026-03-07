@@ -195,7 +195,7 @@ export const updateOrderStatus = async (req, res) => {
                 // Update existing entry - set productionFinalBatches to 0 instead of adding quantity
                 const oldBatches = existingSummary.productionFinalBatches;
                 existingSummary.productionFinalBatches = 0; // Always set to 0 as requested
-                
+
                 // ✅ UPDATE DATE TO CURRENT ORDER DATE
                 existingSummary.date = order.orderDate;
 
@@ -367,10 +367,10 @@ export const updateOrderStatus = async (req, res) => {
           // ✅ NORMALIZE DATE TO START OF DAY for storage
           const summaryDate = new Date(order.orderDate);
           summaryDate.setUTCHours(0, 0, 0, 0);
-          
+
           console.log(`   📅 Original order date: ${order.orderDate}`);
           console.log(`   📅 Normalized summary date: ${summaryDate}`);
-          
+
           // Check if ProductDailySummary entry already exists for this product and company
           // FIXED: Use only company+product ID, completely ignore date
           const existingSummary = await ProductDailySummary.findOne({
@@ -407,7 +407,7 @@ export const updateOrderStatus = async (req, res) => {
                 createdAt: new Date(),
                 updatedAt: new Date()
               });
-  
+
               await newSummary.save();
               console.log(`   ✅ Created new ProductDailySummary: ${productName}`);
               console.log(`      - ProductionFinalBatches: 0 (initialized)`);
@@ -417,19 +417,19 @@ export const updateOrderStatus = async (req, res) => {
               // Handle duplicate key error (race condition)
               if (createError.code === 11000) {
                 console.log(`   ⚠️ ProductDailySummary already exists (race condition), updating instead...`);
-                
+
                 // Try to find and update the existing entry
                 const raceSummary = await ProductDailySummary.findOne({
                   productId: productId,
                   companyId: order.companyId
                 });
-                
+
                 if (raceSummary) {
                   // ADD the new quantity to existing totalQuantity
                   const oldQuantity = raceSummary.totalQuantity || 0;
                   const newQuantity = oldQuantity + productItem.quantity;
                   raceSummary.totalQuantity = newQuantity;
-                  
+
                   if (!raceSummary.qtyPerBatch || raceSummary.qtyPerBatch === 0) {
                     raceSummary.qtyPerBatch = qtyPerBatch;
                   }
@@ -1567,9 +1567,9 @@ export const approveProductSummaries = async (req, res) => {
     // Handle new bulk approval format with production data
     if (productSummaries && Array.isArray(productSummaries)) {
       console.log('🔄 Processing new bulk approval with production data for', productSummaries.length, 'products');
-      
+
       const approvalResults = [];
-      
+
       // FIX: Properly handle date to avoid timezone issues
       // Create today's date at midnight UTC using current UTC date components
       let approvalDate;
@@ -1582,24 +1582,24 @@ export const approveProductSummaries = async (req, res) => {
         const now = new Date();
         // Use UTC components to ensure correct date regardless of server timezone
         approvalDate = new Date(Date.UTC(
-          now.getUTCFullYear(), 
-          now.getUTCMonth(), 
-          now.getUTCDate(), 
+          now.getUTCFullYear(),
+          now.getUTCMonth(),
+          now.getUTCDate(),
           0, 0, 0, 0
         ));
       }
-      
+
       console.log(`📅 Approval date set to: ${approvalDate.toISOString()} (UTC: ${approvalDate.toUTCString()})`);
-      
+
       // Step 1: Update all ProductDetailsDailySummary entries and collect data
       const productDataForBatching = [];
-      
+
       for (const productSummary of productSummaries) {
         try {
           const { productId, productName, batchAdjusted, qtyPerBatch, physicalStock, packing, toBeProducedDay, produceBatches, orderIds, dailyDetailsId } = productSummary;
-          
+
           console.log(`📋 Processing ${productName} with batchAdjusted: ${batchAdjusted}`);
-          
+
           // Validate batchAdjusted - must be greater than 0 for approval
           if (!batchAdjusted || batchAdjusted <= 0) {
             console.log(`⚠️ ${productName} cannot be approved - batchAdjusted must be greater than 0 (current: ${batchAdjusted})`);
@@ -1611,7 +1611,7 @@ export const approveProductSummaries = async (req, res) => {
             });
             continue;
           }
-          
+
           // Find and update the ProductDetailsDailySummary
           const updatedSummary = await ProductDetailsDailySummary.findOneAndUpdate(
             {
@@ -1644,14 +1644,14 @@ export const approveProductSummaries = async (req, res) => {
               approvedBy: user.username,
               dailyDetailsId: updatedSummary._id
             });
-            
+
             approvalResults.push({
               productId,
               productName,
               status: 'approved',
               batchAdjusted: batchAdjusted
             });
-            
+
             console.log(`✅ Approved ${productName} with batchAdjusted: ${batchAdjusted}`);
           } else {
             console.log(`⚠️ Product summary not found for ${productName}`);
@@ -1671,7 +1671,7 @@ export const approveProductSummaries = async (req, res) => {
           });
         }
       }
-      
+
       // Step 2: Create ProductionBatch entries with intelligent grouping
       console.log('🏭 Creating ProductionBatch entries with intelligent grouping...');
       const batchCreationResults = await createGroupedProductionBatchEntries({
@@ -1679,7 +1679,7 @@ export const approveProductSummaries = async (req, res) => {
         companyId: user.companyId,
         date: approvalDate
       });
-      
+
       // Update approval results with batch creation info
       batchCreationResults.forEach(batchResult => {
         const approvalResult = approvalResults.find(r => r.productId === batchResult.productId);
@@ -1688,13 +1688,13 @@ export const approveProductSummaries = async (req, res) => {
           approvalResult.batchesCreated = batchResult.batchesCreated;
         }
       });
-      
+
       const successCount = approvalResults.filter(r => r.status === 'success' || r.status === 'approved').length;
       const validationErrors = approvalResults.filter(r => r.status === 'validation_error').length;
       const totalBatches = approvalResults
         .filter(r => r.status === 'success')
         .reduce((sum, r) => sum + (r.batchesCreated || 0), 0);
-      
+
       // If there are validation errors, return appropriate response
       if (validationErrors > 0 && successCount === 0) {
         return res.status(400).json({
@@ -1709,7 +1709,7 @@ export const approveProductSummaries = async (req, res) => {
           }
         });
       }
-      
+
       return res.json({
         success: true,
         message: `Successfully approved ${successCount} products and created ${totalBatches} ProductionBatch entries${validationErrors > 0 ? `. ${validationErrors} products failed validation.` : ''}`,
@@ -1757,20 +1757,20 @@ export const approveProductSummaries = async (req, res) => {
     }).populate('productId', 'name code');
 
     console.log('✅ Approval successful:', updateResult.modifiedCount, 'summaries updated');
-    
+
     // 🎯 NEW FEATURE: Create ProductionBatch entries for bulk approved products
     console.log('🏭 Creating ProductionBatch entries for bulk approved products...');
-    
+
     // FIX: Properly handle date to avoid timezone issues - use CURRENT UTC date
     const now = new Date();
     const today = new Date(Date.UTC(
-      now.getUTCFullYear(), 
-      now.getUTCMonth(), 
-      now.getUTCDate(), 
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate(),
       0, 0, 0, 0
     ));
     console.log(`📅 Creating batches for date: ${today.toISOString()} (UTC: ${today.toUTCString()})`);
-    
+
     for (const summary of updatedSummaries) {
       try {
         // Get batchAdjusted from ProductDetailsDailySummary
@@ -1780,10 +1780,10 @@ export const approveProductSummaries = async (req, res) => {
           date: today,
           status: 'approved'
         });
-        
+
         const batchAdjusted = dailyDetails?.batchAdjusted || 1;
         const batchesToCreate = Math.max(1, Math.ceil(batchAdjusted)); // At least 1 batch
-        
+
         await createBulkProductionBatchEntries({
           productId: summary.productId._id,
           companyId: user.companyId,
@@ -1795,7 +1795,7 @@ export const approveProductSummaries = async (req, res) => {
           productName: summary.productId.name,
           dailyDetailsId: dailyDetails?._id
         });
-        
+
         console.log(`📦 Created ${batchesToCreate} batch entry for: ${summary.productId.name}`);
       } catch (error) {
         console.error(`❌ Failed to create batch entries for ${summary.productId.name}:`, error.message);
@@ -1835,11 +1835,11 @@ const createGroupedProductionBatchEntries = async ({
 }) => {
   try {
     console.log('🔍 Starting group-based batch creation for', productDataList.length, 'products');
-    
+
     // FIX: Use the date directly - it's already a proper UTC Date object
     const today = date instanceof Date ? date : new Date(date);
     console.log(`📅 Production date set to: ${today.toISOString()} (${today.toDateString()})`);
-    
+
     // Step 1: Get groupId for each product
     const productsWithGroups = await Promise.all(
       productDataList.map(async (product) => {
@@ -1848,7 +1848,7 @@ const createGroupedProductionBatchEntries = async ({
           items: product.productId,
           isActive: true
         });
-        
+
         return {
           ...product,
           groupId: productionGroup ? productionGroup._id : null,
@@ -1856,11 +1856,11 @@ const createGroupedProductionBatchEntries = async ({
         };
       })
     );
-    
+
     // Step 2: Separate products into groups and ungrouped
     const groupedProducts = new Map(); // Map<groupId, products[]>
     const ungroupedProducts = [];
-    
+
     productsWithGroups.forEach(product => {
       if (product.groupId) {
         const groupKey = product.groupId.toString();
@@ -1876,15 +1876,15 @@ const createGroupedProductionBatchEntries = async ({
         ungroupedProducts.push(product);
       }
     });
-    
+
     console.log(`📊 Found ${groupedProducts.size} production groups and ${ungroupedProducts.length} ungrouped products`);
-    
+
     const results = [];
-    
+
     // Step 3: Process each production group with "all items per batch" logic
     for (const [groupKey, groupData] of groupedProducts.entries()) {
       console.log(`\n🔸 Processing group: ${groupData.groupName} (${groupData.products.length} products)`);
-      
+
       // Get existing batches for this group
       const existingBatchDocs = await ProductionBatch.find({
         groupId: groupData.groupId,
@@ -1892,30 +1892,30 @@ const createGroupedProductionBatchEntries = async ({
         productionDate: today,
         status: { $ne: 'completed' }
       }).sort({ batchNumber: 1 });
-      
+
       console.log(`   📊 EXISTING batches: ${existingBatchDocs.length}`);
       existingBatchDocs.forEach(b => {
         console.log(`      ${b.batchNo}: totalBatchAdjusted=${b.totalBatchAdjusted}`);
       });
-      
+
       // IMPORTANT: Keep ONLY full batches (1.0), DELETE fractional batches (old remainders)
       const fullBatches = existingBatchDocs.filter(b => b.totalBatchAdjusted === 1.0);
       const fractionalBatches = existingBatchDocs.filter(b => b.totalBatchAdjusted < 1.0);
-      
+
       console.log(`   ✅ Full batches (1.0) to KEEP: ${fullBatches.length}`);
       fullBatches.forEach(b => console.log(`      ${b.batchNo}`));
-      
+
       if (fractionalBatches.length > 0) {
         console.log(`   🗑️ Fractional batches (old remainders) to DELETE: ${fractionalBatches.length}`);
         fractionalBatches.forEach(b => console.log(`      ${b.batchNo} (${b.totalBatchAdjusted})`));
-        
+
         const fractionalIds = fractionalBatches.map(b => b._id);
         const deleteResult = await ProductionBatch.deleteMany({
           _id: { $in: fractionalIds }
         });
         console.log(`   ✅ DELETED ${deleteResult.deletedCount} old fractional batches`);
       }
-      
+
       // Get ALL approved products in the group from database
       const productionGroup = await ProductionGroup.findById(groupData.groupId);
       const allGroupProducts = await ProductDetailsDailySummary.find({
@@ -1924,26 +1924,26 @@ const createGroupedProductionBatchEntries = async ({
         companyId: companyId,
         status: 'approved'
       });
-      
+
       // Calculate FINAL total from ALL approved products
       const totalBatchAdjusted = allGroupProducts.reduce((sum, p) => sum + (p.batchAdjusted || 0), 0);
       console.log(`   📊 ALL approved products total: ${totalBatchAdjusted}`);
-      
+
       // Calculate required batches: Math.ceil(total)
       const requiredBatches = Math.ceil(totalBatchAdjusted);
       console.log(`   Required batches: ${requiredBatches}`);
-      
+
       // Calculate batches to create (only count full batches as existing)
       const existingBatches = fullBatches.length;
       const batchesToCreate = Math.max(0, requiredBatches - existingBatches);
       console.log(`   Batches to create: ${batchesToCreate}`);
-      
+
       if (batchesToCreate === 0) {
         console.log(`   ✅ Group already has sufficient batches, skipping creation`);
         // Still need to update existing batches (fullBatches only) with new products!
         if (fullBatches.length > 0) {
           console.log(`   🔄 Updating ${fullBatches.length} full batches with ALL approved products...`);
-          
+
           // Create updated combinedItems with ALL approved products
           const updatedCombinedItems = allGroupProducts.map(detail => ({
             itemId: detail.productId,
@@ -1951,7 +1951,7 @@ const createGroupedProductionBatchEntries = async ({
             batchAdjustedValue: detail.batchAdjusted || 0,
             qtyContribution: detail.qtyPerBatch || 0
           }));
-          
+
           // Update all full batches
           for (const batch of fullBatches) {
             batch.combinedItems = updatedCombinedItems;
@@ -1961,9 +1961,9 @@ const createGroupedProductionBatchEntries = async ({
         }
         continue;
       }
-      
+
       console.log(`   📦 ALL approved products in group: ${allGroupProducts.length}`);
-      
+
       // Prepare combinedItems array (ALL approved products - existing + new)
       const combinedItems = allGroupProducts.map(detail => ({
         itemId: detail.productId,
@@ -1971,33 +1971,33 @@ const createGroupedProductionBatchEntries = async ({
         batchAdjustedValue: detail.batchAdjusted || 0,
         qtyContribution: detail.qtyPerBatch || 0
       }));
-      
+
       // Get next batch number
       const allExistingBatches = await ProductionBatch.find({
         companyId,
         productionDate: today
       }).sort({ batchNumber: -1 }).limit(1);
-      
+
       let nextBatchNumber = 1;
       if (allExistingBatches.length > 0) {
         nextBatchNumber = allExistingBatches[0].batchNumber + 1;
       }
       console.log(`   Starting batch number: ${nextBatchNumber}`);
-      
+
       // Get first product's details for batch metadata
       const firstProduct = allGroupProducts[0] || groupData.products[0];
-      
+
       // ✅ FIX: Get qtyPerBatch from Item.batch field if not set in summary
       let masterQtyPerBatch = firstProduct.qtyPerBatch || 0;
       if (masterQtyPerBatch === 0) {
         console.log(`   ⚠️ qtyPerBatch is 0! Fetching from Item.batch for product ${firstProduct.productId}...`);
         const item = await Item.findById(firstProduct.productId).select('batch name').lean();
         console.log(`   📦 Item: ${item?.name}, batch field = "${item?.batch}" (type: ${typeof item?.batch})`);
-        
+
         if (item?.batch) {
           masterQtyPerBatch = parseFloat(item.batch) || 0;
           console.log(`   ✅ Parsed qtyPerBatch from Item.batch = ${masterQtyPerBatch}`);
-          
+
           // Update the ProductDetailsDailySummary so it's correct for future use
           if (masterQtyPerBatch > 0) {
             await ProductDetailsDailySummary.updateOne(
@@ -2011,22 +2011,22 @@ const createGroupedProductionBatchEntries = async ({
         }
       }
       console.log(`   🎯 FINAL masterQtyPerBatch for group = ${masterQtyPerBatch}`);
-      
+
       // Create the required number of batches
       for (let i = 0; i < batchesToCreate; i++) {
         const currentBatchNumber = nextBatchNumber + i;
         const batchNo = `BATNO${String(currentBatchNumber).padStart(2, '0')}`;
-        
+
         // Calculate dynamic totalBatchAdjusted for this batch
         const isLastBatch = (i === batchesToCreate - 1);
         const remainder = parseFloat((totalBatchAdjusted - Math.floor(totalBatchAdjusted)).toFixed(2));
         const batchAdjusted = isLastBatch && remainder > 0 ? remainder : 1.0;
-        
+
         // Use master qtyPerBatch fetched from Item.batch
         const qtyPerBatch = masterQtyPerBatch;
         const qtyAchieved = parseFloat((qtyPerBatch * batchAdjusted).toFixed(2));
         console.log(`   📊 Batch ${batchNo}: qtyPerBatch=${qtyPerBatch}, batchAdjusted=${batchAdjusted}, qtyAchieved=${qtyAchieved}`);
-        
+
         const newBatch = new ProductionBatch({
           itemId: firstProduct.productId || firstProduct._id, // Reference first product as primary
           groupId: groupData.groupId,
@@ -2042,34 +2042,34 @@ const createGroupedProductionBatchEntries = async ({
           approvedBy: groupData.products[0].approvedBy,
           createdAt: new Date()
         });
-        
+
         await newBatch.save();
         console.log(`   ✅ Created batch ${batchNo} (${i + 1}/${batchesToCreate})`);
       }
-      
+
       results.push({
         productId: firstProduct.productId,
         productName: groupData.groupName,
         batchesCreated: batchesToCreate
       });
     }
-    
+
     // Step 4: Process ungrouped products (ALWAYS SEPARATE ENTRIES - NEVER combine)
     if (ungroupedProducts.length > 0) {
       console.log(`\n🔹 Processing ${ungroupedProducts.length} ungrouped products...`);
-      
+
       for (const product of ungroupedProducts) {
         try {
           console.log(`   📦 UNGROUPED PRODUCT: ${product.productName}`);
           console.log(`   📊 batchAdjusted: ${product.batchAdjusted}`);
           console.log(`   📊 status: ${product.status}`);
-          
+
           // ✅ CRITICAL: Skip if already approved - prevent duplicate batch creation
           if (product.status === 'approved') {
             console.log(`   ⏭️ SKIPPING - Product already approved, batches already exist`);
             continue; // Skip to next product
           }
-          
+
           // ✅ CRITICAL: Delete existing batches for this ungrouped product to prevent duplicates
           const deleteResult = await ProductionBatch.deleteMany({
             "combinedItems.itemId": product.productId,
@@ -2078,34 +2078,34 @@ const createGroupedProductionBatchEntries = async ({
             groupId: null, // Only ungrouped products
             status: { $ne: 'completed' } // Don't delete completed batches
           });
-          
+
           console.log(`   🗑️ Deleted ${deleteResult.deletedCount} existing batches for ${product.productName}`);
-          
+
           // For ungrouped products: ALWAYS create SEPARATE entries
           // Never combine with existing batches
           const fullBatches = Math.floor(product.batchAdjusted);
           const remainder = parseFloat((product.batchAdjusted - fullBatches).toFixed(2));
-          
+
           console.log(`   📈 Splitting: ${fullBatches} full batch(es) + ${remainder} remainder`);
-          
+
           // Get next batch number
           const existingBatches = await ProductionBatch.find({
             companyId: companyId,
             productionDate: today
           }).select('batchNumber').sort({ batchNumber: -1 }).limit(1);
-          
+
           let nextBatchNumber = 1;
           if (existingBatches.length > 0) {
             nextBatchNumber = existingBatches[0].batchNumber + 1;
           }
-          
+
           let batchCounter = 0;
-          
+
           // Create full batches (each with totalBatchAdjusted = 1.0)
           for (let i = 0; i < fullBatches; i++) {
             const currentBatchNumber = nextBatchNumber + batchCounter;
             const batchNo = `BATNO${String(currentBatchNumber).padStart(2, '0')}`;
-            
+
             const batchEntry = {
               companyId: companyId,
               groupId: null, // Ungrouped - no group
@@ -2128,17 +2128,17 @@ const createGroupedProductionBatchEntries = async ({
               }],
               notes: ``
             };
-            
+
             await ProductionBatch.create(batchEntry);
             console.log(`   ✅ Created full batch ${batchNo}`);
             batchCounter++;
           }
-          
+
           // Create remainder batch if exists
           if (remainder > 0) {
             const currentBatchNumber = nextBatchNumber + batchCounter;
             const batchNo = `BATNO${String(currentBatchNumber).padStart(2, '0')}`;
-            
+
             const batchEntry = {
               companyId: companyId,
               groupId: null,
@@ -2161,18 +2161,18 @@ const createGroupedProductionBatchEntries = async ({
               }],
               notes: ``
             };
-            
+
             await ProductionBatch.create(batchEntry);
             console.log(`   ✅ Created remainder batch ${batchNo} with totalBatchAdjusted = ${remainder.toFixed(2)}`);
             batchCounter++;
           }
-          
+
           results.push({
             productId: product.productId,
             productName: product.productName,
             batchesCreated: batchCounter
           });
-          
+
           console.log(`   ✅ COMPLETE: Created ${batchCounter} separate batch entry(ies) for ${product.productName}`);
         } catch (error) {
           console.error(`   ❌ Error creating batches for ${product.productName}:`, error.message);
@@ -2180,10 +2180,10 @@ const createGroupedProductionBatchEntries = async ({
         }
       }
     }
-    
+
     console.log(`✅ Completed batch creation - created batches for ${results.length} products/groups`);
     return results;
-    
+
   } catch (error) {
     console.error('❌ Error in createGroupedProductionBatchEntries:', error);
     return [];
@@ -2203,19 +2203,19 @@ const createGroupedProductionBatchEntries = async ({
 const intelligentBatchGrouping = (items) => {
   const batchGroups = [];
   const itemsToProcess = [];
-  
+
   console.log(`   🧮 Starting smart batch grouping for ${items.length} items`);
-  
+
   // Step 1: Process items and break down values >= 1.0
   items.forEach(item => {
     const value = item.batchAdjusted;
-    
+
     if (value >= 1.0) {
       const fullBatches = Math.floor(value);
       const remainder = value - fullBatches;
-      
+
       console.log(`   📦 Item value ${value}: ${fullBatches} full batch(es) + ${remainder.toFixed(2)} remainder`);
-      
+
       // Create full batches (each 1.0)
       for (let i = 0; i < fullBatches; i++) {
         batchGroups.push({
@@ -2229,7 +2229,7 @@ const intelligentBatchGrouping = (items) => {
           }]
         });
       }
-      
+
       // Add remainder to items to process
       if (remainder > 0) {
         itemsToProcess.push({
@@ -2241,21 +2241,21 @@ const intelligentBatchGrouping = (items) => {
       itemsToProcess.push(item);
     }
   });
-  
+
   console.log(`   🔢 After processing: ${batchGroups.length} full batches, ${itemsToProcess.length} fractional items to combine`);
-  
+
   // Step 2: Smart combine fractional values using bin packing (descending order)
   if (itemsToProcess.length > 0) {
     // Sort descending for optimal bin packing
     itemsToProcess.sort((a, b) => b.batchAdjusted - a.batchAdjusted);
-    
+
     console.log(`   📊 Fractional values (sorted desc): [${itemsToProcess.map(i => i.batchAdjusted.toFixed(2)).join(', ')}]`);
-    
+
     const partialBatches = []; // Array of current partial batches
-    
+
     itemsToProcess.forEach(item => {
       let placed = false;
-      
+
       // Try to fit in existing partial batch (must be ≤ 1.0)
       for (let batch of partialBatches) {
         if (batch.totalQty + item.batchAdjusted <= 1.0) {
@@ -2272,7 +2272,7 @@ const intelligentBatchGrouping = (items) => {
           break;
         }
       }
-      
+
       // Doesn't fit anywhere, create new partial batch
       if (!placed) {
         partialBatches.push({
@@ -2288,17 +2288,17 @@ const intelligentBatchGrouping = (items) => {
         console.log(`   🆕 Created new partial batch with ${item.batchAdjusted.toFixed(2)}`);
       }
     });
-    
+
     // Add all partial batches to final result
     batchGroups.push(...partialBatches);
-    
+
     console.log(`   🎯 Final result: ${batchGroups.length} total batches`);
     partialBatches.forEach((batch, idx) => {
       const values = batch.combinedItems.map(i => i.batchAdjustedValue.toFixed(2)).join(' + ');
       console.log(`      Batch ${idx + 1}: ${values} = ${batch.totalQty.toFixed(2)} ${batch.totalQty > 1.0 ? '❌ EXCEEDS 1.0!' : '✅'}`);
     });
   }
-  
+
   return batchGroups;
 };
 
@@ -2323,27 +2323,27 @@ const createSingleProductionBatch = async ({
       console.error(`      This should never happen with intelligentBatchGrouping logic.`);
       throw new Error(`Batch weight ${batchAdjustedTotal.toFixed(2)} exceeds maximum 1.0`);
     }
-    
+
     // Get the next batch number
     const existingBatches = await ProductionBatch.find({
       companyId,
       productionDate: date
     }).select('batchNumber').sort({ batchNumber: -1 }).limit(1);
-    
+
     let nextBatchNumber = 1;
     if (existingBatches.length > 0) {
       nextBatchNumber = existingBatches[0].batchNumber + 1;
     }
-    
+
     const paddedBatchNumber = String(nextBatchNumber).padStart(2, '0');
     const batchNo = `BATNO${paddedBatchNumber}`;
-    
+
     // Calculate actual quantity: masterQtyPerBatch × totalBatchAdjusted
     const actualQty = masterQtyPerBatch * batchAdjustedTotal;
-    
+
     // Determine if batch is combined by checking combinedItems array length
     const isCombinedBatch = combinedItems.length > 1;
-    
+
     const batchEntry = {
       companyId,
       groupId: groupId,
@@ -2361,13 +2361,13 @@ const createSingleProductionBatch = async ({
       combinedItems: combinedItems,
       notes: ''
     };
-    
+
     const createdBatch = await ProductionBatch.create(batchEntry);
-    
+
     console.log(`   ✅ Created batch ${batchNo} | Weight: ${batchAdjustedTotal.toFixed(2)} | Qty: ${actualQty.toFixed(2)} ${isCombinedBatch ? '(COMBINED ✨)' : ''}`);
-    
+
     return [createdBatch];
-    
+
   } catch (error) {
     console.error(`   ❌ Error creating batch for ${productName}:`, error);
     return [];
@@ -2414,9 +2414,9 @@ const createBulkProductionBatchEntries = async ({
     // 🔒 ATOMIC DUPLICATE PREVENTION: Remove and recreate in single operation
     // FIX: Use the date directly - it's already a proper UTC Date object
     const today = date instanceof Date ? date : new Date(date);
-    
+
     console.log(`📅 Production date set to: ${today.toISOString()} (${today.toDateString()})`);
-    
+
     // First, remove ALL existing ProductionBatch entries for this product and date (except completed)
     const deleteResult = await ProductionBatch.deleteMany({
       "combinedItems.itemId": productId,
@@ -2424,7 +2424,7 @@ const createBulkProductionBatchEntries = async ({
       productionDate: today,
       status: { $ne: 'completed' } // Remove all except completed batches
     });
-    
+
     console.log(`🗑️ Removed ${deleteResult.deletedCount} existing non-completed ProductionBatch entries for ${productName} on ${today.toDateString()}`);
 
     // Re-validate inputs after cleanup - if no valid batches to produce, return early
@@ -2438,12 +2438,12 @@ const createBulkProductionBatchEntries = async ({
       companyId,
       productionDate: today
     }).select('batchNumber').sort({ batchNumber: -1 }).limit(1);
-    
+
     let nextBatchNumber = 1;
     if (existingBatches.length > 0) {
       nextBatchNumber = existingBatches[0].batchNumber + 1;
     }
-    
+
     console.log(`📊 Next batch number will start from: ${nextBatchNumber}`);
 
     // Check if this product is part of a production group
@@ -2452,18 +2452,18 @@ const createBulkProductionBatchEntries = async ({
       items: productId,
       isActive: true
     });
-    
+
     const groupId = productionGroup ? productionGroup._id : null;
     console.log(`🔗 Product ${groupId ? 'IS' : 'IS NOT'} part of a production group: ${groupId}`);
 
     // Create ProductionBatch entries
     const batchEntries = [];
-    
+
     for (let i = 0; i < produceBatches; i++) {
       const currentBatchNumber = nextBatchNumber + i;
       const paddedBatchNumber = String(currentBatchNumber).padStart(2, '0');
       const batchNo = `BATNO${paddedBatchNumber}`;
-      
+
       const batchEntry = {
         companyId,
         groupId, // Optional - will be null for ungrouped items
@@ -2486,21 +2486,21 @@ const createBulkProductionBatchEntries = async ({
         }],
         notes: `Created by unit manager bulk approval`
       };
-      
+
       batchEntries.push(batchEntry);
       console.log(`📦 Prepared batch ${i + 1}/${produceBatches}: ${batchNo} with qty ${qtyPerBatch}`);
     }
-    
+
     // Insert all batch entries at once
     const createdBatches = await ProductionBatch.insertMany(batchEntries);
     console.log(`✅ Successfully created ${createdBatches.length} ProductionBatch entries for ${productName}`);
-    
+
     // Log the created batch numbers for verification
     const createdBatchNos = createdBatches.map(batch => batch.batchNo);
     console.log(`🏷️ Created batch numbers: ${createdBatchNos.join(', ')}`);
-    
+
     return createdBatches;
-    
+
   } catch (error) {
     console.error('❌ Error creating ProductionBatch entries for bulk approval:', error);
     // Don't throw - this is a supplementary feature, main functionality should continue
@@ -2716,10 +2716,10 @@ export const createUnitManagerProductionGroup = async (req, res) => {
         // Get all qtyPerBatch values
         const qtyPerBatchValues = productSummaries.map(summary => summary.qtyPerBatch || 0);
         const uniqueQtyValues = [...new Set(qtyPerBatchValues)];
-        
+
         console.log('🔍 All qtyPerBatch values:', qtyPerBatchValues);
         console.log('🔍 Unique qtyPerBatch values:', uniqueQtyValues);
-        
+
         // Check if all items have the same qtyPerBatch
         if (uniqueQtyValues.length > 1) {
           // Items have different quantities - return error with details
@@ -2730,15 +2730,15 @@ export const createUnitManagerProductionGroup = async (req, res) => {
               qtyPerBatch: summary.qtyPerBatch || 0
             };
           });
-          
+
           const quantityList = itemDetails.map(item => `${item.name}: ${item.qtyPerBatch}`).join(', ');
-          
+
           return res.status(400).json({
             success: false,
             message: `Items have different batch quantities and cannot be grouped together. Found quantities: ${quantityList}. All items in a production group must have the same batch quantity.`
           });
         }
-        
+
         // All items have the same qtyPerBatch - use it
         calculatedQtyPerBatch = Math.max(...qtyPerBatchValues, 0);
         console.log('✅ All items have matching qtyPerBatch:', calculatedQtyPerBatch);
@@ -2746,25 +2746,25 @@ export const createUnitManagerProductionGroup = async (req, res) => {
         // Fallback to inventory qty if no ProductDailySummary found
         const itemQuantities = inventoryItems.map(item => item.qty || 0);
         const uniqueInventoryQty = [...new Set(itemQuantities)];
-        
+
         console.log('📦 Inventory quantities:', itemQuantities);
         console.log('📦 Unique inventory quantities:', uniqueInventoryQty);
-        
+
         // Check if all items have the same inventory quantity
         if (uniqueInventoryQty.length > 1) {
           const itemDetails = inventoryItems.map(item => ({
             name: item.name,
             qty: item.qty || 0
           }));
-          
+
           const quantityList = itemDetails.map(item => `${item.name}: ${item.qty}`).join(', ');
-          
+
           return res.status(400).json({
             success: false,
             message: `Items have different inventory quantities and cannot be grouped together. Found quantities: ${quantityList}. All items in a production group must have the same quantity.`
           });
         }
-        
+
         calculatedQtyPerBatch = Math.max(...itemQuantities, 0);
         console.log('⚠️ No ProductDailySummary found, using inventory quantities as fallback');
         console.log('✅ All items have matching inventory qty:', calculatedQtyPerBatch);
@@ -2900,10 +2900,10 @@ export const updateUnitManagerProductionGroup = async (req, res) => {
         // Get all qtyPerBatch values
         const qtyPerBatchValues = updateProductSummaries.map(summary => summary.qtyPerBatch || 0);
         const uniqueQtyValues = [...new Set(qtyPerBatchValues)];
-        
+
         console.log('🔍 Unit Manager Update - All qtyPerBatch values:', qtyPerBatchValues);
         console.log('🔍 Unit Manager Update - Unique qtyPerBatch values:', uniqueQtyValues);
-        
+
         // Check if all items have the same qtyPerBatch
         if (uniqueQtyValues.length > 1) {
           // Items have different quantities - return error with details
@@ -2914,15 +2914,15 @@ export const updateUnitManagerProductionGroup = async (req, res) => {
               qtyPerBatch: summary.qtyPerBatch || 0
             };
           });
-          
+
           const quantityList = itemDetails.map(item => `${item.name}: ${item.qtyPerBatch}`).join(', ');
-          
+
           return res.status(400).json({
             success: false,
             message: `Items have different batch quantities and cannot be grouped together. Found quantities: ${quantityList}. All items in a production group must have the same batch quantity.`
           });
         }
-        
+
         // All items have the same qtyPerBatch - use it
         calculatedQtyPerBatch = Math.max(...qtyPerBatchValues, 0);
         console.log('✅ Unit Manager Update - All items have matching qtyPerBatch:', calculatedQtyPerBatch);
@@ -2930,25 +2930,25 @@ export const updateUnitManagerProductionGroup = async (req, res) => {
         // Fallback to inventory qty if no ProductDailySummary found
         const itemQuantities = inventoryItems.map(item => item.qty || 0);
         const uniqueInventoryQty = [...new Set(itemQuantities)];
-        
+
         console.log('📦 Unit Manager Update - Inventory quantities:', itemQuantities);
         console.log('📦 Unit Manager Update - Unique inventory quantities:', uniqueInventoryQty);
-        
+
         // Check if all items have the same inventory quantity
         if (uniqueInventoryQty.length > 1) {
           const itemDetails = inventoryItems.map(item => ({
             name: item.name,
             qty: item.qty || 0
           }));
-          
+
           const quantityList = itemDetails.map(item => `${item.name}: ${item.qty}`).join(', ');
-          
+
           return res.status(400).json({
             success: false,
             message: `Items have different inventory quantities and cannot be grouped together. Found quantities: ${quantityList}. All items in a production group must have the same quantity.`
           });
         }
-        
+
         calculatedQtyPerBatch = Math.max(...itemQuantities, 0);
         console.log('⚠️ Unit Manager Update - No ProductDailySummary found, using inventory quantities as fallback');
         console.log('✅ Unit Manager Update - All items have matching inventory qty:', calculatedQtyPerBatch);
@@ -3126,12 +3126,12 @@ export const getUnitManagerAvailableItems = async (req, res) => {
       .select('items')
       .lean();
 
-    const assignedItemIds = assignedGroups.flatMap(group => 
+    const assignedItemIds = assignedGroups.flatMap(group =>
       group.items.map(item => item.toString())
     );
 
     // Filter out assigned items
-    const availableItems = allItems.filter(item => 
+    const availableItems = allItems.filter(item =>
       !assignedItemIds.includes(item._id.toString())
     );
 
@@ -3249,7 +3249,7 @@ export const getApprovedProductSummaries = async (req, res) => {
     masterProducts.forEach(masterProduct => {
       const productId = masterProduct.productId ? masterProduct.productId._id.toString() : null;
       const dailyDetail = dailyDetailsMap.get(productId);
-      
+
       // Only include products that have approved daily data with available batches
       if (dailyDetail) {
         combinedSummaries.push({
@@ -3287,7 +3287,7 @@ export const getApprovedProductSummaries = async (req, res) => {
     const formattedSummaries = allSummaries.map(summary => {
       const productId = summary.productId?._id?.toString() || summary.productId?.toString();
       const productGroups = productToGroupMap[productId] || [];
-   
+
       // Calculate available batches with better logic
       // let availableBatches = 0;
       // if (summary.batchAdjusted && summary.batchAdjusted > 0) {
@@ -3359,7 +3359,7 @@ export const getApprovedProductSummaries = async (req, res) => {
 export const getUnitManagerSalesPersons = async (req, res) => {
   try {
     const unitManager = req.user;
-    
+
     if (unitManager.role !== 'Unit Manager') {
       return res.status(403).json({
         success: false,
@@ -3398,7 +3398,7 @@ export const getUnitManagerSalesPersons = async (req, res) => {
 export const getUnitManagerReturns = async (req, res) => {
   try {
     const unitManager = req.user;
-    
+
     if (unitManager.role !== 'Unit Manager') {
       return res.status(403).json({
         success: false,
@@ -3417,7 +3417,7 @@ export const getUnitManagerReturns = async (req, res) => {
     });
 
     // Build filter for company - include both returns and damages
-    const filter = { 
+    const filter = {
       companyId: unitManager.companyId,
       type: { $in: ['refund', 'exchange', 'damage'] } // Include both returns and damages
     };
@@ -3465,7 +3465,7 @@ export const getUnitManagerReturns = async (req, res) => {
 export const createUnitManagerReturn = async (req, res) => {
   try {
     const unitManager = req.user;
-    
+
     if (unitManager.role !== 'Unit Manager') {
       return res.status(403).json({
         success: false,
@@ -3473,7 +3473,7 @@ export const createUnitManagerReturn = async (req, res) => {
       });
     }
 
-    const { salesPersonId, ...returnData } = req.body;
+    const { salesPersonId, order, ...returnData } = req.body;
 
     if (!salesPersonId) {
       return res.status(400).json({
@@ -3486,6 +3486,7 @@ export const createUnitManagerReturn = async (req, res) => {
       userId: unitManager._id,
       companyId: unitManager.companyId,
       salesPersonId,
+      order,
       body: returnData
     });
 
@@ -3503,9 +3504,20 @@ export const createUnitManagerReturn = async (req, res) => {
       });
     }
 
+    // Fetch orderDate if order is provided
+    let orderDate = null;
+    if (order) {
+      const orderRecord = await Order.findById(order);
+      if (orderRecord) {
+        orderDate = orderRecord.orderDate || orderRecord.createdAt;
+      }
+    }
+
     // Prepare return data with associations
     const finalReturnData = {
       ...returnData,
+      order,
+      orderDate,
       companyId: unitManager.companyId,
       salesPerson: salesPersonId,
       createdBy: unitManager._id,
@@ -3522,10 +3534,10 @@ export const createUnitManagerReturn = async (req, res) => {
     });
   } catch (error) {
     console.error('Unit Manager create return error:', error);
-    res.status(500).json({ 
-      success: false, 
+    res.status(500).json({
+      success: false,
       message: 'Failed to create return',
-      error: error.message 
+      error: error.message
     });
   }
 };
@@ -3535,7 +3547,7 @@ export const updateUnitManagerReturn = async (req, res) => {
   try {
     const unitManager = req.user;
     const { id } = req.params;
-    
+
     if (unitManager.role !== 'Unit Manager') {
       return res.status(403).json({
         success: false,
@@ -3565,7 +3577,7 @@ export const updateUnitManagerReturn = async (req, res) => {
     // Update the return
     const updatedReturn = await Return.findByIdAndUpdate(
       id,
-      { 
+      {
         ...req.body,
         updatedBy: unitManager._id,
         updatedAt: new Date()
@@ -3595,7 +3607,7 @@ export const deleteUnitManagerReturn = async (req, res) => {
   try {
     const unitManager = req.user;
     const { id } = req.params;
-    
+
     if (unitManager.role !== 'Unit Manager') {
       return res.status(403).json({
         success: false,
@@ -3646,7 +3658,7 @@ export const approveUnitManagerReturn = async (req, res) => {
   try {
     const unitManager = req.user;
     const { id } = req.params;
-    
+
     if (unitManager.role !== 'Unit Manager') {
       return res.status(403).json({
         success: false,
@@ -3677,7 +3689,7 @@ export const approveUnitManagerReturn = async (req, res) => {
     // Approve the return
     const approvedReturn = await Return.findByIdAndUpdate(
       id,
-      { 
+      {
         status: 'approved',
         approvedBy: unitManager._id,
         approvedAt: new Date(),
@@ -3687,6 +3699,55 @@ export const approveUnitManagerReturn = async (req, res) => {
     );
 
     console.log('✅ Return approved successfully');
+
+    // Deduct the return amount from customer's outstanding balance and sync with Invoices
+    if (approvedReturn.customerId) {
+      try {
+        const customer = await Customer.findById(approvedReturn.customerId);
+        if (customer) {
+          const oldBalance = customer.outstandingAmount || 0;
+          customer.outstandingAmount = oldBalance - (approvedReturn.totalAmount || 0);
+          await customer.save();
+          console.log(`💰 Updated Customer ${customer.name} balance: ${oldBalance} -> ${customer.outstandingAmount}`);
+
+          // SYNC INVOICE BALANCES FOR AGEING REPORT
+          let remainingReturnAmount = approvedReturn.totalAmount || 0;
+
+          // 1. Try to find the specific order's invoice first
+          if (approvedReturn.order) {
+            const Sale = (await import('../models/Sale.js')).default;
+            const targetInvoice = await Sale.findOne({ order: approvedReturn.order });
+            if (targetInvoice && targetInvoice.balanceAmount > 0) {
+              const reduction = Math.min(targetInvoice.balanceAmount, remainingReturnAmount);
+              targetInvoice.balanceAmount -= reduction;
+              remainingReturnAmount -= reduction;
+              await targetInvoice.save();
+              console.log(`📑 Reduced targeted invoice ${targetInvoice.invoiceNumber} balance by ${reduction}`);
+            }
+          }
+
+          // 2. If still amount left or no order linked, use FIFO to reduce other invoices
+          if (remainingReturnAmount > 0) {
+            const Sale = (await import('../models/Sale.js')).default;
+            const unpaidInvoices = await Sale.find({
+              customer: approvedReturn.customerId,
+              balanceAmount: { $gt: 0 }
+            }).sort({ saleDate: 1 });
+
+            for (const inv of unpaidInvoices) {
+              if (remainingReturnAmount <= 0) break;
+              const reduction = Math.min(inv.balanceAmount, remainingReturnAmount);
+              inv.balanceAmount -= reduction;
+              remainingReturnAmount -= reduction;
+              await inv.save();
+              console.log(`📑 Reduced invoice ${inv.invoiceNumber} balance by ${reduction} (FIFO)`);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('❌ Error updating customer outstanding amount and Sale balances on return approval:', err);
+      }
+    }
 
     res.json({
       success: true,
@@ -3707,7 +3768,7 @@ export const approveUnitManagerReturn = async (req, res) => {
 export const getUnitManagerDamages = async (req, res) => {
   try {
     const unitManager = req.user;
-    
+
     if (unitManager.role !== 'Unit Manager') {
       return res.status(403).json({
         success: false,
@@ -3725,7 +3786,7 @@ export const getUnitManagerDamages = async (req, res) => {
     });
 
     // Build filter for company
-    const filter = { 
+    const filter = {
       companyId: unitManager.companyId,
       type: { $in: ['damage', 'defective', 'expired'] } // Damages only
     };
@@ -3769,7 +3830,7 @@ export const getUnitManagerDamages = async (req, res) => {
 export const createUnitManagerDamage = async (req, res) => {
   try {
     const unitManager = req.user;
-    
+
     if (unitManager.role !== 'Unit Manager') {
       return res.status(403).json({
         success: false,
@@ -3777,7 +3838,7 @@ export const createUnitManagerDamage = async (req, res) => {
       });
     }
 
-    const { salesPersonId, ...damageData } = req.body;
+    const { salesPersonId, order, ...damageData } = req.body;
 
     if (!salesPersonId) {
       return res.status(400).json({
@@ -3790,6 +3851,7 @@ export const createUnitManagerDamage = async (req, res) => {
       userId: unitManager._id,
       companyId: unitManager.companyId,
       salesPersonId,
+      order,
       body: damageData
     });
 
@@ -3807,9 +3869,20 @@ export const createUnitManagerDamage = async (req, res) => {
       });
     }
 
+    // Fetch orderDate if order is provided
+    let orderDate = null;
+    if (order) {
+      const orderRecord = await Order.findById(order);
+      if (orderRecord) {
+        orderDate = orderRecord.orderDate || orderRecord.createdAt;
+      }
+    }
+
     // Prepare damage data with associations
     const finalDamageData = {
       ...damageData,
+      order,
+      orderDate,
       companyId: unitManager.companyId,
       salesPerson: salesPersonId,
       createdBy: unitManager._id,
@@ -3826,10 +3899,10 @@ export const createUnitManagerDamage = async (req, res) => {
     });
   } catch (error) {
     console.error('Unit Manager create damage error:', error);
-    res.status(500).json({ 
-      success: false, 
+    res.status(500).json({
+      success: false,
       message: 'Failed to create damage',
-      error: error.message 
+      error: error.message
     });
   }
 };
@@ -3839,7 +3912,7 @@ export const updateUnitManagerDamage = async (req, res) => {
   try {
     const unitManager = req.user;
     const { id } = req.params;
-    
+
     if (unitManager.role !== 'Unit Manager') {
       return res.status(403).json({
         success: false,
@@ -3869,7 +3942,7 @@ export const updateUnitManagerDamage = async (req, res) => {
     // Update the damage
     const updatedDamage = await Return.findByIdAndUpdate(
       id,
-      { 
+      {
         ...req.body,
         updatedBy: unitManager._id,
         updatedAt: new Date()
@@ -3899,7 +3972,7 @@ export const deleteUnitManagerDamage = async (req, res) => {
   try {
     const unitManager = req.user;
     const { id } = req.params;
-    
+
     if (unitManager.role !== 'Unit Manager') {
       return res.status(403).json({
         success: false,
@@ -3950,7 +4023,7 @@ export const approveUnitManagerDamage = async (req, res) => {
   try {
     const unitManager = req.user;
     const { id } = req.params;
-    
+
     if (unitManager.role !== 'Unit Manager') {
       return res.status(403).json({
         success: false,
@@ -3981,7 +4054,7 @@ export const approveUnitManagerDamage = async (req, res) => {
     // Approve the damage
     const approvedDamage = await Return.findByIdAndUpdate(
       id,
-      { 
+      {
         status: 'approved',
         approvedBy: unitManager._id,
         approvedAt: new Date(),
@@ -3992,10 +4065,59 @@ export const approveUnitManagerDamage = async (req, res) => {
 
     console.log('✅ Damage approved successfully');
 
+    // Deduct the damage amount from customer's outstanding balance and sync with Invoices
+    if (approvedDamage.customerId) {
+      try {
+        const customer = await Customer.findById(approvedDamage.customerId);
+        if (customer) {
+          const oldBalance = customer.outstandingAmount || 0;
+          customer.outstandingAmount = oldBalance - (approvedDamage.totalAmount || 0);
+          await customer.save();
+          console.log(`💰 Updated Customer ${customer.name} balance (Damage): ${oldBalance} -> ${customer.outstandingAmount}`);
+
+          // SYNC INVOICE BALANCES FOR AGEING REPORT
+          let remainingReturnAmount = approvedDamage.totalAmount || 0;
+
+          // 1. Try to find the specific order's invoice first
+          if (approvedDamage.order) {
+            const Sale = (await import('../models/Sale.js')).default;
+            const targetInvoice = await Sale.findOne({ order: approvedDamage.order });
+            if (targetInvoice && targetInvoice.balanceAmount > 0) {
+              const reduction = Math.min(targetInvoice.balanceAmount, remainingReturnAmount);
+              targetInvoice.balanceAmount -= reduction;
+              remainingReturnAmount -= reduction;
+              await targetInvoice.save();
+              console.log(`📑 Reduced targeted invoice ${targetInvoice.invoiceNumber} balance by ${reduction} (Damage)`);
+            }
+          }
+
+          // 2. If still amount left or no order linked, use FIFO
+          if (remainingReturnAmount > 0) {
+            const Sale = (await import('../models/Sale.js')).default;
+            const unpaidInvoices = await Sale.find({
+              customer: approvedDamage.customerId,
+              balanceAmount: { $gt: 0 }
+            }).sort({ saleDate: 1 });
+
+            for (const inv of unpaidInvoices) {
+              if (remainingReturnAmount <= 0) break;
+              const reduction = Math.min(inv.balanceAmount, remainingReturnAmount);
+              inv.balanceAmount -= reduction;
+              remainingReturnAmount -= reduction;
+              await inv.save();
+              console.log(`📑 Reduced invoice ${inv.invoiceNumber} balance by ${reduction} (FIFO - Damage)`);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('❌ Error updating customer outstanding amount and Sale balances on damage approval:', err);
+      }
+    }
+
     res.json({
       success: true,
       message: 'Damage approved successfully',
-      damage: approvedDamage
+      return: approvedDamage
     });
   } catch (error) {
     console.error('Unit Manager approve damage error:', error);

@@ -2,6 +2,10 @@ import Order from '../models/Order.js';
 import Customer from '../models/Customer.js';
 import Sale from '../models/Sale.js';
 import User from '../models/User.js';
+import Return from '../models/Return.js';
+import mongoose from 'mongoose';
+import { Account, Transaction } from '../models/Account.js';
+import { USER_ROLES } from '../../shared/schema.js';
 
 /**
  * Get all sales invoices for the company
@@ -71,7 +75,7 @@ export const getCompanySalesInvoices = async (req, res) => {
 
     // Apply search filter
     if (search && search.trim()) {
-      invoices = invoices.filter(inv => 
+      invoices = invoices.filter(inv =>
         inv.invoiceNo.toLowerCase().includes(search.toLowerCase()) ||
         inv.customerName.toLowerCase().includes(search.toLowerCase()) ||
         inv.salesPerson.toLowerCase().includes(search.toLowerCase())
@@ -160,8 +164,8 @@ export const getInvoiceDetail = async (req, res) => {
     }
 
     // Verify company access
-    if (order.companyId?.toString() !== userCompanyId?.toString() && 
-        order.company?.toString() !== userCompanyId?.toString()) {
+    if (order.companyId?.toString() !== userCompanyId?.toString() &&
+      order.company?.toString() !== userCompanyId?.toString()) {
       return res.status(403).json({
         success: false,
         message: 'Access denied'
@@ -226,8 +230,8 @@ export const updateInvoice = async (req, res) => {
     }
 
     // Verify company access
-    if (order.companyId?.toString() !== userCompanyId?.toString() && 
-        order.company?.toString() !== userCompanyId?.toString()) {
+    if (order.companyId?.toString() !== userCompanyId?.toString() &&
+      order.company?.toString() !== userCompanyId?.toString()) {
       return res.status(403).json({
         success: false,
         message: 'Access denied'
@@ -394,7 +398,7 @@ export const getAllSalesPersons = async (req, res) => {
     // Build query with proper MongoDB structure
     let query = {
       companyId: userCompanyId,
-      role: 'Sales'  // Only fetch actual Sales role for simplicity (matches getUnitHeadSalesPersons)
+      role: { $in: ['Sales', 'Sales Person', 'Salesman', 'Agent'] }
     };
 
     // Add search conditions if provided
@@ -429,26 +433,63 @@ export const getAllSalesPersons = async (req, res) => {
     // Get statistics for each sales person
     const salesPersonsWithStats = await Promise.all(
       salesPersons.map(async (salesPerson) => {
+        // Get all orders for this sales person
         const orders = await Order.find({
           salesPerson: salesPerson._id,
+          companyId: userCompanyId
+        });
+
+        const orderIds = orders.map(o => o._id);
+
+        // Get all returns for this sales person OR for customers assigned to this sales person
+        const customersAssigned = await Customer.find({ salesContact: salesPerson._id, companyId: userCompanyId });
+        const assignedCustomerIds = customersAssigned.map(c => c._id);
+
+        const returns = await Return.find({
           $or: [
-            { companyId: userCompanyId },
-            { company: userCompanyId }
+            { salesPerson: salesPerson._id },
+            { customerId: { $in: assignedCustomerIds } }
+          ],
+          companyId: userCompanyId,
+          status: 'approved'
+        });
+
+        // Get all sales (invoices) and their collections for these orders OR these customers
+        const sales = await Sale.find({
+          companyId: userCompanyId,
+          $or: [
+            { order: { $in: orderIds } },
+            { customer: { $in: assignedCustomerIds } }
           ]
         });
 
         const totalOrders = orders.length;
-        const totalRevenue = orders.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
-        const averageOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
-        
+        const totalGrossSales = orders.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
+        const totalReturns = returns.reduce((sum, ret) => sum + (ret.totalAmount || 0), 0);
+        const netReceivable = totalGrossSales - totalReturns;
+
+        // Summing paidAmount from Sale records instead of Order
+        const totalCollected = sales.reduce((sum, sale) => sum + (sale.paidAmount || 0), 0);
+        const pendingAmount = netReceivable - totalCollected;
+
+        const averageOrderValue = totalOrders > 0 ? totalGrossSales / totalOrders : 0;
+
         // Calculate success rate (approved/completed orders)
-        const successfulOrders = orders.filter(order => 
+        const successfulOrders = orders.filter(order =>
           ['approved', 'completed', 'in_production', 'shipped', 'delivered'].includes(order.status?.toLowerCase())
         ).length;
         const successRate = totalOrders > 0 ? Math.round((successfulOrders / totalOrders) * 100) : 0;
 
+        // Calculate settlement status
+        let settlementStatus = 'Unpaid';
+        if (totalCollected >= netReceivable && netReceivable > 0) {
+          settlementStatus = 'Paid';
+        } else if (totalCollected > 0) {
+          settlementStatus = 'Partially Paid';
+        }
+
         // Get latest order date
-        const latestOrder = orders.length > 0 
+        const latestOrder = orders.length > 0
           ? orders.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0]
           : null;
 
@@ -458,7 +499,13 @@ export const getAllSalesPersons = async (req, res) => {
           fullName: salesPerson.fullName || salesPerson.username,
           email: salesPerson.email,
           totalOrders,
-          totalRevenue,
+          totalRevenue: totalGrossSales, // Keeping for backward compatibility
+          totalGrossSales,
+          totalReturns,
+          netReceivable,
+          totalCollected,
+          pendingAmount,
+          settlementStatus,
           averageOrderValue,
           successRate,
           lastOrderDate: latestOrder?.createdAt || null,
@@ -474,7 +521,11 @@ export const getAllSalesPersons = async (req, res) => {
       activeSalesPersons: salesPersonsWithStats.filter(sp => sp.isActive).length,
       inactiveSalesPersons: salesPersonsWithStats.filter(sp => !sp.isActive).length,
       totalOrders: salesPersonsWithStats.reduce((sum, sp) => sum + sp.totalOrders, 0),
-      totalRevenue: salesPersonsWithStats.reduce((sum, sp) => sum + sp.totalRevenue, 0),
+      totalGrossSales: salesPersonsWithStats.reduce((sum, sp) => sum + sp.totalGrossSales, 0),
+      totalReturns: salesPersonsWithStats.reduce((sum, sp) => sum + sp.totalReturns, 0),
+      totalRevenue: salesPersonsWithStats.reduce((sum, sp) => sum + sp.totalGrossSales, 0), // Gross
+      netReceivable: salesPersonsWithStats.reduce((sum, sp) => sum + sp.netReceivable, 0),
+      totalCollected: salesPersonsWithStats.reduce((sum, sp) => sum + sp.totalCollected, 0),
       averageOrderValue: salesPersonsWithStats.length > 0
         ? salesPersonsWithStats.reduce((sum, sp) => sum + sp.averageOrderValue, 0) / salesPersonsWithStats.length
         : 0
@@ -539,22 +590,56 @@ export const getSalesPersonById = async (req, res) => {
     // Get all orders for this sales person
     const orders = await Order.find({
       salesPerson: salesPersonId,
+      companyId: userCompanyId
+    }).populate('customer', 'name email phone').sort({ createdAt: -1 });
+
+    const orderIds = orders.map(o => o._id);
+
+    // Get all returns for this sales person OR for customers assigned to this sales person
+    const customersAssigned = await Customer.find({ salesContact: salesPersonId, companyId: userCompanyId });
+    const assignedCustomerIds = customersAssigned.map(c => c._id);
+
+    const returns = await Return.find({
       $or: [
-        { companyId: userCompanyId },
-        { company: userCompanyId }
+        { salesPerson: salesPersonId },
+        { customerId: { $in: assignedCustomerIds } }
+      ],
+      companyId: userCompanyId,
+      status: 'approved'
+    });
+
+    // Get all sales (invoices) and their collections for these orders OR these customers
+    const sales = await Sale.find({
+      companyId: userCompanyId,
+      $or: [
+        { order: { $in: orderIds } },
+        { customer: { $in: assignedCustomerIds } }
       ]
-    })
-      .populate('customer', 'name email phone')
-      .sort({ createdAt: -1 });
+    });
 
     const totalOrders = orders.length;
-    const totalRevenue = orders.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
-    const averageOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
-    
-    const successfulOrders = orders.filter(order => 
+    const totalGrossSales = orders.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
+    const totalReturns = returns.reduce((sum, ret) => sum + (ret.totalAmount || 0), 0);
+    const netReceivable = totalGrossSales - totalReturns;
+
+    // Summing paidAmount from Sale records
+    const totalCollected = sales.reduce((sum, sale) => sum + (sale.paidAmount || 0), 0);
+    const pendingAmount = netReceivable - totalCollected;
+
+    const averageOrderValue = totalOrders > 0 ? totalGrossSales / totalOrders : 0;
+
+    const successfulOrders = orders.filter(order =>
       ['approved', 'completed', 'in_production', 'shipped', 'delivered'].includes(order.status?.toLowerCase())
     ).length;
     const successRate = totalOrders > 0 ? Math.round((successfulOrders / totalOrders) * 100) : 0;
+
+    // Calculate settlement status
+    let settlementStatus = 'Unpaid';
+    if (totalCollected >= netReceivable && netReceivable > 0) {
+      settlementStatus = 'Paid';
+    } else if (totalCollected > 0) {
+      settlementStatus = 'Partially Paid';
+    }
 
     // Group orders by status
     const ordersByStatus = {
@@ -569,11 +654,18 @@ export const getSalesPersonById = async (req, res) => {
     const response = {
       ...salesPerson,
       totalOrders,
-      totalRevenue,
+      totalRevenue: totalGrossSales,
+      totalGrossSales,
+      totalReturns,
+      netReceivable,
+      totalCollected,
+      pendingAmount,
+      settlementStatus,
       averageOrderValue,
       successRate,
       ordersByStatus,
-      recentOrders: orders.slice(0, 10)
+      recentOrders: orders.slice(0, 10),
+      recentReturns: returns.slice(0, 10)
     };
 
     res.json({
@@ -695,8 +787,8 @@ export const getSalesPersonOrders = async (req, res) => {
       totalDiscount: formattedOrders.reduce((sum, order) => sum + order.discount, 0),
       totalGst: formattedOrders.reduce((sum, order) => sum + order.gst, 0),
       totalFinal: formattedOrders.reduce((sum, order) => sum + order.finalAmount, 0),
-      averageOrderValue: totalOrders > 0 
-        ? formattedOrders.reduce((sum, order) => sum + order.amount, 0) / totalOrders 
+      averageOrderValue: totalOrders > 0
+        ? formattedOrders.reduce((sum, order) => sum + order.amount, 0) / totalOrders
         : 0,
       byStatus: {
         pending: formattedOrders.filter(o => o.status?.toLowerCase() === 'pending').length,
@@ -970,5 +1062,660 @@ export const getDamageExpiryDetail = async (req, res) => {
       message: 'Failed to fetch damage/expiry item details',
       error: error.message
     });
+  }
+};
+
+// ==================== SALES RETURNS (for Accounts role) ====================
+
+/**
+ * Get all sales returns (type: 'refund') for the company
+ * Uses static Return import (already imported at top of file)
+ */
+
+
+export const getSalesReturnsList = async (req, res) => {
+  try {
+    // 🔎 DB Debug Logs
+    console.log("🌐 Connected Host:", mongoose.connection.host);
+    console.log("📂 Connected Database:", mongoose.connection.name);
+    console.log("📁 Return Model Collection:", Return.collection.collectionName);
+
+    const totalDocs = await Return.countDocuments({});
+    console.log("📊 Total Documents in Return Collection:", totalDocs);
+
+    const sample = await Return.find().limit(2).lean();
+    console.log("📝 Sample Data:", sample);
+
+    // 🔥 Simple Fetch (No Filter)
+    const returns = await Return.find().populate('order', 'orderCode orderDate').sort({ createdAt: -1 });
+
+    res.json({
+      success: true,
+      returns
+    });
+
+  } catch (error) {
+    console.error("❌ Error in getSalesReturnsList:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+/**
+ * Get all sales damages (type: 'damage') for the company
+ * Uses static Return import (already imported at top of file)
+ */
+export const getSalesDamagesList = async (req, res) => {
+  try {
+    const { page = 1, limit = 100, search = '', status = '' } = req.query;
+    const userCompanyId = req.user.companyId;
+
+    console.log('⚠️ getSalesDamagesList called for company:', userCompanyId);
+
+    // Filter by company and type (handle legacy data)
+    const query = {
+      type: 'damage',
+      $or: [
+        { companyId: userCompanyId },
+        { companyId: { $exists: false } },
+        { companyId: null }
+      ]
+    };
+
+    if (status && status !== 'all') {
+      query.status = status;
+    }
+
+    if (search) {
+      query.$or = [
+        { customerName: { $regex: search, $options: 'i' } },
+        { reason: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    const damages = await Return.find(query)
+      .populate('order', 'orderCode orderDate')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    const total = await Return.countDocuments(query);
+
+    console.log(`✅ getSalesDamagesList: found ${damages.length} damages (total=${total})`);
+
+    res.json({
+      success: true,
+      damages,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages: Math.ceil(total / parseInt(limit))
+      }
+    });
+  } catch (error) {
+    console.error('❌ Error in getSalesDamagesList:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch sales damages', error: error.message });
+  }
+};
+
+// DEBUG: Check what's in the Return collection
+export const debugReturnCollection = async (req, res) => {
+  try {
+    const mongoose = (await import('mongoose')).default;
+    // List all collections
+    const collections = await mongoose.connection.db.listCollections().toArray();
+    const collectionNames = collections.map(c => c.name);
+
+    // Count all Return documents (no filter)
+    const allCount = await Return.countDocuments({});
+    const refundCount = await Return.countDocuments({ type: 'refund' });
+    const damageCount = await Return.countDocuments({ type: 'damage' });
+    const sample = await Return.find({}).limit(2).lean();
+
+    res.json({
+      success: true,
+      collections: collectionNames,
+      returnModelCollection: Return.collection.collectionName,
+      counts: { all: allCount, refund: refundCount, damage: damageCount },
+      sample
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// DEBUG: Check user info and returns by company
+export const debugUserAndReturns = async (req, res) => {
+  try {
+    const userCompanyId = req.user?.companyId;
+    const userCompanyIdString = userCompanyId?.toString();
+
+    console.log('🔍 DEBUG: Detailed Info:', {
+      companyId: userCompanyId,
+      companyIdString: userCompanyIdString,
+      companyIdType: userCompanyId?.constructor?.name
+    });
+
+    if (!userCompanyId) {
+      return res.json({
+        success: false,
+        message: 'No company ID found in req.user',
+        userInfo: req.user
+      });
+    }
+
+    // Check all returns in database - show first one completely
+    const allReturns = await Return.find({}).limit(1).lean();
+    const firstReturn = allReturns[0];
+
+    console.log('🔍 First return in DB:', {
+      _id: firstReturn?._id,
+      companyId: firstReturn?.companyId,
+      companyIdType: firstReturn?.companyId?.constructor?.name,
+      type: firstReturn?.type
+    });
+
+    // Try multiple query methods
+    const query1 = await Return.find({ companyId: userCompanyId }).lean();
+    const query2 = await Return.find({ companyId: userCompanyIdString }).lean();
+    const query3 = await Return.find({ type: 'refund' }).lean();
+    const query4 = await Return.find({ type: 'damage' }).lean();
+
+    res.json({
+      success: true,
+      userInfo: {
+        companyId: userCompanyId,
+        companyIdString: userCompanyIdString
+      },
+      databaseInfo: {
+        firstReturnCompanyId: firstReturn?.companyId,
+        firstReturnCompanyIdString: firstReturn?.companyId?.toString(),
+        firstReturnType: firstReturn?.companyId?.constructor?.name
+      },
+      queryResults: {
+        'Query with ObjectId': query1.length,
+        'Query with String': query2.length,
+        'All refunds (no filter)': query3.length,
+        'All damages (no filter)': query4.length
+      },
+      sample: {
+        firstReturn: firstReturn ? {
+          _id: firstReturn._id,
+          customerName: firstReturn.customerName,
+          type: firstReturn.type,
+          companyId: firstReturn.companyId
+        } : null
+      }
+    });
+  } catch (error) {
+    console.error('❌ Debug error:', error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// DEBUG: Simple - Just show ALL returns
+export const debugShowAllReturns = async (req, res) => {
+  try {
+    const allReturns = await Return.find({}).lean();
+
+    res.json({
+      success: true,
+      totalReturnsInDB: allReturns.length,
+      returns: allReturns.map(r => ({
+        _id: r._id,
+        customerName: r.customerName,
+        type: r.type,
+        companyId: r.companyId,
+        status: r.status,
+        createdAt: r.createdAt
+      }))
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+
+// ==================== BANK & CASH MANAGEMENT FUNCTIONS ====================
+
+export const getAccounts = async (req, res) => {
+  try {
+    const { page = 1, limit = 10, accountType, unit, search } = req.query;
+    const skip = (page - 1) * limit;
+
+    let query = {};
+
+    if (req.user.role !== USER_ROLES.SUPER_USER) {
+      query.unit = req.user.unit;
+    } else if (unit) {
+      query.unit = unit;
+    }
+
+    if (accountType) {
+      query.accountType = accountType;
+    }
+
+    if (search) {
+      query.$or = [
+        { accountName: { $regex: search, $options: 'i' } },
+        { accountNumber: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    const accounts = await Account.find(query)
+      .populate('parentAccount', 'accountName')
+      .sort({ accountNumber: 1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    const total = await Account.countDocuments(query);
+
+    res.json({
+      success: true,
+      accounts,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages: Math.ceil(total / limit)
+      }
+    });
+  } catch (error) {
+    console.error('Get accounts error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+};
+
+export const getAccountById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const account = await Account.findById(id).populate('parentAccount', 'accountName');
+
+    if (!account) {
+      return res.status(404).json({ success: false, message: 'Account not found' });
+    }
+
+    if (req.user.role !== USER_ROLES.SUPER_USER && account.unit !== req.user.unit) {
+      return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+
+    res.json({ success: true, account });
+  } catch (error) {
+    console.error('Get account by ID error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+};
+
+export const createAccount = async (req, res) => {
+  try {
+    const { accountName, accountType, parentAccount, description, balance, type, bankDetails, isBankOrCash } = req.body;
+
+    if (!accountName || !accountType) {
+      return res.status(400).json({ success: false, message: 'Account name and type are required' });
+    }
+
+    // Generate account number
+    const accountNumber = `ACC-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
+
+    const accountData = {
+      accountNumber,
+      accountName,
+      accountType: accountType === 'Bank/Cash' ? 'Asset' : accountType,
+      type,
+      balance: balance || 0,
+      isBankOrCash: isBankOrCash || false,
+      bankDetails,
+      unit: req.user.role === USER_ROLES.SUPER_USER ? req.body.unit : req.user.unit,
+      companyId: req.user.companyId,
+      parentAccount,
+      description
+    };
+
+    const account = new Account(accountData);
+    await account.save();
+    await account.populate('parentAccount', 'accountName');
+
+    res.status(201).json({
+      success: true,
+      message: 'Account created successfully',
+      account
+    });
+  } catch (error) {
+    console.error('Create account error:', error);
+    res.status(500).json({ success: false, message: error.message || 'Internal server error' });
+  }
+};
+
+export const updateAccount = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { accountName, accountType, parentAccount, description, isActive, balance, isBankOrCash, bankDetails } = req.body;
+
+    const account = await Account.findById(id);
+
+    if (!account) {
+      return res.status(404).json({ success: false, message: 'Account not found' });
+    }
+
+    if (req.user.role !== USER_ROLES.SUPER_USER && account.unit !== req.user.unit) {
+      return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+
+    const updateData = {};
+    if (accountName) updateData.accountName = accountName;
+    if (accountType) updateData.accountType = accountType === 'Bank/Cash' ? 'Asset' : accountType;
+    if (parentAccount) updateData.parentAccount = parentAccount;
+    if (description !== undefined) updateData.description = description;
+    if (typeof isActive === 'boolean') updateData.isActive = isActive;
+    if (balance !== undefined) updateData.balance = balance;
+    if (typeof isBankOrCash === 'boolean') updateData.isBankOrCash = isBankOrCash;
+    if (bankDetails) updateData.bankDetails = bankDetails;
+
+    const updatedAccount = await Account.findByIdAndUpdate(
+      id,
+      updateData,
+      { new: true }
+    ).populate('parentAccount', 'accountName');
+
+    res.json({
+      success: true,
+      message: 'Account updated successfully',
+      account: updatedAccount
+    });
+  } catch (error) {
+    console.error('Update account error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+};
+
+export const deleteAccount = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const account = await Account.findById(id);
+
+    if (!account) {
+      return res.status(404).json({ success: false, message: 'Account not found' });
+    }
+
+    if (req.user.role !== USER_ROLES.SUPER_USER && account.unit !== req.user.unit) {
+      return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+
+    // Check if account has transactions
+    const hasTransactions = await Transaction.findOne({
+      'entries.account': id
+    });
+
+    if (hasTransactions) {
+      return res.status(400).json({ success: false, message: 'Cannot delete account with existing transactions' });
+    }
+
+    await Account.findByIdAndDelete(id);
+
+    res.json({ success: true, message: 'Account deleted successfully' });
+  } catch (error) {
+    console.error('Delete account error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+};
+
+export const createTransaction = async (req, res) => {
+  try {
+    const { description, reference, entries, relatedDocument, relatedDocumentId, mode } = req.body;
+
+    if (!description || !entries || !Array.isArray(entries) || entries.length === 0) {
+      return res.status(400).json({ success: false, message: 'Description and entries are required' });
+    }
+
+    // Validate entries and calculate total
+    let totalDebit = 0;
+    let totalCredit = 0;
+
+    for (const entry of entries) {
+      if (!entry.account || (entry.debit === 0 && entry.credit === 0)) {
+        return res.status(400).json({ success: false, message: 'Invalid entry data' });
+      }
+      totalDebit += entry.debit || 0;
+      totalCredit += entry.credit || 0;
+    }
+
+    if (Math.abs(totalDebit - totalCredit) > 0.01) {
+      return res.status(400).json({ success: false, message: 'Debits and credits must balance' });
+    }
+
+    const transactionData = {
+      transactionNumber: `TXN-GEN-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`,
+      description,
+      reference,
+      entries,
+      totalAmount: totalDebit,
+      unit: req.user.role === USER_ROLES.SUPER_USER ? req.body.unit : req.user.unit,
+      relatedDocument,
+      relatedDocumentId,
+      mode,
+      createdBy: req.user._id
+    };
+
+    const transaction = await Transaction.create(transactionData);
+    await transaction.populate([
+      { path: 'entries.account', select: 'accountName accountNumber' },
+      { path: 'createdBy', select: 'fullName' }
+    ]);
+
+    // Update account balances
+    for (const entry of entries) {
+      const account = await Account.findById(entry.account);
+      if (account) {
+        if (['Asset', 'Expense'].includes(account.accountType)) {
+          account.balance += (entry.debit || 0) - (entry.credit || 0);
+        } else {
+          account.balance += (entry.credit || 0) - (entry.debit || 0);
+        }
+        await account.save();
+      }
+    }
+
+    res.status(201).json({
+      success: true,
+      message: 'Transaction created successfully',
+      transaction
+    });
+  } catch (error) {
+    console.error('Create transaction error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+};
+
+export const approveTransaction = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const transaction = await Transaction.findById(id);
+
+    if (!transaction) {
+      return res.status(404).json({ success: false, message: 'Transaction not found' });
+    }
+
+    if (req.user.role !== USER_ROLES.SUPER_USER && transaction.unit !== req.user.unit) {
+      return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+
+    if (transaction.isApproved) {
+      return res.status(400).json({ success: false, message: 'Transaction already approved' });
+    }
+
+    transaction.isApproved = true;
+    transaction.approvedBy = req.user._id;
+    await transaction.save();
+
+    await transaction.populate([
+      { path: 'entries.account', select: 'accountName accountNumber' },
+      { path: 'createdBy', select: 'fullName' },
+      { path: 'approvedBy', select: 'fullName' }
+    ]);
+
+    res.json({
+      success: true,
+      message: 'Transaction approved successfully',
+      transaction
+    });
+  } catch (error) {
+    console.error('Approve transaction error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+};
+
+export const createGeneralTransaction = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  try {
+    const { type, accountId, amount, mode, reference, description } = req.body;
+    const unit = req.user.unit;
+    const companyId = req.user.companyId;
+
+    const bankAccount = await Account.findById(accountId).session(session);
+    if (!bankAccount) throw new Error('Bank/Cash account not found');
+
+    // Negative Balance Check for Payments
+    if (type === 'Payment' && bankAccount.balance < amount) {
+      throw new Error(`Insufficient funds in ${bankAccount.accountName}. Available: ₹${bankAccount.balance}`);
+    }
+
+    const miscAccountName = type === 'Receipt' ? 'Miscellaneous Income' : 'General Expenses';
+    let miscAccount = await Account.findOne({ accountName: miscAccountName, unit }).session(session);
+
+    if (!miscAccount) {
+      miscAccount = new Account({
+        accountNumber: `MISC-${unit.replace(/\s+/g, '-')}-${Date.now()}`,
+        accountName: miscAccountName,
+        accountType: type === 'Receipt' ? 'Revenue' : 'Expense',
+        balance: 0,
+        unit,
+        companyId
+      });
+      await miscAccount.save({ session });
+    }
+
+    const entries = type === 'Receipt'
+      ? [{ account: bankAccount._id, debit: amount, credit: 0 }, { account: miscAccount._id, debit: 0, credit: amount }]
+      : [{ account: miscAccount._id, debit: amount, credit: 0 }, { account: bankAccount._id, debit: 0, credit: amount }];
+
+    const txn = new Transaction({
+      transactionNumber: `TXN-BNK-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`,
+      description: description || `${type} recorded via Bank & Cash`,
+      reference: reference,
+      totalAmount: amount,
+      unit,
+      mode,
+      createdBy: req.user._id,
+      entries
+    });
+    await txn.save({ session });
+
+    if (type === 'Receipt') {
+      bankAccount.balance += amount;
+      miscAccount.balance += amount;
+    } else {
+      bankAccount.balance -= amount;
+      miscAccount.balance += amount;
+    }
+
+    await bankAccount.save({ session });
+    await miscAccount.save({ session });
+
+    await session.commitTransaction();
+    res.json({ success: true, message: 'Transaction posted successfully' });
+  } catch (error) {
+    await session.abortTransaction();
+    res.status(400).json({ success: false, message: error.message });
+  } finally {
+    session.endSession();
+  }
+};
+
+export const getTransactions = async (req, res) => {
+  try {
+    const { page = 1, limit = 20, accountId, type, startDate, endDate } = req.query;
+    const query = { unit: req.user.unit };
+
+    if (accountId) query['entries.account'] = accountId;
+    if (type) query.relatedDocument = type;
+    if (startDate || endDate) {
+      query.createdAt = {};
+      if (startDate) query.createdAt.$gte = new Date(startDate);
+      if (endDate) query.createdAt.$lte = new Date(endDate);
+    }
+
+    const transactions = await Transaction.find(query)
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(parseInt(limit))
+      .populate('entries.account', 'accountName accountType balance');
+
+    const total = await Transaction.countDocuments(query);
+
+    res.json({
+      success: true,
+      transactions,
+      pagination: { total, page: parseInt(page), limit: parseInt(limit) }
+    });
+  } catch (error) {
+    console.error('Get transactions error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+};
+
+export const getBankCashSummary = async (req, res) => {
+  try {
+    const unit = req.user.unit;
+    const accounts = await Account.find({
+      unit,
+      isBankOrCash: true,
+      isActive: true
+    });
+
+    const summary = {
+      totalBalance: accounts.reduce((sum, acc) => sum + acc.balance, 0),
+      bankBalance: accounts.filter(acc => acc.accountName.toLowerCase().includes('bank') || acc.bankDetails?.bankName).reduce((sum, acc) => sum + acc.balance, 0),
+      cashBalance: accounts.filter(acc => acc.accountName.toLowerCase().includes('cash')).reduce((sum, acc) => sum + acc.balance, 0),
+      accounts: accounts.map(acc => ({
+        id: acc._id,
+        name: acc.accountName,
+        type: acc.accountName.toLowerCase().includes('cash') ? 'Cash' : 'Bank',
+        balance: acc.balance,
+        bankDetails: acc.bankDetails
+      }))
+    };
+
+    res.json({ success: true, data: summary });
+  } catch (error) {
+    console.error('Get Bank/Cash summary error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+};
+
+export const reconcileTransaction = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { isReconciled, reconciliationDate, clearedAmount } = req.body;
+
+    const transaction = await Transaction.findById(id);
+    if (!transaction) {
+      return res.status(404).json({ success: false, message: 'Transaction not found' });
+    }
+
+    transaction.isReconciled = isReconciled;
+    transaction.reconciliationDate = reconciliationDate || new Date();
+    transaction.clearedAmount = clearedAmount !== undefined ? clearedAmount : transaction.totalAmount;
+
+    await transaction.save();
+
+    res.json({ success: true, message: 'Transaction reconciliation status updated', transaction });
+  } catch (error) {
+    console.error('Reconcile transaction error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
   }
 };

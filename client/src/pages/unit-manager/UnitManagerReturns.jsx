@@ -88,29 +88,29 @@ export default function UnitManagerReturns() {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
       });
-      
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-      
+
       const data = await response.json();
       console.log('📋 Sales persons response:', data);
-      
+
       if (!data.success) {
         throw new Error(data.message || 'Failed to fetch sales persons');
       }
-      
+
       return data.data || [];
     },
     enabled: !!user && !!localStorage.getItem('token')
   });
 
   // Fetch returns list
-  const { 
-    data: returnsData = [], 
-    isLoading: returnsLoading, 
+  const {
+    data: returnsData = [],
+    isLoading: returnsLoading,
     error: returnsError,
-    refetch: refetchReturns 
+    refetch: refetchReturns
   } = useQuery({
     queryKey: ['unitManager', 'returns', selectedSalesPerson, statusFilter, typeFilter, searchTerm],
     queryFn: async () => {
@@ -125,25 +125,25 @@ export default function UnitManagerReturns() {
       if (typeFilter && typeFilter !== "all") {
         params.append('type', typeFilter);
       }
-      
+
       const response = await fetch(`/api/unit-manager/returns?${params.toString()}`, {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
       });
-      
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-      
+
       const data = await response.json();
       console.log('📋 Returns response:', data);
-      
+
       if (!data.success) {
         throw new Error(data.message || 'Failed to fetch returns');
       }
-      
+
       return data.data || [];
     },
     enabled: !!user && !!localStorage.getItem('token')
@@ -160,18 +160,18 @@ export default function UnitManagerReturns() {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
       });
-      
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-      
+
       const data = await response.json();
       console.log('📋 Customers response:', data);
-      
+
       if (!data.success) {
         throw new Error(data.message || 'Failed to fetch customers');
       }
-      
+
       return data.data || [];
     },
     enabled: !!user && !!localStorage.getItem('token') && (isAddModalOpen || isEditModalOpen)
@@ -188,18 +188,18 @@ export default function UnitManagerReturns() {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
       });
-      
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-      
+
       const data = await response.json();
       console.log('📋 Items response:', data);
-      
+
       if (!data.success) {
         throw new Error(data.message || 'Failed to fetch items');
       }
-      
+
       return data.data || data.items || [];
     },
     enabled: !!user && !!localStorage.getItem('token') && (isAddModalOpen || isEditModalOpen)
@@ -208,13 +208,13 @@ export default function UnitManagerReturns() {
   // Filter returns based on search
   const filteredReturns = useMemo(() => {
     if (!returnsData || returnsData.length === 0) return [];
-    
+
     return returnsData.filter(returnItem => {
-      const matchesSearch = !searchTerm || 
+      const matchesSearch = !searchTerm ||
         (returnItem.customerName && returnItem.customerName.toLowerCase().includes(searchTerm.toLowerCase())) ||
         (returnItem.reason && returnItem.reason.toLowerCase().includes(searchTerm.toLowerCase())) ||
         (returnItem.salesPersonName && returnItem.salesPersonName.toLowerCase().includes(searchTerm.toLowerCase()));
-      
+
       return matchesSearch;
     });
   }, [returnsData, searchTerm]);
@@ -255,12 +255,12 @@ export default function UnitManagerReturns() {
       });
       const data = await response.json();
       console.log('✅ Create return response:', data);
-      
+
       toast({
         title: "Success",
         description: "Return created successfully",
       });
-      
+
       queryClient.invalidateQueries(['unitManager', 'returns']);
       setIsAddModalOpen(false);
     } catch (error) {
@@ -284,19 +284,19 @@ export default function UnitManagerReturns() {
         },
         body: JSON.stringify(formData)
       });
-      
+
       const data = await response.json();
       console.log('✅ Update return response:', data);
-      
+
       if (!response.ok) {
         throw new Error(data.message || 'Failed to update return');
       }
-      
+
       toast({
         title: "Success",
         description: "Return updated successfully",
       });
-      
+
       queryClient.invalidateQueries(['unitManager', 'returns']);
       setIsEditModalOpen(false);
       setSelectedReturn(null);
@@ -312,7 +312,7 @@ export default function UnitManagerReturns() {
 
   const handleDeleteReturn = async (returnId) => {
     if (!confirm("Are you sure you want to delete this return?")) return;
-    
+
     try {
       console.log('🔄 Deleting return:', returnId);
       const response = await fetch(`/api/unit-manager/delete-return/${returnId}`, {
@@ -324,12 +324,12 @@ export default function UnitManagerReturns() {
       });
       const data = await response.json();
       console.log('✅ Delete return response:', data);
-      
+
       toast({
         title: "Success",
         description: "Return deleted successfully",
       });
-      
+
       queryClient.invalidateQueries(['unitManager', 'returns']);
     } catch (error) {
       console.error("❌ Error deleting return:", error);
@@ -354,12 +354,12 @@ export default function UnitManagerReturns() {
       });
       const data = await response.json();
       console.log('✅ Update status response:', data);
-      
+
       toast({
         title: "Success",
         description: `Return status updated to ${newStatus}`,
       });
-      
+
       queryClient.invalidateQueries(['unitManager', 'returns']);
       setIsStatusModalOpen(false);
       setSelectedReturn(null);
@@ -385,12 +385,12 @@ export default function UnitManagerReturns() {
       });
       const data = await response.json();
       console.log('✅ Approve return response:', data);
-      
+
       toast({
         title: "Success",
         description: "Return approved successfully",
       });
-      
+
       queryClient.invalidateQueries(['unitManager', 'returns']);
     } catch (error) {
       console.error("❌ Error approving return:", error);
@@ -432,7 +432,7 @@ export default function UnitManagerReturns() {
           </p>
         </div>
         {canAdd && (
-          <Button 
+          <Button
             onClick={() => setIsAddModalOpen(true)}
             className="flex items-center gap-2 bg-gray-600 hover:bg-gray-700"
           >
@@ -457,7 +457,7 @@ export default function UnitManagerReturns() {
                 />
               </div>
             </div>
-            
+
             <Select value={selectedSalesPerson} onValueChange={setSelectedSalesPerson}>
               <SelectTrigger className="w-[200px]">
                 <SelectValue placeholder="All Sales Persons" />
@@ -495,8 +495,8 @@ export default function UnitManagerReturns() {
               </SelectContent>
             </Select>
 
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={refetchReturns}
               className="flex items-center gap-2"
             >
@@ -505,7 +505,7 @@ export default function UnitManagerReturns() {
             </Button>
           </div>
         </CardHeader>
-        
+
         <CardContent>
           {returnsLoading ? (
             <div className="flex items-center justify-center py-8">
@@ -564,12 +564,11 @@ export default function UnitManagerReturns() {
                         {returnItem.salesPersonName || returnItem.salesPerson?.fullName || 'N/A'}
                       </TableCell>
                       <TableCell>
-                        <Badge 
-                          className={`font-semibold text-xs px-3 py-1 rounded-full ${
-                            returnItem.type === 'damage' 
-                              ? 'bg-red-100 text-red-700 border border-red-200' 
-                              : 'bg-gray-100 text-gray-700 border border-gray-200'
-                          }`}
+                        <Badge
+                          className={`font-semibold text-xs px-3 py-1 rounded-full ${returnItem.type === 'damage'
+                            ? 'bg-red-100 text-red-700 border border-red-200'
+                            : 'bg-gray-100 text-gray-700 border border-gray-200'
+                            }`}
                         >
                           {(returnItem.type || 'refund').toUpperCase()}
                         </Badge>
@@ -578,19 +577,18 @@ export default function UnitManagerReturns() {
                         {returnItem.items ? returnItem.items.length : 0} items
                       </TableCell>
                       <TableCell>
-                        ₹{returnItem.items ? returnItem.items.reduce((sum, item) => 
+                        ₹{returnItem.items ? returnItem.items.reduce((sum, item) =>
                           sum + (item.pricePerUnit * item.quantity), 0
                         ).toFixed(2) : '0.00'}
                       </TableCell>
                       <TableCell>
-                        <Badge 
-                          className={`font-semibold text-xs px-3 py-1 rounded-full ${
-                            returnItem.status === 'approved' ? 'bg-green-100 text-green-700 border border-green-200' : 
-                            returnItem.status === 'rejected' ? 'bg-red-100 text-red-700 border border-red-200' : 
-                            returnItem.status === 'processing' ? 'bg-blue-100 text-blue-700 border border-blue-200' :
-                            returnItem.status === 'completed' ? 'bg-purple-100 text-purple-700 border border-purple-200' :
-                            'bg-yellow-100 text-yellow-700 border border-yellow-200'
-                          }`}
+                        <Badge
+                          className={`font-semibold text-xs px-3 py-1 rounded-full ${returnItem.status === 'approved' ? 'bg-green-100 text-green-700 border border-green-200' :
+                            returnItem.status === 'rejected' ? 'bg-red-100 text-red-700 border border-red-200' :
+                              returnItem.status === 'processing' ? 'bg-blue-100 text-blue-700 border border-blue-200' :
+                                returnItem.status === 'completed' ? 'bg-purple-100 text-purple-700 border border-purple-200' :
+                                  'bg-yellow-100 text-yellow-700 border border-yellow-200'
+                            }`}
                         >
                           {(returnItem.status || 'pending').toUpperCase()}
                         </Badge>
@@ -724,6 +722,7 @@ const AddReturnModal = ({ isOpen, onClose, onSubmit, salesPersons, customers, gr
     salesPersonId: "",
     customerId: "",
     customerName: "",
+    order: "",
     returnDate: new Date().toISOString().split('T')[0],
     reason: "",
     type: "refund",
@@ -732,9 +731,24 @@ const AddReturnModal = ({ isOpen, onClose, onSubmit, salesPersons, customers, gr
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
 
+  const { data: customerOrders = [], isLoading: isLoadingOrders } = useQuery({
+    queryKey: ['unitManager', 'customerOrders', formData.customerId],
+    queryFn: async () => {
+      if (!formData.customerId || formData.customerId === "all") return [];
+      const response = await fetch(`/api/unit-manager/all-orders?customerId=${formData.customerId}&limit=1000`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      const data = await response.json();
+      return data.success ? data.data.orders : [];
+    },
+    enabled: !!formData.customerId && formData.customerId !== "all"
+  });
+
   const handleSubmit = (e) => {
     e.preventDefault();
-    
+
     if (!formData.customerId || !formData.salesPersonId || formData.items.length === 0) {
       toast({
         title: "Error",
@@ -752,8 +766,8 @@ const AddReturnModal = ({ isOpen, onClose, onSubmit, salesPersons, customers, gr
     if (existingItem) {
       setFormData(prev => ({
         ...prev,
-        items: prev.items.map(i => 
-          i.productId === item._id 
+        items: prev.items.map(i =>
+          i.productId === item._id
             ? { ...i, quantity: i.quantity + 1 }
             : i
         )
@@ -785,18 +799,18 @@ const AddReturnModal = ({ isOpen, onClose, onSubmit, salesPersons, customers, gr
       removeItem(productId);
       return;
     }
-    
+
     setFormData(prev => ({
       ...prev,
-      items: prev.items.map(i => 
-        i.productId === productId 
+      items: prev.items.map(i =>
+        i.productId === productId
           ? { ...i, quantity }
           : i
       )
     }));
   };
 
-  const totalAmount = formData.items.reduce((sum, item) => 
+  const totalAmount = formData.items.reduce((sum, item) =>
     sum + (item.pricePerUnit * item.quantity), 0
   );
 
@@ -809,13 +823,13 @@ const AddReturnModal = ({ isOpen, onClose, onSubmit, salesPersons, customers, gr
             Create a new return entry by selecting products and specifying details.
           </DialogDescription>
         </DialogHeader>
-        
+
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="grid grid-cols-2 gap-4">
             <div>
               <Label htmlFor="salesPersonId">Sales Person *</Label>
-              <Select 
-                value={formData.salesPersonId} 
+              <Select
+                value={formData.salesPersonId}
                 onValueChange={(value) => setFormData(prev => ({ ...prev, salesPersonId: value }))}
               >
                 <SelectTrigger>
@@ -843,14 +857,15 @@ const AddReturnModal = ({ isOpen, onClose, onSubmit, salesPersons, customers, gr
 
             <div>
               <Label htmlFor="customer">Customer *</Label>
-              <Select 
-                value={formData.customerId} 
+              <Select
+                value={formData.customerId}
                 onValueChange={(value) => {
                   const customer = customers.find(c => c._id === value);
-                  setFormData(prev => ({ 
-                    ...prev, 
+                  setFormData(prev => ({
+                    ...prev,
                     customerId: value,
-                    customerName: customer?.name || ""
+                    customerName: customer?.name || "",
+                    order: "" // Reset order when customer changes
                   }));
                 }}
               >
@@ -868,9 +883,30 @@ const AddReturnModal = ({ isOpen, onClose, onSubmit, salesPersons, customers, gr
             </div>
 
             <div>
+              <Label htmlFor="order">Order (Optional)</Label>
+              <Select
+                value={formData.order}
+                onValueChange={(value) => setFormData(prev => ({ ...prev, order: value }))}
+                disabled={!formData.customerId || isLoadingOrders}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={isLoadingOrders ? "Loading orders..." : "Select an order"} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No specific order</SelectItem>
+                  {customerOrders.map((order) => (
+                    <SelectItem key={order._id} value={order._id}>
+                      {order.orderCode} ({new Date(order.orderDate || order.createdAt).toLocaleDateString()})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
               <Label htmlFor="type">Type *</Label>
-              <Select 
-                value={formData.type} 
+              <Select
+                value={formData.type}
                 onValueChange={(value) => setFormData(prev => ({ ...prev, type: value }))}
               >
                 <SelectTrigger>
@@ -897,18 +933,18 @@ const AddReturnModal = ({ isOpen, onClose, onSubmit, salesPersons, customers, gr
           {/* Category-wise Item Selection */}
           <div>
             <h3 className="text-lg font-semibold mb-4">Select Items</h3>
-            
+
             <div className="space-y-3 max-h-96 overflow-y-auto border rounded-lg">
               {Object.entries(groupedItems).map(([category, items]) => {
                 const isExpanded = expandedCategories[category] || false;
-                
+
                 const toggleCategory = () => {
                   setExpandedCategories(prev => ({
                     ...prev,
                     [category]: !prev[category]
                   }));
                 };
-                
+
                 return (
                   <div key={category} className="border-b last:border-b-0">
                     <button
@@ -927,19 +963,19 @@ const AddReturnModal = ({ isOpen, onClose, onSubmit, salesPersons, customers, gr
                         </span>
                       </div>
                     </button>
-                    
+
                     {isExpanded && (
                       <div className="pb-2">
                         {items.map((item) => {
                           const selectedItem = formData.items.find(i => i.productId === item._id);
                           const quantity = selectedItem?.quantity || 0;
-                          
+
                           return (
                             <div key={item._id} className="flex items-center gap-3 p-3 hover:bg-gray-50:bg-gray-800 border-t">
                               <div className="w-10 h-10 bg-gray-100 rounded flex items-center justify-center flex-shrink-0">
                                 <Package className="h-5 w-5 text-gray-400" />
                               </div>
-                              
+
                               <div className="flex-1 min-w-0">
                                 <h4 className="font-medium text-gray-900 truncate">
                                   {item.name}
@@ -951,7 +987,7 @@ const AddReturnModal = ({ isOpen, onClose, onSubmit, salesPersons, customers, gr
                                   Stock: {item.stock || 0} pieces
                                 </p>
                               </div>
-                              
+
                               <div className="flex items-center gap-2">
                                 <Input
                                   type="number"
@@ -970,8 +1006,8 @@ const AddReturnModal = ({ isOpen, onClose, onSubmit, salesPersons, customers, gr
                                       if (existingItem) {
                                         setFormData(prev => ({
                                           ...prev,
-                                          items: prev.items.map(i => 
-                                            i.productId === item._id 
+                                          items: prev.items.map(i =>
+                                            i.productId === item._id
                                               ? { ...i, quantity: newQuantity }
                                               : i
                                           )
@@ -1021,8 +1057,8 @@ const AddReturnModal = ({ isOpen, onClose, onSubmit, salesPersons, customers, gr
             <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>
-            <Button 
-              type="submit" 
+            <Button
+              type="submit"
               disabled={!formData.customerId || !formData.salesPersonId || formData.items.length === 0}
               className="bg-gray-500 hover:bg-gray-600"
             >
@@ -1043,17 +1079,33 @@ const EditReturnModal = ({ isOpen, onClose, onSubmit, returnData, salesPersons, 
     salesPersonId: "",
     customerId: "",
     customerName: "",
+    order: "",
     returnDate: new Date().toISOString().split('T')[0],
     reason: "",
     type: "refund",
     items: []
   });
 
+  const { data: customerOrders = [], isLoading: isLoadingOrders } = useQuery({
+    queryKey: ['unitManager', 'customerOrders', formData.customerId],
+    queryFn: async () => {
+      if (!formData.customerId || formData.customerId === "all") return [];
+      const response = await fetch(`/api/unit-manager/all-orders?customerId=${formData.customerId}&limit=1000`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      const data = await response.json();
+      return data.success ? data.data.orders : [];
+    },
+    enabled: !!formData.customerId && formData.customerId !== "all"
+  });
+
   useEffect(() => {
     if (returnData && customers && customers.length > 0) {
       console.log('🔄 EditReturnModal - Loading returnData:', returnData);
       console.log('🔄 EditReturnModal - Customers available:', customers.length);
-      
+
       // Map existing items properly
       const mappedItems = returnData.items?.map(item => ({
         productId: item.productId || item._id,
@@ -1089,8 +1141,8 @@ const EditReturnModal = ({ isOpen, onClose, onSubmit, returnData, salesPersons, 
       // Method 3: Find by customerName in customers list
       else if (returnData.customerName && customers) {
         const customerNameStr = typeof returnData.customerName === 'object' ? returnData.customerName.name : returnData.customerName;
-        const foundCustomer = customers.find(c => 
-          c.name === customerNameStr || 
+        const foundCustomer = customers.find(c =>
+          c.name === customerNameStr ||
           c.name.toLowerCase() === customerNameStr.toLowerCase()
         );
         if (foundCustomer) {
@@ -1117,6 +1169,7 @@ const EditReturnModal = ({ isOpen, onClose, onSubmit, returnData, salesPersons, 
         salesPersonId: returnData.salesPerson?._id || returnData.salesPersonId || "",
         customerId: customerId,
         customerName: customerName,
+        order: returnData.order?._id || returnData.order || "",
         returnDate: returnData.returnDate ? new Date(returnData.returnDate).toISOString().split('T')[0] : "",
         reason: returnData.reason || "",
         type: returnData.type || "refund",
@@ -1143,7 +1196,7 @@ const EditReturnModal = ({ isOpen, onClose, onSubmit, returnData, salesPersons, 
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    
+
     console.log('🔍 EditReturnModal handleSubmit - Current formData:', formData);
     console.log('🔍 Validation check:', {
       customerId: formData.customerId,
@@ -1153,7 +1206,7 @@ const EditReturnModal = ({ isOpen, onClose, onSubmit, returnData, salesPersons, 
       hasSalesPersonId: !!formData.salesPersonId,
       hasItems: formData.items.length > 0
     });
-    
+
     if (!formData.customerId) {
       console.log('❌ Customer not selected');
       toast({
@@ -1167,7 +1220,7 @@ const EditReturnModal = ({ isOpen, onClose, onSubmit, returnData, salesPersons, 
     if (!formData.salesPersonId) {
       console.log('❌ Sales Person not selected');
       toast({
-        title: "Error", 
+        title: "Error",
         description: "Please select a sales person",
         variant: "destructive",
       });
@@ -1188,7 +1241,7 @@ const EditReturnModal = ({ isOpen, onClose, onSubmit, returnData, salesPersons, 
     onSubmit(formData);
   };
 
-  const totalAmount = formData.items.reduce((sum, item) => 
+  const totalAmount = formData.items.reduce((sum, item) =>
     sum + (item.pricePerUnit * item.quantity), 0
   );
 
@@ -1201,13 +1254,13 @@ const EditReturnModal = ({ isOpen, onClose, onSubmit, returnData, salesPersons, 
             Update the return details and information.
           </DialogDescription>
         </DialogHeader>
-        
+
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
               <Label htmlFor="salesPersonId">Sales Person *</Label>
-              <Select 
-                value={formData.salesPersonId} 
+              <Select
+                value={formData.salesPersonId}
                 onValueChange={(value) => {
                   console.log('🔄 EditModal - Sales Person selected:', value);
                   setFormData(prev => ({ ...prev, salesPersonId: value }));
@@ -1228,17 +1281,18 @@ const EditReturnModal = ({ isOpen, onClose, onSubmit, returnData, salesPersons, 
 
             <div>
               <Label htmlFor="customer">Customer *</Label>
-              <Select 
+              <Select
                 key={`customer-${typeof formData.customerId === 'object' ? formData.customerId?._id : formData.customerId}`}
-                value={typeof formData.customerId === 'object' ? formData.customerId?._id || "" : formData.customerId || ""} 
+                value={typeof formData.customerId === 'object' ? formData.customerId?._id || "" : formData.customerId || ""}
                 onValueChange={(value) => {
                   const customer = customers.find(c => c._id === value);
                   console.log('🔄 Customer selected:', { value, customer });
                   console.log('🔍 Available customers:', customers);
-                  setFormData(prev => ({ 
-                    ...prev, 
+                  setFormData(prev => ({
+                    ...prev,
                     customerId: value,
-                    customerName: customer?.name || ""
+                    customerName: customer?.name || "",
+                    order: "" // Reset order when customer changes
                   }));
                 }}
               >
@@ -1258,6 +1312,27 @@ const EditReturnModal = ({ isOpen, onClose, onSubmit, returnData, salesPersons, 
             </div>
 
             <div>
+              <Label htmlFor="order">Order (Optional)</Label>
+              <Select
+                value={formData.order}
+                onValueChange={(value) => setFormData(prev => ({ ...prev, order: value }))}
+                disabled={!formData.customerId || isLoadingOrders}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={isLoadingOrders ? "Loading orders..." : "Select an order"} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No specific order</SelectItem>
+                  {customerOrders.map((order) => (
+                    <SelectItem key={order._id} value={order._id}>
+                      {order.orderCode} ({new Date(order.orderDate || order.createdAt).toLocaleDateString()})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
               <Label htmlFor="returnDate">Return Date *</Label>
               <Input
                 type="date"
@@ -1269,8 +1344,8 @@ const EditReturnModal = ({ isOpen, onClose, onSubmit, returnData, salesPersons, 
 
             <div>
               <Label htmlFor="type">Type *</Label>
-              <Select 
-                value={formData.type} 
+              <Select
+                value={formData.type}
                 onValueChange={(value) => setFormData(prev => ({ ...prev, type: value }))}
               >
                 <SelectTrigger>
@@ -1299,18 +1374,18 @@ const EditReturnModal = ({ isOpen, onClose, onSubmit, returnData, salesPersons, 
           {/* Category-wise Item Selection for Edit Modal */}
           <div>
             <h3 className="text-lg font-semibold mb-4">Select Items</h3>
-            
+
             <div className="space-y-3 max-h-96 overflow-y-auto border rounded-lg">
               {Object.entries(groupedItems).map(([category, items]) => {
                 const isExpanded = expandedCategories[category] || false;
-                
+
                 const toggleCategory = () => {
                   setExpandedCategories(prev => ({
                     ...prev,
                     [category]: !prev[category]
                   }));
                 };
-                
+
                 return (
                   <div key={category} className="border-b last:border-b-0">
                     <button
@@ -1329,19 +1404,19 @@ const EditReturnModal = ({ isOpen, onClose, onSubmit, returnData, salesPersons, 
                         </span>
                       </div>
                     </button>
-                    
+
                     {isExpanded && (
                       <div className="pb-2">
                         {items.map((item) => {
                           const selectedItem = formData.items.find(i => i.productId === item._id);
                           const quantity = selectedItem?.quantity || 0;
-                          
+
                           return (
                             <div key={item._id} className="flex items-center gap-3 p-3 hover:bg-gray-50:bg-gray-800 border-t">
                               <div className="w-10 h-10 bg-gray-100 rounded flex items-center justify-center flex-shrink-0">
                                 <Package className="h-5 w-5 text-gray-400" />
                               </div>
-                              
+
                               <div className="flex-1 min-w-0">
                                 <h4 className="font-medium text-gray-900 truncate">
                                   {item.name}
@@ -1353,7 +1428,7 @@ const EditReturnModal = ({ isOpen, onClose, onSubmit, returnData, salesPersons, 
                                   Stock: {item.stock || 0} pieces
                                 </p>
                               </div>
-                              
+
                               <div className="flex items-center gap-2">
                                 <Input
                                   type="number"
@@ -1372,8 +1447,8 @@ const EditReturnModal = ({ isOpen, onClose, onSubmit, returnData, salesPersons, 
                                       if (existingItem) {
                                         setFormData(prev => ({
                                           ...prev,
-                                          items: prev.items.map(i => 
-                                            i.productId === item._id 
+                                          items: prev.items.map(i =>
+                                            i.productId === item._id
                                               ? { ...i, quantity: newQuantity }
                                               : i
                                           )
@@ -1444,7 +1519,7 @@ const EditReturnModal = ({ isOpen, onClose, onSubmit, returnData, salesPersons, 
 const ViewReturnModal = ({ isOpen, onClose, returnData }) => {
   if (!returnData) return null;
 
-  const totalAmount = returnData.items?.reduce((sum, item) => 
+  const totalAmount = returnData.items?.reduce((sum, item) =>
     sum + (item.pricePerUnit * item.quantity), 0
   ) || 0;
 
@@ -1457,7 +1532,7 @@ const ViewReturnModal = ({ isOpen, onClose, returnData }) => {
             View detailed information about this return/damage entry.
           </DialogDescription>
         </DialogHeader>
-        
+
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -1476,12 +1551,11 @@ const ViewReturnModal = ({ isOpen, onClose, returnData }) => {
             </div>
             <div>
               <Label>Type</Label>
-              <Badge 
-                className={`font-semibold text-xs px-3 py-1 rounded-full ${
-                  returnData.type === 'damage' 
-                    ? 'bg-red-100 text-red-700 border border-red-200' 
-                    : 'bg-gray-100 text-gray-700 border border-gray-200'
-                }`}
+              <Badge
+                className={`font-semibold text-xs px-3 py-1 rounded-full ${returnData.type === 'damage'
+                  ? 'bg-red-100 text-red-700 border border-red-200'
+                  : 'bg-gray-100 text-gray-700 border border-gray-200'
+                  }`}
               >
                 {(returnData.type || 'refund').toUpperCase()}
               </Badge>
@@ -1490,10 +1564,10 @@ const ViewReturnModal = ({ isOpen, onClose, returnData }) => {
 
           <div>
             <Label>Status</Label>
-            <Badge 
+            <Badge
               variant={
-                returnData.status === 'approved' ? 'success' : 
-                returnData.status === 'rejected' ? 'destructive' : 'secondary'
+                returnData.status === 'approved' ? 'success' :
+                  returnData.status === 'rejected' ? 'destructive' : 'secondary'
               }
             >
               {returnData.status || 'pending'}
@@ -1575,15 +1649,15 @@ const StatusUpdateModal = ({ isOpen, onClose, onSubmit, returnData }) => {
             Change the status of return for {returnData?.customerName}
           </DialogDescription>
         </DialogHeader>
-        
+
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
             <Label className="text-base font-medium">Current Status</Label>
             <div className="mt-2">
-              <Badge 
+              <Badge
                 variant={
-                  returnData?.status === 'approved' ? 'success' : 
-                  returnData?.status === 'rejected' ? 'destructive' : 'secondary'
+                  returnData?.status === 'approved' ? 'success' :
+                    returnData?.status === 'rejected' ? 'destructive' : 'secondary'
                 }
                 className="text-sm"
               >
@@ -1630,8 +1704,8 @@ const StatusUpdateModal = ({ isOpen, onClose, onSubmit, returnData }) => {
             <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>
-            <Button 
-              type="submit" 
+            <Button
+              type="submit"
               className="bg-gray-500 hover:bg-gray-600"
               disabled={!selectedStatus || selectedStatus === returnData?.status}
             >

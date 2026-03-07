@@ -7,16 +7,16 @@ const login = async (req, res) => {
   try {
     console.log('=== LOGIN CONTROLLER EXECUTING ===');
     console.log('Request body:', req.body);
-    
+
     const { username, password } = req.body;
 
     if (!username || !password) {
       return res.status(400).json({ message: 'Username and password are required' });
     }
 
-    const user = await User.findOne({ 
+    const user = await User.findOne({
       $or: [{ username }, { email: username }],
-      isActive: true 
+      isActive: true
     });
 
     console.log('=== USER LOOKUP RESULT ===');
@@ -35,7 +35,7 @@ const login = async (req, res) => {
       });
     } else {
       // Check if user exists but is inactive
-      const inactiveUser = await User.findOne({ 
+      const inactiveUser = await User.findOne({
         $or: [{ username }, { email: username }]
       });
       if (inactiveUser) {
@@ -56,10 +56,10 @@ const login = async (req, res) => {
     console.log('=== PASSWORD VERIFICATION ===');
     console.log('Provided password:', password);
     console.log('Stored password hash:', user.password);
-    
+
     const isPasswordValid = await bcrypt.compare(password, user.password);
     console.log('Password validation result:', isPasswordValid);
-    
+
     if (!isPasswordValid) {
       console.log('Password mismatch for user:', username);
       return res.status(401).json({ message: 'Invalid credentials' });
@@ -98,12 +98,12 @@ const login = async (req, res) => {
       user: userResponse,
       token
     };
-    
+
     console.log('=== LOGIN SUCCESS - SENDING RESPONSE ===');
     console.log('User modules for role', user.role, ':', userModules);
     console.log('Response user permissions:', userResponse.permissions);
     console.log('User:', userResponse.username, 'Role:', userResponse.role);
-    
+
     res.status(200).json(response);
   } catch (error) {
     console.error('Login error:', error);
@@ -124,13 +124,13 @@ const logout = async (req, res) => {
 const getCurrentUser = async (req, res) => {
   try {
     const user = req.user;
-    
+
     if (!user) {
       return res.status(401).json({ message: 'User not found' });
     }
 
     const userModulesForCurrentUser = getUserModules(user.role);
-    
+
     const userResponse = {
       id: user._id,
       username: user.username,
@@ -138,10 +138,17 @@ const getCurrentUser = async (req, res) => {
       fullName: user.fullName,
       profilePicture: user.profilePicture,
       role: user.role,
-      unit: user.unit,
+      unit: user.unit || user.companyId?.unitName || 'Main Unit',
+      companyId: user.companyId?._id || user.companyId,
+      company: user.companyId ? {
+        id: user.companyId._id || user.companyId,
+        name: user.companyId.name,
+        unitName: user.companyId.unitName,
+        location: user.companyId.city && user.companyId.state ? `${user.companyId.city}, ${user.companyId.state}` : user.companyId.location
+      } : null,
       isActive: user.isActive,
       lastLogin: user.lastLogin,
-      permissions: userModulesForCurrentUser // Always return simple module names array
+      permissions: userModulesForCurrentUser
     };
 
     res.json(userResponse);

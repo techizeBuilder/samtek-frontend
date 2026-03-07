@@ -5,7 +5,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Plus, Search, Edit2, Trash2, Eye, TrendingDown, RotateCw, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { Link } from 'wouter';
+import { Plus, Search, Edit2, Trash2, Eye, TrendingDown, RotateCw, ChevronLeft, ChevronRight, X, BarChart, RotateCcw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import {
   Dialog,
@@ -141,10 +142,22 @@ const Purchases = () => {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-4 md:p-8">
       <div className="w-full">
         {/* Header */}
-        <div className="flex flex-col gap-4 mb-8">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
           <div>
             <h1 className="text-3xl md:text-4xl font-bold text-gray-900">Purchases Management</h1>
             <p className="text-gray-600 mt-2">Select items to create purchase orders</p>
+          </div>
+          <div className="flex gap-3">
+            <Link href="/accounts/purchases/returns">
+              <Button variant="outline" className="border-orange-200 text-orange-700 hover:bg-orange- client/src/pages/accounts/Purchases.jsx50">
+                <RotateCcw className="w-4 h-4 mr-2" /> Returns
+              </Button>
+            </Link>
+            <Link href="/accounts/purchases/reports">
+              <Button variant="outline" className="border-blue-200 text-blue-700 hover:bg-blue-50">
+                <BarChart className="w-4 h-4 mr-2" /> Reports
+              </Button>
+            </Link>
           </div>
         </div>
 
@@ -283,18 +296,18 @@ const Purchases = () => {
                         <td className="px-6 py-4 text-right text-gray-600">{item.minStock}</td>
                         <td className="px-6 py-4 text-center">
                           <div className="flex justify-center gap-2">
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
+                            <Button
+                              variant="ghost"
+                              size="sm"
                               className="text-blue-600 hover:bg-blue-50"
                               onClick={() => handleViewItem(item)}
                               title="View item details"
                             >
                               <Eye className="w-4 h-4" />
                             </Button>
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
+                            <Button
+                              variant="ghost"
+                              size="sm"
                               className="text-green-600 hover:bg-green-50"
                               onClick={() => handleAddToPurchase(item)}
                               title="Add to purchase order"
@@ -415,12 +428,12 @@ const Purchases = () => {
                   Purchase Cost: ₹{selectedItem.purchaseCost.toLocaleString('en-IN')} per {selectedItem.unit}
                 </p>
               </div>
-              
+
               <div>
                 <label className="text-sm font-medium text-gray-700 mb-2 block">Quantity to Purchase</label>
-                <Input 
-                  type="number" 
-                  min="1" 
+                <Input
+                  type="number"
+                  min="1"
                   max="10000"
                   value={purchaseQuantity}
                   onChange={(e) => setPurchaseQuantity(parseInt(e.target.value) || 1)}
@@ -441,7 +454,7 @@ const Purchases = () => {
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowAddModal(false)}>Cancel</Button>
-            <Button 
+            <Button
               onClick={handleConfirmAddPurchase}
               disabled={isAddingToPurchase}
               className="bg-green-600 hover:bg-green-700 text-white"

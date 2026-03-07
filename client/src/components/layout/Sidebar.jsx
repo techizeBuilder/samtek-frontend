@@ -174,7 +174,7 @@ const unitManagerMenuItems = [
     icon: LayoutDashboard,
     module: 'dashboard'
   },
-   {
+  {
     label: 'Sales Order List',
     path: '/unit-manager/sales-order-list',
     icon: TrendingUp,
@@ -229,7 +229,7 @@ const productionMenuItems = [
     icon: Factory,
     module: 'production'
   },
-    {
+  {
     label: 'Production Sheet',
     path: '/production/production-sheet',
     icon: Clock,
@@ -370,14 +370,30 @@ const accountsMenuItems = [
     path: '/accounts/sales',
     icon: TrendingUp,
     module: 'accounts',
-    feature: 'sales'
+    feature: 'sales',
+    submodules: [
+      { label: 'Customer Master', path: '/accounts/sales/customers', feature: 'sales' },
+      { label: 'Sales Invoice', path: '/accounts/sales/invoices', feature: 'sales' },
+      { label: 'Sales Return', path: '/accounts/sales/returns', feature: 'sales' },
+      { label: 'Customer Payment', path: '/accounts/sales/payments', feature: 'sales' },
+      { label: 'Receivable Ageing', path: '/accounts/sales/ageing', feature: 'sales' },
+      { label: 'Sales Reports', path: '/accounts/sales/reports', feature: 'sales' }
+    ]
   },
   {
     label: 'Purchases',
     path: '/accounts/purchases',
     icon: ShoppingCart,
     module: 'accounts',
-    feature: 'purchases'
+    feature: 'purchases',
+    submodules: [
+      { label: 'Vendor Master', path: '/accounts/purchases/vendors', feature: 'purchases' },
+      { label: 'Purchase Invoice', path: '/accounts/purchases/invoices', feature: 'purchases' },
+      { label: 'Purchase Return', path: '/accounts/purchases/returns', feature: 'purchases' },
+      { label: 'Vendor Payment', path: '/accounts/purchases/payments', feature: 'purchases' },
+      { label: 'Payable Ageing', path: '/accounts/purchases/ageing', feature: 'purchases' },
+      { label: 'Purchase Reports', path: '/accounts/purchases/reports', feature: 'purchases' }
+    ]
   },
   {
     label: 'GST & TDS',
@@ -387,12 +403,26 @@ const accountsMenuItems = [
     feature: 'gstAndTds'
   },
   {
-    label: 'Damage & Expiry',
-    path: '/accounts/damage-expiry',
-    icon: AlertTriangle,
+    label: 'Expenses',
+    path: '/accounts/expenses',
+    icon: Receipt,
     module: 'accounts',
-    feature: 'damageAndExpiry'
+    feature: 'expenses'
   },
+  /*   {
+      label: 'Financial Summary',
+      path: '/accounts/financial-summary',
+      icon: BarChart,
+      module: 'accounts',
+      feature: 'reports'
+    }, */
+  // {
+  //   label: 'Damage & Expiry',
+  //   path: '/accounts/damage-expiry',
+  //   icon: AlertTriangle,
+  //   module: 'accounts',
+  //   feature: 'damageAndExpiry'
+  // },
   {
     label: 'Salesman Settlement',
     path: '/accounts/salesman-settlement',
@@ -408,19 +438,26 @@ const accountsMenuItems = [
     feature: 'bankAndCash'
   },
   {
-    label: 'Inter Unit',
-    path: '/accounts/inter-unit',
-    icon: Building,
-    module: 'accounts',
-    feature: 'interUnit'
-  },
-  {
     label: 'Reports',
-    path: '/accounts/reports',
+    path: '/accounts/financial-summary',
     icon: BarChart,
     module: 'accounts',
     feature: 'reports'
   },
+  /*   {
+      label: 'Inter Unit',
+      path: '/accounts/inter-unit',
+      icon: Building,
+      module: 'accounts',
+      feature: 'interUnit'
+    }, */
+  /*   {
+      label: 'Reports',
+      path: '/accounts/reports',
+      icon: BarChart,
+      module: 'accounts',
+      feature: 'reports'
+    }, */
   {
     label: 'Settings',
     path: '/accounts/settings',
@@ -474,16 +511,16 @@ export default function Sidebar({ isOpen, onClose }) {
     onClose?.();
   };
 
-  const toggleModule = (moduleName) => {
+  const toggleModule = (moduleKey) => {
     setExpandedModules(prev => ({
       ...prev,
-      [moduleName]: !prev[moduleName]
+      [moduleKey]: !prev[moduleKey]
     }));
   };
 
   // Get menu items based on user role - much simpler and cleaner
   const roleMenuItems = getMenuItemsByRole(user?.role);
-  
+
   // For Production role users, apply strict filtering to only show production items
   let filteredMenuItems;
   if (user?.role === 'Production') {
@@ -491,7 +528,7 @@ export default function Sidebar({ isOpen, onClose }) {
     filteredMenuItems = roleMenuItems.filter(item => {
       // Always show items without module restriction (like profile)
       if (!item.module) return true;
-      
+
       // Only show production module items
       if (item.module === 'production') {
         // If item has a specific feature requirement, check feature access
@@ -501,7 +538,7 @@ export default function Sidebar({ isOpen, onClose }) {
         }
         return true;
       }
-      
+
       return false; // Hide all non-production items for Production users
     });
   } else if (user?.role === 'Packing') {
@@ -509,7 +546,7 @@ export default function Sidebar({ isOpen, onClose }) {
     filteredMenuItems = roleMenuItems.filter(item => {
       // Always show items without module restriction (like profile)
       if (!item.module) return true;
-      
+
       // Only show packing module items
       if (item.module === 'packing') {
         // If item has a specific feature requirement, check feature access
@@ -519,7 +556,7 @@ export default function Sidebar({ isOpen, onClose }) {
         }
         return true;
       }
-      
+
       return false; // Hide all non-packing items for Packing users
     });
   } else if (user?.role === 'Dispatch') {
@@ -527,19 +564,19 @@ export default function Sidebar({ isOpen, onClose }) {
     filteredMenuItems = roleMenuItems.filter(item => {
       // Always show items without module restriction (like profile)
       if (!item.module) return true;
-      
+
       // Only show dispatch module items - check both 'dispatch' and 'dispatches'
       if (item.module === 'dispatches' || item.module === 'dispatch') {
         // If item has a specific feature requirement, check feature access
         if (item.feature) {
           // Check both singular and plural module names for compatibility
-          const hasFeature = hasFeatureAccess('dispatches', item.feature, 'view') || 
-                            hasFeatureAccess('dispatch', item.feature, 'view');
+          const hasFeature = hasFeatureAccess('dispatches', item.feature, 'view') ||
+            hasFeatureAccess('dispatch', item.feature, 'view');
           return hasFeature;
         }
         return true;
       }
-      
+
       return false; // Hide all non-dispatch items for Dispatch users
     });
   } else if (user?.role === 'Accounts') {
@@ -547,7 +584,7 @@ export default function Sidebar({ isOpen, onClose }) {
     filteredMenuItems = roleMenuItems.filter(item => {
       // Always show items without module restriction (like profile)
       if (!item.module) return true;
-      
+
       // Only show accounts module items
       if (item.module === 'accounts') {
         // If item has a specific feature requirement, check feature access
@@ -557,7 +594,7 @@ export default function Sidebar({ isOpen, onClose }) {
         }
         return true;
       }
-      
+
       return false; // Hide all non-accounts items for Accounts users
     });
   } else {
@@ -565,32 +602,32 @@ export default function Sidebar({ isOpen, onClose }) {
     filteredMenuItems = roleMenuItems.filter(item => {
       // Always show dashboard
       if (item.module === 'dashboard') return true;
-      
+
       // Always show items without module restriction
       if (!item.module) return true;
-      
+
       // Special handling for Unit Head role with unitManager module features
       if (user?.role === 'Unit Head' && item.module === 'unitManager' && item.feature) {
         // For Unit Head, check feature access directly without module access check
         const hasFeature = hasFeatureAccess(item.module, item.feature, 'view');
         return hasFeature;
       }
-      
+
       // Check if user has access to the module
       const hasAccess = hasModuleAccess(item.module);
       if (!hasAccess) return false;
-      
+
       // If item has a specific feature requirement, check feature access
       if (item.feature) {
         const hasFeature = hasFeatureAccess(item.module, item.feature, 'view');
         if (!hasFeature) return false;
       }
-      
+
       // Check if module is enabled in settings
       if (settings?.modules && settings.modules[item.module] === false) {
         return false;
       }
-      
+
       return true;
     });
   }
@@ -599,7 +636,7 @@ export default function Sidebar({ isOpen, onClose }) {
     <>
       {/* Mobile Overlay */}
       {isOpen && (
-        <div 
+        <div
           className="fixed inset-0 z-40 bg-black bg-opacity-50 md:hidden"
           onClick={onClose}
         />
@@ -617,9 +654,9 @@ export default function Sidebar({ isOpen, onClose }) {
               <div className="relative flex-shrink-0">
                 {companyLogo ? (
                   <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl overflow-hidden shadow-lg transform hover:scale-110 transition-transform duration-200 border border-slate-200">
-                    <img 
-                      src={companyLogo} 
-                      alt="Company Logo" 
+                    <img
+                      src={companyLogo}
+                      alt="Company Logo"
                       className="w-full h-full object-cover"
                       onError={(e) => {
                         console.log('Sidebar logo load error:', e);
@@ -667,20 +704,19 @@ export default function Sidebar({ isOpen, onClose }) {
             <nav className="space-y-2">
               {filteredMenuItems.map((item) => {
                 const Icon = item.icon;
-                const isActive = location === item.path || 
+                const isActive = location === item.path ||
                   (item.module === 'dashboard' && location === '/') ||
                   (item.module === 'dashboard' && location === '/super-admin-dashboard');
                 const hasSubmodules = item.submodules && item.submodules.length > 0;
-                const isExpanded = expandedModules[item.module];
-                const hasAccessibleSubmodules = hasSubmodules && 
+                const isExpanded = expandedModules[item.path];
+                const hasAccessibleSubmodules = hasSubmodules &&
                   item.submodules.some(sub => hasFeatureAccess(item.module, sub.feature, 'view'));
-                
+
                 return (
                   <div key={item.path} className="space-y-1">
                     {/* Main Module Button */}
                     <div className="flex items-center">
-                      {/* Special handling for Sales module - dropdown only, no direct link */}
-                      {item.module === 'sales' && hasAccessibleSubmodules ? (
+                      {hasAccessibleSubmodules ? (
                         <Button
                           variant="ghost"
                           className={cn(
@@ -690,7 +726,7 @@ export default function Sidebar({ isOpen, onClose }) {
                           onClick={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
-                            toggleModule(item.module);
+                            toggleModule(item.path);
                           }}
                         >
                           <Icon className={cn(
@@ -706,49 +742,27 @@ export default function Sidebar({ isOpen, onClose }) {
                           </div>
                         </Button>
                       ) : (
-                        <>
-                          <Link href={item.path} className="flex-1">
-                            <Button
-                              variant={isActive ? "default" : "ghost"}
-                              className={cn(
-                                "w-full justify-start h-12 sm:h-12 px-3 sm:px-4 transition-all duration-200 group relative overflow-hidden",
-                                isActive
-                                  ? "bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg hover:shadow-xl transform hover:scale-[1.02]"
-                                  : "text-slate-700 hover:bg-gradient-to-r hover:from-blue-50 hover:to-purple-50:from-blue-900/20:to-purple-900/20 hover:text-slate-900:text-slate-100"
-                              )}
-                              onClick={onClose}
-                            >
-                              <Icon className={cn(
-                                "w-5 h-5 mr-2 sm:mr-3 transition-all duration-200",
-                                isActive ? "drop-shadow-sm" : "group-hover:scale-110"
-                              )} />
-                              <span className="font-medium text-sm sm:text-base">{item.label}</span>
-                              {isActive && (
-                                <div className="absolute inset-0 bg-gradient-to-r from-white/20 to-transparent opacity-50" />
-                              )}
-                            </Button>
-                          </Link>
-                          
-                          {/* Expand/Collapse Button for Submodules (for non-sales modules) */}
-                          {hasAccessibleSubmodules && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="w-8 h-8 p-0 ml-1"
-                              onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                toggleModule(item.module);
-                              }}
-                            >
-                              {isExpanded ? (
-                                <ChevronDown className="w-4 h-4" />
-                              ) : (
-                                <ChevronRight className="w-4 h-4" />
-                              )}
-                            </Button>
-                          )}
-                        </>
+                        <Link href={item.path} className="flex-1">
+                          <Button
+                            variant={isActive ? "default" : "ghost"}
+                            className={cn(
+                              "w-full justify-start h-12 sm:h-12 px-3 sm:px-4 transition-all duration-200 group relative overflow-hidden",
+                              isActive
+                                ? "bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg hover:shadow-xl transform hover:scale-[1.02]"
+                                : "text-slate-700 hover:bg-gradient-to-r hover:from-blue-50 hover:to-purple-50:from-blue-900/20:to-purple-900/20 hover:text-slate-900:text-slate-100"
+                            )}
+                            onClick={onClose}
+                          >
+                            <Icon className={cn(
+                              "w-5 h-5 mr-2 sm:mr-3 transition-all duration-200",
+                              isActive ? "drop-shadow-sm" : "group-hover:scale-110"
+                            )} />
+                            <span className="font-medium text-sm sm:text-base">{item.label}</span>
+                            {isActive && (
+                              <div className="absolute inset-0 bg-gradient-to-r from-white/20 to-transparent opacity-50" />
+                            )}
+                          </Button>
+                        </Link>
                       )}
                     </div>
 

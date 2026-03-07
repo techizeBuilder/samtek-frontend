@@ -28,24 +28,19 @@ const supplierSchema = new mongoose.Schema({
   },
   address: {
     street: {
-      type: String,
-      required: true
+      type: String
     },
     city: {
-      type: String,
-      required: true
+      type: String
     },
     state: {
-      type: String,
-      required: true
+      type: String
     },
     zipCode: {
-      type: String,
-      required: true
+      type: String
     },
     country: {
       type: String,
-      required: true,
       default: 'India'
     }
   },
@@ -87,12 +82,31 @@ const supplierSchema = new mongoose.Schema({
   },
   notes: {
     type: String
+  },
+  openingBalance: {
+    type: Number,
+    default: 0
+  },
+  status: {
+    type: String,
+    enum: ['active', 'inactive'],
+    default: 'active'
+  },
+  entityType: {
+    type: String,
+    enum: ['Individual', 'HUF', 'Company', 'Firm', 'Others'],
+    default: 'Others'
+  },
+  tdsSection: {
+    type: String,
+    enum: ['194C', '194J', '194Q', '206C_1H', 'None'],
+    default: 'None'
   }
 }, {
   timestamps: true
 });
 
-supplierSchema.pre('save', function(next) {
+supplierSchema.pre('validate', function (next) {
   if (!this.supplierCode) {
     this.supplierCode = `SUPP-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
   }
