@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
-import { 
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -152,7 +152,7 @@ const PERMISSION_ACTIONS = ['view', 'add', 'edit', 'delete'];
 // Convert database permission format to UI format
 const convertDBPermissionsToUI = (dbPermissions) => {
   const uiPermissions = {};
-  
+
   // Initialize the UI permission structure
   UNIT_HEAD_MODULES.forEach(module => {
     uiPermissions[module.name] = {};
@@ -165,7 +165,7 @@ const convertDBPermissionsToUI = (dbPermissions) => {
       };
     });
   });
-  
+
   // If the database has module permissions, map them to UI structure
   if (dbPermissions?.modules && Array.isArray(dbPermissions.modules)) {
     dbPermissions.modules.forEach(modulePermission => {
@@ -185,7 +185,7 @@ const convertDBPermissionsToUI = (dbPermissions) => {
       }
     });
   }
-  
+
   return uiPermissions;
 };
 
@@ -213,17 +213,17 @@ const getRoleSpecificModules = (selectedRole) => {
 const convertUIPermissionsToDB = (uiPermissions, selectedRole) => {
   const modules = [];
   const allowedModules = getRoleSpecificModules(selectedRole);
-  
+
   // Only include modules that are appropriate for the selected role
   Object.keys(uiPermissions).forEach(moduleName => {
     // Skip modules that are not allowed for this role
     if (!allowedModules.includes(moduleName)) {
       return;
     }
-    
+
     const moduleFeatures = [];
     const modulePermissions = uiPermissions[moduleName];
-    
+
     Object.keys(modulePermissions).forEach(featureKey => {
       moduleFeatures.push({
         key: featureKey,
@@ -233,13 +233,13 @@ const convertUIPermissionsToDB = (uiPermissions, selectedRole) => {
         delete: modulePermissions[featureKey].delete || false
       });
     });
-    
+
     modules.push({
       name: moduleName,
       features: moduleFeatures
     });
   });
-  
+
   return {
     role: 'unit_manager',
     canAccessAllUnits: false,
@@ -250,7 +250,7 @@ const convertUIPermissionsToDB = (uiPermissions, selectedRole) => {
 // Get default permissions for each role type
 const getDefaultPermissionsForRole = (role) => {
   const defaultPermissions = convertDBPermissionsToUI({});
-  
+
   // Enable certain modules based on role
   switch (role) {
     case 'Sales':
@@ -321,7 +321,7 @@ const getDefaultPermissionsForRole = (role) => {
       });
       break;
   }
-  
+
   return defaultPermissions;
 };
 
@@ -335,7 +335,7 @@ const UnitHeadRolePermissionManagement = () => {
   const [isImporting, setIsImporting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  
+
   const [formData, setFormData] = useState({
     username: '',
     email: '',
@@ -361,7 +361,7 @@ const UnitHeadRolePermissionManagement = () => {
         status: statusFilter,
         limit: 100
       });
-      
+
       const response = await apiRequest('GET', `/api/unit-head/unit-users?${params}`);
       return response;
     }
@@ -481,7 +481,7 @@ const UnitHeadRolePermissionManagement = () => {
     try {
       // Get users from component state
       const unitUsers = unitUsersData?.data?.users || [];
-      
+
       // Prepare export data for Excel
       const exportData = unitUsers.map(user => ({
         'Username': user.username,
@@ -497,7 +497,7 @@ const UnitHeadRolePermissionManagement = () => {
 
       // Create worksheet
       const ws = XLSX.utils.json_to_sheet(exportData);
-      
+
       // Set column widths
       const colWidths = [
         { wch: 15 }, // Username
@@ -550,7 +550,7 @@ const UnitHeadRolePermissionManagement = () => {
 
       // Create worksheet
       const ws = XLSX.utils.json_to_sheet(sampleData);
-      
+
       // Set column widths
       const colWidths = [
         { wch: 15 }, // Username
@@ -589,14 +589,14 @@ const UnitHeadRolePermissionManagement = () => {
       try {
         const data = new Uint8Array(e.target.result);
         const workbook = XLSX.read(data, { type: 'array' });
-        
+
         // Get first sheet
         const sheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
-        
+
         // Convert to JSON
         const importedData = XLSX.utils.sheet_to_json(worksheet);
-        
+
         if (!Array.isArray(importedData) || importedData.length === 0) {
           setImportResults({
             success: false,
@@ -626,7 +626,7 @@ const UnitHeadRolePermissionManagement = () => {
         // Refresh users list if any successful imports
         if (result.data?.summary?.successful > 0) {
           queryClient.invalidateQueries(['unit-users']);
-          
+
           // Show success toast only if all succeeded
           if (result.data.summary.failed === 0 && result.data.summary.skipped === 0) {
             showSuccessToast('Import Successful', `Successfully imported ${result.data.summary.successful} users!`);
@@ -657,7 +657,7 @@ const UnitHeadRolePermissionManagement = () => {
     const confirmDelete = window.confirm(
       `Are you sure you want to delete user "${String(user.fullName || user.username || '')}"? This action cannot be undone.`
     );
-    
+
     if (confirmDelete) {
       deleteUserMutation.mutate(user._id);
     }
@@ -685,34 +685,34 @@ const UnitHeadRolePermissionManagement = () => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    
+
     // Validate required fields
     if (!formData.role) {
       showSmartToast({ message: 'Please select a role' }, 'Validation Error');
       return;
     }
-    
+
     if (!formData.username.trim()) {
       showSmartToast({ message: 'Username is required' }, 'Validation Error');
       return;
     }
-    
+
     if (!formData.email.trim()) {
       showSmartToast({ message: 'Email is required' }, 'Validation Error');
       return;
     }
-    
+
     if (!formData.fullName.trim()) {
       showSmartToast({ message: 'Full Name is required' }, 'Validation Error');
       return;
     }
-    
+
     // Validate Unit Head company assignment for Unit Manager creation
     if (isAddingUser && !unitHeadCompanyInfo) {
       showSmartToast({ message: 'Unit Head must have a company assigned to create users' }, 'Company Assignment Required');
       return;
     }
-    
+
     if (formData.password && formData.password !== formData.confirmPassword) {
       showSmartToast({ message: 'Passwords do not match' }, 'Password Validation Error');
       return;
@@ -728,26 +728,26 @@ const UnitHeadRolePermissionManagement = () => {
       const updateData = { ...formData };
       delete updateData.password;
       delete updateData.confirmPassword;
-      
+
       if (updateData.permissions) {
         updateData.permissions = convertUIPermissionsToDB(updateData.permissions, updateData.role);
       }
-      
+
       updateUserMutation.mutate({ userId: selectedUser._id, userData: updateData });
     }
   };
 
   const handlePasswordChange = (e) => {
     e.preventDefault();
-    
+
     if (!formData.password || formData.password.length < 6) {
       showSmartToast('Password must be at least 6 characters long', 'error');
       return;
     }
-    
-    updatePasswordMutation.mutate({ 
-      userId: selectedUser._id, 
-      newPassword: formData.password 
+
+    updatePasswordMutation.mutate({
+      userId: selectedUser._id,
+      newPassword: formData.password
     });
   };
 
@@ -811,7 +811,7 @@ const UnitHeadRolePermissionManagement = () => {
         </div>
       </div>
 
-     
+
 
       {/* Search and Filter */}
       <Card>
@@ -828,7 +828,7 @@ const UnitHeadRolePermissionManagement = () => {
                 />
               </div>
             </div>
-            
+
             <div className="flex gap-2">
               <div className="relative">
                 <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
@@ -910,21 +910,21 @@ const UnitHeadRolePermissionManagement = () => {
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-1">
-                          {user.permissions?.modules?.length > 0 ? (
-                            user.permissions.modules.map((module) => {
-                              const moduleInfo = UNIT_HEAD_MODULES.find(m => m.name === module.name);
-                              const enabledFeatures = module.features?.filter(f => f.view || f.add || f.edit || f.delete);                            return enabledFeatures?.map((feature) => {
+                        {user.permissions?.modules?.length > 0 ? (
+                          user.permissions.modules.map((module) => {
+                            const moduleInfo = UNIT_HEAD_MODULES.find(m => m.name === module.name);
+                            const enabledFeatures = module.features?.filter(f => f.view || f.add || f.edit || f.delete); return enabledFeatures?.map((feature) => {
                               const featureInfo = moduleInfo?.features.find(f => f.key === feature.key);
                               const permissions = [];
                               if (feature.view) permissions.push('View');
                               if (feature.add) permissions.push('Add');
                               if (feature.edit) permissions.push('Edit');
                               if (feature.delete) permissions.push('Delete');
-                              
+
                               return permissions.length > 0 ? (
-                                <Badge 
-                                  key={`${module.name}-${feature.key}`} 
-                                  variant="outline" 
+                                <Badge
+                                  key={`${module.name}-${feature.key}`}
+                                  variant="outline"
                                   className="text-xs"
                                   title={`${featureInfo?.label || feature.key}: ${permissions.join(', ')}`}
                                 >
@@ -990,7 +990,7 @@ const UnitHeadRolePermissionManagement = () => {
               {isAddingUser ? 'Add New User' : 'Edit User'}
             </DialogTitle>
             <DialogDescription>
-              {isAddingUser 
+              {isAddingUser
                 ? 'Create a new user and set their role and permissions'
                 : 'Update user details, role and permissions'
               }
@@ -1007,7 +1007,7 @@ const UnitHeadRolePermissionManagement = () => {
                     id="fullName"
                     type="text"
                     value={formData.fullName}
-                    onChange={(e) => setFormData({...formData, fullName: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
                     placeholder="Enter full name"
                     required
                   />
@@ -1018,7 +1018,7 @@ const UnitHeadRolePermissionManagement = () => {
                     id="username"
                     type="text"
                     value={formData.username}
-                    onChange={(e) => setFormData({...formData, username: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, username: e.target.value })}
                     placeholder="Enter username"
                     required
                   />
@@ -1032,7 +1032,7 @@ const UnitHeadRolePermissionManagement = () => {
                     id="email"
                     type="email"
                     value={formData.email}
-                    onChange={(e) => setFormData({...formData, email: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     placeholder="Enter email address"
                     required
                   />
@@ -1047,13 +1047,13 @@ const UnitHeadRolePermissionManagement = () => {
                       if (newRole) {
                         const defaultPermissions = getDefaultPermissionsForRole(newRole);
                         setFormData({
-                          ...formData, 
+                          ...formData,
                           role: newRole,
                           permissions: defaultPermissions
                         });
                       } else {
                         setFormData({
-                          ...formData, 
+                          ...formData,
                           role: '',
                           permissions: convertDBPermissionsToUI({})
                         });
@@ -1078,14 +1078,13 @@ const UnitHeadRolePermissionManagement = () => {
                 <Input
                   id="companyLocation"
                   value={
-                    unitHeadCompanyInfo 
-                      ? `${String(unitHeadCompanyInfo.companyName || unitHeadCompanyInfo.name || '')} - ${String(unitHeadCompanyInfo.city || '')}, ${String(unitHeadCompanyInfo.state || '')}` 
+                    unitHeadCompanyInfo
+                      ? `${String(unitHeadCompanyInfo.companyName || unitHeadCompanyInfo.name || '')} - ${String(unitHeadCompanyInfo.city || '')}, ${String(unitHeadCompanyInfo.state || '')}`
                       : 'No company assigned'
                   }
                   readOnly
-                  className={`cursor-not-allowed ${
-                    unitHeadCompanyInfo ? 'bg-gray-50' : 'bg-red-50 text-red-600'
-                  }`}
+                  className={`cursor-not-allowed ${unitHeadCompanyInfo ? 'bg-gray-50' : 'bg-red-50 text-red-600'
+                    }`}
                   placeholder="Company/Location (Auto-assigned)"
                 />
                 {!unitHeadCompanyInfo && (
@@ -1103,7 +1102,7 @@ const UnitHeadRolePermissionManagement = () => {
                       id="password"
                       type="password"
                       value={formData.password}
-                      onChange={(e) => setFormData({...formData, password: e.target.value})}
+                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                       placeholder="Enter password"
                       required
                     />
@@ -1114,7 +1113,7 @@ const UnitHeadRolePermissionManagement = () => {
                       id="confirmPassword"
                       type="password"
                       value={formData.confirmPassword}
-                      onChange={(e) => setFormData({...formData, confirmPassword: e.target.value})}
+                      onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
                       placeholder="Confirm password"
                       required
                     />
@@ -1131,14 +1130,14 @@ const UnitHeadRolePermissionManagement = () => {
                   Module Permissions
                 </h3>
                 <div className="flex gap-2">
-                  <Button 
-                    type="button" 
-                    variant="outline" 
+                  <Button
+                    type="button"
+                    variant="outline"
                     size="sm"
                     onClick={() => {
                       const allEnabled = {};
                       const allowedModules = getRoleSpecificModules(formData.role);
-                      
+
                       UNIT_HEAD_MODULES
                         .filter(module => allowedModules.includes(module.name))
                         .forEach(module => {
@@ -1161,14 +1160,14 @@ const UnitHeadRolePermissionManagement = () => {
                   >
                     Enable All
                   </Button>
-                  <Button 
-                    type="button" 
-                    variant="outline" 
+                  <Button
+                    type="button"
+                    variant="outline"
                     size="sm"
                     onClick={() => {
                       const allDisabled = {};
                       const allowedModules = getRoleSpecificModules(formData.role);
-                      
+
                       UNIT_HEAD_MODULES
                         .filter(module => allowedModules.includes(module.name))
                         .forEach(module => {
@@ -1193,7 +1192,7 @@ const UnitHeadRolePermissionManagement = () => {
                   </Button>
                 </div>
               </div>
-              
+
               <div className="bg-white border rounded-lg">
                 <div className="p-4">
                   {/* Get filtered modules and features */}
@@ -1209,11 +1208,11 @@ const UnitHeadRolePermissionManagement = () => {
                         if (formData.role === 'Packing') return module.name === 'packing';
                         return false; // Don't show any modules by default for unknown roles
                       });
-                    
-                    const allFeatures = filteredModules.flatMap(module => 
+
+                    const allFeatures = filteredModules.flatMap(module =>
                       module.features.map(feature => ({ module, feature }))
                     );
-                    
+
                     // Only show header if there are features to display
                     if (allFeatures.length === 0) {
                       return (
@@ -1223,7 +1222,7 @@ const UnitHeadRolePermissionManagement = () => {
                         </div>
                       );
                     }
-                    
+
                     return (
                       <>
                         <div className="grid grid-cols-5 gap-4 mb-4 pb-2 border-b">
@@ -1245,46 +1244,46 @@ const UnitHeadRolePermissionManagement = () => {
                             <span>Delete</span>
                           </div>
                         </div>
-                        
+
                         <div className="space-y-3 max-h-64 overflow-y-auto">
                           {allFeatures.map(({ module, feature }) => (
-                        <div key={`${module.name}-${feature.key}`} className="grid grid-cols-5 gap-4 items-center py-2 hover:bg-gray-50 rounded">
-                          <div className="font-medium text-sm">{feature.label}</div>
-                          <div className="flex justify-center">
-                            <Switch
-                              checked={hasPermission(module.name, feature.key, 'view')}
-                              onCheckedChange={(checked) => 
-                                handlePermissionChange(module.name, feature.key, 'view', checked)
-                              }
-                              className="data-[state=checked]:bg-blue-600"
-                            />
-                          </div>
-                          <div className="flex justify-center">
-                            <Switch
-                              checked={hasPermission(module.name, feature.key, 'add')}
-                              onCheckedChange={(checked) => 
-                                handlePermissionChange(module.name, feature.key, 'add', checked)
-                              }
-                              className="data-[state=checked]:bg-blue-600"
-                            />
-                          </div>
-                          <div className="flex justify-center">
-                            <Switch
-                              checked={hasPermission(module.name, feature.key, 'edit')}
-                              onCheckedChange={(checked) => 
-                                handlePermissionChange(module.name, feature.key, 'edit', checked)
-                              }
-                              className="data-[state=checked]:bg-blue-600"
-                            />
-                          </div>
-                          <div className="flex justify-center">
-                            <Switch
-                              checked={hasPermission(module.name, feature.key, 'delete')}
-                              onCheckedChange={(checked) => 
-                                handlePermissionChange(module.name, feature.key, 'delete', checked)
-                              }
-                              className="data-[state=checked]:bg-blue-600"
-                            />
+                            <div key={`${module.name}-${feature.key}`} className="grid grid-cols-5 gap-4 items-center py-2 hover:bg-gray-50 rounded">
+                              <div className="font-medium text-sm">{feature.label}</div>
+                              <div className="flex justify-center">
+                                <Switch
+                                  checked={hasPermission(module.name, feature.key, 'view')}
+                                  onCheckedChange={(checked) =>
+                                    handlePermissionChange(module.name, feature.key, 'view', checked)
+                                  }
+                                  className="data-[state=checked]:bg-blue-600"
+                                />
+                              </div>
+                              <div className="flex justify-center">
+                                <Switch
+                                  checked={hasPermission(module.name, feature.key, 'add')}
+                                  onCheckedChange={(checked) =>
+                                    handlePermissionChange(module.name, feature.key, 'add', checked)
+                                  }
+                                  className="data-[state=checked]:bg-blue-600"
+                                />
+                              </div>
+                              <div className="flex justify-center">
+                                <Switch
+                                  checked={hasPermission(module.name, feature.key, 'edit')}
+                                  onCheckedChange={(checked) =>
+                                    handlePermissionChange(module.name, feature.key, 'edit', checked)
+                                  }
+                                  className="data-[state=checked]:bg-blue-600"
+                                />
+                              </div>
+                              <div className="flex justify-center">
+                                <Switch
+                                  checked={hasPermission(module.name, feature.key, 'delete')}
+                                  onCheckedChange={(checked) =>
+                                    handlePermissionChange(module.name, feature.key, 'delete', checked)
+                                  }
+                                  className="data-[state=checked]:bg-blue-600"
+                                />
                               </div>
                             </div>
                           ))}
@@ -1301,14 +1300,14 @@ const UnitHeadRolePermissionManagement = () => {
               <Switch
                 id="isActive"
                 checked={formData.isActive}
-                onCheckedChange={(checked) => setFormData({...formData, isActive: checked})}
+                onCheckedChange={(checked) => setFormData({ ...formData, isActive: checked })}
                 className="data-[state=checked]:bg-green-600"
               />
               <div className="flex-1">
                 <Label htmlFor="isActive" className="text-sm font-medium">Active User</Label>
                 <p className="text-xs text-gray-500">
-                  {formData.isActive 
-                    ? "User can login and access assigned modules" 
+                  {formData.isActive
+                    ? "User can login and access assigned modules"
                     : "User account is disabled and cannot login"
                   }
                 </p>
@@ -1328,12 +1327,12 @@ const UnitHeadRolePermissionManagement = () => {
               >
                 Cancel
               </Button>
-              <Button 
-                type="submit" 
+              <Button
+                type="submit"
                 disabled={createUserMutation.isPending || updateUserMutation.isPending}
               >
-                {createUserMutation.isPending || updateUserMutation.isPending 
-                  ? 'Processing...' 
+                {createUserMutation.isPending || updateUserMutation.isPending
+                  ? 'Processing...'
                   : (isAddingUser ? 'Create User' : 'Update User')
                 }
               </Button>
@@ -1365,7 +1364,7 @@ const UnitHeadRolePermissionManagement = () => {
                 id="newPassword"
                 type="password"
                 value={formData.password}
-                onChange={(e) => setFormData({...formData, password: e.target.value})}
+                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                 placeholder="Enter new password"
                 required
               />
@@ -1383,8 +1382,8 @@ const UnitHeadRolePermissionManagement = () => {
               >
                 Cancel
               </Button>
-              <Button 
-                type="submit" 
+              <Button
+                type="submit"
                 disabled={updatePasswordMutation.isPending}
               >
                 {updatePasswordMutation.isPending ? 'Updating...' : 'Update Password'}
@@ -1412,17 +1411,16 @@ const UnitHeadRolePermissionManagement = () => {
               Upload an Excel file to import multiple users at once
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="space-y-4">
             {/* Import Results Display */}
             {importResults && (
-              <div className={`border rounded-lg p-4 ${
-                importResults.error 
-                  ? 'bg-red-50 border-red-200' 
+              <div className={`border rounded-lg p-4 ${importResults.error
+                  ? 'bg-red-50 border-red-200'
                   : importResults.data?.summary?.failed > 0 || importResults.data?.summary?.skipped > 0
-                  ? 'bg-yellow-50 border-yellow-200'
-                  : 'bg-green-50 border-green-200'
-              }`}>
+                    ? 'bg-yellow-50 border-yellow-200'
+                    : 'bg-green-50 border-green-200'
+                }`}>
                 <h4 className="font-semibold mb-3 flex items-center gap-2">
                   {importResults.error ? (
                     <>

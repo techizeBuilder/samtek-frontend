@@ -400,7 +400,7 @@ const CreateDamageForm = ({
                                 }}
                               />
                             ) : null}
-                            <div 
+                            <div
                               className={`w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0 ${item.image ? 'hidden' : 'flex'}`}
                               style={{ display: item.image ? 'none' : 'flex' }}
                             >
@@ -601,7 +601,7 @@ const Damages = () => {
 
   const handleDeleteDamage = async (id) => {
     if (!confirm("Are you sure you want to delete this damage record?")) return;
-    
+
     try {
       await apiRequest(`/api/sales/delete-damage/${id}`, {
         method: 'DELETE'
@@ -613,7 +613,7 @@ const Damages = () => {
       });
     } catch (error) {
       toast({
-        title: "Error", 
+        title: "Error",
         description: error.message || "Failed to delete damage entry",
         variant: "destructive",
       });
@@ -781,7 +781,7 @@ const Damages = () => {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge 
+                        <Badge
                           variant="destructive"
                           className="bg-red-100 text-red-800"
                         >
@@ -809,12 +809,12 @@ const Damages = () => {
                             damageItem.status === "completed"
                               ? "default"
                               : damageItem.status === "pending"
-                              ? "secondary"
-                              : damageItem.status === "processing"
-                              ? "outline"
-                              : damageItem.status === "approved"
-                              ? "default"
-                              : "destructive"
+                                ? "secondary"
+                                : damageItem.status === "processing"
+                                  ? "outline"
+                                  : damageItem.status === "approved"
+                                    ? "default"
+                                    : "destructive"
                           }
                         >
                           {damageItem.status || 'Pending'}
@@ -954,7 +954,7 @@ const Damages = () => {
                 <div className="space-y-1">
                   <Label className="text-sm font-medium text-gray-700">Type</Label>
                   <div>
-                    <Badge 
+                    <Badge
                       variant="destructive"
                       className="bg-red-100 text-red-800"
                     >
@@ -965,17 +965,17 @@ const Damages = () => {
                 <div className="space-y-1">
                   <Label className="text-sm font-medium text-gray-700">Status</Label>
                   <div>
-                    <Badge 
+                    <Badge
                       variant={
                         selectedEntry.status === "completed"
                           ? "default"
                           : selectedEntry.status === "pending"
-                          ? "secondary"
-                          : selectedEntry.status === "processing"
-                          ? "outline"
-                          : selectedEntry.status === "approved"
-                          ? "default"
-                          : "destructive"
+                            ? "secondary"
+                            : selectedEntry.status === "processing"
+                              ? "outline"
+                              : selectedEntry.status === "approved"
+                                ? "default"
+                                : "destructive"
                       }
                     >
                       {selectedEntry.status || 'Pending'}

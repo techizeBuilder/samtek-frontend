@@ -533,7 +533,7 @@ export default function CustomerMaster() {
                                         maxLength={15}
                                     />
                                 </div>
-                                <div className="space-y-2">
+                                {/* <div className="space-y-2">
                                     <Label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Credit Limit (₹)</Label>
                                     <Input
                                         name="creditLimit"
@@ -542,7 +542,7 @@ export default function CustomerMaster() {
                                         placeholder="50000"
                                         className="h-12 rounded-xl border-slate-100 bg-slate-50 font-bold text-right"
                                     />
-                                </div>
+                                </div> */}
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

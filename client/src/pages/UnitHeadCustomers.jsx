@@ -109,16 +109,16 @@ const initialFormData = {
 };
 
 // Customer Form Component
-const CustomerForm = ({ 
-  formData, 
-  salesPersons, 
+const CustomerForm = ({
+  formData,
+  salesPersons,
   salesPersonsLoading,
   salesPersonsError,
-  onFormChange, 
-  onSubmit, 
-  onCancel, 
-  isLoading, 
-  submitText 
+  onFormChange,
+  onSubmit,
+  onCancel,
+  isLoading,
+  submitText
 }) => {
   return (
     <div className="space-y-6">
@@ -184,9 +184,9 @@ const CustomerForm = ({
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground mt-1">
-              {salesPersonsLoading ? 'Loading...' : 
-               salesPersonsError ? `Error: ${salesPersonsError.message}` :
-               `${salesPersons.length} sales person(s) available`}
+              {salesPersonsLoading ? 'Loading...' :
+                salesPersonsError ? `Error: ${salesPersonsError.message}` :
+                  `${salesPersons.length} sales person(s) available`}
             </p>
           </div>
           <div>
@@ -355,7 +355,7 @@ export default function UnitHeadCustomers() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { hasFeatureAccess } = usePermissions();
-  
+
   // Permission checks
   const canView = hasFeatureAccess('unitHead', 'customers', 'view');
   const canAdd = hasFeatureAccess('unitHead', 'customers', 'add');
@@ -512,13 +512,13 @@ export default function UnitHeadCustomers() {
 
   const handleFormSubmit = (e) => {
     e.preventDefault();
-    
+
     // Convert 'unassigned' to null for API
     const apiData = {
       ...formData,
       salesContact: formData.salesContact === 'unassigned' ? null : formData.salesContact
     };
-    
+
     if (isEditModalOpen && selectedCustomer) {
       updateMutation.mutate({ id: selectedCustomer._id, data: apiData });
     } else {
@@ -650,7 +650,7 @@ export default function UnitHeadCustomers() {
             </p>
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Active Customers</CardTitle>
@@ -948,7 +948,7 @@ export default function UnitHeadCustomers() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction 
+            <AlertDialogAction
               onClick={handleDeleteConfirm}
               disabled={deleteMutation.isPending}
               className="bg-red-600 hover:bg-red-700"
@@ -992,7 +992,7 @@ export default function UnitHeadCustomers() {
                   <div>
                     <Label className="text-sm font-medium">Assigned Sales Person</Label>
                     <p className="text-sm">
-                      {selectedCustomer.salesContact 
+                      {selectedCustomer.salesContact
                         ? `${selectedCustomer.salesContact.fullName || selectedCustomer.salesContact.username} (${selectedCustomer.salesContact.email})`
                         : 'Not assigned to any sales person'
                       }
@@ -1000,7 +1000,7 @@ export default function UnitHeadCustomers() {
                   </div>
                 </div>
               </div>
-              
+
               <div className="space-y-4">
                 <h3 className="font-medium text-lg">Contact Information</h3>
                 <div className="space-y-2">

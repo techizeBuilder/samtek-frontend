@@ -2557,7 +2557,7 @@ export const createDeliveryChallan = async (req, res) => {
           items: saleItems,
           subtotal: totalSubtotal,
           taxAmount: totalTaxAmount,
-          totalAmount: totalChallanAmount,
+          totalAmount: netReceivable, // ✅ GRAND TOTAL should be net of TDS
           tdsAmount: tdsAmount,
           tdsPercent: tdsPercent,
           gstType: gstType,
@@ -2756,10 +2756,10 @@ export const generateInvoiceForDC = async (req, res) => {
       const item = allDCItems[i];
       if (item.productId && typeof item.productId === 'string' && !item.productId.name) {
         console.log('⚠️ Product not populated, fetching manually for productId:', item.productId);
-        const product = await Item.findById(item.productId).select('name code category unit').lean();
+        const product = await Item.findById(item.productId).select('name code category unit salePrice gst').lean();
         if (product) {
           allDCItems[i].productId = product;
-          console.log('✅ Manually fetched product:', product.name);
+          console.log('✅ Manually fetched product with price:', product.name, product.salePrice);
         }
       }
     }
@@ -2778,53 +2778,57 @@ export const generateInvoiceForDC = async (req, res) => {
       });
     }
 
-    // Use items from request if provided, otherwise use database items
-    const items = requestBody.items && requestBody.items.length > 0
-      ? requestBody.items
-      : allDCItems.map(item => {
-        // Try multiple sources for product name
-        const productName = item.productId?.name || item.productName || 'Product Name Not Set';
+    // Use items from request if provided, but ALWAYS enrich them with database values for financial accuracy
+    const items = (requestBody.items && requestBody.items.length > 0 ? requestBody.items : allDCItems).map(item => {
+      // Find corresponding DB item to get reliable price and GST
+      const dbItem = allDCItems.find(dbi =>
+        (dbi.productId?._id?.toString() === (item.productId?._id || item.productId)?.toString()) ||
+        (dbi._id?.toString() === (item.productId?._id || item.dispatchId || item._id)?.toString())
+      );
 
-        // Get rate from order or product
-        let rate = 0;
-        if (item.orderId && item.orderId.products && Array.isArray(item.orderId.products)) {
-          const orderProduct = item.orderId.products.find(
-            p => p.product && item.productId &&
-              p.product.toString() === item.productId._id.toString()
+      // Try multiple sources for product name
+      const productName = item.productName || dbItem?.productId?.name || dbItem?.productName || 'Unknown Product';
+
+      // Get rate from order or product or DB item
+      let rate = item.rate || item.price || 0;
+
+      if (rate === 0) {
+        // Try from DB item's order reference
+        if (dbItem?.orderId && dbItem.orderId.products && Array.isArray(dbItem.orderId.products)) {
+          const orderProduct = dbItem.orderId.products.find(
+            p => p.product && dbItem.productId &&
+              p.product.toString() === dbItem.productId._id.toString()
           );
-          if (orderProduct) {
-            rate = orderProduct.price || 0;
-          }
-        }
-        // Fallback to product's sale price
-        if (rate === 0 && item.productId) {
-          rate = item.productId.salePrice || item.productId.price || 0;
+          if (orderProduct) rate = orderProduct.price || 0;
         }
 
-        // Get GST from product
-        const gst = item.productId?.gst || 0;
+        // Fallback to product model prices
+        if (rate === 0 && dbItem?.productId) {
+          rate = dbItem.productId.salePrice || dbItem.productId.price || 0;
+        }
+      }
 
-        console.log('📋 Mapping item:', {
-          hasProductId: !!item.productId,
-          productIdName: item.productId?.name,
-          productName: item.productName,
-          finalName: productName,
-          indentQty: item.indentQty || item.totalIndentQuantityOrdersForTheDay,
-          qtyIssued: item.qtyIssued || item.dispatchedQuantitySentToday,
-          rate: rate,
-          gst: gst
-        });
+      // Get GST from product or DB item
+      const gst = item.gst || dbItem?.productId?.gst || 0;
 
-        return {
-          productName: productName,
-          productGroup: item.productGroup || '',
-          indentQty: item.indentQty || item.totalIndentQuantityOrdersForTheDay || 0,
-          qtyIssued: item.qtyIssued || item.packedQuantityReadyForDispatch || item.dispatchedQuantitySentToday || 0,
-          unit: item.productId?.unit || item.unit || 'Pcs',
-          rate: rate,
-          gst: gst
-        };
+      console.log('📋 Mapping item:', {
+        productName,
+        indentQty: item.indentQty || dbItem?.indentQty || 0,
+        qtyIssued: item.qtyIssued || dbItem?.qtyIssued || 0,
+        rate,
+        gst
       });
+
+      return {
+        productName: productName,
+        productGroup: item.productGroup || dbItem?.productGroup || '',
+        indentQty: item.indentQty || dbItem?.indentQty || dbItem?.totalIndentQuantityOrdersForTheDay || 0,
+        qtyIssued: item.qtyIssued || dbItem?.qtyIssued || dbItem?.packedQuantityReadyForDispatch || dbItem?.dispatchedQuantitySentToday || 0,
+        unit: item.unit || dbItem?.productId?.unit || dbItem?.unit || 'Pcs',
+        rate: rate,
+        gst: gst
+      };
+    });
 
     // Don't update status - keep it as dispatched
     // Invoice generation should not change dispatch status

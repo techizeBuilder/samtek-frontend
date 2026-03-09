@@ -80,24 +80,25 @@ const ReceivableAgeing = () => {
         return customMessage || defaultMsg;
     };
 
-    const openPaymentLinkModal = async (customer) => {
+    const openPaymentLinkModal = (customer) => {
         setCustomMessage('');
         setCopied(false);
-        setContactLoading(true);
-        try {
-            const res = await apiRequest('GET', `/api/customers/${customer.customerId}`);
-            const freshData = res?.customer || res?.data || {};
-            setSelectedCustomer({
-                ...customer,
-                customerMobile: freshData.mobile || customer.customerMobile || '',
-                customerEmail: freshData.email || customer.customerEmail || '',
-            });
-        } catch {
-            setSelectedCustomer(customer);
-        } finally {
-            setContactLoading(false);
-        }
+        // Modal turant open karo — pehle existing data se
+        setSelectedCustomer(customer);
         setIsPaymentLinkOpen(true);
+        // Background mein fresh contact info fetch karo
+        setContactLoading(true);
+        apiRequest('GET', `/api/customers/${customer.customerId}`)
+            .then((res) => {
+                const freshData = res?.customer || res?.data || {};
+                setSelectedCustomer((prev) => ({
+                    ...prev,
+                    customerMobile: freshData.mobile || prev.customerMobile || '',
+                    customerEmail: freshData.email || prev.customerEmail || '',
+                }));
+            })
+            .catch(() => { /* already set above */ })
+            .finally(() => setContactLoading(false));
     };
 
     const handleWhatsApp = () => {
@@ -397,7 +398,7 @@ const ReceivableAgeing = () => {
             <Dialog open={isPaymentLinkOpen} onOpenChange={(open) => { if (!open) setIsPaymentLinkOpen(false); }}>
                 <DialogContent className="max-w-2xl w-full flex flex-col max-h-[90vh] my-4 p-0 overflow-hidden border-0 shadow-2xl rounded-[2rem]">
                     {selectedCustomer && (
-                        <div className="flex flex-col">
+                        <div className="flex flex-col overflow-y-auto max-h-[90vh]">
                             {/* Header */}
                             <DialogHeader className="bg-gradient-to-br from-indigo-600 to-violet-600 p-8 text-white">
                                 <div className="flex items-center gap-4">

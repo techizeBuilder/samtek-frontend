@@ -30,7 +30,7 @@ export const getSalesmanDailyStats = async (req, res) => {
             salesPerson: salesmanId,
             companyId: companyId,
             orderDate: { $gte: startOfDay, $lte: endOfDay }
-        }).populate('customer', 'fullName');
+        }).populate('customer', 'name');
 
         const totalInvoiceSale = orders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
         const cashSale = orders.filter(o => o.paymentMethod === 'Cash' || o.paymentMethod === 'Other').reduce((sum, o) => sum + (o.totalAmount || 0), 0);
@@ -48,7 +48,7 @@ export const getSalesmanDailyStats = async (req, res) => {
             companyId: companyId,
             returnDate: { $gte: startOfDay, $lte: endOfDay },
             status: 'approved'
-        }).populate('customerId', 'fullName');
+        }).populate('customerId', 'name');
 
         const totalReturn = returns.reduce((sum, r) => sum + (r.totalAmount || 0), 0);
 
@@ -68,14 +68,14 @@ export const getSalesmanDailyStats = async (req, res) => {
                 orders: orders.map(o => ({
                     _id: o._id,
                     orderCode: o.orderCode,
-                    customerName: o.customer?.fullName || 'N/A',
+                    customerName: o.customer?.name || 'N/A',
                     totalAmount: o.totalAmount,
                     paymentMethod: o.paymentMethod
                 })),
                 returns: returns.map(r => ({
                     _id: r._id,
                     returnNumber: r.returnNumber || 'N/A',
-                    customerName: r.customerId?.fullName || 'N/A',
+                    customerName: r.customerId?.name || r.customerName || 'N/A',
                     totalAmount: r.totalAmount
                 }))
             }

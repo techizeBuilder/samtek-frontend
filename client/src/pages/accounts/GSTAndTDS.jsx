@@ -63,8 +63,11 @@ const GSTAndTDS = () => {
   const filteredTransactions = taxData.transactions.filter(item => {
     const matchesSearch = item.invoiceNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
       item.period.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = filterStatus === 'All' || item.status === filterStatus;
-    return matchesSearch && matchesStatus;
+    const matchesType =
+      filterStatus === 'All' ||
+      (filterStatus === 'Sales' && item.transactionType === 'Sales') ||
+      (filterStatus === 'Purchases' && item.transactionType === 'Purchases');
+    return matchesSearch && matchesType;
   });
 
   const handleExportExcel = () => {

@@ -79,7 +79,7 @@ export default function UnitManagerDamages() {
   const canApprove = hasFeatureAccess('unitManager', 'damages', 'alter');
 
   // API Queries using the correct format
-  
+
   // Fetch sales persons for dropdown
   const { data: salesPersonsData = [] } = useQuery({
     queryKey: ['unitManager', 'salesPersons'],
@@ -93,11 +93,11 @@ export default function UnitManagerDamages() {
   });
 
   // Fetch damages list
-  const { 
-    data: damagesData = [], 
-    isLoading: damagesLoading, 
+  const {
+    data: damagesData = [],
+    isLoading: damagesLoading,
     error: damagesError,
-    refetch: refetchDamages 
+    refetch: refetchDamages
   } = useQuery({
     queryKey: ['unitManager', 'damages', selectedSalesPerson, statusFilter, searchTerm],
     queryFn: async () => {
@@ -105,7 +105,7 @@ export default function UnitManagerDamages() {
       const params = new URLSearchParams();
       if (selectedSalesPerson && selectedSalesPerson !== 'all') params.append('salesPersonId', selectedSalesPerson);
       if (statusFilter && statusFilter !== 'all') params.append('status', statusFilter);
-      
+
       const response = await apiRequest("GET", `/api/unit-manager/damages?${params.toString()}`);
       console.log('📋 Damages response:', response);
       return response.data || [];
@@ -140,13 +140,13 @@ export default function UnitManagerDamages() {
   // Filter damages based on search
   const filteredDamages = useMemo(() => {
     if (!damagesData || damagesData.length === 0) return [];
-    
+
     return damagesData.filter(damageItem => {
-      const matchesSearch = !searchTerm || 
+      const matchesSearch = !searchTerm ||
         (damageItem.customerName && damageItem.customerName.toLowerCase().includes(searchTerm.toLowerCase())) ||
         (damageItem.reason && damageItem.reason.toLowerCase().includes(searchTerm.toLowerCase())) ||
         (damageItem.salesPersonName && damageItem.salesPersonName.toLowerCase().includes(searchTerm.toLowerCase()));
-      
+
       return matchesSearch;
     });
   }, [damagesData, searchTerm]);
@@ -179,12 +179,12 @@ export default function UnitManagerDamages() {
       console.log('🔄 Creating damage:', formData);
       const response = await apiRequest("POST", "/api/unit-manager/create-damage", formData);
       console.log('✅ Create damage response:', response);
-      
+
       toast({
         title: "Success",
         description: "Damage created successfully",
       });
-      
+
       queryClient.invalidateQueries(['unitManager', 'damages']);
       setIsAddModalOpen(false);
     } catch (error) {
@@ -202,12 +202,12 @@ export default function UnitManagerDamages() {
       console.log('🔄 Updating damage:', selectedDamage._id, formData);
       const response = await apiRequest("PUT", `/api/unit-manager/update-damage/${selectedDamage._id}`, formData);
       console.log('✅ Update damage response:', response);
-      
+
       toast({
         title: "Success",
         description: "Damage updated successfully",
       });
-      
+
       queryClient.invalidateQueries(['unitManager', 'damages']);
       setIsEditModalOpen(false);
       setSelectedDamage(null);
@@ -223,17 +223,17 @@ export default function UnitManagerDamages() {
 
   const handleDeleteDamage = async (damageId) => {
     if (!confirm("Are you sure you want to delete this damage?")) return;
-    
+
     try {
       console.log('🔄 Deleting damage:', damageId);
       const response = await apiRequest("DELETE", `/api/unit-manager/delete-damage/${damageId}`);
       console.log('✅ Delete damage response:', response);
-      
+
       toast({
         title: "Success",
         description: "Damage deleted successfully",
       });
-      
+
       queryClient.invalidateQueries(['unitManager', 'damages']);
     } catch (error) {
       console.error("❌ Error deleting damage:", error);
@@ -250,12 +250,12 @@ export default function UnitManagerDamages() {
       console.log('🔄 Approving damage:', damageId);
       const response = await apiRequest("POST", `/api/unit-manager/approve-damage/${damageId}`);
       console.log('✅ Approve damage response:', response);
-      
+
       toast({
         title: "Success",
         description: "Damage approved successfully",
       });
-      
+
       queryClient.invalidateQueries(['unitManager', 'damages']);
     } catch (error) {
       console.error("❌ Error approving damage:", error);
@@ -297,7 +297,7 @@ export default function UnitManagerDamages() {
           </p>
         </div>
         {canAdd && (
-          <Button 
+          <Button
             onClick={() => setIsAddModalOpen(true)}
             className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600"
           >
@@ -322,7 +322,7 @@ export default function UnitManagerDamages() {
                 />
               </div>
             </div>
-            
+
             <Select value={selectedSalesPerson} onValueChange={setSelectedSalesPerson}>
               <SelectTrigger className="w-[200px]">
                 <SelectValue placeholder="All Sales Persons" />
@@ -349,8 +349,8 @@ export default function UnitManagerDamages() {
               </SelectContent>
             </Select>
 
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={refetchDamages}
               className="flex items-center gap-2"
             >
@@ -359,7 +359,7 @@ export default function UnitManagerDamages() {
             </Button>
           </div>
         </CardHeader>
-        
+
         <CardContent>
           {damagesLoading ? (
             <div className="flex items-center justify-center py-8">
@@ -426,15 +426,15 @@ export default function UnitManagerDamages() {
                         {damageItem.items ? damageItem.items.length : 0} items
                       </TableCell>
                       <TableCell>
-                        ${damageItem.items ? damageItem.items.reduce((sum, item) => 
+                        ${damageItem.items ? damageItem.items.reduce((sum, item) =>
                           sum + (item.pricePerUnit * item.quantity), 0
                         ).toFixed(2) : '0.00'}
                       </TableCell>
                       <TableCell>
-                        <Badge 
+                        <Badge
                           variant={
-                            damageItem.status === 'approved' ? 'success' : 
-                            damageItem.status === 'rejected' ? 'destructive' : 'secondary'
+                            damageItem.status === 'approved' ? 'success' :
+                              damageItem.status === 'rejected' ? 'destructive' : 'secondary'
                           }
                         >
                           {damageItem.status || 'pending'}
@@ -551,7 +551,7 @@ const AddDamageModal = ({ isOpen, onClose, onSubmit, salesPersons, customers, gr
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    
+
     if (!formData.customerId || !formData.salesPersonId || formData.items.length === 0) {
       toast({
         title: "Error",
@@ -569,8 +569,8 @@ const AddDamageModal = ({ isOpen, onClose, onSubmit, salesPersons, customers, gr
     if (existingItem) {
       setFormData(prev => ({
         ...prev,
-        items: prev.items.map(i => 
-          i.productId === item._id 
+        items: prev.items.map(i =>
+          i.productId === item._id
             ? { ...i, quantity: i.quantity + 1 }
             : i
         )
@@ -602,18 +602,18 @@ const AddDamageModal = ({ isOpen, onClose, onSubmit, salesPersons, customers, gr
       removeItem(productId);
       return;
     }
-    
+
     setFormData(prev => ({
       ...prev,
-      items: prev.items.map(i => 
-        i.productId === productId 
+      items: prev.items.map(i =>
+        i.productId === productId
           ? { ...i, quantity }
           : i
       )
     }));
   };
 
-  const totalAmount = formData.items.reduce((sum, item) => 
+  const totalAmount = formData.items.reduce((sum, item) =>
     sum + (item.pricePerUnit * item.quantity), 0
   );
 
@@ -626,13 +626,13 @@ const AddDamageModal = ({ isOpen, onClose, onSubmit, salesPersons, customers, gr
             Create a new damage entry by selecting products and specifying details.
           </DialogDescription>
         </DialogHeader>
-        
+
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="grid grid-cols-2 gap-4">
             <div>
               <Label htmlFor="salesPersonId">Sales Person *</Label>
-              <Select 
-                value={formData.salesPersonId} 
+              <Select
+                value={formData.salesPersonId}
                 onValueChange={(value) => setFormData(prev => ({ ...prev, salesPersonId: value }))}
               >
                 <SelectTrigger>
@@ -660,12 +660,12 @@ const AddDamageModal = ({ isOpen, onClose, onSubmit, salesPersons, customers, gr
 
             <div>
               <Label htmlFor="customer">Customer *</Label>
-              <Select 
-                value={formData.customerId} 
+              <Select
+                value={formData.customerId}
                 onValueChange={(value) => {
                   const customer = customers.find(c => c._id === value);
-                  setFormData(prev => ({ 
-                    ...prev, 
+                  setFormData(prev => ({
+                    ...prev,
                     customerId: value,
                     customerName: customer?.name || ""
                   }));
@@ -698,7 +698,7 @@ const AddDamageModal = ({ isOpen, onClose, onSubmit, salesPersons, customers, gr
           {/* Items Selection */}
           <div>
             <h3 className="text-lg font-semibold mb-4">Select Items</h3>
-            
+
             <div className="flex gap-4 mb-4">
               <div className="flex-1">
                 <Input
@@ -731,8 +731,8 @@ const AddDamageModal = ({ isOpen, onClose, onSubmit, salesPersons, customers, gr
                     <h4 className="font-medium text-sm text-gray-600 mb-2">{category}</h4>
                     <div className="space-y-2">
                       {items
-                        .filter(item => 
-                          !searchTerm || 
+                        .filter(item =>
+                          !searchTerm ||
                           item.name.toLowerCase().includes(searchTerm.toLowerCase())
                         )
                         .map((item) => (
@@ -748,12 +748,12 @@ const AddDamageModal = ({ isOpen, onClose, onSubmit, salesPersons, customers, gr
                                 <Package className="h-5 w-5 text-gray-400" />
                               </div>
                             )}
-                            
+
                             <div className="flex-1 min-w-0">
                               <h4 className="text-sm font-medium truncate">{item.name}</h4>
                               <p className="text-xs text-gray-500">${item.price}</p>
                             </div>
-                            
+
                             <Button
                               type="button"
                               size="sm"
@@ -781,7 +781,7 @@ const AddDamageModal = ({ isOpen, onClose, onSubmit, salesPersons, customers, gr
                       <h4 className="font-medium">{item.productName}</h4>
                       <p className="text-sm text-gray-500">${item.pricePerUnit} each</p>
                     </div>
-                    
+
                     <div className="flex items-center gap-2">
                       <Button
                         type="button"
@@ -812,7 +812,7 @@ const AddDamageModal = ({ isOpen, onClose, onSubmit, salesPersons, customers, gr
                   </div>
                 ))}
               </div>
-              
+
               <div className="mt-4 p-4 bg-orange-50 rounded">
                 <div className="flex justify-between items-center">
                   <span className="font-semibold">Total Amount:</span>
@@ -826,8 +826,8 @@ const AddDamageModal = ({ isOpen, onClose, onSubmit, salesPersons, customers, gr
             <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>
-            <Button 
-              type="submit" 
+            <Button
+              type="submit"
               disabled={!formData.customerId || !formData.salesPersonId || formData.items.length === 0}
               className="bg-orange-500 hover:bg-orange-600"
             >
@@ -868,7 +868,7 @@ const EditDamageModal = ({ isOpen, onClose, onSubmit, damageData, salesPersons, 
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    
+
     if (!formData.customerId || !formData.salesPersonId || formData.items.length === 0) {
       toast({
         title: "Error",
@@ -881,7 +881,7 @@ const EditDamageModal = ({ isOpen, onClose, onSubmit, damageData, salesPersons, 
     onSubmit(formData);
   };
 
-  const totalAmount = formData.items.reduce((sum, item) => 
+  const totalAmount = formData.items.reduce((sum, item) =>
     sum + (item.pricePerUnit * item.quantity), 0
   );
 
@@ -894,12 +894,12 @@ const EditDamageModal = ({ isOpen, onClose, onSubmit, damageData, salesPersons, 
             Update the damage details and information.
           </DialogDescription>
         </DialogHeader>
-        
+
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <Label htmlFor="salesPersonId">Sales Person *</Label>
-            <Select 
-              value={formData.salesPersonId} 
+            <Select
+              value={formData.salesPersonId}
               onValueChange={(value) => setFormData(prev => ({ ...prev, salesPersonId: value }))}
             >
               <SelectTrigger>
@@ -917,12 +917,12 @@ const EditDamageModal = ({ isOpen, onClose, onSubmit, damageData, salesPersons, 
 
           <div>
             <Label htmlFor="customer">Customer *</Label>
-            <Select 
-              value={formData.customerId} 
+            <Select
+              value={formData.customerId}
               onValueChange={(value) => {
                 const customer = customers.find(c => c._id === value);
-                setFormData(prev => ({ 
-                  ...prev, 
+                setFormData(prev => ({
+                  ...prev,
                   customerId: value,
                   customerName: customer?.name || ""
                 }));
@@ -985,7 +985,7 @@ const EditDamageModal = ({ isOpen, onClose, onSubmit, damageData, salesPersons, 
 const ViewDamageModal = ({ isOpen, onClose, damageData }) => {
   if (!damageData) return null;
 
-  const totalAmount = damageData.items?.reduce((sum, item) => 
+  const totalAmount = damageData.items?.reduce((sum, item) =>
     sum + (item.pricePerUnit * item.quantity), 0
   ) || 0;
 
@@ -998,7 +998,7 @@ const ViewDamageModal = ({ isOpen, onClose, damageData }) => {
             View detailed information about this damage entry.
           </DialogDescription>
         </DialogHeader>
-        
+
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -1025,10 +1025,10 @@ const ViewDamageModal = ({ isOpen, onClose, damageData }) => {
 
           <div>
             <Label>Status</Label>
-            <Badge 
+            <Badge
               variant={
-                damageData.status === 'approved' ? 'success' : 
-                damageData.status === 'rejected' ? 'destructive' : 'secondary'
+                damageData.status === 'approved' ? 'success' :
+                  damageData.status === 'rejected' ? 'destructive' : 'secondary'
               }
             >
               {damageData.status || 'pending'}

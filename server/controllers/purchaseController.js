@@ -413,12 +413,15 @@ export const getPurchaseItems = async (req, res) => {
     console.log('🔍 User company ID (string):', userCompanyIdString);
     console.log('📊 Search:', search, 'Type:', type);
 
-    // Build filter query - TWO conditions only:
+    // Build filter query:
     // 1. Company filter (store matches user's companyId)
-    // 2. Type filter (only Material, Spares, Assemblies)
+    // 2. Type filter (Material, Spares, Assemblies) OR purchase: true (Trading Goods)
     let filter = {
-      store: userCompanyIdString,  // Match company
-      type: { $in: ['Material', 'Spares', 'Assemblies'] }  // Only these types
+      store: userCompanyIdString,
+      $or: [
+        { type: { $in: ['Material', 'Spares', 'Assemblies'] } },
+        { purchase: true }
+      ]
     };
 
     // Add search filter if provided

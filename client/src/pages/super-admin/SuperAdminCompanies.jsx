@@ -172,7 +172,7 @@ const SuperAdminCompanies = () => {
     } else if (value === 'all') {
       apiValue = '';
     }
-    
+
     setFilters(prev => ({ ...prev, [key]: apiValue }));
     setPagination(prev => ({ ...prev, page: 1 }));
   };
@@ -231,7 +231,7 @@ const SuperAdminCompanies = () => {
                   <Skeleton key={i} className="h-4 w-full" />
                 ))}
               </div>
-              
+
               {/* Table Rows */}
               {[...Array(5)].map((_, rowIndex) => (
                 <div key={rowIndex} className="grid grid-cols-5 gap-4 py-4">
@@ -345,7 +345,7 @@ const SuperAdminCompanies = () => {
                 <div className="text-2xl font-bold">{stats.total || 0}</div>
               </CardContent>
             </Card>
-            
+
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Cities</CardTitle>
@@ -355,7 +355,7 @@ const SuperAdminCompanies = () => {
                 <div className="text-2xl font-bold">{stats.byCity?.length || 0}</div>
               </CardContent>
             </Card>
-            
+
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Unit Types</CardTitle>
@@ -384,7 +384,7 @@ const SuperAdminCompanies = () => {
                 />
               </div>
             </div>
-            
+
             <Select
               value={filters.city || 'all'}
               onValueChange={(value) => handleFilterChange('city', value)}
@@ -434,112 +434,112 @@ const SuperAdminCompanies = () => {
         <CardContent className="p-3 sm:p-6">
           <div className="overflow-x-auto">
             <Table className="min-w-[750px]">
-            <TableHeader>
-              <TableRow>
-                <TableHead>Company</TableHead>
-                <TableHead>Company ID</TableHead>
-                <TableHead>Location</TableHead>
-                <TableHead>Contact</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {companies.length === 0 ? (
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8">
-                    <div className="flex flex-col items-center space-y-3">
-                      <Building2 className="h-12 w-12 text-muted-foreground" />
-                      <div className="space-y-1">
-                        <p className="text-sm font-medium">No companies found</p>
-                        <p className="text-xs text-muted-foreground">
-                          Try adjusting your filters or create a new company
-                        </p>
-                      </div>
-                    </div>
-                  </TableCell>
+                  <TableHead>Company</TableHead>
+                  <TableHead>Company ID</TableHead>
+                  <TableHead>Location</TableHead>
+                  <TableHead>Contact</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
-              ) : (
-                companies.map((company) => (
-                  <TableRow key={company._id}>
-                    <TableCell className="min-w-[200px]">
-                      <div>
-                        <div className="font-medium text-sm sm:text-base">{company.name}</div>
-                        <div className="text-xs sm:text-sm text-muted-foreground">{company.unitName}</div>
-                      </div>
-                    </TableCell>
-                    <TableCell className="min-w-[120px]">
-                      <div className="font-mono text-xs text-muted-foreground bg-gray-50 px-2 py-1 rounded border">
-                        {company._id}
-                      </div>
-                    </TableCell>
-                    <TableCell className="min-w-[150px]">
-                      <div className="flex items-center">
-                        <MapPin className="h-3 w-3 sm:h-4 sm:w-4 mr-1 text-muted-foreground flex-shrink-0" />
-                        <span className="text-xs sm:text-sm">{company.city}, {company.state}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="min-w-[180px]">
-                      <div className="space-y-1">
-                        <div className="flex items-center text-xs sm:text-sm">
-                          <Phone className="h-3 w-3 mr-1 text-muted-foreground flex-shrink-0" />
-                          <span className="truncate">{company.mobile}</span>
-                        </div>
-                        <div className="flex items-center text-xs sm:text-sm">
-                          <Mail className="h-3 w-3 mr-1 text-muted-foreground flex-shrink-0" />
-                          <span className="truncate">{company.email}</span>
+              </TableHeader>
+              <TableBody>
+                {companies.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center py-8">
+                      <div className="flex flex-col items-center space-y-3">
+                        <Building2 className="h-12 w-12 text-muted-foreground" />
+                        <div className="space-y-1">
+                          <p className="text-sm font-medium">No companies found</p>
+                          <p className="text-xs text-muted-foreground">
+                            Try adjusting your filters or create a new company
+                          </p>
                         </div>
                       </div>
-                    </TableCell>
-                    <TableCell className="min-w-[80px]">
-                      <Badge variant={company.isActive ? "default" : "secondary"} className="text-xs">
-                        {company.isActive ? "Active" : "Inactive"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right min-w-[60px]">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            onClick={() => {
-                              setSelectedCompany(company);
-                              setIsViewModalOpen(true);
-                            }}
-                          >
-                            <Eye className="h-4 w-4 mr-2" />
-                            View Details
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => {
-                              setSelectedCompany(company);
-                              setIsEditModalOpen(true);
-                            }}
-                          >
-                            <Edit className="h-4 w-4 mr-2" />
-                            Edit
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => {
-                              setSelectedCompany(company);
-                              setIsDeleteModalOpen(true);
-                            }}
-                            className="text-red-600"
-                          >
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
                     </TableCell>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+                ) : (
+                  companies.map((company) => (
+                    <TableRow key={company._id}>
+                      <TableCell className="min-w-[200px]">
+                        <div>
+                          <div className="font-medium text-sm sm:text-base">{company.name}</div>
+                          <div className="text-xs sm:text-sm text-muted-foreground">{company.unitName}</div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="min-w-[120px]">
+                        <div className="font-mono text-xs text-muted-foreground bg-gray-50 px-2 py-1 rounded border">
+                          {company._id}
+                        </div>
+                      </TableCell>
+                      <TableCell className="min-w-[150px]">
+                        <div className="flex items-center">
+                          <MapPin className="h-3 w-3 sm:h-4 sm:w-4 mr-1 text-muted-foreground flex-shrink-0" />
+                          <span className="text-xs sm:text-sm">{company.city}, {company.state}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="min-w-[180px]">
+                        <div className="space-y-1">
+                          <div className="flex items-center text-xs sm:text-sm">
+                            <Phone className="h-3 w-3 mr-1 text-muted-foreground flex-shrink-0" />
+                            <span className="truncate">{company.mobile}</span>
+                          </div>
+                          <div className="flex items-center text-xs sm:text-sm">
+                            <Mail className="h-3 w-3 mr-1 text-muted-foreground flex-shrink-0" />
+                            <span className="truncate">{company.email}</span>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="min-w-[80px]">
+                        <Badge variant={company.isActive ? "default" : "secondary"} className="text-xs">
+                          {company.isActive ? "Active" : "Inactive"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right min-w-[60px]">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={() => {
+                                setSelectedCompany(company);
+                                setIsViewModalOpen(true);
+                              }}
+                            >
+                              <Eye className="h-4 w-4 mr-2" />
+                              View Details
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => {
+                                setSelectedCompany(company);
+                                setIsEditModalOpen(true);
+                              }}
+                            >
+                              <Edit className="h-4 w-4 mr-2" />
+                              Edit
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => {
+                                setSelectedCompany(company);
+                                setIsDeleteModalOpen(true);
+                              }}
+                              className="text-red-600"
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
           </div>
 
           {/* Pagination */}
@@ -655,11 +655,11 @@ const CompanyForm = ({ company, onSubmit, isLoading, onCancel }) => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    
+
     // Basic validation
     const newErrors = {};
     const requiredFields = ['unitName', 'name', 'locationPin', 'city', 'state', 'gst'];
-    
+
     requiredFields.forEach(field => {
       if (!formData[field]?.trim()) {
         newErrors[field] = `${field.charAt(0).toUpperCase() + field.slice(1)} is required`;
@@ -710,7 +710,7 @@ const CompanyForm = ({ company, onSubmit, isLoading, onCancel }) => {
           {company ? 'Update company information' : 'Fill in the details to create a new company'}
         </DialogDescription>
       </DialogHeader>
-      
+
       <div className="grid gap-4 py-4">
         {/* Company Information Section */}
         <div className="space-y-4">
@@ -727,7 +727,7 @@ const CompanyForm = ({ company, onSubmit, isLoading, onCancel }) => {
               />
               {errors.unitName && <p className="text-sm text-red-500">{errors.unitName}</p>}
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="name">Company Name *</Label>
               <Input
@@ -753,7 +753,7 @@ const CompanyForm = ({ company, onSubmit, isLoading, onCancel }) => {
               />
               {errors.legalName && <p className="text-sm text-red-500">{errors.legalName}</p>}
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="companyType">Company Type</Label>
               <select
@@ -908,7 +908,7 @@ const CompanyViewDetails = ({ company }) => {
         <DialogTitle>{company.name}</DialogTitle>
         <DialogDescription>{company.unitName}</DialogDescription>
       </DialogHeader>
-      
+
       <div className="grid gap-4 py-4">
         <div className="grid grid-cols-1 gap-4">
           <div>
@@ -940,7 +940,7 @@ const CompanyViewDetails = ({ company }) => {
               </div>
             </div>
           </div>
-          
+
           <div>
             <Label className="text-sm font-medium text-muted-foreground">Business Hours</Label>
             <div className="mt-1 flex items-center">

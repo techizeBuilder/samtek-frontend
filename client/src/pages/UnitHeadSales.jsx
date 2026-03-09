@@ -96,21 +96,21 @@ export default function UnitHeadSales() {
   const [selectedSalesPerson, setSelectedSalesPerson] = useState(null);
   const [isOrdersDetailOpen, setIsOrdersDetailOpen] = useState(false);
   const [ordersPage, setOrdersPage] = useState(1);
-  
+
   // CRUD Modal States
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
   const [formData, setFormData] = useState(initialFormData);
-  
+
   // Cutoff Time Modal State
   const [isCutoffModalOpen, setIsCutoffModalOpen] = useState(false);
   const [cutoffFormData, setCutoffFormData] = useState({
     cutoffTime: '',
     description: ''
   });
-  
+
   const [filters, setFilters] = useState({
     page: 1,
     limit: 10,
@@ -178,7 +178,7 @@ export default function UnitHeadSales() {
 
     const totalOrders = orders.length;
     const totalRevenue = orders.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
-    const approvedOrders = orders.filter(order => 
+    const approvedOrders = orders.filter(order =>
       ['approved', 'completed', 'in_production'].includes(order.status)
     ).length;
     const successRate = totalOrders > 0 ? Math.round((approvedOrders / totalOrders) * 100) : 0;
@@ -373,7 +373,7 @@ export default function UnitHeadSales() {
       }
       return;
     }
-    
+
     if (field === 'pincode') {
       // Only allow numbers and limit to 6 digits
       const numericValue = value.replace(/\D/g, '');
@@ -385,7 +385,7 @@ export default function UnitHeadSales() {
       }
       return;
     }
-    
+
     if (field === 'username') {
       // Only allow alphanumeric and underscore, no spaces
       const sanitizedValue = value.replace(/[^a-zA-Z0-9_]/g, '');
@@ -395,7 +395,7 @@ export default function UnitHeadSales() {
       }));
       return;
     }
-    
+
     // Default handling for other fields
     setFormData(prev => ({
       ...prev,
@@ -433,11 +433,11 @@ export default function UnitHeadSales() {
 
   const handleFormSubmit = (e) => {
     e.preventDefault();
-    
+
     // Required field validation
     const requiredFields = ['username', 'fullName', 'email'];
     const missingFields = requiredFields.filter(field => !formData[field] || formData[field].trim() === '');
-    
+
     if (missingFields.length > 0) {
       toast({
         variant: 'destructive',
@@ -471,7 +471,7 @@ export default function UnitHeadSales() {
       });
       return;
     }
-    
+
     // Password validation for create mode
     if (isCreateModalOpen) {
       if (!formData.password || formData.password.trim() === '') {
@@ -502,7 +502,7 @@ export default function UnitHeadSales() {
         return;
       }
     }
-    
+
     if (isEditModalOpen && selectedSalesPerson) {
       // For edit, don't send password, permissions, or active status
       const { password, confirmPassword, permissions, ...editData } = formData;
@@ -532,7 +532,7 @@ export default function UnitHeadSales() {
 
     const statusLabels = {
       'pending': 'Pending',
-      'approved': 'Approved', 
+      'approved': 'Approved',
       'in_production': 'In Production',
       'completed': 'Completed',
       'cancelled': 'Cancelled',
@@ -577,7 +577,7 @@ export default function UnitHeadSales() {
 
   const handleCutoffFormSubmit = (e) => {
     e.preventDefault();
-    
+
     if (!cutoffFormData.time) {
       toast({
         title: 'Validation Error',
@@ -675,8 +675,8 @@ export default function UnitHeadSales() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button 
-            variant="outline" 
+          <Button
+            variant="outline"
             onClick={handleOpenCutoffModal}
             className="relative"
           >
@@ -689,11 +689,11 @@ export default function UnitHeadSales() {
             )}
           </Button>
           {canAdd && (
-             <Button onClick={handleCreateSalesPerson}>
-               <Plus className="w-4 h-4 mr-2" />
-               Add Sales Person
-             </Button>
-         )}
+            <Button onClick={handleCreateSalesPerson}>
+              <Plus className="w-4 h-4 mr-2" />
+              Add Sales Person
+            </Button>
+          )}
         </div>
       </div>
 
@@ -711,7 +711,7 @@ export default function UnitHeadSales() {
             </p>
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Active</CardTitle>
@@ -770,8 +770,8 @@ export default function UnitHeadSales() {
                 />
               </div>
             </div>
-            <Select 
-              value={filters.sortBy} 
+            <Select
+              value={filters.sortBy}
               onValueChange={(value) => handleFilterChange('sortBy', value)}
             >
               <SelectTrigger className="w-full sm:w-48">
@@ -785,8 +785,8 @@ export default function UnitHeadSales() {
                 ))}
               </SelectContent>
             </Select>
-            <Select 
-              value={filters.sortOrder} 
+            <Select
+              value={filters.sortOrder}
               onValueChange={(value) => handleFilterChange('sortOrder', value)}
             >
               <SelectTrigger className="w-full sm:w-32">
@@ -819,99 +819,99 @@ export default function UnitHeadSales() {
             <>
               <div className="overflow-x-auto">
                 <Table className="min-w-[800px]">
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Sales Person</TableHead>
-                    <TableHead>Total Orders</TableHead>
-                    <TableHead>Revenue</TableHead>
-                    <TableHead>Avg Order Value</TableHead>
-                    <TableHead>Success Rate</TableHead>
-                    <TableHead>Last Order</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {salesPersons.map((salesPerson) => (
-                    <TableRow key={salesPerson._id}>
-                      <TableCell>
-                        <div>
-                          <div className="font-medium">
-                            {salesPerson.fullName || salesPerson.username}
-                          </div>
-                          <div className="text-sm text-muted-foreground">
-                            {salesPerson.email}
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline">
-                          {salesPerson.totalOrders || 0}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="font-medium">
-                          {formatCurrency(salesPerson.totalRevenue)}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="font-medium">
-                          {formatCurrency(salesPerson.averageOrderValue)}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center">
-                          <div className="text-sm font-medium">
-                            {salesPerson.successRate || 0}%
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-sm">
-                          {salesPerson.lastOrderDate ? formatDate(salesPerson.lastOrderDate) : 'No orders'}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleViewOrders(salesPerson)}
-                            title="View Orders"
-                          >
-                            <ShoppingCart className="w-4 h-4 text-blue-600" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleViewSalesPerson(salesPerson)}
-                            title="View Details"
-                          >
-                            <Eye className="w-4 h-4 text-green-600" />
-                          </Button>
-                          {canEdit && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleEditSalesPerson(salesPerson)}
-                              title="Edit"
-                            >
-                              <Edit className="w-4 h-4 text-orange-600" />
-                            </Button>
-                          )}
-                          {canDelete && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleDeleteSalesPerson(salesPerson)}
-                              title="Delete"
-                            >
-                              <Trash2 className="w-4 h-4 text-red-600" />
-                            </Button>
-                          )}
-                        </div>
-                      </TableCell>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Sales Person</TableHead>
+                      <TableHead>Total Orders</TableHead>
+                      <TableHead>Revenue</TableHead>
+                      <TableHead>Avg Order Value</TableHead>
+                      <TableHead>Success Rate</TableHead>
+                      <TableHead>Last Order</TableHead>
+                      <TableHead>Actions</TableHead>
                     </TableRow>
-                  ))}
+                  </TableHeader>
+                  <TableBody>
+                    {salesPersons.map((salesPerson) => (
+                      <TableRow key={salesPerson._id}>
+                        <TableCell>
+                          <div>
+                            <div className="font-medium">
+                              {salesPerson.fullName || salesPerson.username}
+                            </div>
+                            <div className="text-sm text-muted-foreground">
+                              {salesPerson.email}
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline">
+                            {salesPerson.totalOrders || 0}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="font-medium">
+                            {formatCurrency(salesPerson.totalRevenue)}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="font-medium">
+                            {formatCurrency(salesPerson.averageOrderValue)}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center">
+                            <div className="text-sm font-medium">
+                              {salesPerson.successRate || 0}%
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="text-sm">
+                            {salesPerson.lastOrderDate ? formatDate(salesPerson.lastOrderDate) : 'No orders'}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleViewOrders(salesPerson)}
+                              title="View Orders"
+                            >
+                              <ShoppingCart className="w-4 h-4 text-blue-600" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleViewSalesPerson(salesPerson)}
+                              title="View Details"
+                            >
+                              <Eye className="w-4 h-4 text-green-600" />
+                            </Button>
+                            {canEdit && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleEditSalesPerson(salesPerson)}
+                                title="Edit"
+                              >
+                                <Edit className="w-4 h-4 text-orange-600" />
+                              </Button>
+                            )}
+                            {canDelete && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleDeleteSalesPerson(salesPerson)}
+                                title="Delete"
+                              >
+                                <Trash2 className="w-4 h-4 text-red-600" />
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
                   </TableBody>
                 </Table>
               </div>
@@ -961,7 +961,7 @@ export default function UnitHeadSales() {
               View detailed orders for the selected sales person
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="space-y-4">
             {/* Orders Statistics */}
             <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3">
@@ -973,7 +973,7 @@ export default function UnitHeadSales() {
                   <div className="text-2xl font-bold">{displayStats.totalOrders}</div>
                 </CardContent>
               </Card>
-              
+
               <Card>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
@@ -982,7 +982,7 @@ export default function UnitHeadSales() {
                   <div className="text-2xl font-bold">{formatCurrency(displayStats.totalRevenue)}</div>
                 </CardContent>
               </Card>
-              
+
               <Card>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-medium">Success Rate</CardTitle>
@@ -1049,7 +1049,7 @@ export default function UnitHeadSales() {
                 </TableBody>
               </Table>
             </div>
-            
+
             {/* Orders Pagination */}
             <div className="flex justify-center">
               <div className="flex flex-col gap-2 items-center sm:flex-row sm:gap-4">
@@ -1091,13 +1091,13 @@ export default function UnitHeadSales() {
               {isEditModalOpen ? 'Edit Sales Person' : 'Add New Sales Person'}
             </DialogTitle>
             <DialogDescription>
-              {isEditModalOpen 
-                ? 'Update the sales person information below.' 
+              {isEditModalOpen
+                ? 'Update the sales person information below.'
                 : 'Fill in the details to create a new sales person.'
               }
             </DialogDescription>
           </DialogHeader>
-          
+
           <form onSubmit={handleFormSubmit} className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
@@ -1132,7 +1132,7 @@ export default function UnitHeadSales() {
                 />
               </div>
 
-              
+
               {/* Password fields - only show for create mode */}
               {isCreateModalOpen && (
                 <>
@@ -1161,7 +1161,7 @@ export default function UnitHeadSales() {
                 </>
               )}
             </div>
-            
+
             {/* Role Assignment - Fixed to Sales */}
             <div className="space-y-4">
               <div>
@@ -1177,11 +1177,11 @@ export default function UnitHeadSales() {
                 </div>
               </div>
             </div>
-            
+
             <DialogFooter>
-              <Button 
-                type="button" 
-                variant="outline" 
+              <Button
+                type="button"
+                variant="outline"
                 onClick={() => {
                   setIsCreateModalOpen(false);
                   setIsEditModalOpen(false);
@@ -1191,12 +1191,12 @@ export default function UnitHeadSales() {
               >
                 Cancel
               </Button>
-              <Button 
-                type="submit" 
+              <Button
+                type="submit"
                 disabled={createMutation.isPending || updateMutation.isPending}
               >
-                {createMutation.isPending || updateMutation.isPending 
-                  ? 'Saving...' 
+                {createMutation.isPending || updateMutation.isPending
+                  ? 'Saving...'
                   : (isEditModalOpen ? 'Update' : 'Create')
                 }
               </Button>
@@ -1211,7 +1211,7 @@ export default function UnitHeadSales() {
           <DialogHeader>
             <DialogTitle>Sales Person Details</DialogTitle>
           </DialogHeader>
-          
+
           {selectedSalesPerson && (
             <div className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1257,7 +1257,7 @@ export default function UnitHeadSales() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction 
+            <AlertDialogAction
               onClick={handleDeleteConfirm}
               className="bg-red-600 hover:bg-red-700"
               disabled={deleteMutation.isPending}
@@ -1277,14 +1277,13 @@ export default function UnitHeadSales() {
               Set the daily cutoff time after which sales persons cannot create or edit orders.
             </DialogDescription>
           </DialogHeader>
-          
+
           {/* Current Status Banner */}
           {cutoffData?.data && (
-            <div className={`p-3 rounded-lg mb-4 ${
-              cutoffData.data.isActive 
-                ? 'bg-green-50 border border-green-200' 
+            <div className={`p-3 rounded-lg mb-4 ${cutoffData.data.isActive
+                ? 'bg-green-50 border border-green-200'
                 : 'bg-gray-50 border border-gray-200'
-            }`}>
+              }`}>
               <div className="flex items-center justify-between">
                 <div>
                   <div className="flex items-center gap-2">
@@ -1303,10 +1302,10 @@ export default function UnitHeadSales() {
                   onClick={handleToggleCutoffStatus}
                   disabled={toggleCutoffTimeMutation.isPending}
                 >
-                  {toggleCutoffTimeMutation.isPending 
-                    ? 'Updating...' 
-                    : cutoffData.data.isActive 
-                      ? 'Disable' 
+                  {toggleCutoffTimeMutation.isPending
+                    ? 'Updating...'
+                    : cutoffData.data.isActive
+                      ? 'Disable'
                       : 'Enable'
                   }
                 </Button>
@@ -1329,7 +1328,7 @@ export default function UnitHeadSales() {
                 Sales persons won't be able to create or edit orders after this time
               </p>
             </div>
-            
+
             <div>
               <Label htmlFor="cutoff-description">Description (Optional)</Label>
               <Input
@@ -1343,15 +1342,15 @@ export default function UnitHeadSales() {
             </div>
 
             <DialogFooter>
-              <Button 
-                type="button" 
-                variant="outline" 
+              <Button
+                type="button"
+                variant="outline"
                 onClick={() => setIsCutoffModalOpen(false)}
               >
                 Cancel
               </Button>
-              <Button 
-                type="submit" 
+              <Button
+                type="submit"
                 disabled={setCutoffTimeMutation.isPending}
               >
                 {setCutoffTimeMutation.isPending ? 'Saving...' : 'Save Cutoff Time'}

@@ -1,6 +1,7 @@
 import Sale from '../models/Sale.js';
 import Return from '../models/Return.js';
 import Expense from '../models/Expense.js';
+import mongoose from 'mongoose';
 import { USER_ROLES } from '../../shared/schema.js';
 
 export const getFinanceSummary = async (req, res) => {
@@ -8,9 +9,9 @@ export const getFinanceSummary = async (req, res) => {
         const { unit, startDate, endDate, period = 'month' } = req.query;
 
         let query = {};
-        if (req.user.role !== USER_ROLES.SUPER_USER) {
-            query.unit = req.user.unit;
-            query.companyId = req.user.companyId;
+        if (req.user.role !== USER_ROLES.SUPER_ADMIN && req.user.role !== USER_ROLES.SUPER_USER) {
+            if (req.user.unit) query.unit = req.user.unit;
+            if (req.user.companyId) query.companyId = new mongoose.Types.ObjectId(req.user.companyId);
         } else if (unit) {
             // Find unit/companyId if Super Admin filters by unit string
             // For now, assume unit filter works like in other controllers
@@ -34,7 +35,12 @@ export const getFinanceSummary = async (req, res) => {
             }
         }
 
-        const dateQuery = { $gte: start, $lte: end };
+        // Ensure start is at beginning of day and end is at end of day
+        start.setHours(0, 0, 0, 0);
+        let finalEnd = end ? new Date(end) : new Date();
+        finalEnd.setHours(23, 59, 59, 999);
+
+        const dateQuery = { $gte: start, $lte: finalEnd };
 
         // Aggregate Sales (Revenue)
         // In Sale.js, it's 'saleDate' or 'createdAt'
@@ -109,7 +115,7 @@ export const getFinanceSummary = async (req, res) => {
                 netProfit,
                 period: {
                     start,
-                    end
+                    end: finalEnd
                 }
             }
         });

@@ -358,13 +358,13 @@ const accountsMenuItems = [
     module: 'accounts',
     feature: 'dashboard'
   },
-  {
-    label: 'Chart of Accounts',
-    path: '/accounts/chart-of-accounts',
-    icon: PieChart,
-    module: 'accounts',
-    feature: 'chartOfAccounts'
-  },
+  // {
+  //   label: 'Chart of Accounts',
+  //   path: '/accounts/chart-of-accounts',
+  //   icon: PieChart,
+  //   module: 'accounts',
+  //   feature: 'chartOfAccounts'
+  // },
   {
     label: 'Sales',
     path: '/accounts/sales',
