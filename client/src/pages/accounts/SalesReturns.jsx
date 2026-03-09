@@ -259,7 +259,7 @@ const SalesReturns = () => {
                             <TableHeader className="bg-slate-50">
                                 <TableRow className="hover:bg-transparent border-b">
                                     <TableHead className="font-semibold px-6 py-4 text-slate-900 uppercase text-[11px] tracking-wider">Customer</TableHead>
-                                    <TableHead className="font-semibold py-4 text-slate-900 uppercase text-[11px] tracking-wider">Dates</TableHead>
+                                    <TableHead className="font-semibold py-4 text-slate-900 uppercase text-[11px] tracking-wider">Date</TableHead>
                                     <TableHead className="font-semibold py-4 text-slate-900 uppercase text-[11px] tracking-wider">Reason</TableHead>
                                     <TableHead className="font-semibold text-center py-4 text-slate-900 uppercase text-[11px] tracking-wider">Items</TableHead>
                                     <TableHead className="font-semibold text-right py-4 text-slate-900 uppercase text-[11px] tracking-wider">Amount</TableHead>
@@ -291,8 +291,7 @@ const SalesReturns = () => {
                                             </TableCell>
                                             <TableCell>
                                                 <div className="flex flex-col text-xs">
-                                                    <span className="text-slate-500">Ord: {item.orderDate ? new Date(item.orderDate).toLocaleDateString('en-IN') : 'N/A'}</span>
-                                                    <span className="font-bold text-blue-600">Ret: {item.returnDate ? new Date(item.returnDate).toLocaleDateString('en-IN') : 'N/A'}</span>
+                                                    <span className="font-bold text-blue-600">{item.returnDate ? new Date(item.returnDate).toLocaleDateString('en-IN') : 'N/A'}</span>
                                                 </div>
                                             </TableCell>
                                             <TableCell>

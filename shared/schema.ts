@@ -19,6 +19,7 @@ export type User = typeof users.$inferSelect;
 // User roles and permissions
 export const USER_ROLES = {
   SUPER_ADMIN: 'Super Admin',
+  SUPER_USER: 'super_user',
   UNIT_HEAD: 'Unit Head',
   UNIT_MANAGER: 'Unit Manager',
   PRODUCTION: 'Production',

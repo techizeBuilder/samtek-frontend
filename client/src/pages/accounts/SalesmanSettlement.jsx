@@ -341,7 +341,6 @@ export default function SalesmanSettlement() {
                             <Table>
                               <TableHeader className="bg-red-50/50">
                                 <TableRow>
-                                  <TableHead>Return#</TableHead>
                                   <TableHead>Customer</TableHead>
                                   <TableHead className="text-right">Amount</TableHead>
                                 </TableRow>
@@ -349,8 +348,7 @@ export default function SalesmanSettlement() {
                               <TableBody>
                                 {stats.returns.map(r => (
                                   <TableRow key={r._id}>
-                                    <TableCell className="font-medium">{r.returnNumber}</TableCell>
-                                    <TableCell>{r.customerName}</TableCell>
+                                    <TableCell className="font-medium text-slate-900">{r.customerName}</TableCell>
                                     <TableCell className="text-right font-bold text-red-600">-{formatCurrency(r.totalAmount)}</TableCell>
                                   </TableRow>
                                 ))}
