@@ -5,6 +5,10 @@ import User from '../models/User.js';
 import Return from '../models/Return.js';
 import mongoose from 'mongoose';
 import { Account, Transaction } from '../models/Account.js';
+import CustomerPayment from '../models/CustomerPayment.js';
+import VendorPayment from '../models/VendorPayment.js';
+import Supplier from '../models/Supplier.js';
+import SalesmanDailySettlement from '../models/SalesmanDailySettlement.js';
 import { USER_ROLES } from '../../shared/schema.js';
 
 /**
@@ -1717,5 +1721,252 @@ export const reconcileTransaction = async (req, res) => {
   } catch (error) {
     console.error('Reconcile transaction error:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+};
+
+// ==================== LEDGER RECORDS ====================
+
+export const getLedgerRecords = async (req, res) => {
+  try {
+    const { accountId, startDate, endDate, page = 1, limit = 15 } = req.query;
+    const unit = req.user.unit;
+
+    if (!accountId) {
+      return res.status(400).json({ success: false, message: 'Account ID is required' });
+    }
+
+    const account = await Account.findById(accountId);
+    if (!account) {
+      return res.status(404).json({ success: false, message: 'Account not found' });
+    }
+
+    // Base query for transactions involving this account
+    let query = {
+      'entries.account': accountId,
+      unit
+    };
+
+    // Date filters
+    const start = startDate ? new Date(startDate) : null;
+    const end = endDate ? new Date(endDate) : null;
+
+    if (start || end) {
+      query.date = {};
+      if (start) {
+        start.setHours(0, 0, 0, 0);
+        query.date.$gte = start;
+      }
+      if (end) {
+        end.setHours(23, 59, 59, 999);
+        query.date.$lte = end;
+      }
+    }
+
+    // 1. Calculate Opening Balance before startDate
+    let openingBalance = 0;
+    if (start) {
+      const prevTransactions = await Transaction.find({
+        'entries.account': accountId,
+        unit,
+        date: { $lt: start }
+      });
+
+      prevTransactions.forEach(txn => {
+        const entry = txn.entries.find(e =>
+          e.account.toString() === accountId ||
+          (e.account._id && e.account._id.toString() === accountId)
+        );
+        if (entry) {
+          const effect = (entry.debit || 0) - (entry.credit || 0);
+          openingBalance += (['Asset', 'Expense'].includes(account.accountType)) ? effect : -effect;
+        }
+      });
+    }
+
+    // 2. Calculate Total Effect of transactions in the range to determine range-end balance
+    const allInRangeTransactions = await Transaction.find(query);
+    let totalRangeEffect = 0;
+    allInRangeTransactions.forEach(txn => {
+      const entry = txn.entries.find(e =>
+        e.account.toString() === accountId ||
+        (e.account._id && e.account._id.toString() === accountId)
+      );
+      if (entry) {
+        const effect = (entry.debit || 0) - (entry.credit || 0);
+        totalRangeEffect += (['Asset', 'Expense'].includes(account.accountType)) ? effect : -effect;
+      }
+    });
+
+    const rangeClosingBalance = openingBalance + totalRangeEffect;
+
+    // 3. Fetch transactions for the current page in DESCENDING order
+    const totalTransactions = await Transaction.countDocuments(query);
+    const transactions = await Transaction.find(query)
+      .sort({ date: -1, createdAt: -1 })
+      .skip((parseInt(page) - 1) * parseInt(limit))
+      .limit(parseInt(limit))
+      .populate('entries.account', 'accountName');
+
+    // 4. Calculate starting balance for this page
+    // Sum of transactions that are NEWER than the current page
+    let newerTransactionsEffect = 0;
+    if (parseInt(page) > 1) {
+      const skipCount = (parseInt(page) - 1) * parseInt(limit);
+      const newerTransactions = await Transaction.find(query)
+        .sort({ date: -1, createdAt: -1 })
+        .limit(skipCount);
+
+      newerTransactions.forEach(txn => {
+        const entry = txn.entries.find(e =>
+          e.account.toString() === accountId ||
+          (e.account._id && e.account._id.toString() === accountId)
+        );
+        if (entry) {
+          const effect = (entry.debit || 0) - (entry.credit || 0);
+          newerTransactionsEffect += (['Asset', 'Expense'].includes(account.accountType)) ? effect : -effect;
+        }
+      });
+    }
+
+    let currentRunningBalanceForMapping = rangeClosingBalance - newerTransactionsEffect;
+
+    // First pass: Calculate running balances sequentially
+    const recordsWithBalances = transactions.map(txn => {
+      const myEntry = txn.entries.find(e =>
+        e.account.toString() === accountId ||
+        (e.account._id && e.account._id.toString() === accountId)
+      );
+
+      const rowBalance = currentRunningBalanceForMapping;
+      const effect = (myEntry.debit || 0) - (myEntry.credit || 0);
+      currentRunningBalanceForMapping -= (['Asset', 'Expense'].includes(account.accountType)) ? effect : -effect;
+
+      return { txn, rowBalance, myEntry };
+    });
+
+    // Second pass: Resolve entity names in parallel
+    const records = await Promise.all(recordsWithBalances.map(async ({ txn, rowBalance, myEntry }) => {
+      // Find contra accounts
+      const otherEntries = txn.entries.filter(e =>
+        (e.account.toString() !== accountId) &&
+        (!e.account._id || e.account._id.toString() !== accountId)
+      );
+
+      let contraLedgerLabel = otherEntries.length > 0
+        ? otherEntries.map(e => e.account.accountName).join(', ')
+        : txn.description;
+
+      let entityName = '';
+      let entityType = '';
+
+      try {
+        if (txn.relatedDocumentId || txn.description.includes('Salesman Settlement')) {
+          // 1. Try to find by settlement ID (if exists)
+          let sds = null;
+          if (txn.relatedDocumentId) {
+            try {
+              sds = await SalesmanDailySettlement.findById(txn.relatedDocumentId).populate('salesmanId', 'fullName name username');
+            } catch (sdsErr) {
+              console.error('Error finding SDS:', sdsErr);
+            }
+          }
+
+          // 2. Fallback: Extract salesman ID from description if sds is null
+          let salesmanIdFromDesc = null;
+          if (!sds || !sds.salesmanId) {
+            const idMatch = txn.description.match(/([a-f\d]{24})/i);
+            if (idMatch) {
+              salesmanIdFromDesc = idMatch[1];
+            }
+          }
+
+          if (sds && sds.salesmanId) {
+            entityType = 'Salesman';
+            entityName = sds.salesmanId.fullName || sds.salesmanId.name || sds.salesmanId.username || 'Unknown Salesman';
+          } else if (salesmanIdFromDesc || txn.description.includes('Salesman Settlement')) {
+            // Even if sds is null, if the description says it's a salesman settlement, we try to find the salesman
+            entityType = 'Salesman';
+            if (salesmanIdFromDesc) {
+              const user = await User.findById(salesmanIdFromDesc).select('fullName name username');
+              if (user) {
+                entityName = user.fullName || user.name || user.username || 'Unknown Salesman';
+              }
+            }
+          }
+
+          // If found salesman, skip further checks. If not, follow other types.
+          if (entityType === 'Salesman') {
+            // continue
+          } else if (txn.relatedDocument === 'Receipt') {
+            entityType = 'Customer';
+            const cp = await CustomerPayment.findById(txn.relatedDocumentId).populate('customer', 'name');
+            if (cp && cp.customer) entityName = cp.customer.name;
+          } else if (txn.relatedDocument === 'Payment') {
+            entityType = 'Vendor';
+            const vp = await VendorPayment.findById(txn.relatedDocumentId).populate('vendor', 'supplierName name');
+            if (vp && vp.vendor) {
+              entityName = vp.vendor.supplierName || vp.vendor.name || 'Unknown Vendor';
+            }
+          } else if (txn.relatedDocument === 'Sale') {
+            entityType = 'Customer';
+            const sl = await Sale.findById(txn.relatedDocumentId).populate('customer', 'name');
+            if (sl && sl.customer) entityName = sl.customer.name;
+          }
+        }
+      } catch (err) {
+        console.error('Error resolving entity name:', err);
+      }
+
+      // Main Ledger column shows category label as per user request
+      if (entityType) {
+        contraLedgerLabel = entityType;
+      }
+
+      // Clean up description
+      let displayDescription = txn.description;
+      if (displayDescription) {
+        displayDescription = displayDescription.replace(/Customer Receipt - Ref: /i, '');
+        displayDescription = displayDescription.replace(/Salesman Settlement \(.*?\): /i, 'Salesman: ');
+      }
+
+      return {
+        _id: txn._id,
+        date: txn.date,
+        transactionNumber: txn.transactionNumber,
+        voucherNo: txn.reference || txn.transactionNumber,
+        ledger: contraLedgerLabel,
+        description: displayDescription,
+        debit: myEntry.debit,
+        credit: myEntry.credit,
+        balance: rowBalance,
+        relatedDocument: txn.relatedDocument,
+        relatedDocumentId: txn.relatedDocumentId,
+        paymentMode: txn.mode,
+        entityName, // For detailed receipt
+        entityType
+      };
+    }));
+
+    res.json({
+      success: true,
+      account: {
+        id: account._id,
+        name: account.accountName,
+        type: account.accountType,
+        accountNumber: account.accountNumber
+      },
+      openingBalance,
+      records,
+      pagination: {
+        total: totalTransactions,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        pages: Math.ceil(totalTransactions / limit)
+      }
+    });
+
+  } catch (error) {
+    console.error('Get Ledger Records error:', error);
+    res.status(500).json({ success: false, message: error.message || 'Internal server error' });
   }
 };

@@ -7,7 +7,6 @@ import {
     BarChart3, TrendingUp, TrendingDown, Package,
     RotateCw, Calendar, ArrowUpRight, DollarSign
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
 import {
     BarChart,
     Bar,
