@@ -24,7 +24,8 @@ import {
   getSalesDamagesList,
   debugCheckSalesPersons,
   getDamageExpiryList,
-  getDamageExpiryDetail
+  getDamageExpiryDetail,
+  getLedgerRecords
 } from '../controllers/accountsController.js';
 import {
   createSalesInvoice,
@@ -235,6 +236,7 @@ accountsRouter.get('/bank-cash/summary', authorizeRoles('Accounts', 'Super Admin
 accountsRouter.put('/bank-cash/reconcile/:id', authorizeRoles('Accounts', 'Super Admin'), reconcileTransaction);
 accountsRouter.get('/transactions', authorizeRoles('Accounts', 'Super Admin'), getTransactions);
 accountsRouter.post('/transactions/general', authorizeRoles('Accounts', 'Super Admin'), createGeneralTransaction);
+accountsRouter.get('/ledger', authorizeRoles('Accounts', 'Super Admin'), getLedgerRecords);
 
 // Account Management (Chart of Accounts)
 accountsRouter.get('/', authorizeRoles('Accounts', 'Super Admin'), getAccounts);

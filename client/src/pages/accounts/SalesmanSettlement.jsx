@@ -376,99 +376,146 @@ export default function SalesmanSettlement() {
                     </div>
                   </CardHeader>
                   <CardContent className="p-6 space-y-5">
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-1.5">
-                        <Label className="text-xs font-bold text-slate-500 uppercase">Type</Label>
-                        <div className="flex p-1 bg-slate-100 rounded-lg">
-                          <button
-                            onClick={() => setTransactionType('Credit')}
-                            className={cn(
-                              "flex-1 py-1.5 text-xs font-bold rounded-md transition-all",
-                              transactionType === 'Credit' ? "bg-white text-green-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
-                            )}
-                          >
-                            Credit (Add to Bank)
-                          </button>
-                          <button
-                            onClick={() => setTransactionType('Debit')}
-                            className={cn(
-                              "flex-1 py-1.5 text-xs font-bold rounded-md transition-all",
-                              transactionType === 'Debit' ? "bg-white text-red-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
-                            )}
-                          >
-                            Debit (Cut from Bank)
-                          </button>
+                    <div className="space-y-4">
+                      <Label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Transaction Type</Label>
+                      <div className="grid grid-cols-2 gap-4">
+                        <button
+                          onClick={() => setTransactionType('Credit')}
+                          className={cn(
+                            "relative overflow-hidden group p-4 rounded-xl border-2 transition-all duration-200 text-left",
+                            transactionType === 'Credit' 
+                              ? "border-green-500 bg-green-50 shadow-md transform scale-[1.02]" 
+                              : "border-slate-100 bg-white hover:border-slate-200"
+                          )}
+                        >
+                          <div className="flex flex-col gap-2">
+                            <div className={cn(
+                              "p-2 w-fit rounded-lg",
+                              transactionType === 'Credit' ? "bg-green-500 text-white" : "bg-slate-100 text-slate-500 group-hover:bg-slate-200"
+                            )}>
+                              <Plus className="h-5 w-5" />
+                            </div>
+                            <div>
+                              <p className={cn("font-bold text-sm", transactionType === 'Credit' ? "text-green-700" : "text-slate-700")}>Credit</p>
+                              <p className="text-[10px] text-slate-500 leading-tight">Add amount to bank or cash balance</p>
+                            </div>
+                          </div>
+                          {transactionType === 'Credit' && (
+                            <div className="absolute top-2 right-2">
+                              <CheckCircle className="h-4 w-4 text-green-600" />
+                            </div>
+                          )}
+                        </button>
+
+                        <button
+                          onClick={() => setTransactionType('Debit')}
+                          className={cn(
+                            "relative overflow-hidden group p-4 rounded-xl border-2 transition-all duration-200 text-left",
+                            transactionType === 'Debit' 
+                              ? "border-red-500 bg-red-50 shadow-md transform scale-[1.02]" 
+                              : "border-slate-100 bg-white hover:border-slate-200"
+                          )}
+                        >
+                          <div className="flex flex-col gap-2">
+                            <div className={cn(
+                              "p-2 w-fit rounded-lg",
+                              transactionType === 'Debit' ? "bg-red-500 text-white" : "bg-slate-100 text-slate-500 group-hover:bg-slate-200"
+                            )}>
+                              <ArrowDownLeft className="h-5 w-5" />
+                            </div>
+                            <div>
+                              <p className={cn("font-bold text-sm", transactionType === 'Debit' ? "text-red-700" : "text-slate-700")}>Debit</p>
+                              <p className="text-[10px] text-slate-500 leading-tight">Deduct amount for expenses or advance</p>
+                            </div>
+                          </div>
+                          {transactionType === 'Debit' && (
+                            <div className="absolute top-2 right-2">
+                              <CheckCircle className="h-4 w-4 text-red-600" />
+                            </div>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-4 pt-2">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Category</Label>
+                          <Select value={entryType} onValueChange={setEntryType}>
+                            <SelectTrigger className="h-11 border-slate-200 bg-slate-50/50 hover:bg-slate-50 transition-colors">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {transactionType === 'Credit' ? (
+                                <>
+                                  <SelectItem value="Cash Deposit">Cash Deposit</SelectItem>
+                                  <SelectItem value="Opening Balance">Opening Balance</SelectItem>
+                                  <SelectItem value="Adjustment (In)">Adjustment (In)</SelectItem>
+                                </>
+                              ) : (
+                                <>
+                                  <SelectItem value="Salary">Salary Payment</SelectItem>
+                                  <SelectItem value="Commission">Commission</SelectItem>
+                                  <SelectItem value="Advance">Advance Taken</SelectItem>
+                                  <SelectItem value="Incentive">Incentive</SelectItem>
+                                  <SelectItem value="Expense Reimbursement">Expense Reimb.</SelectItem>
+                                  <SelectItem value="Shortage">Shortage</SelectItem>
+                                </>
+                              )}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Bank Account</Label>
+                          <Select value={bankAccountId} onValueChange={setBankAccountId}>
+                            <SelectTrigger className={cn("h-11 transition-colors", bankAccountId !== 'cash' ? "border-blue-300 bg-blue-50/50" : "border-slate-200 bg-slate-50/50")}>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="cash">Internal Cash Registry</SelectItem>
+                              {bankAccounts.map(acc => (
+                                <SelectItem key={acc.id} value={acc.id}>
+                                  {acc.name} (₹{acc.balance?.toLocaleString()})
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         </div>
                       </div>
+
                       <div className="space-y-1.5">
-                        <Label className="text-xs font-bold text-slate-500 uppercase">Category</Label>
-                        <Select value={entryType} onValueChange={setEntryType}>
-                          <SelectTrigger className="h-9">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {transactionType === 'Credit' ? (
-                              <>
-                                <SelectItem value="Cash Deposit">Cash Deposit</SelectItem>
-                                <SelectItem value="Opening Balance">Opening Balance</SelectItem>
-                                <SelectItem value="Adjustment (In)">Adjustment (In)</SelectItem>
-                              </>
-                            ) : (
-                              <>
-                                <SelectItem value="Salary">Salary Payment</SelectItem>
-                                <SelectItem value="Commission">Commission</SelectItem>
-                                <SelectItem value="Advance">Advance Taken</SelectItem>
-                                <SelectItem value="Incentive">Incentive</SelectItem>
-                                <SelectItem value="Expense Reimbursement">Expense Reimb.</SelectItem>
-                                <SelectItem value="Shortage">Shortage</SelectItem>
-                              </>
-                            )}
-                          </SelectContent>
-                        </Select>
+                        <Label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Amount (₹)</Label>
+                        <div className="relative group">
+                          <div className="absolute left-4 top-1/2 -translate-y-1/2 text-2xl font-black text-slate-400 group-focus-within:text-blue-500 transition-colors">₹</div>
+                          <Input
+                            placeholder="0.00"
+                            className="text-3xl font-black py-8 pl-10 text-center border-2 border-slate-200 focus:border-blue-500 focus:ring-0 rounded-2xl bg-white shadow-inner"
+                            type="number"
+                            value={settlementAmount}
+                            onChange={(e) => setSettlementAmount(e.target.value)}
+                          />
+                        </div>
+                        {bankAccountId !== 'cash' && (
+                          <div className={cn(
+                            "flex items-center gap-2 p-2 rounded-lg text-xs font-medium border",
+                            transactionType === 'Credit' ? "bg-green-50 border-green-100 text-green-700" : "bg-red-50 border-red-100 text-red-700"
+                          )}>
+                            <div className={cn("w-2 h-2 rounded-full", transactionType === 'Credit' ? "bg-green-500" : "bg-red-500")} />
+                            Bank Action: {transactionType === 'Credit' ? 'ADD' : 'DEDUCT'} ₹{settlementAmount || '0'} {transactionType === 'Credit' ? 'to' : 'from'} account.
+                          </div>
+                        )}
                       </div>
-                    </div>
 
-                    <div className="space-y-1.5">
-                      <Label className="text-xs font-bold text-slate-500 uppercase">Amount (₹)</Label>
-                      <Input
-                        placeholder="0.00"
-                        className="text-2xl font-black py-6 text-center border-slate-200 focus:ring-blue-500 rounded-xl"
-                        type="number"
-                        value={settlementAmount}
-                        onChange={(e) => setSettlementAmount(e.target.value)}
-                      />
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <Label className="text-xs font-bold text-slate-500 uppercase">Bank Account</Label>
-                      <Select value={bankAccountId} onValueChange={setBankAccountId}>
-                        <SelectTrigger className={cn("h-10", bankAccountId !== 'cash' && "border-blue-300 bg-blue-50/50")}>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="cash">Internal Cash Registry</SelectItem>
-                          {bankAccounts.map(acc => (
-                            <SelectItem key={acc.id} value={acc.id}>
-                              {acc.name} (₹{acc.balance?.toLocaleString()})
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {bankAccountId !== 'cash' && (
-                        <p className="text-[10px] text-blue-600 font-medium italic">
-                          ℹ️ Bank Action: {transactionType === 'Credit' ? 'ADD' : 'DEDUCT'} ₹{settlementAmount || '0'} {transactionType === 'Credit' ? 'to' : 'from'} account.
-                        </p>
-                      )}
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <Label className="text-xs font-bold text-slate-500 uppercase">Remarks</Label>
-                      <Input
-                        placeholder="Optional details..."
-                        className="h-9 text-xs"
-                        value={settlementNotes}
-                        onChange={(e) => setSettlementNotes(e.target.value)}
-                      />
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Remarks</Label>
+                        <Input
+                          placeholder="What is this for? (Optional)"
+                          className="h-11 border-slate-200 bg-slate-50/50 focus:bg-white transition-all text-sm px-4"
+                          value={settlementNotes}
+                          onChange={(e) => setSettlementNotes(e.target.value)}
+                        />
+                      </div>
                     </div>
 
 

@@ -36,7 +36,8 @@ import {
   CheckCircle,
   BarChart,
   Clock,
-  AlertTriangle
+  AlertTriangle,
+  History
 } from 'lucide-react';
 
 // Separate menu items for each role
@@ -434,6 +435,13 @@ const accountsMenuItems = [
     label: 'Bank & Cash',
     path: '/accounts/bank-cash',
     icon: CreditCard,
+    module: 'accounts',
+    feature: 'bankAndCash'
+  },
+  {
+    label: 'Ledger',
+    path: '/accounts/ledger',
+    icon: History,
     module: 'accounts',
     feature: 'bankAndCash'
   },

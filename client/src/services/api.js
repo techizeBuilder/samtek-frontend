@@ -730,6 +730,16 @@ class APIService {
   async reconcileTransaction(id, data) {
     return this.put(`/accounts/bank-cash/reconcile/${id}`, data);
   }
+
+  async getLedgerRecords(params = {}) {
+    const queryParams = new URLSearchParams();
+    Object.keys(params).forEach(key => {
+      if (params[key] !== undefined && params[key] !== '') {
+        queryParams.append(key, params[key]);
+      }
+    });
+    return this.get(`/accounts/ledger?${queryParams.toString()}`);
+  }
 }
 
 export const api = new APIService();

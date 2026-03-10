@@ -83,6 +83,7 @@ import ReceivableAgeing from "@/pages/accounts/ReceivableAgeing";
 import SalesReports from "@/pages/accounts/SalesReports";
 import Expenses from "@/pages/accounts/Expenses";
 import FinancialSummary from "@/pages/accounts/FinancialSummary";
+import LedgerRecord from "@/pages/accounts/LedgerRecord";
 import DeliveryChallan from "@/pages/dispatch/DeliveryChallan";
 import DispatchHistory from "@/pages/dispatch/DispatchHistory";
 import SalesApproval from "@/pages/SalesApproval";
@@ -488,6 +489,11 @@ function Router() {
       <Route path="/accounts/bank-cash">
         <ProtectedRoute requiredRole="Accounts">
           <BankAndCash />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/accounts/ledger">
+        <ProtectedRoute requiredRole="Accounts">
+          <LedgerRecord />
         </ProtectedRoute>
       </Route>
       <Route path="/accounts/inter-unit">
