@@ -36,6 +36,10 @@ const userSchema = new mongoose.Schema({
     enum: Object.values(USER_ROLES),
     default: USER_ROLES.PRODUCTION
   },
+  unit: {
+    type: String,
+    required: false
+  },
   
   // Company assignment for location-specific access
   companyId: {
