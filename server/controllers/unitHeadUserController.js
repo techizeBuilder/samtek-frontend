@@ -807,7 +807,10 @@ export const createUnitUser = async (req, res) => {
       password,
       unit: req.user.unit,
       companyId: req.user.companyId,
-      permissions: permissions || {},
+      permissions: {
+        role: role.toLowerCase().replace(' ', '_'), // Set a default permission role based on user role
+        ...permissions
+      },
       isActive: true
     });
 
