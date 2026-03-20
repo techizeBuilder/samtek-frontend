@@ -129,12 +129,12 @@ const unitHeadMenuItems = [
     icon: Truck,
     module: 'dispatches'
   },
-  {
-    label: 'Accounts',
-    path: '/unit-head/accounts',
-    icon: Calculator,
-    module: 'accounts'
-  },
+  // {
+  //   label: 'Accounts',
+  //   path: '/unit-head/accounts',
+  //   icon: Calculator,
+  //   module: 'accounts'
+  // },
   {
     label: 'Inventory',
     path: '/unit-head/inventory',
