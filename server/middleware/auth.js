@@ -65,13 +65,23 @@ const authenticateToken = async (req, res, next) => {
 const authorizeRoles = (...roles) => {
   return (req, res, next) => {
     if (!req.user) {
+      console.log('❌ Auth - No user in request');
       return res.status(401).json({ message: 'User not authenticated.' });
     }
 
     if (!roles.includes(req.user.role)) {
-      return res.status(403).json({ message: 'Access denied. Insufficient permissions.' });
+      console.log(`❌ Auth - Role mismatch! User role: "${req.user.role}", Required roles: [${roles.join(', ')}]`);
+      return res.status(403).json({ 
+        message: 'Access denied. Insufficient permissions.',
+        debug: {
+          userRole: req.user.role,
+          requiredRoles: roles,
+          path: req.originalUrl
+        }
+      });
     }
 
+    console.log(`✅ Auth - Role authorized: "${req.user.role}"`);
     next();
   };
 };
