@@ -18,8 +18,14 @@ export function ProtectedRoute({ children, requiredRole = null }) {
   }
 
   // Check role restriction if specified - STRICT role checking
-  // Exception: Super Admin can access all pages regardless of role restriction
-  if (requiredRole && user.role !== requiredRole && user.role !== 'Super Admin') {
+  // Exception 1: Super Admin can access all pages regardless of role restriction
+  // Exception 2: Unit Head can access Accounts role pages
+  const isAuthorized = !requiredRole || 
+    user.role === 'Super Admin' || 
+    user.role === requiredRole ||
+    (requiredRole === 'Accounts' && user.role === 'Unit Head');
+
+  if (!isAuthorized) {
     return (
       <MainLayout>
         <div className="flex items-center justify-center h-64">

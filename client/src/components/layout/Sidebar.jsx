@@ -129,12 +129,12 @@ const unitHeadMenuItems = [
     icon: Truck,
     module: 'dispatches'
   },
-  // {
-  //   label: 'Accounts',
-  //   path: '/unit-head/accounts',
-  //   icon: Calculator,
-  //   module: 'accounts'
-  // },
+  {
+    label: 'Accounts',
+    path: '/accounts-dashboard',
+    icon: Calculator,
+    module: 'accounts'
+  },
   {
     label: 'Inventory',
     path: '/unit-head/inventory',
@@ -527,7 +527,12 @@ export default function Sidebar({ isOpen, onClose }) {
   };
 
   // Get menu items based on user role - much simpler and cleaner
-  const roleMenuItems = getMenuItemsByRole(user?.role);
+  let roleMenuItems = getMenuItemsByRole(user?.role);
+
+  // If Unit Head is in the Accounts section, show Accounts menu items
+  if (user?.role === 'Unit Head' && (location.startsWith('/accounts') || location === '/accounts-dashboard')) {
+    roleMenuItems = getMenuItemsByRole('Accounts');
+  }
 
   // For Production role users, apply strict filtering to only show production items
   let filteredMenuItems;

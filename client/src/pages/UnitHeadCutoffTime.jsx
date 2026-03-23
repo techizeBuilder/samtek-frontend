@@ -10,6 +10,8 @@ const UnitHeadCutoffTime = () => {
 
   // Show loading state while auth is initializing
   if (loading) {
+
+    
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
