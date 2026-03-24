@@ -113,7 +113,7 @@ accountsRouter.get(
 // Debug endpoint - check for sales persons
 accountsRouter.get(
   '/debug/check-sales-persons',
-  authorizeRoles('Super Admin', 'Admin', 'Accounts'),
+  authorizeRoles('Super Admin', 'Admin', 'Accounts', 'Unit Head'),
   debugCheckSalesPersons
 );
 
@@ -251,7 +251,7 @@ accountsRouter.get('/sales/returns', authorizeRoles('Accounts', 'Super Admin', '
 accountsRouter.get('/sales/damages', authorizeRoles('Accounts', 'Super Admin', 'Unit Head', 'Unit Manager'), getSalesDamagesList);
 
 // DEBUG endpoint - remove after fixing
-accountsRouter.get('/debug/returns', authorizeRoles('Accounts', 'Super Admin'), debugReturnCollection);
+accountsRouter.get('/debug/returns', authorizeRoles('Accounts', 'Super Admin', 'Unit Head'), debugReturnCollection);
 accountsRouter.get('/debug/user-and-returns', debugUserAndReturns);
 accountsRouter.get('/debug/show-all-returns', debugShowAllReturns);
 
