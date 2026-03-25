@@ -13,29 +13,42 @@ import mongoose from 'mongoose';
  */
 export const getSalesSummary = async (req, res) => {
   try {
-    const { date, companyId } = req.query;
+    const { date, companyId, fromDate, toDate } = req.query;
     const userRole = req.user.role;
     const userCompanyId = req.user.companyId;
 
     // Date handling enabled for unit-manager indent-summary
+    let dailyFilter = {};
     let summaryDate = null;
-    if (date) {
-      summaryDate = new Date(date);
-      if (isNaN(summaryDate.getTime())) {
-        return res.status(400).json({
-          success: false,
-          message: 'Invalid date format. Use YYYY-MM-DD'
-        });
-      }
-      summaryDate.setUTCHours(0, 0, 0, 0);
-    }
     
-    // If no date provided, use today's date
-    if (!summaryDate) {
-      summaryDate = new Date();
-      summaryDate.setUTCHours(0, 0, 0, 0);
+    if (fromDate && toDate) {
+      const start = new Date(fromDate);
+      const end = new Date(toDate);
+      if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
+        start.setUTCHours(0, 0, 0, 0);
+        end.setUTCHours(23, 59, 59, 999);
+        dailyFilter.date = { $gte: start, $lte: end };
+        summaryDate = start; // Fallback for UI fields that expect a single date
+        console.log(`📅 Range filtering: ${start.toISOString()} to ${end.toISOString()}`);
+      }
+    } else if (date) {
+      summaryDate = new Date(date);
+      if (!isNaN(summaryDate.getTime())) {
+        summaryDate.setUTCHours(0, 0, 0, 0);
+        dailyFilter.date = summaryDate;
+        console.log(`📅 Single date filtering: ${summaryDate.toISOString().split('T')[0]}`);
+      }
     }
 
+    // Default to today if no date provided at all
+    if (!summaryDate || Object.keys(dailyFilter).length === 0) {
+      summaryDate = new Date();
+      summaryDate.setUTCHours(0, 0, 0, 0);
+      dailyFilter.date = summaryDate;
+      console.log('📅 Default behavior: filtering for today');
+    }
+
+    
     // Company filtering based on user role
     let filterCompanyId;
     if (userRole === 'Unit Manager' || userRole === 'Unit Head') {
@@ -57,11 +70,14 @@ export const getSalesSummary = async (req, res) => {
       });
     }
 
-    console.log('🔍 Getting product summary for date:', summaryDate.toISOString().split('T')[0]);
+    if (filterCompanyId) {
+      dailyFilter.companyId = new mongoose.Types.ObjectId(filterCompanyId);
+    }
+
     console.log('🏢 Filter company ID:', filterCompanyId);
     console.log('👤 User role:', userRole);
 
-    // Step 1: Get master product data from ProductDailySummary
+    // Step 1: Get master product data
     const masterFilter = {};
     if (filterCompanyId) {
       masterFilter.companyId = new mongoose.Types.ObjectId(filterCompanyId);
@@ -72,21 +88,12 @@ export const getSalesSummary = async (req, res) => {
       .populate('companyId', 'name')
       .sort({ productName: 1 });
 
-    console.log('📊 Master products found:', masterProducts.length);
-
-    // Step 2: Get daily details for the specific date - with fallback to most recent
-    const dailyFilter = {
-      date: summaryDate
-    };
-    if (filterCompanyId) {
-      dailyFilter.companyId = new mongoose.Types.ObjectId(filterCompanyId);
-    }
-
+    // Step 2: Get daily details for the specific criteria
     let dailyDetails = await ProductDetailsDailySummary.find(dailyFilter)
       .populate('productId', 'name category subCategory')
       .populate('companyId', 'name');
 
-    console.log('📅 Daily details found for date:', dailyDetails.length);
+    console.log('📊 Daily details found:', dailyDetails.length);
 
     // If no data for the specific date, show master products with empty sales data
     if (dailyDetails.length === 0) {
@@ -104,113 +111,134 @@ export const getSalesSummary = async (req, res) => {
         batchAdjusted: 0,
         toBeProduced: 0
       }));
-      
-      dailyDetails = emptyDailyDetails;
-      console.log('📦 Created empty daily details for:', dailyDetails.length, 'master products');
     }
 
-    // Step 3: Create a map of daily details to be used for lookup
-    const dailyDetailsMap = new Map();
-    dailyDetails.forEach(detail => {
-      if (detail.productId && detail.productId._id) {
-        dailyDetailsMap.set(detail.productId._id.toString(), detail);
-      }
-    });
+    // Aggregated range check
+    const isRange = fromDate && toDate && fromDate !== toDate;
 
-    // Step 4: Combine master data with daily details
-    const combinedSummaries = masterProducts.map(masterProduct => {
-      const productId = masterProduct.productId ? masterProduct.productId._id.toString() : null;
-      const dailyDetail = dailyDetailsMap.get(productId);
-      
-      // Get qtyPerBatch from Item.batch field or fallback to stored value
-      let qtyPerBatch = masterProduct.qtyPerBatch || 0;
-      if (masterProduct.productId?.batch) {
-        const batchValue = Number(masterProduct.productId.batch);
-        if (!isNaN(batchValue) && batchValue > 0) {
-          qtyPerBatch = batchValue;
+    // Step 3: Create a map or list of daily details
+    // If it's a range, we show all individual daily entries (History view)
+    // If it's a single day, we show all master products (Approval view)
+    
+    let processedSummaries = [];
+
+    if (isRange) {
+      console.log('📅 RANGE MODE: Processing individual daily records for range...');
+      processedSummaries = dailyDetails.map(detail => {
+        // Get qtyPerBatch from Item.batch field or master summary
+        const masterProduct = masterProducts.find(mp => 
+          mp.productId?._id?.toString() === detail.productId?._id?.toString()
+        );
+        let qtyPerBatch = masterProduct?.qtyPerBatch || detail.qtyPerBatch || 0;
+        
+        return {
+          _id: detail._id,
+          dailyDetailsId: detail._id,
+          productId: detail.productId,
+          productName: detail.productId?.name || masterProduct?.productName || "Unknown",
+          companyId: detail.companyId,
+          date: detail.date,
+          qtyPerBatch: qtyPerBatch,
+          packing: detail.packing || 0,
+          physicalStock: detail.physicalStock || 0,
+          batchAdjusted: detail.batchAdjusted || 0,
+          totalQuantity: detail.totalQuantity || 0,
+          totalIndent: detail.totalIndent || 0,
+          productionFinalBatches: detail.productionFinalBatches || 0,
+          toBeProducedDay: detail.toBeProducedDay || 0,
+          toBeProducedBatches: detail.toBeProducedBatches || 0,
+          produceBatches: detail.produceBatches || 0,
+          expiryShortage: detail.expiryShortage || 0,
+          balanceFinalBatches: detail.balanceFinalBatches || 0,
+          status: detail.status || 'pending',
+          hasDailyData: true,
+          updatedAt: detail.updatedAt
+        };
+      });
+    } else {
+      console.log('📅 SINGLE DATE MODE: Processing master products logic...');
+      const dailyDetailsMap = new Map();
+      dailyDetails.forEach(detail => {
+        const pId = detail.productId?._id?.toString() || detail.productId?.toString();
+        if (pId) dailyDetailsMap.set(pId, detail);
+      });
+
+      processedSummaries = masterProducts.map(masterProduct => {
+        const productId = masterProduct.productId ? masterProduct.productId._id.toString() : null;
+        const dailyDetail = dailyDetailsMap.get(productId);
+        
+        // Get qtyPerBatch from Item.batch field or fallback
+        let qtyPerBatch = masterProduct.qtyPerBatch || 0;
+        if (masterProduct.productId?.batch) {
+          const batchValue = Number(masterProduct.productId.batch);
+          if (!isNaN(batchValue) && batchValue > 0) qtyPerBatch = batchValue;
         }
-      }
 
-      return {
-        _id: masterProduct._id,
-        productId: masterProduct.productId,
-        productName: masterProduct.productName,
-        companyId: masterProduct.companyId,
-        date: summaryDate,
-        qtyPerBatch: qtyPerBatch,
-        
-        // Daily fields from ProductDetailsDailySummary (with defaults)
-        packing: dailyDetail?.packing || 0,
-        physicalStock: dailyDetail?.physicalStock || 0,
-        batchAdjusted: dailyDetail?.batchAdjusted || 0,
-        totalQuantity: dailyDetail?.totalQuantity || 0,
-        totalIndent: dailyDetail?.totalIndent || 0,
-        productionFinalBatches: dailyDetail?.productionFinalBatches || 0,
-        toBeProducedDay: dailyDetail?.toBeProducedDay || 0,
-        toBeProducedBatches: dailyDetail?.toBeProducedBatches || 0,
-        produceBatches: dailyDetail?.produceBatches || 0,
-        expiryShortage: dailyDetail?.expiryShortage || 0,
-        balanceFinalBatches: dailyDetail?.balanceFinalBatches || 0,
-        status: dailyDetail?.status || 'pending',
-        
-        // Additional metadata
-        hasDailyData: !!dailyDetail,
-        dailyDetailsId: dailyDetail?._id || null,
-        createdAt: masterProduct.createdAt,
-        updatedAt: dailyDetail?.updatedAt || masterProduct.updatedAt
-      };
-    });
-
-    console.log('🔄 Combined summaries created:', combinedSummaries.length);
-    console.log('📈 Products with daily data:', combinedSummaries.filter(s => s.hasDailyData).length);
+        return {
+          _id: masterProduct._id,
+          productId: masterProduct.productId,
+          productName: masterProduct.productName,
+          companyId: masterProduct.companyId,
+          date: summaryDate,
+          qtyPerBatch: qtyPerBatch,
+          packing: dailyDetail?.packing || 0,
+          physicalStock: dailyDetail?.physicalStock || 0,
+          batchAdjusted: dailyDetail?.batchAdjusted || 0,
+          totalQuantity: dailyDetail?.totalQuantity || 0,
+          totalIndent: dailyDetail?.totalIndent || 0,
+          productionFinalBatches: dailyDetail?.productionFinalBatches || 0,
+          toBeProducedDay: dailyDetail?.toBeProducedDay || 0,
+          toBeProducedBatches: dailyDetail?.toBeProducedBatches || 0,
+          produceBatches: dailyDetail?.produceBatches || 0,
+          expiryShortage: dailyDetail?.expiryShortage || 0,
+          balanceFinalBatches: dailyDetail?.balanceFinalBatches || 0,
+          status: dailyDetail?.status || 'pending',
+          hasDailyData: !!dailyDetail,
+          dailyDetailsId: dailyDetail?._id || null,
+          createdAt: masterProduct.createdAt,
+          updatedAt: dailyDetail?.updatedAt || masterProduct.updatedAt
+        };
+      });
+    }
 
     // Step 5: Get sales breakdown for orders
     const salesBreakdown = await getSalesBreakdown(
-      combinedSummaries.map(s => s.productId),
-      summaryDate,
+      masterProducts.map(s => s.productId),
+      dailyFilter.date,
       filterCompanyId
     );
 
-    console.log('📊 Sales breakdown processed:', salesBreakdown.length);
-
-    // Step 6: Attach sales data to each product (salesBreakdown separate from summary)
-    const productsWithSalesData = combinedSummaries.map(product => {
+    // Step 6: Attach sales data (For range, we must match by product AND date)
+    const productsWithSalesData = processedSummaries.map(product => {
+      // Find matching salesperson data
       const salesData = salesBreakdown.find(s => 
         s.productId && product.productId &&
-        s.productId._id.toString() === product.productId._id.toString()
+        s.productId.toString() === (product.productId._id?.toString() || product.productId.toString())
       );
 
       return {
         ...product,
-        summary: {
-          totalIndent: salesData?.summary?.totalIndent || 0,
-          totalQuantity: product.totalQuantity || 0,
-          productionFinalBatches: product.productionFinalBatches || 0,
-          status: product.status || 'pending'
-        },
-        salesBreakdown: salesData?.salesBreakdown || [] // Separate from summary
+        // Ensure totalQuantity and totalIndent are populated (from real-time breakdown if needed)
+        totalQuantity: Number(product.totalQuantity) || Number(salesData?.summary?.totalIndent) || 0,
+        totalIndent: Number(product.totalIndent) || Number(salesData?.summary?.totalIndent) || 0,
+        salesBreakdown: salesData?.salesBreakdown || []
       };
     });
 
-    // Step 7: Build the response with production groups (new grouped format)
+
+    // Step 7: Build the response with production groups
     const productGroups = await ProductionGroup.find({
       ...(filterCompanyId && { company: filterCompanyId }),
       isActive: true
     }).populate('items');
 
     const validProducts = productsWithSalesData.filter(p => 
-      p.productId && p.productId._id && p.productName
+      p.productId && (p.productId._id || p.productId) && p.productName
     );
-
-    console.log('🔍 Found production groups:', productGroups.length);
-    console.log('📦 Valid products for grouping:', validProducts.length);
-
     const productionGroupsData = productGroups.map(group => {
       const groupProducts = validProducts.filter(product => {
-        return group.items.some(item => 
-          product.productId && 
-          item._id.toString() === product.productId._id.toString()
-        );
+        const pidStr = product.productId._id?.toString() || product.productId.toString();
+        return group.items.some(item => item._id.toString() === pidStr);
       });
 
       console.log(`📋 Group "${group.name}" has ${groupProducts.length} products`);

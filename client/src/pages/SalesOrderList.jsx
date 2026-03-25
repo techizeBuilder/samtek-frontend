@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import {
@@ -85,6 +85,15 @@ const statusOptions = [
 ];
 
 export default function SalesOrderList() {
+  // Default to today's date (IST-aware)
+  const getTodayStr = () => {
+    const now = new Date();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  };
+
   const [filters, setFilters] = useState({
     page: 1,
     limit: 10,
@@ -92,8 +101,8 @@ export default function SalesOrderList() {
     search: '',
     customerId: 'all',
     salesPersonId: 'all',
-    dateFrom: '',
-    dateTo: ''
+    dateFrom: getTodayStr(),
+    dateTo: getTodayStr()
   });
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
@@ -103,8 +112,8 @@ export default function SalesOrderList() {
     newStatus: '',
     notes: ''
   });
-  const [dateFrom, setDateFrom] = useState(null);
-  const [dateTo, setDateTo] = useState(null);
+  const [dateFrom, setDateFrom] = useState(new Date());
+  const [dateTo, setDateTo] = useState(new Date());
   const [isBulkApproveOpen, setIsBulkApproveOpen] = useState(false);
   const [processingAction, setProcessingAction] = useState({ orderId: null, action: null });
   const queryClient = useQueryClient();
@@ -255,6 +264,7 @@ export default function SalesOrderList() {
   };
 
   const clearFilters = () => {
+    const today = getTodayStr();
     setFilters({
       page: 1,
       limit: 10,
@@ -262,11 +272,11 @@ export default function SalesOrderList() {
       search: '',
       customerId: 'all',
       salesPersonId: 'all',
-      dateFrom: '',
-      dateTo: ''
+      dateFrom: today,
+      dateTo: today
     });
-    setDateFrom(null);
-    setDateTo(null);
+    setDateFrom(new Date());
+    setDateTo(new Date());
   };
 
   const activeFiltersCount = Object.values({
@@ -322,7 +332,7 @@ export default function SalesOrderList() {
             Sales Order List
           </h1>
           <p className="text-gray-600 mt-1">
-            Manage and track all sales orders with advanced filtering
+            Showing <span className="font-semibold text-blue-600">today's orders only</span> — use date filter to view other dates
           </p>
         </div>
       </div>

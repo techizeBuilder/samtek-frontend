@@ -148,6 +148,24 @@ const unitHeadMenuItems = [
     module: 'customers'
   },
   {
+    label: 'Indent Summary',
+    path: '/unit-head/indent-summary',
+    icon: FileText,
+    module: null
+  },
+  {
+    label: 'Dispatch Summary',
+    path: '/unit-head/dispatch-summary',
+    icon: Truck,
+    module: 'dispatches'
+  },
+  {
+    label: 'Production Reports',
+    path: '/unit-head/production-reports',
+    icon: BarChart,
+    module: null
+  },
+  {
     label: 'Production Group',
     path: '/unit-head/production-group',
     icon: Users,

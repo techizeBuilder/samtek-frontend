@@ -89,6 +89,9 @@ import DispatchHistory from "@/pages/dispatch/DispatchHistory";
 import SalesApproval from "@/pages/SalesApproval";
 import SalesOrderList from "@/pages/SalesOrderList";
 import UnitHeadProductionGroup from "@/components/unit-head/UnitHeadProductionGroup";
+import UnitHeadIndentSummary from "@/pages/unit-head/UnitHeadIndentSummary";
+import UnitHeadDispatchSummary from "@/pages/unit-head/UnitHeadDispatchSummary";
+import UnitHeadProductionReports from "@/pages/unit-head/UnitHeadProductionReports";
 import UnitManagerProductionGroup from "@/pages/unit-manager/UnitManagerProductionGroup";
 import UnitManagerReturns from "@/pages/unit-manager/UnitManagerReturns";
 import UnitManagerLayout from "@/components/layout/UnitManagerLayout";
@@ -326,6 +329,21 @@ function Router() {
       <Route path="/unit-head/cutoff-time">
         <ProtectedRoute requiredRole="Unit Head">
           <UnitHeadCutoffTime />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/unit-head/indent-summary">
+        <ProtectedRoute requiredRole="Unit Head">
+          <UnitHeadIndentSummary />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/unit-head/dispatch-summary">
+        <ProtectedRoute requiredRole="Unit Head">
+          <UnitHeadDispatchSummary />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/unit-head/production-reports">
+        <ProtectedRoute requiredRole="Unit Head">
+          <UnitHeadProductionReports />
         </ProtectedRoute>
       </Route>
 
