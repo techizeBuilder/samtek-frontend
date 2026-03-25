@@ -102,18 +102,26 @@ export const getSalesBreakdown = async (productIds, date, companyId) => {
 
     // Apply date filter if provided
     if (date) {
-      const filterDate = new Date(date);
-      filterDate.setUTCHours(0, 0, 0, 0);
-      const nextDay = new Date(filterDate.getTime() + 24 * 60 * 60 * 1000);
-      
-      matchFilter.orderDate = {
-        $gte: filterDate,
-        $lt: nextDay
-      };
-      console.log(`📅 Applying date filter: ${filterDate.toISOString()} to ${nextDay.toISOString()}`);
+      if (date instanceof Date) {
+        // Single date logic
+        const filterDate = new Date(date);
+        filterDate.setUTCHours(0, 0, 0, 0);
+        const nextDay = new Date(filterDate.getTime() + 24 * 60 * 60 * 1000);
+        
+        matchFilter.orderDate = {
+          $gte: filterDate,
+          $lt: nextDay
+        };
+        console.log(`📅 Single date filter: ${filterDate.toISOString()} to ${nextDay.toISOString()}`);
+      } else if (typeof date === 'object' && (date.$gte || date.$lte)) {
+        // Range filter already formatted (from controller)
+        matchFilter.orderDate = date;
+        console.log('📅 Date range filter applied from object:', JSON.stringify(date));
+      }
     } else {
       console.log(`📅 No date filter applied - getting all orders`);
     }
+
 
     console.log('🔍 Match filter for orders:', matchFilter);
 
