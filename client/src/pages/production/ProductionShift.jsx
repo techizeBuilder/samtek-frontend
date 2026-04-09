@@ -723,7 +723,7 @@ export default function ProductionShift() {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="px-2 py-4 sm:px-4 sm:py-5 md:px-6 md:py-6 space-y-6">
       {/* Header - WITH ADD NEW BATCH BUTTON */}
       <div className="flex justify-between items-center">
         <div>
@@ -785,7 +785,7 @@ export default function ProductionShift() {
       </div>
 
       {/* Production Shift Data Table */}
-      <Card>
+      <Card className="-mx-2 md:mx-0">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Clock className="w-5 h-5" />
@@ -798,38 +798,213 @@ export default function ProductionShift() {
               No production groups found
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="text-center">Batch No.</TableHead>
-                    <TableHead>Product Group</TableHead>
-                    <TableHead className="text-center">No. Of Batches</TableHead>
-                    <TableHead>Moulding Time</TableHead>
-                    <TableHead>Unloading Time</TableHead>
-                    <TableHead>Production Loss</TableHead>
-                    <TableHead>Qty/Batch</TableHead>
-                    <TableHead className="text-gray-700">Qty Achieved/Batch</TableHead>
-                    <TableHead>Note</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {productionGroups.map((group, groupIndex) => (
-                    <React.Fragment key={group._id}>
-                      {/* Batch Rows - Clean simple layout */}
-                      {renderBatchRows(group, groupIndex)}
-                    </React.Fragment>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+            <>
+              {/* Desktop/tablet: keep table view */}
+              <div className="hidden md:block overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="text-center">Batch No.</TableHead>
+                      <TableHead>Product Group</TableHead>
+                      <TableHead className="text-center">No. Of Batches</TableHead>
+                      <TableHead>Moulding Time</TableHead>
+                      <TableHead>Unloading Time</TableHead>
+                      <TableHead>Production Loss</TableHead>
+                      <TableHead>Qty/Batch</TableHead>
+                      <TableHead className="text-gray-700">Qty Achieved/Batch</TableHead>
+                      <TableHead>Note</TableHead>
+                      <TableHead>Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {productionGroups.map((group, groupIndex) => (
+                      <React.Fragment key={group._id}>
+                        {renderBatchRows(group, groupIndex)}
+                      </React.Fragment>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Mobile: stacked cards, no horizontal scroll */}
+              <div className="md:hidden space-y-3">
+                {productionGroups.map((group, groupIndex) => {
+                  const batchCount = group.noOfBatchesForProduction || 1;
+                  const cards = [];
+
+                  for (let batchIndex = 0; batchIndex < batchCount; batchIndex++) {
+                    const batchKey = `${group._id}_batch_${batchIndex + 1}`;
+                    const batch = batchData[batchKey] || {};
+                    const batchNumber = (groupIndex * batchCount) + (batchIndex + 1);
+                    const item = group.items && group.items[batchIndex] ? group.items[batchIndex] : null;
+                    const displayBatchNo = item?.batchNo || `BATNO${batchNumber.toString().padStart(2, '0')}`;
+                    const totalBatchAdjusted = batch.totalBatchAdjusted !== undefined ? batch.totalBatchAdjusted : 1;
+                    const qtyPerBatch = group.qtyPerBatch || 0;
+                    const qtyBatch = batch.qtyBatch || 0;
+                    const qtyAchieved = batch.qtyAchieved !== undefined
+                      ? parseFloat((batch.qtyAchieved || 0).toFixed(2))
+                      : Math.max(0, Math.round((totalBatchAdjusted || 1) * (qtyBatch || 0)) - (batch.productionLoss || 0));
+
+                    cards.push(
+                      <div key={batchKey} className="border border-gray-200 rounded-lg bg-white p-3 shadow-sm">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <div className="text-xs text-gray-500">Batch No.</div>
+                            <div className="text-sm font-bold text-blue-600">{displayBatchNo}</div>
+                            <div className="mt-1 text-sm font-medium text-gray-900">{group.name}</div>
+                            {batchCount > 1 && (
+                              <div className="text-[11px] text-gray-500">Batch {batchIndex + 1} of {batchCount}</div>
+                            )}
+                          </div>
+                          <div className="text-right text-[11px] text-gray-600">
+                            <div>No. of Batches: <span className="font-semibold text-purple-600">{totalBatchAdjusted}</span></div>
+                          </div>
+                        </div>
+
+                        <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                          <div>
+                            <div className="text-[11px] text-gray-500">Qty/Batch</div>
+                            <div className="font-semibold text-blue-600 text-sm">{qtyPerBatch}</div>
+                          </div>
+                          <div>
+                            <div className="text-[11px] text-gray-500">Qty Achieved/Batch</div>
+                            <div className="font-semibold text-gray-800 text-sm">{qtyAchieved}</div>
+                            <div className="text-[10px] text-gray-500 mt-0.5">
+                              ({totalBatchAdjusted} × {qtyBatch || 0}) - {batch.productionLoss || 0}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                          <div>
+                            <div className="text-[11px] text-gray-500 mb-1">Moulding Time</div>
+                            {!batch.mouldingTime ? (
+                              <Button
+                                onClick={() => {
+                                  const now = new Date();
+                                  handleBatchDataChange(batchKey, 'mouldingTime', now.toISOString());
+                                }}
+                                disabled={actionLoading[batchKey]}
+                                className="w-full bg-green-600 hover:bg-green-700 text-white h-8 text-[11px] disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                {actionLoading[batchKey] ? 'Starting...' : 'Start Moulding'}
+                              </Button>
+                            ) : (
+                              <div className="p-2 bg-green-50 rounded border text-[11px]">
+                                <div className="font-medium text-green-700">Started</div>
+                                <div className="text-gray-600">
+                                  {new Date(batch.mouldingTime).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                                  {' '}at{' '}
+                                  {new Date(batch.mouldingTime).toLocaleTimeString('en-IN', {hour: '2-digit', minute:'2-digit', hour12: true})}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                          <div>
+                            <div className="text-[11px] text-gray-500 mb-1">Unloading Time</div>
+                            {!batch.unloadingTime ? (
+                              <Button
+                                onClick={() => {
+                                  const now = new Date();
+                                  handleBatchDataChange(batchKey, 'unloadingTime', now.toISOString());
+                                }}
+                                disabled={!batch.mouldingTime || actionLoading[batchKey]}
+                                className="w-full bg-blue-600 hover:bg-blue-700 text-white h-8 text-[11px] disabled:bg-gray-300 disabled:text-gray-500"
+                                title={!batch.mouldingTime ? 'Please start moulding first' : 'Click to end and record current time'}
+                              >
+                                {actionLoading[batchKey] ? 'Ending...' : 'End Moulding'}
+                              </Button>
+                            ) : (
+                              <div className="p-2 bg-blue-50 rounded border text-[11px]">
+                                <div className="font-medium text-blue-700">Ended</div>
+                                <div className="text-gray-600">
+                                  {new Date(batch.unloadingTime).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                                  {' '}at{' '}
+                                  {new Date(batch.unloadingTime).toLocaleTimeString('en-IN', {hour: '2-digit', minute:'2-digit', hour12: true})}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                          <div>
+                            <div className="text-[11px] text-gray-500 mb-1">Production Loss</div>
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              placeholder="0"
+                              value={batch.productionLoss !== undefined && batch.productionLoss !== null ? batch.productionLoss : ''}
+                              disabled={!batch.mouldingTime || !batch.unloadingTime || actionLoading[batchKey]}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                setBatchData(prev => ({
+                                  ...prev,
+                                  [batchKey]: {
+                                    ...prev[batchKey],
+                                    productionLoss: value === '' ? '' : parseFloat(value) || 0
+                                  }
+                                }));
+                              }}
+                              onBlur={(e) => {
+                                const value = e.target.value;
+                                handleBatchDataChange(batchKey, 'productionLoss', value === '' ? 0 : parseFloat(value) || 0);
+                              }}
+                              className={`w-full text-[11px] ${!batch.mouldingTime || !batch.unloadingTime || actionLoading[batchKey] ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                            />
+                          </div>
+                          <div>
+                            <div className="text-[11px] text-gray-500 mb-1">Notes</div>
+                            <Input
+                              type="text"
+                              placeholder="Add note..."
+                              value={batch.notes || ''}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                setBatchData(prev => ({
+                                  ...prev,
+                                  [batchKey]: {
+                                    ...prev[batchKey],
+                                    notes: value
+                                  }
+                                }));
+                              }}
+                              onBlur={(e) => {
+                                const value = e.target.value;
+                                handleBatchDataChange(batchKey, 'notes', value);
+                              }}
+                              className="w-full text-[11px]"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="mt-3 flex justify-end">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 px-3 text-[11px]"
+                            onClick={() => handleViewBatch(group, null, batchKey)}
+                            title="View Group Details"
+                          >
+                            <Eye className="w-3 h-3 mr-1" />
+                            View Details
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  return cards;
+                })}
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
 
       {/* Ungrouped Items Section */}
-      <Card>
+      <Card className="-mx-2 md:mx-0">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Package className="w-5 h-5" />
@@ -842,78 +1017,275 @@ export default function ProductionShift() {
               No ungrouped items found
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="text-center">Batch No.</TableHead>
-                    <TableHead>Product Name</TableHead>
-                    <TableHead className="text-center">No. Of Batches</TableHead>
-                    <TableHead>Moulding Time</TableHead>
-                    <TableHead>Unloading Time</TableHead>
-                    <TableHead>Production Loss</TableHead>
-                    <TableHead>Qty/Batch</TableHead>
-                    <TableHead className="text-gray-700">Qty Achieved/Batch</TableHead>
-                    <TableHead>Note</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {ungroupedItems.map((item, index) => {
-                    const itemKey = `ungrouped_${item._id}`;
-                    const batch = ungroupedBatchData[itemKey] || {};
-                    
-                    // Debug logging to see item structure
-                    if (index < 3) { // Only log first 3 items to avoid spam
-                      console.log(`🔍 Item ${index + 1}:`, {
-                        id: item._id,
-                        originalItemId: item.originalItemId,
-                        name: item.name,
-                        batchNumber: item.batchNumber,
-                        itemKey: itemKey
-                      });
-                    }
-                    
-                    return (
-                      <TableRow key={item._id}>
-                        {/* Batch No. */}
-                        <TableCell className="text-center font-medium">
-                          <div className="text-sm font-bold text-blue-600">
-                            {item.batchNo}
-                          </div>
-                        </TableCell>
-                        
-                        {/* Product Name */}
-                        <TableCell>
-                          <div className="flex items-center space-x-3">
-                            {item.image ? (
-                              <img
-                                src={item.image}
-                                alt={item.name}
-                                className="w-8 h-8 rounded object-cover"
-                              />
+            <>
+              {/* Desktop/tablet: keep table view */}
+              <div className="hidden md:block overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="text-center">Batch No.</TableHead>
+                      <TableHead>Product Name</TableHead>
+                      <TableHead className="text-center">No. Of Batches</TableHead>
+                      <TableHead>Moulding Time</TableHead>
+                      <TableHead>Unloading Time</TableHead>
+                      <TableHead>Production Loss</TableHead>
+                      <TableHead>Qty/Batch</TableHead>
+                      <TableHead className="text-gray-700">Qty Achieved/Batch</TableHead>
+                      <TableHead>Note</TableHead>
+                      <TableHead>Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {ungroupedItems.map((item, index) => {
+                      const itemKey = `ungrouped_${item._id}`;
+                      const batch = ungroupedBatchData[itemKey] || {};
+
+                      if (index < 3) {
+                        console.log(`🔍 Item ${index + 1}:`, {
+                          id: item._id,
+                          originalItemId: item.originalItemId,
+                          name: item.name,
+                          batchNumber: item.batchNumber,
+                          itemKey: itemKey
+                        });
+                      }
+
+                      return (
+                        <TableRow key={item._id}>
+                          <TableCell className="text-center font-medium">
+                            <div className="text-sm font-bold text-blue-600">
+                              {item.batchNo}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center space-x-3">
+                              {item.image ? (
+                                <img
+                                  src={item.image}
+                                  alt={item.name}
+                                  className="w-8 h-8 rounded object-cover"
+                                />
+                              ) : (
+                                <div className="w-8 h-8 rounded bg-gray-200 flex items-center justify-center">
+                                  <Package className="w-4 h-4 text-gray-500" />
+                                </div>
+                              )}
+                              <div>
+                                <div className="font-medium text-sm">{item.name}</div>
+                                <div className="text-xs text-gray-500">{item.code}</div>
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <div className="font-semibold text-purple-600 text-lg">
+                              {batch.totalBatchAdjusted !== undefined ? batch.totalBatchAdjusted : 1}
+                            </div>
+                            <div className="text-xs text-gray-500">batch weight</div>
+                          </TableCell>
+                          <TableCell>
+                            {!batch.mouldingTime ? (
+                              <Button
+                                onClick={() => {
+                                  const now = new Date().toISOString();
+                                  handleUngroupedBatchDataChange(itemKey, 'mouldingTime', now);
+                                }}
+                                disabled={actionLoading[itemKey]}
+                                className="w-full bg-green-600 hover:bg-green-700 text-white h-8 text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                {actionLoading[itemKey] ? (
+                                  <span className="flex items-center gap-1">
+                                    <span className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></span>
+                                    Starting...
+                                  </span>
+                                ) : (
+                                  'Start Moulding'
+                                )}
+                              </Button>
                             ) : (
-                              <div className="w-8 h-8 rounded bg-gray-200 flex items-center justify-center">
-                                <Package className="w-4 h-4 text-gray-500" />
+                              <div className="text-center">
+                                <div className="p-2 bg-green-50 rounded-lg border">
+                                  <div className="text-xs font-medium text-green-700">Started</div>
+                                  <div className="text-xs text-gray-600">
+                                    {new Date(batch.mouldingTime).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })} at{' '}
+                                    {new Date(batch.mouldingTime).toLocaleTimeString('en-IN', {hour: '2-digit', minute:'2-digit', hour12: true})}
+                                  </div>
+                                </div>
                               </div>
                             )}
+                          </TableCell>
+                          <TableCell>
+                            {!batch.unloadingTime ? (
+                              <Button
+                                onClick={() => {
+                                  const now = new Date().toISOString();
+                                  handleUngroupedBatchDataChange(itemKey, 'unloadingTime', now);
+                                }}
+                                disabled={!batch.mouldingTime || actionLoading[itemKey]}
+                                className="w-full bg-blue-600 hover:bg-blue-700 text-white disabled:bg-gray-300 disabled:text-gray-500 h-8 text-xs"
+                                title={!batch.mouldingTime ? "Please start moulding first" : "Click to end and record current time"}
+                              >
+                                {actionLoading[itemKey] ? (
+                                  <span className="flex items-center gap-1">
+                                    <span className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></span>
+                                    Ending...
+                                  </span>
+                                ) : (
+                                  'End Moulding'
+                                )}
+                              </Button>
+                            ) : (
+                              <div className="text-center">
+                                <div className="p-2 bg-blue-50 rounded-lg border">
+                                  <div className="text-xs font-medium text-blue-700">Ended</div>
+                                  <div className="text-xs text-gray-600">
+                                    {new Date(batch.unloadingTime).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })} at{' '}
+                                    {new Date(batch.unloadingTime).toLocaleTimeString('en-IN', {hour: '2-digit', minute:'2-digit', hour12: true})}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              placeholder="0"
+                              value={batch.productionLoss || ''}
+                              disabled={!batch.mouldingTime || !batch.unloadingTime || actionLoading[itemKey]}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                updateUngroupedBatchDataLocal(itemKey, 'productionLoss', value);
+                              }}
+                              onBlur={(e) => {
+                                const value = e.target.value;
+                                handleUngroupedBatchDataChange(itemKey, 'productionLoss', value);
+                              }}
+                              className={`w-20 text-sm ${!batch.mouldingTime || !batch.unloadingTime || actionLoading[itemKey] ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                              title={!batch.mouldingTime || !batch.unloadingTime ? "Please enter both Moulding Time and Unloading Time first" : "Enter production loss"}
+                            />
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <div className="font-medium text-blue-600">
+                              {item.qtyPerBatch || 0}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <span className="text-gray-600 font-medium">
+                              {batch.qtyAchieved !== undefined ? parseFloat((batch.qtyAchieved || 0).toFixed(2)) : Math.max(0, Math.round((batch.totalBatchAdjusted || 1) * (item.qtyPerBatch || 0)) - (parseFloat(batch.productionLoss) || 0))}
+                            </span>
+                            <div className="text-xs text-gray-500">
+                              ({batch.totalBatchAdjusted || 1} × {item.qtyPerBatch || 0}) - {batch.productionLoss || 0}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Input
+                              type="text"
+                              placeholder="Add note..."
+                              value={batch.notes !== undefined ? batch.notes : (item.notes || '')}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                setUngroupedBatchData(prev => ({
+                                  ...prev,
+                                  [itemKey]: {
+                                    ...prev[itemKey],
+                                    notes: value
+                                  }
+                                }));
+                              }}
+                              onBlur={(e) => {
+                                const value = e.target.value;
+                                handleUngroupedBatchDataChange(itemKey, 'notes', value);
+                              }}
+                              className="w-32 text-sm"
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex gap-1">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedBatch({
+                                    batchNo: index + 1,
+                                    item: item,
+                                    batch: batch,
+                                    isUngrouped: true
+                                  });
+                                  setViewModalOpen(true);
+                                }}
+                                title="View Item Details"
+                              >
+                                <Eye className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Mobile: stacked cards, no horizontal scroll */}
+              <div className="md:hidden space-y-3">
+                {ungroupedItems.map((item, index) => {
+                  const itemKey = `ungrouped_${item._id}`;
+                  const batch = ungroupedBatchData[itemKey] || {};
+                  const totalBatches = batch.totalBatchAdjusted !== undefined ? batch.totalBatchAdjusted : 1;
+                  const qtyPerBatch = item.qtyPerBatch || 0;
+                  const qtyAchieved = batch.qtyAchieved !== undefined
+                    ? parseFloat((batch.qtyAchieved || 0).toFixed(2))
+                    : Math.max(0, Math.round(totalBatches * qtyPerBatch) - (parseFloat(batch.productionLoss) || 0));
+
+                  return (
+                    <div key={item._id} className="border border-gray-200 rounded-lg bg-white p-3 shadow-sm">
+                      <div className="flex items-start gap-3">
+                        {item.image ? (
+                          <img
+                            src={item.image}
+                            alt={item.name}
+                            className="w-10 h-10 rounded object-cover"
+                          />
+                        ) : (
+                          <div className="w-10 h-10 rounded bg-gray-200 flex items-center justify-center">
+                            <Package className="w-5 h-5 text-gray-500" />
+                          </div>
+                        )}
+                        <div className="flex-1">
+                          <div className="flex justify-between items-start">
                             <div>
-                              <div className="font-medium text-sm">{item.name}</div>
-                              <div className="text-xs text-gray-500">{item.code}</div>
+                              <div className="text-xs text-gray-500">Batch No.</div>
+                              <div className="text-sm font-bold text-blue-600">{item.batchNo}</div>
+                            </div>
+                            <div className="text-right text-[11px] text-gray-600">
+                              <div>No. of Batches: <span className="font-semibold text-purple-600">{totalBatches}</span></div>
                             </div>
                           </div>
-                        </TableCell>
-
-                        {/* No. Of Batches - Dynamic batch weight */}
-                        <TableCell className="text-center">
-                          <div className="font-semibold text-purple-600 text-lg">
-                            {batch.totalBatchAdjusted !== undefined ? batch.totalBatchAdjusted : 1}
+                          <div className="mt-1">
+                            <div className="text-sm font-medium text-gray-900">{item.name}</div>
+                            <div className="text-[11px] text-gray-500">{item.code}</div>
                           </div>
-                          <div className="text-xs text-gray-500">batch weight</div>
-                        </TableCell>
-                        
-                        {/* Moulding Time - Punch In/Out System */}
-                        <TableCell>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                        <div>
+                          <div className="text-[11px] text-gray-500">Qty/Batch</div>
+                          <div className="font-semibold text-blue-600 text-sm">{qtyPerBatch}</div>
+                        </div>
+                        <div>
+                          <div className="text-[11px] text-gray-500">Qty Achieved/Batch</div>
+                          <div className="font-semibold text-gray-800 text-sm">{qtyAchieved}</div>
+                          <div className="text-[10px] text-gray-500 mt-0.5">
+                            ({totalBatches} × {qtyPerBatch}) - {batch.productionLoss || 0}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                        <div>
+                          <div className="text-[11px] text-gray-500 mb-1">Moulding Time</div>
                           {!batch.mouldingTime ? (
                             <Button
                               onClick={() => {
@@ -921,32 +1293,23 @@ export default function ProductionShift() {
                                 handleUngroupedBatchDataChange(itemKey, 'mouldingTime', now);
                               }}
                               disabled={actionLoading[itemKey]}
-                              className="w-full bg-green-600 hover:bg-green-700 text-white h-8 text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+                              className="w-full bg-green-600 hover:bg-green-700 text-white h-8 text-[11px] disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                              {actionLoading[itemKey] ? (
-                                <span className="flex items-center gap-1">
-                                  <span className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></span>
-                                  Starting...
-                                </span>
-                              ) : (
-                                'Start Moulding'
-                              )}
+                              {actionLoading[itemKey] ? 'Starting...' : 'Start Moulding'}
                             </Button>
                           ) : (
-                            <div className="text-center">
-                              <div className="p-2 bg-green-50 rounded-lg border">
-                                <div className="text-xs font-medium text-green-700">Started</div>
-                                <div className="text-xs text-gray-600">
-                                  {new Date(batch.mouldingTime).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })} at{' '}
-                                  {new Date(batch.mouldingTime).toLocaleTimeString('en-IN', {hour: '2-digit', minute:'2-digit', hour12: true})}
-                                </div>
+                            <div className="p-2 bg-green-50 rounded border text-[11px]">
+                              <div className="font-medium text-green-700">Started</div>
+                              <div className="text-gray-600">
+                                {new Date(batch.mouldingTime).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                                {' '}at{' '}
+                                {new Date(batch.mouldingTime).toLocaleTimeString('en-IN', {hour: '2-digit', minute:'2-digit', hour12: true})}
                               </div>
                             </div>
                           )}
-                        </TableCell>
-                        
-                        {/* Unloading Time - Punch In/Out System */}
-                        <TableCell>
+                        </div>
+                        <div>
+                          <div className="text-[11px] text-gray-500 mb-1">Unloading Time</div>
                           {!batch.unloadingTime ? (
                             <Button
                               onClick={() => {
@@ -954,33 +1317,27 @@ export default function ProductionShift() {
                                 handleUngroupedBatchDataChange(itemKey, 'unloadingTime', now);
                               }}
                               disabled={!batch.mouldingTime || actionLoading[itemKey]}
-                              className="w-full bg-blue-600 hover:bg-blue-700 text-white disabled:bg-gray-300 disabled:text-gray-500 h-8 text-xs"
-                              title={!batch.mouldingTime ? "Please start moulding first" : "Click to end and record current time"}
+                              className="w-full bg-blue-600 hover:bg-blue-700 text-white h-8 text-[11px] disabled:bg-gray-300 disabled:text-gray-500"
+                              title={!batch.mouldingTime ? 'Please start moulding first' : 'Click to end and record current time'}
                             >
-                              {actionLoading[itemKey] ? (
-                                <span className="flex items-center gap-1">
-                                  <span className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></span>
-                                  Ending...
-                                </span>
-                              ) : (
-                                'End Moulding'
-                              )}
+                              {actionLoading[itemKey] ? 'Ending...' : 'End Moulding'}
                             </Button>
                           ) : (
-                            <div className="text-center">
-                              <div className="p-2 bg-blue-50 rounded-lg border">
-                                <div className="text-xs font-medium text-blue-700">Ended</div>
-                                <div className="text-xs text-gray-600">
-                                  {new Date(batch.unloadingTime).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })} at{' '}
-                                  {new Date(batch.unloadingTime).toLocaleTimeString('en-IN', {hour: '2-digit', minute:'2-digit', hour12: true})}
-                                </div>
+                            <div className="p-2 bg-blue-50 rounded border text-[11px]">
+                              <div className="font-medium text-blue-700">Ended</div>
+                              <div className="text-gray-600">
+                                {new Date(batch.unloadingTime).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                                {' '}at{' '}
+                                {new Date(batch.unloadingTime).toLocaleTimeString('en-IN', {hour: '2-digit', minute:'2-digit', hour12: true})}
                               </div>
                             </div>
                           )}
-                        </TableCell>
-                        
-                        {/* Production Loss */}
-                        <TableCell>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                        <div>
+                          <div className="text-[11px] text-gray-500 mb-1">Production Loss</div>
                           <Input
                             type="number"
                             min="0"
@@ -996,30 +1353,11 @@ export default function ProductionShift() {
                               const value = e.target.value;
                               handleUngroupedBatchDataChange(itemKey, 'productionLoss', value);
                             }}
-                            className={`w-20 text-sm ${!batch.mouldingTime || !batch.unloadingTime || actionLoading[itemKey] ? 'bg-gray-100 cursor-not-allowed' : ''}`}
-                            title={!batch.mouldingTime || !batch.unloadingTime ? "Please enter both Moulding Time and Unloading Time first" : "Enter production loss"}
+                            className={`w-full text-[11px] ${!batch.mouldingTime || !batch.unloadingTime || actionLoading[itemKey] ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                           />
-                        </TableCell>
-                        
-                        {/* Qty/Batch */}
-                        <TableCell className="text-center">
-                          <div className="font-medium text-blue-600">
-                            {item.qtyPerBatch || 0}
-                          </div>
-                        </TableCell>
-                        
-                        {/* Qty Achieved/Batch (from backend) - Use actual qtyAchieved value */}
-                        <TableCell className="text-center">
-                          <span className="text-gray-600 font-medium">
-                            {batch.qtyAchieved !== undefined ? parseFloat((batch.qtyAchieved || 0).toFixed(2)) : Math.max(0, Math.round((batch.totalBatchAdjusted || 1) * (item.qtyPerBatch || 0)) - (parseFloat(batch.productionLoss) || 0))}
-                          </span>
-                          <div className="text-xs text-gray-500">
-                            ({batch.totalBatchAdjusted || 1} × {item.qtyPerBatch || 0}) - {batch.productionLoss || 0}
-                          </div>
-                        </TableCell>
-
-                        {/* Notes field */}
-                        <TableCell>
+                        </div>
+                        <div>
+                          <div className="text-[11px] text-gray-500 mb-1">Notes</div>
                           <Input
                             type="text"
                             placeholder="Add note..."
@@ -1038,37 +1376,36 @@ export default function ProductionShift() {
                               const value = e.target.value;
                               handleUngroupedBatchDataChange(itemKey, 'notes', value);
                             }}
-                            className="w-32 text-sm"
+                            className="w-full text-[11px]"
                           />
-                        </TableCell>
-                        
-                        {/* Actions */}
-                        <TableCell>
-                          <div className="flex gap-1">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                setSelectedBatch({
-                                  batchNo: index + 1,
-                                  item: item,
-                                  batch: batch,
-                                  isUngrouped: true
-                                });
-                                setViewModalOpen(true);
-                              }}
-                              title="View Item Details"
-                            >
-                              <Eye className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 flex justify-end">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 px-3 text-[11px]"
+                          onClick={() => {
+                            setSelectedBatch({
+                              batchNo: index + 1,
+                              item: item,
+                              batch: batch,
+                              isUngrouped: true
+                            });
+                            setViewModalOpen(true);
+                          }}
+                          title="View Item Details"
+                        >
+                          <Eye className="w-3 h-3 mr-1" />
+                          View Details
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

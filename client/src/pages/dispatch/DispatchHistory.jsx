@@ -269,6 +269,48 @@ export default function DispatchHistory() {
     return `₹${amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
   };
 
+  // Download invoice PDF for a dispatch (uses DC ID endpoint)
+  const handleDownloadInvoice = async (dispatch) => {
+    try {
+      toast({ title: 'Preparing download', description: 'Generating invoice PDF...' });
+
+      const token = localStorage.getItem('token');
+      const res = await fetch(`/api/dispatches/generate-invoice/${dispatch.id}`, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/pdf',
+          Authorization: token ? `Bearer ${token}` : ''
+        }
+      });
+
+      if (!res.ok) {
+        // Try to parse JSON error
+        let errMsg = `${res.status} ${res.statusText}`;
+        try {
+          const json = await res.json();
+          errMsg = json.message || JSON.stringify(json);
+        } catch (e) {}
+        throw new Error(errMsg);
+      }
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const fileName = `invoice-${dispatch.dcno || dispatch.id}.pdf`;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+
+      toast({ title: 'Download started', description: `Invoice ${fileName} is downloading` });
+    } catch (error) {
+      toast({ title: 'Error', description: error.message || 'Failed to download invoice', variant: 'destructive' });
+      console.error('Invoice download error:', error);
+    }
+  };
+
   if (error) {
     return (
       <div className="min-h-screen bg-gray-50 p-4">
@@ -595,6 +637,15 @@ export default function DispatchHistory() {
                             >
                               <Eye className="w-3 h-3" />
                               View
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDownloadInvoice(dispatch)}
+                              className="flex items-center gap-1"
+                            >
+                              <Download className="w-3 h-3" />
+                              Invoice
                             </Button>
                             <Button
                               variant="default"

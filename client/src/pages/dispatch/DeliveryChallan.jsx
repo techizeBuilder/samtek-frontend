@@ -40,8 +40,6 @@ export default function DeliveryChallan() {
   const [qtyIssuedMap, setQtyIssuedMap] = useState({});
   const [isDispatched, setIsDispatched] = useState(false);
   const [currentDCId, setCurrentDCId] = useState(null);
-  const [showPreview, setShowPreview] = useState(false);
-  const [nextDCNumber, setNextDCNumber] = useState('');
   const [selectedItems, setSelectedItems] = useState({}); // Track which items are selected for dispatch
   const [expandedGroup, setExpandedGroup] = useState({}); // Track which product groups are expanded
 
@@ -55,7 +53,7 @@ export default function DeliveryChallan() {
   const [orderSalesPersons, setOrderSalesPersons] = useState([]);
   const [orderCustomers, setOrderCustomers] = useState([]);
   const [orderProducts, setOrderProducts] = useState([]);
-  const [nextDirectOrderDC, setNextDirectOrderDC] = useState('');
+  
   const [todayOrderItems, setTodayOrderItems] = useState([]);
   const [todayOrderItemsLoading, setTodayOrderItemsLoading] = useState(false);
   const [directOrderForm, setDirectOrderForm] = useState({
@@ -79,7 +77,6 @@ export default function DeliveryChallan() {
     fetchSalespeople();
     fetchAllCustomers(); // Load all customers on mount
     fetchTodaysProducts(); // Load all today's products on mount
-    fetchNextDCNumber(); // Fetch next DC number on mount
   }, []);
 
   // When salesperson changes, just reset customer selection
@@ -117,43 +114,7 @@ export default function DeliveryChallan() {
     };
   }, []);
 
-  const fetchNextDCNumber = async () => {
-    try {
-      console.log('🔢 Fetching next DC number...');
-      
-      const response = await fetch(`${config.baseURL}/api/dispatches/next-dc-number`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const result = await response.json();
-      console.log('📋 Next DC number response:', result);
-      
-      if (result.success && result.dcNo) {
-        // Store the full DC number (e.g., DC017)
-        setNextDCNumber(result.dcNo);
-        setDcNumber(result.dcNo);
-        
-        toast({
-          title: "DC Number",
-          description: `Next available DC number: ${result.dcNo}`,
-        });
-      }
-    } catch (error) {
-      console.error('❌ Error fetching next DC number:', error);
-      toast({
-        title: "Error",
-        description: "Failed to fetch next DC number",
-        variant: "destructive",
-      });
-    }
-  };
+  // Next DC number functionality removed: DC numbering is managed server-side and must be unique per company
 
   const fetchSalespeople = async () => {
     try {
@@ -300,9 +261,8 @@ export default function DeliveryChallan() {
         if (productsData.length > 0) {
           const allDispatched = productsData.every(p => p.status === 'dispatched' && p.dcno);
           if (allDispatched && productsData[0].dcno) {
-            // Use existing DC number instead of fetching next
+            // Use existing DC number when all items already dispatched
             setDcNumber(productsData[0].dcno);
-            setNextDCNumber(productsData[0].dcno);
             console.log('📋 Using existing DC number:', productsData[0].dcno);
           }
         }
@@ -506,15 +466,7 @@ export default function DeliveryChallan() {
       // dcNumber already contains full format like DC017
       const fullDCNumber = dcNumber.trim().toUpperCase();
 
-      // Step 1b: Validate DC Number matches the next available number
-      if (nextDCNumber && fullDCNumber !== nextDCNumber) {
-        toast({
-          title: "Invalid DC Number",
-          description: `Please use the next available DC number: ${nextDCNumber}. You entered: ${fullDCNumber}`,
-          variant: "destructive",
-        });
-        return;
-      }
+      // Step 1b: DC numbering is managed server-side; only uniqueness is validated later
 
       // Step 2: Validate Salesman
       if (!selectedSalesman) {
@@ -580,16 +532,6 @@ export default function DeliveryChallan() {
         }
 
         const numQtyIssued = Number(qtyIssued);
-        // Only validate against indent qty if indent qty is greater than 0
-        if (product.indentQty > 0 && numQtyIssued > product.indentQty) {
-          toast({
-            title: "Validation Error",
-            description: `Qty issued (${numQtyIssued}) for "${product.productName}" cannot exceed indent qty (${product.indentQty})`,
-            variant: "destructive",
-          });
-          hasError = true;
-          break;
-        }
 
         items.push({
           dispatchId: product._id, // This is the dispatch entry _id
@@ -682,7 +624,6 @@ export default function DeliveryChallan() {
         
         // Refresh data to show fresh dispatch state
         await fetchTodaysProducts();
-        await fetchNextDCNumber();
       }
     } catch (error) {
       console.error('❌ Error creating delivery challan:', error);
@@ -821,9 +762,8 @@ export default function DeliveryChallan() {
     setQtyIssuedMap({});
     setIsDispatched(false);
     setCurrentDCId(null);
-    setShowPreview(false);
     setSelectedItems({});
-    fetchNextDCNumber(); // Fetch new DC number after reset
+    // next DC number no longer fetched from server
     fetchTodaysProducts(); // Fetch today's products after reset
   };
 
@@ -926,21 +866,7 @@ export default function DeliveryChallan() {
     setOrderCustomers(customers); // Use already loaded customers
     fetchOrderProducts();
     
-    // Fetch next DC number
-    try {
-      const response = await fetch(`${config.baseURL}/api/dispatches/next-dc-number`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      const result = await response.json();
-      if (result.success) {
-        setNextDirectOrderDC(result.nextDCNumber);
-      }
-    } catch (error) {
-      console.error('Error fetching next DC number:', error);
-    }
+    // Next DC number endpoint removed; server assigns unique DC per company
   };
 
   const handleProductSelect = (product) => {
@@ -1099,9 +1025,7 @@ export default function DeliveryChallan() {
             
             // Refresh all data to show fresh dispatch
             await Promise.all([
-              fetchTodaysProducts(),
-              fetchNextDCNumber(),
-              fetchDirectOrderNextDC()
+              fetchTodaysProducts()
             ]);
             
             return; // Success, exit the function
@@ -1233,61 +1157,7 @@ export default function DeliveryChallan() {
     }
   };
 
-  const handlePreview = () => {
-    // Validation
-    if (!dcNumber || dcNumber.trim() === '') {
-      toast({
-        title: "Validation Error",
-        description: "Please enter DC number",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (!selectedSalesman) {
-      toast({
-        title: "Validation Error",
-        description: "Please select a salesman",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (!selectedCustomer) {
-      toast({
-        title: "Validation Error",
-        description: "Please select a customer",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (products.length === 0) {
-      toast({
-        title: "Validation Error",
-        description: "No products available",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    // Check if all products have qty issued
-    const allQtyFilled = products.every(product => {
-      const qty = qtyIssuedMap[product._id];
-      return qty && qty !== '' && Number(qty) > 0;
-    });
-
-    if (!allQtyFilled) {
-      toast({
-        title: "Validation Error",
-        description: "Please enter qty issued for all products",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setShowPreview(true);
-  };
+  // Preview feature removed — dispatch proceeds directly from the form
 
   // Check if products are already dispatched
   const isAlreadyDispatched = products.length > 0 && products.every(product => 
@@ -1362,11 +1232,7 @@ export default function DeliveryChallan() {
                 disabled={isDispatched}
               />
             </div>
-            {!isAlreadyDispatched && (
-              <div className="text-xs text-blue-600 font-medium text-center mt-1">
-                Next: {nextDCNumber || dcNumber}
-              </div>
-            )}
+            {/* Next DC number removed — numbering will be assigned server-side */}
           </div>
           
           {/* Salesman Dropdown */}
@@ -1695,139 +1561,7 @@ export default function DeliveryChallan() {
         </div>
       </div>
 
-      {/* Preview Modal */}
-      {showPreview && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-auto">
-            {/* Modal Header */}
-            <div className="sticky top-0 bg-blue-600 text-white p-4 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <FileText className="h-6 w-6" />
-                <h2 className="text-xl font-bold">Delivery Challan Preview</h2>
-              </div>
-              <button
-                onClick={() => setShowPreview(false)}
-                className="hover:bg-blue-700 p-2 rounded-full transition-colors"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            {/* Modal Content */}
-            <div className="p-6 space-y-6">
-              {/* DC Number Display */}
-              <div className="bg-blue-50 border-2 border-blue-300 rounded-lg p-4">
-                <div className="text-center">
-                  <div className="text-sm text-blue-600 font-medium mb-1">Delivery Challan Number</div>
-                  <div className="text-3xl font-bold text-blue-900">
-                    {dcNumber}
-                  </div>
-                </div>
-              </div>
-
-              {/* Customer & Salesman Info */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="border border-gray-300 rounded-lg p-4">
-                  <div className="text-sm text-gray-600 mb-1">Salesman</div>
-                  <div className="font-bold text-lg">{selectedSalesman?.fullName || selectedSalesman?.username}</div>
-                  {selectedSalesman?.email && (
-                    <div className="text-sm text-gray-500">{selectedSalesman.email}</div>
-                  )}
-                </div>
-                <div className="border border-gray-300 rounded-lg p-4">
-                  <div className="text-sm text-gray-600 mb-1">Customer</div>
-                  <div className="font-bold text-lg">{selectedCustomer?.name}</div>
-                  {selectedCustomer?.customerCode && (
-                    <div className="text-sm text-gray-500">Code: {selectedCustomer.customerCode}</div>
-                  )}
-                </div>
-              </div>
-
-              {/* Products Table */}
-              <div className="border border-gray-300 rounded-lg overflow-hidden">
-                <table className="w-full">
-                  <thead className="bg-yellow-200">
-                    <tr>
-                      <th className="border-b border-gray-300 p-3 text-left">Product Name / Group</th>
-                      <th className="border-b border-gray-300 p-3 text-center">Indent Qty</th>
-                      <th className="border-b border-gray-300 p-3 text-center">Qty Issued</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {products.map((product, index) => (
-                      <tr key={product._id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                        <td className="border-b border-gray-200 p-3">
-                          <div className="font-medium">{product.productName}</div>
-                          {product.productGroup && (
-                            <div className="text-sm text-blue-600 mt-1">
-                              <Badge variant="outline" className="bg-blue-50 text-blue-700">
-                                {product.productGroup}
-                              </Badge>
-                            </div>
-                          )}
-                        </td>
-                        <td className="border-b border-gray-200 p-3 text-center">
-                          <Badge variant="outline" className="bg-green-50 text-green-700 text-base">
-                            {product.indentQty}
-                          </Badge>
-                        </td>
-                        <td className="border-b border-gray-200 p-3 text-center">
-                          <Badge variant="outline" className="bg-blue-50 text-blue-700 text-base font-bold">
-                            {qtyIssuedMap[product._id]}
-                          </Badge>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Total Summary */}
-              <div className="bg-gray-50 border border-gray-300 rounded-lg p-4">
-                <div className="grid grid-cols-3 gap-4 text-center">
-                  <div>
-                    <div className="text-sm text-gray-600">Total Products</div>
-                    <div className="text-2xl font-bold text-gray-900">{products.length}</div>
-                  </div>
-                  <div>
-                    <div className="text-sm text-gray-600">Total Indent Qty</div>
-                    <div className="text-2xl font-bold text-green-700">
-                      {products.reduce((sum, p) => sum + (p.indentQty || 0), 0)}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-sm text-gray-600">Total Qty Issued</div>
-                    <div className="text-2xl font-bold text-blue-700">
-                      {products.reduce((sum, p) => sum + (Number(qtyIssuedMap[p._id]) || 0), 0)}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex gap-3 justify-end">
-                <Button
-                  variant="outline"
-                  onClick={() => setShowPreview(false)}
-                >
-                  Close
-                </Button>
-                <Button
-                  className="bg-blue-600 hover:bg-blue-700"
-                  onClick={() => {
-                    setShowPreview(false);
-                    handleDispatch();
-                  }}
-                  disabled={loading || isDispatched}
-                >
-                  <Truck className="h-4 w-4 mr-2" />
-                  Proceed to Dispatch
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Preview feature removed */}
       
       {/* Direct Add Order Modal */}
       <Dialog open={isDirectOrderModalOpen} onOpenChange={setIsDirectOrderModalOpen}>
@@ -1970,19 +1704,7 @@ export default function DeliveryChallan() {
               />
             </div>
 
-            {/* DC Number (Auto-generated) */}
-            <div>
-              <Label htmlFor="dcNumber" className="text-sm font-medium">Next DC Number</Label>
-              <Input
-                id="dcNumber"
-                type="text"
-                value={nextDirectOrderDC}
-                readOnly
-                disabled
-                className="mt-1 bg-gray-100 cursor-not-allowed"
-                placeholder="Loading..."
-              />
-            </div>
+            {/* Next DC number removed — numbering will be assigned server-side */}
 
             {/* Product Selection */}
             <div>

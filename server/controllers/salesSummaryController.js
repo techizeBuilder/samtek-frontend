@@ -1399,6 +1399,31 @@ export const updateSalesSummary = async (req, res) => {
         }
       }
     }
+    // 🔄 NEW: For non–Unit Manager roles (Sales / Unit Head) ensure that
+    // moving a product back to pending also clears any open ProductionBatch
+    // entries so it no longer appears on the production sheet.
+    else if (updates.status === 'pending') {
+      console.log('⚠️ Non-Unit-Manager moved product to pending – clearing ProductionBatch records for this product/date');
+
+      const today = new Date(summaryDate);
+      today.setUTCHours(0, 0, 0, 0);
+
+      const deletedByCombinedItem = await ProductionBatch.deleteMany({
+        "combinedItems.itemId": actualProductId,
+        companyId: masterProduct.companyId._id,
+        productionDate: today,
+        status: { $ne: 'completed' }
+      });
+
+      const deletedByDirectItem = await ProductionBatch.deleteMany({
+        itemId: actualProductId,
+        companyId: masterProduct.companyId._id,
+        productionDate: today,
+        status: { $ne: 'completed' }
+      });
+
+      console.log(`   🗑️ Deleted ${deletedByCombinedItem.deletedCount + deletedByDirectItem.deletedCount} ProductionBatch records for pending product (non-Unit-Manager)`);
+    }
 
     // Return the updated daily details
     const response = {

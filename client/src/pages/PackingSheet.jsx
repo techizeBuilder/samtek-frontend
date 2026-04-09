@@ -1066,270 +1066,367 @@ export default function PackingSheet() {
             </button>
           </div>
         ) : (
-          /* Responsive Table Container */
+          /* Desktop table + mobile cards */
           <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-            {/* Mobile/Tablet: Horizontal Scroll */}
-            <div className="overflow-x-auto">
-              <div className="min-w-[800px]"> {/* Minimum width for proper table display */}
-                <table className="w-full border-collapse">
-                  <thead>
-                    <tr className="bg-grey-300">
-                      <th className="border border-gray-900 px-2 sm:px-4 py-2 sm:py-3 text-center font-bold text-xs sm:text-sm">
-                        SL NO.
-                      </th>
-                      <th className="border border-gray-900 px-2 sm:px-4 py-2 sm:py-3 text-center font-bold text-xs sm:text-sm min-w-[120px] sm:min-w-[150px]">
-                        Product Group<br />with Product
-                      </th>
-                      <th className="border border-gray-900 px-2 sm:px-4 py-2 sm:py-3 text-center font-bold text-xs sm:text-sm min-w-[80px] sm:min-w-[100px]">
-                        Indent Qty
-                      </th>
-                      <th className="border border-gray-900 px-2 sm:px-4 py-2 sm:py-3 text-center font-bold text-xs sm:text-sm min-w-[80px] sm:min-w-[100px]">
-                        Produced Qty
-                      </th>
-                      <th className="border border-gray-900 px-2 sm:px-4 py-2 sm:py-3 text-center font-bold text-xs sm:text-sm min-w-[100px] sm:min-w-[120px]">
-                        Packing Start<br />time
-                      </th>
-                      <th className="border border-gray-900 px-2 sm:px-4 py-2 sm:py-3 text-center font-bold text-xs sm:text-sm min-w-[100px] sm:min-w-[120px]">
-                        Packing End<br />time
-                      </th>
-                      <th className="border border-gray-900 px-2 sm:px-4 py-2 sm:py-3 text-center font-bold text-xs sm:text-sm min-w-[80px] sm:min-w-[100px]">
-                        Packing loss
-                      </th>
-                      <th className="border border-gray-900 px-2 sm:px-4 py-2 sm:py-3 text-center font-bold text-xs sm:text-sm min-w-[80px] sm:min-w-[100px]">
-                        Qty Packed
-                      </th>
-                      <th className="border border-gray-900 px-2 sm:px-4 py-2 sm:py-3 text-center font-bold text-xs sm:text-sm min-w-[100px] sm:min-w-[120px]">
-                        Notes
-                      </th>
-                      <th className="border border-gray-900 px-2 sm:px-4 py-2 sm:py-3 text-center font-bold text-xs sm:text-sm min-w-[120px] sm:min-w-[140px]">
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>{/* Table content */}
+            {/* Desktop / large screens: keep table with horizontal scroll if needed */}
+            <div className="hidden md:block">
+              <div className="overflow-x-auto">
+                <div className="min-w-[800px]">
+                  <table className="w-full border-collapse">
+                    <thead>
+                      <tr className="bg-grey-300">
+                        <th className="border border-gray-900 px-2 sm:px-4 py-2 sm:py-3 text-center font-bold text-xs sm:text-sm">
+                          SL NO.
+                        </th>
+                        <th className="border border-gray-900 px-2 sm:px-4 py-2 sm:py-3 text-center font-bold text-xs sm:text-sm min-w-[120px] sm:min-w-[150px]">
+                          Product Group<br />with Product
+                        </th>
+                        <th className="border border-gray-900 px-2 sm:px-4 py-2 sm:py-3 text-center font-bold text-xs sm:text-sm min-w-[80px] sm:min-w-[100px]">
+                          Indent Qty
+                        </th>
+                        <th className="border border-gray-900 px-2 sm:px-4 py-2 sm:py-3 text-center font-bold text-xs sm:text-sm min-w-[80px] sm:min-w-[100px]">
+                          Produced Qty
+                        </th>
+                        <th className="border border-gray-900 px-2 sm:px-4 py-2 sm:py-3 text-center font-bold text-xs sm:text-sm min-w-[100px] sm:min-w-[120px]">
+                          Packing Start<br />time
+                        </th>
+                        <th className="border border-gray-900 px-2 sm:px-4 py-2 sm:py-3 text-center font-bold text-xs sm:text-sm min-w-[100px] sm:min-w-[120px]">
+                          Packing End<br />time
+                        </th>
+                        <th className="border border-gray-900 px-2 sm:px-4 py-2 sm:py-3 text-center font-bold text-xs sm:text-sm min-w-[80px] sm:min-w-[100px]">
+                          Packing loss
+                        </th>
+                        <th className="border border-gray-900 px-2 sm:px-4 py-2 sm:py-3 text-center font-bold text-xs sm:text-sm min-w-[80px] sm:min-w-[100px]">
+                          Qty Packed
+                        </th>
+                        <th className="border border-gray-900 px-2 sm:px-4 py-2 sm:py-3 text-center font-bold text-xs sm:text-sm min-w-[100px] sm:min-w-[120px]">
+                          Notes
+                        </th>
+                        <th className="border border-gray-900 px-2 sm:px-4 py-2 sm:py-3 text-center font-bold text-xs sm:text-sm min-w-[120px] sm:min-w-[140px]">
+                          Actions
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {packingData.map((group, groupIndex) => (
+                        <React.Fragment key={groupIndex}>
+                          <tr className="bg-blue-50 border-b-2 border-blue-200">
+                            <td className="border border-gray-900 px-2 sm:px-4 py-2 text-center text-xs sm:text-sm">
+                              <div className="flex items-center justify-center space-x-1">
+                                <span>{group.slNo}</span>
+                                {group.hasExistingPackingSheet && (
+                                  <div title={`Has ${group.packingSheets.length} existing packing sheet(s)`} className="w-2 h-2 bg-green-500 rounded-full"></div>
+                                )}
+                              </div>
+                            </td>
+                            <td className="border border-gray-900 px-2 sm:px-4 py-2">
+                              <div className="font-semibold text-center text-sm text-blue-700">
+                                {group.productGroup}
+                              </div>
+                            </td>
+                            <td className="border border-gray-900 px-1 sm:px-2 py-2 text-center">
+                              <span className="bg-gray-200 text-gray-700 px-2 py-1 rounded text-xs font-bold">
+                                {Number(group.rawGroupData?.qtyAchievedPerBatch || 0).toFixed(2)}
+                              </span>
+                            </td>
+                            <td className="border border-gray-900 px-1 sm:px-2 py-2 text-center">
+                              <span className="bg-blue-200 text-blue-800 px-2 py-1 rounded text-xs font-bold">
+                                {Number(group.items.reduce((sum, i) => sum + (i.achievedQty || 0), 0)).toFixed(2)}
+                              </span>
+                            </td>
+                            <td className="border border-gray-900 px-1 sm:px-2 py-2 text-center text-xs text-gray-500">-</td>
+                            <td className="border border-gray-900 px-1 sm:px-2 py-2 text-center text-xs text-gray-500">-</td>
+                            <td className="border border-gray-900 px-1 sm:px-2 py-2 text-center text-xs text-gray-500">-</td>
+                            <td className="border border-gray-900 px-1 sm:px-2 py-2 text-center text-xs text-gray-500">-</td>
+                            <td className="border border-gray-900 px-1 sm:px-2 py-2 text-center text-xs text-gray-500">-</td>
+                            <td className="border border-gray-900 px-2 sm:px-4 py-2 text-center text-xs text-gray-500">-</td>
+                          </tr>
+                          {group.items.map((item, itemIndex) => (
+                            item.batchDetails && item.batchDetails.length > 0 ? (
+                              item.batchDetails.map((batch, batchIndex) => (
+                                <tr key={`${groupIndex}-${itemIndex}-${batchIndex}`} className="hover:bg-gray-50 border-b border-gray-200">
+                                  <td className="border border-gray-900 px-2 sm:px-4 py-2 text-center text-xs sm:text-sm"></td>
+                                  <td className="border border-gray-900 px-2 sm:px-4 py-2">
+                                    <div className="bg-gray-50 p-2 rounded ml-4">
+                                      <div className="font-medium text-xs">{item.name}</div>
+                                      <div className="text-xs text-blue-600 mt-1">Batch: {batch.batchNo}</div>
+                                    </div>
+                                  </td>
+                                  <td className="border border-gray-900 px-1 sm:px-2 py-2 text-center">
+                                    <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs sm:text-sm font-medium">
+                                      {Number(batch.qtyAchieved || 0).toFixed(2)}
+                                    </span>
+                                  </td>
+                                  <td className="border border-gray-900 px-1 sm:px-2 py-2 text-center">
+                                    <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs sm:text-sm font-medium">
+                                      {Number(batch.qtyAchieved || 0).toFixed(2)}
+                                    </span>
+                                  </td>
+                                  <td className="border border-gray-900 px-1 sm:px-2 py-2 text-center">
+                                    {groupTimings[`${groupIndex}-${itemIndex}-${batchIndex}`]?.punchedIn ? (
+                                      <span className="text-green-600 font-medium text-xs sm:text-sm">
+                                        {groupTimings[`${groupIndex}-${itemIndex}-${batchIndex}`]?.startTime}
+                                      </span>
+                                    ) : (
+                                      <button
+                                        onClick={() => handleBatchPunchIn(groupIndex, itemIndex, batchIndex, batch)}
+                                        className="bg-blue-500 text-white px-2 sm:px-3 py-1 rounded text-xs hover:bg-blue-600 transition-colors whitespace-nowrap"
+                                      >
+                                        Punch In
+                                      </button>
+                                    )}
+                                  </td>
+                                  <td className="border border-gray-900 px-1 sm:px-2 py-2 text-center">
+                                    {groupTimings[`${groupIndex}-${itemIndex}-${batchIndex}`]?.punchedOut ? (
+                                      <span className="text-red-600 font-medium text-xs sm:text-sm">
+                                        {groupTimings[`${groupIndex}-${itemIndex}-${batchIndex}`]?.endTime}
+                                      </span>
+                                    ) : groupTimings[`${groupIndex}-${itemIndex}-${batchIndex}`]?.punchedIn ? (
+                                      <button
+                                        onClick={() => handleBatchPunchOut(groupIndex, itemIndex, batchIndex, batch)}
+                                        className="bg-red-500 text-white px-2 py-1 rounded text-xs hover:bg-red-600 transition-colors"
+                                      >
+                                        Punch Out
+                                      </button>
+                                    ) : (
+                                      <span className="text-gray-500 text-xs">-</span>
+                                    )}
+                                  </td>
+                                  <td className="border border-gray-900 px-1 sm:px-2 py-2 text-center">
+                                    {(() => {
+                                      const batchKey = `${groupIndex}-${itemIndex}-${batchIndex}`;
+                                      const batchTiming = groupTimings[batchKey];
+                                      const isPunchedOut = batchTiming?.punchedOut;
+                                      return (
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          step="0.1"
+                                          defaultValue={batch.packingLoss !== undefined ? batch.packingLoss : 0}
+                                          disabled={!isPunchedOut}
+                                          className={`w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-center font-bold ${
+                                            isPunchedOut ? 'bg-yellow-50 text-gray-900' : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                          }`}
+                                          placeholder="0"
+                                          title={!isPunchedOut ? 'Punch out first to enter packing loss' : 'Enter packing loss'}
+                                          onChange={(e) => handleBatchPackingLossChange(groupIndex, itemIndex, batchIndex, batch, e.target.value)}
+                                        />
+                                      );
+                                    })()}
+                                  </td>
+                                  <td className="border border-gray-900 px-1 sm:px-2 py-2 text-center">
+                                    <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold">
+                                      {Math.max(0, (batch.qtyAchieved || 0) - (batch.packingLoss || 0)).toFixed(2)}
+                                    </span>
+                                  </td>
+                                  <td className="border border-gray-900 px-1 sm:px-2 py-2">
+                                    <input
+                                      type="text"
+                                      placeholder="Batch notes..."
+                                      defaultValue={batch.notes || ''}
+                                      className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                      onChange={(e) => handleBatchNotesChange(groupIndex, itemIndex, batchIndex, batch, e.target.value)}
+                                    />
+                                  </td>
+                                  <td className="border border-gray-900 px-2 sm:px-4 py-2 text-center">
+                                    {(() => {
+                                      const batchKey = `${groupIndex}-${itemIndex}-${batchIndex}`;
+                                      const batchTiming = groupTimings[batchKey];
+                                      const isCompleted = batchTiming?.punchedOut;
+                                      const isAlreadyApproved = batch.status === 'approved' || batch.isApproved;
+                                      const isApproving = approvingBatches[batchKey];
+                                      if (isAlreadyApproved) {
+                                        return (
+                                          <span className="bg-green-100 text-green-800 px-2 py-1 rounded text-xs font-medium whitespace-nowrap">
+                                            ✅ Approved
+                                          </span>
+                                        );
+                                      }
+                                      if (isCompleted) {
+                                        return (
+                                          <button
+                                            onClick={() => handleBatchApproval(groupIndex, itemIndex, batchIndex, batch)}
+                                            disabled={isApproving}
+                                            className={`px-2 sm:px-3 py-1 rounded text-xs transition-colors whitespace-nowrap ${
+                                              isApproving ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-green-500 text-white hover:bg-green-600'
+                                            }`}
+                                          >
+                                            {isApproving ? (
+                                              <span className="flex items-center gap-1">
+                                                <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                                </svg>
+                                                Approving...
+                                              </span>
+                                            ) : (
+                                              'Approve'
+                                            )}
+                                          </button>
+                                        );
+                                      }
+                                      return <span className="text-gray-400 text-xs">Complete first</span>;
+                                    })()}
+                                  </td>
+                                </tr>
+                              ))
+                            ) : (
+                              <tr key={`${groupIndex}-${itemIndex}`} className="hover:bg-gray-50 border-b border-gray-200">
+                                <td className="border border-gray-900 px-2 sm:px-4 py-2 text-center text-xs sm:text-sm"></td>
+                                <td className="border border-gray-900 px-2 sm:px-4 py-2">
+                                  <div className="bg-red-50 p-2 rounded ml-4">
+                                    <div className="font-medium text-xs text-red-600">{item.name}</div>
+                                    <div className="text-xs text-red-500">No batch data available</div>
+                                  </div>
+                                </td>
+                                <td className="border border-gray-900 px-1 sm:px-2 py-2 text-center text-xs text-gray-500" colSpan={8}>
+                                  No batch information
+                                </td>
+                              </tr>
+                            )
+                          ))}
+                        </React.Fragment>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            {/* Mobile: stacked cards, no horizontal scroll */}
+            <div className="md:hidden p-2 space-y-3">
               {packingData.map((group, groupIndex) => (
-                <React.Fragment key={groupIndex}>
-                  {/* Group Header Row - Simple summary only */}
-                  <tr className="bg-blue-50 border-b-2 border-blue-200">
-                    <td className="border border-gray-900 px-2 sm:px-4 py-2 text-center text-xs sm:text-sm">
-                      <div className="flex items-center justify-center space-x-1">
-                        <span>{group.slNo}</span>
-                        {group.hasExistingPackingSheet && (
-                          <div title={`Has ${group.packingSheets.length} existing packing sheet(s)`} className="w-2 h-2 bg-green-500 rounded-full"></div>
-                        )}
-                      </div>
-                    </td>
-                    <td className="border border-gray-900 px-2 sm:px-4 py-2">
-                      <div className="font-semibold text-center text-sm text-blue-700">
-                        {group.productGroup}
-                      </div>
-                    </td>
-                    <td className="border border-gray-900 px-1 sm:px-2 py-2 text-center">
-                      <span className="bg-gray-200 text-gray-700 px-2 py-1 rounded text-xs font-bold">
-                        {Number(group.rawGroupData?.qtyAchievedPerBatch || 0).toFixed(2)}
-                      </span>
-                    </td>
-                    <td className="border border-gray-900 px-1 sm:px-2 py-2 text-center">
-                      <span className="bg-blue-200 text-blue-800 px-2 py-1 rounded text-xs font-bold">
-                        {Number(group.items.reduce((sum, i) => sum + (i.achievedQty || 0), 0)).toFixed(2)}
-                      </span>
-                    </td>
-                    
-                    {/* Group header - No packing functionality */}
-                    <td className="border border-gray-900 px-1 sm:px-2 py-2 text-center text-xs text-gray-500">-</td>
-                    <td className="border border-gray-900 px-1 sm:px-2 py-2 text-center text-xs text-gray-500">-</td>
-                    <td className="border border-gray-900 px-1 sm:px-2 py-2 text-center text-xs text-gray-500">-</td>
-                    <td className="border border-gray-900 px-1 sm:px-2 py-2 text-center text-xs text-gray-500">-</td>
-                    <td className="border border-gray-900 px-1 sm:px-2 py-2 text-center text-xs text-gray-500">-</td>
-                    <td className="border border-gray-900 px-2 sm:px-4 py-2 text-center text-xs text-gray-500">-</td>
-                  </tr>
-                  
-                  {/* Individual Batch Rows - Show each batch as a separate row */}
+                <div key={groupIndex} className="border border-gray-200 rounded-lg bg-white shadow-xs">
+                  <div className="px-3 py-2 bg-blue-50 border-b border-blue-100 flex items-center justify-between">
+                    <div>
+                      <div className="text-xs text-gray-500">SL NO. {group.slNo}</div>
+                      <div className="text-sm font-semibold text-blue-800">{group.productGroup}</div>
+                    </div>
+                    <div className="text-right text-[11px] text-gray-700">
+                      <div>Indent: {Number(group.rawGroupData?.qtyAchievedPerBatch || 0).toFixed(2)}</div>
+                      <div>Produced: {Number(group.items.reduce((sum, i) => sum + (i.achievedQty || 0), 0)).toFixed(2)}</div>
+                    </div>
+                  </div>
+
                   {group.items.map((item, itemIndex) => (
-                    // Map through each batch in the item to create individual batch rows
-                    item.batchDetails && item.batchDetails.length > 0 ? 
-                      item.batchDetails.map((batch, batchIndex) => (
-                        <tr key={`${groupIndex}-${itemIndex}-${batchIndex}`} className="hover:bg-gray-50 border-b border-gray-200">
-                          <td className="border border-gray-900 px-2 sm:px-4 py-2 text-center text-xs sm:text-sm">
-                            
-                          </td>
-                          <td className="border border-gray-900 px-2 sm:px-4 py-2">
-                            <div className="bg-gray-50 p-2 rounded ml-4">
-                              <div className="font-medium text-xs">{item.name}</div>
-                              <div className="text-xs text-blue-600 mt-1">Batch: {batch.batchNo}</div>
+                    item.batchDetails && item.batchDetails.length > 0 ? (
+                      item.batchDetails.map((batch, batchIndex) => {
+                        const batchKey = `${groupIndex}-${itemIndex}-${batchIndex}`;
+                        const batchTiming = groupTimings[batchKey] || {};
+                        const isPunchedIn = batchTiming.punchedIn;
+                        const isPunchedOut = batchTiming.punchedOut;
+                        const isAlreadyApproved = batch.status === 'approved' || batch.isApproved;
+                        const isApproving = approvingBatches[batchKey];
+                        return (
+                          <div key={batchKey} className="border-t border-gray-200 px-3 py-2 text-xs space-y-2">
+                            <div className="flex justify-between">
+                              <div>
+                                <div className="font-medium text-gray-900">{item.name}</div>
+                                <div className="text-[11px] text-blue-600">Batch: {batch.batchNo}</div>
+                              </div>
+                              <div className="text-right text-[11px] text-gray-700">
+                                <div>Indent: {Number(batch.qtyAchieved || 0).toFixed(2)}</div>
+                                <div>Produced: {Number(batch.qtyAchieved || 0).toFixed(2)}</div>
+                              </div>
                             </div>
-                          </td>
-                          
-                          {/* Indent Qty - from batch */}
-                          <td className="border border-gray-900 px-1 sm:px-2 py-2 text-center">
-                            <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs sm:text-sm font-medium">
-                              {Number(batch.qtyAchieved || 0).toFixed(2)}
-                            </span>
-                          </td>
-                          
-                          {/* Produced Qty - from batch */}
-                          <td className="border border-gray-900 px-1 sm:px-2 py-2 text-center">
-                            <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs sm:text-sm font-medium">
-                              {Number(batch.qtyAchieved || 0).toFixed(2)}
-                            </span>
-                          </td>
-                          
-                          {/* Batch-level Packing Start time */}
-                          <td className="border border-gray-900 px-1 sm:px-2 py-2 text-center">
-                            {(groupTimings[`${groupIndex}-${itemIndex}-${batchIndex}`]?.punchedIn) ? (
-                              <span className="text-green-600 font-medium text-xs sm:text-sm">
-                                {groupTimings[`${groupIndex}-${itemIndex}-${batchIndex}`]?.startTime}
-                              </span>
-                            ) : (
-                              <button
-                                onClick={() => handleBatchPunchIn(groupIndex, itemIndex, batchIndex, batch)}
-                                className="bg-blue-500 text-white px-2 sm:px-3 py-1 rounded text-xs hover:bg-blue-600 transition-colors whitespace-nowrap"
-                              >
-                                Punch In
-                              </button>
-                            )}
-                          </td>
-                          
-                          {/* Batch-level Packing End time */}
-                          <td className="border border-gray-900 px-1 sm:px-2 py-2 text-center">
-                            {(groupTimings[`${groupIndex}-${itemIndex}-${batchIndex}`]?.punchedOut) ? (
-                              <span className="text-red-600 font-medium text-xs sm:text-sm">
-                                {groupTimings[`${groupIndex}-${itemIndex}-${batchIndex}`]?.endTime}
-                              </span>
-                            ) : (groupTimings[`${groupIndex}-${itemIndex}-${batchIndex}`]?.punchedIn) ? (
-                              <button
-                                onClick={() => handleBatchPunchOut(groupIndex, itemIndex, batchIndex, batch)}
-                                className="bg-red-500 text-white px-2 py-1 rounded text-xs hover:bg-red-600 transition-colors"
-                              >
-                                Punch Out
-                              </button>
-                            ) : (
-                              <span className="text-gray-500 text-xs">-</span>
-                            )}
-                          </td>
-                          
-                          {/* Batch-level Packing loss */}
-                          <td className="border border-gray-900 px-1 sm:px-2 py-2 text-center">
-                            {(() => {
-                              const batchKey = `${groupIndex}-${itemIndex}-${batchIndex}`;
-                              const batchTiming = groupTimings[batchKey];
-                              const isPunchedOut = batchTiming?.punchedOut;
-                              
-                              return (
+
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <div className="text-[11px] text-gray-500 mb-1">Packing Start</div>
+                                {isPunchedIn ? (
+                                  <div className="text-green-600 font-semibold">{batchTiming.startTime}</div>
+                                ) : (
+                                  <button
+                                    onClick={() => handleBatchPunchIn(groupIndex, itemIndex, batchIndex, batch)}
+                                    className="w-full bg-blue-500 text-white py-1 rounded text-[11px]"
+                                  >
+                                    Punch In
+                                  </button>
+                                )}
+                              </div>
+                              <div>
+                                <div className="text-[11px] text-gray-500 mb-1">Packing End</div>
+                                {isPunchedOut ? (
+                                  <div className="text-red-600 font-semibold">{batchTiming.endTime}</div>
+                                ) : isPunchedIn ? (
+                                  <button
+                                    onClick={() => handleBatchPunchOut(groupIndex, itemIndex, batchIndex, batch)}
+                                    className="w-full bg-red-500 text-white py-1 rounded text-[11px]"
+                                  >
+                                    Punch Out
+                                  </button>
+                                ) : (
+                                  <div className="text-[11px] text-gray-400">-</div>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2 mt-2">
+                              <div>
+                                <div className="text-[11px] text-gray-500 mb-1">Packing Loss</div>
                                 <input
                                   type="number"
                                   min="0"
                                   step="0.1"
                                   defaultValue={batch.packingLoss !== undefined ? batch.packingLoss : 0}
                                   disabled={!isPunchedOut}
-                                  className={`w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-center font-bold ${
-                                    isPunchedOut 
-                                      ? 'bg-yellow-50 text-gray-900' 
-                                      : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                  className={`w-full px-2 py-1 text-[11px] border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-center font-semibold ${
+                                    isPunchedOut ? 'bg-yellow-50 text-gray-900' : 'bg-gray-100 text-gray-400 cursor-not-allowed'
                                   }`}
                                   placeholder="0"
-                                  title={!isPunchedOut ? "Punch out first to enter packing loss" : "Enter packing loss"}
                                   onChange={(e) => handleBatchPackingLossChange(groupIndex, itemIndex, batchIndex, batch, e.target.value)}
                                 />
-                              );
-                            })()}
-                          </td>
-                          
-                          {/* Batch-level Qty Packed */}
-                          <td className="border border-gray-900 px-1 sm:px-2 py-2 text-center">
-                            <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold">
-                              {(Math.max(0, (batch.qtyAchieved || 0) - (batch.packingLoss || 0))).toFixed(2)}
-                            </span>
-                          </td>
-                          
-                          {/* Batch-level Notes */}
-                          <td className="border border-gray-900 px-1 sm:px-2 py-2">
-                            <input
-                              type="text"
-                              placeholder="Batch notes..."
-                              defaultValue={batch.notes || ''}
-                              className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                              onChange={(e) => handleBatchNotesChange(groupIndex, itemIndex, batchIndex, batch, e.target.value)}
-                            />
-                          </td>
-                          
-                          {/* Batch-level Actions */}
-                          <td className="border border-gray-900 px-2 sm:px-4 py-2 text-center">
-                            {(() => {
-                              const batchKey = `${groupIndex}-${itemIndex}-${batchIndex}`;
-                              const batchTiming = groupTimings[batchKey];
-                              const isCompleted = batchTiming?.punchedOut;
-                              const isAlreadyApproved = batch.status === 'approved' || batch.isApproved;
-                              const isApproving = approvingBatches[batchKey];
-                              
-                              // If already approved, show approved status
-                              if (isAlreadyApproved) {
-                                return (
-                                  <span className="bg-green-100 text-green-800 px-2 py-1 rounded text-xs font-medium whitespace-nowrap">
-                                    ✅ Approved
-                                  </span>
-                                );
-                              }
-                              
-                              // After punch out, show Approve button (regardless of packing loss value)
-                              if (isCompleted) {
-                                return (
-                                  <button
-                                    onClick={() => handleBatchApproval(groupIndex, itemIndex, batchIndex, batch)}
-                                    disabled={isApproving}
-                                    className={`px-2 sm:px-3 py-1 rounded text-xs transition-colors whitespace-nowrap ${
-                                      isApproving 
-                                        ? 'bg-gray-400 text-white cursor-not-allowed' 
-                                        : 'bg-green-500 text-white hover:bg-green-600'
-                                    }`}
-                                  >
-                                    {isApproving ? (
-                                      <span className="flex items-center gap-1">
-                                        <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                        </svg>
-                                        Approving...
-                                      </span>
-                                    ) : (
-                                      'Approve'
-                                    )}
-                                  </button>
-                                );
-                              }
-                              
-                              return (
-                                <span className="text-gray-400 text-xs">
-                                  Complete first
-                                </span>
-                              );
-                            })()} 
-                          </td>
-                        </tr>
-                      )) :
-                      // Fallback for items without batch details
-                      (
-                        <tr key={`${groupIndex}-${itemIndex}`} className="hover:bg-gray-50 border-b border-gray-200">
-                          <td className="border border-gray-900 px-2 sm:px-4 py-2 text-center text-xs sm:text-sm">
-                            
-                          </td>
-                          <td className="border border-gray-900 px-2 sm:px-4 py-2">
-                            <div className="bg-red-50 p-2 rounded ml-4">
-                              <div className="font-medium text-xs text-red-600">{item.name}</div>
-                              <div className="text-xs text-red-500">No batch data available</div>
+                              </div>
+                              <div>
+                                <div className="text-[11px] text-gray-500 mb-1">Qty Packed</div>
+                                <div className="bg-green-100 text-green-700 px-2 py-1 rounded text-[11px] font-bold text-center">
+                                  {Math.max(0, (batch.qtyAchieved || 0) - (batch.packingLoss || 0)).toFixed(2)}
+                                </div>
+                              </div>
                             </div>
-                          </td>
-                          <td className="border border-gray-900 px-1 sm:px-2 py-2 text-center text-xs text-gray-500" colSpan="8">
-                            No batch information
-                          </td>
-                        </tr>
-                      )
+
+                            <div className="mt-2">
+                              <div className="text-[11px] text-gray-500 mb-1">Notes</div>
+                              <input
+                                type="text"
+                                placeholder="Batch notes..."
+                                defaultValue={batch.notes || ''}
+                                className="w-full px-2 py-1 text-[11px] border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                onChange={(e) => handleBatchNotesChange(groupIndex, itemIndex, batchIndex, batch, e.target.value)}
+                              />
+                            </div>
+
+                            <div className="mt-2 flex justify-end">
+                              {isAlreadyApproved ? (
+                                <span className="bg-green-100 text-green-800 px-2 py-1 rounded text-[11px] font-medium">
+                                  ✅ Approved
+                                </span>
+                              ) : isPunchedOut ? (
+                                <button
+                                  onClick={() => handleBatchApproval(groupIndex, itemIndex, batchIndex, batch)}
+                                  disabled={isApproving}
+                                  className={`px-3 py-1 rounded text-[11px] ${
+                                    isApproving ? 'bg-gray-400 text-white' : 'bg-green-500 text-white hover:bg-green-600'
+                                  }`}
+                                >
+                                  {isApproving ? 'Approving...' : 'Approve'}
+                                </button>
+                              ) : (
+                                <span className="text-[11px] text-gray-400">Complete first</span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div key={`${groupIndex}-${itemIndex}`} className="border-t border-gray-200 px-3 py-2 text-xs">
+                        <div className="font-medium text-red-600">{item.name}</div>
+                        <div className="text-[11px] text-red-500">No batch data available</div>
+                      </div>
+                    )
                   ))}
-                </React.Fragment>
+                </div>
               ))}
-                  </tbody>
-                </table>
-              </div>
             </div>
           </div>
         )}

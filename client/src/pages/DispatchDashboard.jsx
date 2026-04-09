@@ -58,18 +58,38 @@ const Progress = ({ value, className = "" }) => (
   </div>
 );
 
+// Helper to show dates as DD-MM-YYYY
+const formatDisplayDate = (value) => {
+  if (!value) return '';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = d.getFullYear();
+  return `${day}-${month}-${year}`;
+};
+
 export default function DispatchDashboard() {
   const [dashboardData, setDashboardData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [manualStockEntries, setManualStockEntries] = useState({});
   const [dispatchedQuantities, setDispatchedQuantities] = useState({});
   const { toast } = useToast();
 
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = async (opts = {}) => {
     try {
       setLoading(true);
-      const response = await fetch(`${config.baseURL}/api/dispatches/dashboard`, {
+      // allow passing startDate/endDate via opts or state
+      const params = new URLSearchParams();
+      const sd = opts.startDate !== undefined ? opts.startDate : startDate;
+      const ed = opts.endDate !== undefined ? opts.endDate : endDate;
+      if (sd) params.append('startDate', sd);
+      if (ed) params.append('endDate', ed);
+
+      const response = await fetch(`${config.baseURL}/api/dispatches/dashboard?${params.toString()}`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`,
           'Content-Type': 'application/json'
@@ -106,6 +126,22 @@ export default function DispatchDashboard() {
       title: 'Success',
       description: 'Dashboard refreshed successfully'
     });
+  };
+
+  const handleApplyDateFilter = () => {
+    // basic validation: if both set and start > end, swap
+    let sd = startDate;
+    let ed = endDate;
+    if (sd && ed && new Date(sd) > new Date(ed)) {
+      const tmp = sd; sd = ed; ed = tmp;
+      setStartDate(sd); setEndDate(ed);
+    }
+    fetchDashboardData({ startDate: sd, endDate: ed });
+  };
+
+  const handleClearDateFilter = () => {
+    setStartDate(''); setEndDate('');
+    fetchDashboardData({ startDate: '', endDate: '' });
   };
 
   // Update local state only for manual stock entry (for onChange - typing)
@@ -268,7 +304,7 @@ export default function DispatchDashboard() {
           <div>
             <h2 className="text-3xl font-bold tracking-tight flex items-center gap-2">
               <Truck className="w-8 h-8 text-blue-600" />
-              Dispatch Dashboard
+                Dispatch Dashboard
             </h2>
             <p className="text-muted-foreground">
               Monitor dispatch operations, inventory status, and delivery tracking
@@ -350,12 +386,46 @@ export default function DispatchDashboard() {
         {/* Dispatch Console Table */}
         <Card>
           <CardHeader>
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-4">
               <div className="space-y-1">
                 <CardTitle className="text-xl">📊 Dispatch Console</CardTitle>
                 <CardDescription>
                   Monitor packing operations, order queue, and material inventory
                 </CardDescription>
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <label className="text-sm text-gray-700">Start Date</label>
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={e => setStartDate(e.target.value)}
+                    className="border rounded px-2 py-1 text-sm"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-sm text-gray-700">End Date</label>
+                  <input
+                    type="date"
+                    value={endDate}
+                    onChange={e => setEndDate(e.target.value)}
+                    className="border rounded px-2 py-1 text-sm"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    onClick={handleApplyDateFilter}
+                    className="bg-blue-600 text-white hover:bg-blue-700 h-9 px-3"
+                  >
+                    Filter
+                  </Button>
+                  <Button
+                    onClick={handleClearDateFilter}
+                    className="bg-gray-200 text-gray-800 hover:bg-gray-300 h-9 px-3"
+                  >
+                    Reset
+                  </Button>
+                </div>
               </div>
             </div>
           </CardHeader>
@@ -461,6 +531,11 @@ export default function DispatchDashboard() {
                             {entry.packingSheetSlNo ? `Sheet: ${entry.packingSheetSlNo}` : 'No Sheet'}
                             {entry.batchNo && ` • Batch: ${entry.batchNo}`}
                           </div>
+                          {formatDisplayDate(entry.date || entry.packingDate) && (
+                            <div className="text-xs text-gray-500">
+                              Date: {formatDisplayDate(entry.date || entry.packingDate)}
+                            </div>
+                          )}
                         </div>
                       </td>
                       <td className="border border-gray-900 p-2 text-center font-medium">{(entry.packedQuantityReadyForDispatch || 0).toFixed(2)}</td>

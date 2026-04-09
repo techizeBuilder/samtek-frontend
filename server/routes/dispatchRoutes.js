@@ -17,7 +17,6 @@ import {
   updateQtyIssued,
   approveProduct,
   generateInvoice,
-  getNextDCNumber,
   createDispatchOrder,
   getTodaysProducts,
   validateDCNumber,
@@ -54,7 +53,6 @@ router.get('/todays-products', getTodaysProducts);              // GET /api/disp
 router.get('/validate-dc-number', validateDCNumber);            // GET /api/dispatches/validate-dc-number
 router.post('/create-delivery-challan', createDeliveryChallan); // POST /api/dispatches/create-delivery-challan
 router.post('/generate-invoice/:dcId', generateInvoiceForDC);   // POST /api/dispatches/generate-invoice/:dcId
-router.get('/next-dc-number', getNextDCNumber);                 // GET /api/dispatches/next-dc-number
 router.post('/create-dispatch-order', createDispatchOrder);     // POST /api/dispatches/create-dispatch-order
 
 // Direct order creation routes

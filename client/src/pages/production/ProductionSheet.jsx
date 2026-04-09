@@ -179,72 +179,142 @@ export default function ProductionSheet() {
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
             </div>
           ) : productionGroups.length > 0 ? (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Group Name</TableHead>
-                    <TableHead>Items Count</TableHead>
-                    <TableHead className="text-center">Qty/Batch</TableHead>
-                    <TableHead className="text-center">Qty Achieved/Batch</TableHead>
-                    <TableHead className="text-center">Efficiency</TableHead>
-                    <TableHead className="text-center">Status</TableHead>
-                    <TableHead className="text-center">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {productionGroups.map((group) => {
-                    const efficiency = calculateEfficiency(group.qtyAchievedPerBatch || 0, group.qtyPerBatch || 0);
-                    
-                    return (
-                      <TableRow key={group._id}>
-                        <TableCell>
-                          <div>
-                            <div className="font-medium">{group.name}</div>
-                            <div className="text-sm text-gray-500">{group.description || 'No description'}</div>
+            <>
+              {/* Desktop / tablet: keep table layout */}
+              <div className="hidden md:block">
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Group Name</TableHead>
+                        <TableHead>Items Count</TableHead>
+                        <TableHead className="text-center">Qty/Batch</TableHead>
+                        <TableHead className="text-center">Qty Achieved/Batch</TableHead>
+                        <TableHead className="text-center">Efficiency</TableHead>
+                        <TableHead className="text-center">Status</TableHead>
+                        <TableHead className="text-center">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {productionGroups.map((group) => {
+                        const efficiency = calculateEfficiency(group.qtyAchievedPerBatch || 0, group.qtyPerBatch || 0);
+                        return (
+                          <TableRow key={group._id}>
+                            <TableCell>
+                              <div>
+                                <div className="font-medium">{group.name}</div>
+                                <div className="text-sm text-gray-500">{group.description || 'No description'}</div>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline">
+                                {group.items?.length || 0} items
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <div className="font-semibold text-lg text-blue-600">
+                                {group.qtyPerBatch || 0}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <div className="font-semibold text-lg text-gray-900">
+                                {parseFloat((group.qtyAchievedPerBatch || 0).toFixed(2))}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <Badge variant={getEfficiencyBadgeVariant(efficiency)}>
+                                {efficiency}%
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <Badge variant={group.isActive ? "default" : "secondary"}>
+                                {group.isActive ? "Active" : "Inactive"}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleViewGroup(group)}
+                              >
+                                <Eye className="h-4 w-4 mr-1" />
+                                View
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+
+              {/* Mobile: stacked cards, no horizontal scroll */}
+              <div className="md:hidden space-y-3">
+                {productionGroups.map((group) => {
+                  const efficiency = calculateEfficiency(group.qtyAchievedPerBatch || 0, group.qtyPerBatch || 0);
+                  const itemsCount = group.items?.length || 0;
+                  return (
+                    <div
+                      key={group._id}
+                      className="border border-gray-200 rounded-lg bg-white p-3 shadow-sm"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <div className="text-sm font-semibold text-gray-900">{group.name}</div>
+                          <div className="text-xs text-gray-500 mt-0.5">
+                            {group.description || 'No description'}
                           </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline">
-                            {group.items?.length || 0} items
+                          <div className="mt-1 text-[11px] text-gray-600">
+                            {itemsCount} item{itemsCount === 1 ? '' : 's'}
+                          </div>
+                        </div>
+                        <div className="text-right space-y-1">
+                          <Badge variant={getEfficiencyBadgeVariant(efficiency)} className="text-[11px] px-2 py-0.5">
+                            {efficiency}% eff.
                           </Badge>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <div className="font-semibold text-lg text-blue-600">
+                          <div>
+                            <Badge
+                              variant={group.isActive ? 'default' : 'secondary'}
+                              className="text-[11px] px-2 py-0.5"
+                            >
+                              {group.isActive ? 'Active' : 'Inactive'}
+                            </Badge>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                        <div>
+                          <div className="text-[11px] text-gray-500">Qty/Batch</div>
+                          <div className="font-semibold text-blue-600 text-sm">
                             {group.qtyPerBatch || 0}
                           </div>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <div className="font-semibold text-lg text-gray-900">
+                        </div>
+                        <div>
+                          <div className="text-[11px] text-gray-500">Qty Achieved/Batch</div>
+                          <div className="font-semibold text-gray-900 text-sm">
                             {parseFloat((group.qtyAchievedPerBatch || 0).toFixed(2))}
                           </div>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <Badge variant={getEfficiencyBadgeVariant(efficiency)}>
-                            {efficiency}%
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <Badge variant={group.isActive ? "default" : "secondary"}>
-                            {group.isActive ? "Active" : "Inactive"}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleViewGroup(group)}
-                          >
-                            <Eye className="h-4 w-4 mr-1" />
-                            View
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 flex justify-end">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 px-3 text-xs"
+                          onClick={() => handleViewGroup(group)}
+                        >
+                          <Eye className="h-3 w-3 mr-1" />
+                          View Details
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
           ) : (
             <div className="text-center py-8 text-gray-500">
               <Package className="h-12 w-12 mx-auto mb-4 opacity-50" />

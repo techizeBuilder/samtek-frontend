@@ -102,7 +102,7 @@ const dispatchConsoleSchema = new mongoose.Schema({
     trim: true,
     sparse: true,
     index: true,
-    match: /^DC\d{3,}$/,
+    // Removed strict format match to allow flexible DC formats; uniqueness is enforced per company below
     uppercase: true
   },
   batchNo: {
@@ -337,6 +337,8 @@ dispatchConsoleSchema.statics.getDispatchSummary = async function(companyId, sta
 dispatchConsoleSchema.index({ packingSheetId: 1, productId: 1, date: 1 }); // Remove unique constraint temporarily
 dispatchConsoleSchema.index({ company: 1, date: 1 }); // For daily dashboard queries
 dispatchConsoleSchema.index({ productGroup: 1, date: 1 }); // For group-wise reporting
+// Ensure DC number uniqueness per company (prevents duplicate DC within same company)
+dispatchConsoleSchema.index({ company: 1, dcno: 1 }, { unique: true, sparse: true, name: 'company_dcno_unique' });
 
 // Note: If you have a unique index on dcno in your database, drop it using:
 // db.dispatches.dropIndex("dcno_1")

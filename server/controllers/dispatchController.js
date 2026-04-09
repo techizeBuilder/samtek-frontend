@@ -313,17 +313,53 @@ export const getDispatchStats = async (req, res) => {
 // Get dispatch dashboard data for console view
 export const getDispatchDashboardData = async (req, res) => {
   try {
+    // Support optional date range filters from query params
     const today = new Date();
-    const startOfDay = new Date(today.setHours(0, 0, 0, 0));
-    const endOfDay = new Date(today.setHours(23, 59, 59, 999));
+    const { startDate, endDate } = req.query;
+
+    let startOfDay, endOfDay;
+    if (startDate || endDate) {
+      // If provided, use provided dates (normalize times)
+      if (startDate) {
+        const s = new Date(startDate);
+        startOfDay = new Date(s.getFullYear(), s.getMonth(), s.getDate(), 0, 0, 0, 0);
+      }
+      if (endDate) {
+        const e = new Date(endDate);
+        endOfDay = new Date(e.getFullYear(), e.getMonth(), e.getDate(), 23, 59, 59, 999);
+      }
+      // If only one bound provided, default the other to the same day
+      if (!startOfDay && endOfDay) startOfDay = new Date(endOfDay.getFullYear(), endOfDay.getMonth(), endOfDay.getDate(), 0, 0, 0, 0);
+      if (!endOfDay && startOfDay) endOfDay = new Date(startOfDay.getFullYear(), startOfDay.getMonth(), startOfDay.getDate(), 23, 59, 59, 999);
+    } else {
+      // Default to today's range when no explicit dates provided
+      startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0);
+      endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
+    }
 
     console.log('📊 Fetching dispatch console data for company:', req.user.companyId);
 
-    // Get dispatch console entries for today with full relations
-    const dispatchConsoleData = await Dispatch.find({
-      company: req.user.companyId,
-      date: { $gte: startOfDay, $lte: endOfDay }
-    })
+    // Build base query with date range
+    let baseQuery = { date: { $gte: startOfDay, $lte: endOfDay } };
+
+    // If user is not super user, limit to their company
+    if (req.user.role !== USER_ROLES.SUPER_USER) {
+      baseQuery.company = req.user.companyId;
+    } else {
+      // For super users, allow optional location filter to select companies by location
+      const { location } = req.query;
+      if (location) {
+        const Company = (await import('../models/Company.js')).default;
+        const matchingCompanies = await Company.find({ location: { $regex: `^${location}$`, $options: 'i' } }).select('_id');
+        const companyIds = matchingCompanies.map(c => c._id);
+        if (companyIds.length > 0) baseQuery.company = { $in: companyIds };
+      } else {
+        baseQuery.company = req.user.companyId;
+      }
+    }
+
+    // Get dispatch console entries with full relations
+    const dispatchConsoleData = await Dispatch.find(baseQuery)
       .populate({
         path: 'packingSheetId',
         select: 'slNo productionGroupName batchNo totalPackedQty packingDate status items createdBy',
@@ -339,12 +375,15 @@ export const getDispatchDashboardData = async (req, res) => {
 
     // Get approved packing sheets that don't have dispatch entries yet
     const PackingSheet = (await import('../models/Packing.js')).default;
-    const approvedPackingSheetsWithoutDispatch = await PackingSheet.find({
-      company: req.user.companyId,
+    // For packing sheets, apply same company filter as dispatch query
+    const packingQuery = {
       status: 'approved',
       approvedAt: { $gte: startOfDay, $lte: endOfDay },
       _id: { $nin: dispatchConsoleData.map(d => d.packingSheetId?._id).filter(Boolean) }
-    })
+    };
+    if (baseQuery.company) packingQuery.company = baseQuery.company;
+
+    const approvedPackingSheetsWithoutDispatch = await PackingSheet.find(packingQuery)
       .populate('createdBy', 'username fullName')
       .populate('approvedBy', 'username fullName')
       .select('slNo productionGroupName batchNo totalPackedQty approvedAt createdBy approvedBy');
@@ -453,7 +492,8 @@ export const getDispatchDashboardData = async (req, res) => {
           orphanedSheets: approvedPackingSheetsWithoutDispatch.length
         },
         meta: {
-          date: today.toISOString().split('T')[0],
+          startDate: startOfDay ? startOfDay.toISOString().split('T')[0] : null,
+          endDate: endOfDay ? endOfDay.toISOString().split('T')[0] : null,
           companyId: req.user.companyId,
           generatedAt: new Date().toISOString()
         }
@@ -1140,20 +1180,16 @@ export const updateQtyIssued = async (req, res) => {
       });
     }
 
-    // Check if qty exceeds indent qty (if indent qty > 0)
+    // Check if qty exceeds indent qty (if indent qty > 0).
+    // NOTE: We no longer block or require confirmation when qtyIssued exceeds indentQty.
+    //       This value is kept only for information/logging.
     const exceedsIndent = indentQty && indentQty > 0 && qtyIssued > indentQty;
 
     // Check if already dispatched or approved - require confirmation unless forceUpdate is true
-    if (((dispatch.status === 'dispatched' || dispatch.status === 'approved') || exceedsIndent) && !forceUpdate) {
-      let message = '';
+    const isFinalStatus = dispatch.status === 'dispatched' || dispatch.status === 'approved';
 
-      if (exceedsIndent && (dispatch.status === 'dispatched' || dispatch.status === 'approved')) {
-        message = `This item is already ${dispatch.status} and the new quantity (${qtyIssued}) exceeds indent qty (${indentQty}). Do you want to proceed?`;
-      } else if (exceedsIndent) {
-        message = `The quantity issued (${qtyIssued}) exceeds indent qty (${indentQty}). This may result in excess stock. Do you want to proceed?`;
-      } else {
-        message = `This item is already ${dispatch.status}. Updating Qty Issued for dispatched items may affect stock calculations. Do you want to proceed?`;
-      }
+    if (isFinalStatus && !forceUpdate) {
+      const message = `This item is already ${dispatch.status}. Updating Qty Issued for dispatched items may affect stock calculations. Do you want to proceed?`;
 
       return res.status(409).json({
         success: false,
@@ -1167,26 +1203,10 @@ export const updateQtyIssued = async (req, res) => {
       });
     }
 
-    // Validate qtyIssued against available item.batch inventory
-    if (dispatch.productId) {
-      try {
-        const item = await Item.findById(dispatch.productId);
-        if (item) {
-          const availableBatch = parseInt(item.batch) || 0;
-
-          if (qtyIssued > availableBatch) {
-            return res.status(400).json({
-              success: false,
-              message: `Cannot issue ${qtyIssued} units. Available stock/batch is only ${availableBatch}. Please enter a quantity that does not exceed available inventory.`,
-              availableBatch: availableBatch,
-              requestedQty: qtyIssued
-            });
-          }
-        }
-      } catch (err) {
-        console.error('Error checking item batch:', err);
-      }
-    }
+    // Previously we validated qtyIssued against available item.batch inventory
+    // and blocked when requested quantity was greater than available.
+    // Business requirement: allow issuing more than available and track the
+    // negative stock in closing balance, so this validation is now removed.
 
     // Store old qty for logging if this is a forced update
     const oldQtyIssued = dispatch.qtyIssued;
@@ -1205,12 +1225,9 @@ export const updateQtyIssued = async (req, res) => {
     dispatch.totalAvailableStock = totalAvailableStock;
 
     // Closing Stock End of Day = Total Available - Dispatched
+    // NOTE: We now allow this value to be negative so that overs-issuing
+    // beyond available stock is reflected as a minus balance.
     dispatch.closingStockEndOfDayBalance = totalAvailableStock - (qtyIssued || 0);
-
-    // If closing stock would be negative, set it to 0
-    if (dispatch.closingStockEndOfDayBalance < 0) {
-      dispatch.closingStockEndOfDayBalance = 0;
-    }
 
     // Overall Loss = Closing Stock - Physical Stock Entry
     if (dispatch.physicalStockEntryManualVerification !== undefined) {
@@ -1221,7 +1238,7 @@ export const updateQtyIssued = async (req, res) => {
     const updatedDispatch = await dispatch.save();
 
     // Log if this was a forced update
-    if (forceUpdate && ((dispatch.status === 'dispatched' || dispatch.status === 'approved') || exceedsIndent)) {
+    if (forceUpdate && (isFinalStatus || exceedsIndent)) {
       console.log(`⚠️ Forced qty update:`, {
         dispatchId: dispatch._id,
         dcNo: dispatch.dcno,
@@ -1329,11 +1346,13 @@ export const generateInvoice = async (req, res) => {
       });
     }
 
-    // Check if approved
-    if (dispatch.status !== 'approved') {
+    // Check if approved or in an allowed status (case-insensitive)
+    const allowedStatusesForInvoice = ['approved', 'dispatched', 'completed', 'updated', 'delivered', 'verified'];
+    const dispatchStatus = (dispatch.status || '').toString().toLowerCase();
+    if (!allowedStatusesForInvoice.includes(dispatchStatus)) {
       return res.status(400).json({
         success: false,
-        message: 'Please approve the product before generating invoice'
+        message: `Cannot generate invoice. Current status: ${dispatch.status}. Please approve the product before generating invoice or change status to one of: ${allowedStatusesForInvoice.join(', ')}`
       });
     }
 
@@ -2271,18 +2290,10 @@ export const createDeliveryChallan = async (req, res) => {
       });
     }
 
-    // Validate DC number is the next expected number
-    const nextExpectedDCno = await Dispatch.generateNextDCno(req.user.companyId);
-    console.log('🔍 DC Number validation:', { provided: dcNo, expected: nextExpectedDCno });
-
-    if (dcNo !== nextExpectedDCno) {
-      return res.status(400).json({
-        success: false,
-        message: `Invalid DC number. Expected next DC number is ${nextExpectedDCno}, but received ${dcNo}. Please use the correct sequential DC number.`,
-        expectedDCno: nextExpectedDCno,
-        providedDCno: dcNo
-      });
-    }
+    // Note: sequential DC number enforcement removed. Any DC format is accepted
+    // here as long as it's unique per company. DC numbering (generation) is
+    // still available via helper APIs if needed, but we don't enforce
+    // that the provided dcNo matches the next sequential number.
 
     // Validate DC number uniqueness
     const existingDC = await Dispatch.findOne({
@@ -2716,9 +2727,10 @@ export const generateInvoiceForDC = async (req, res) => {
 
     console.log('📋 Dispatch status:', dispatch.status);
 
-    // Allow invoice generation for dispatched, approved, or completed status
-    const allowedStatuses = ['dispatched', 'approved', 'completed', 'updated'];
-    if (!allowedStatuses.includes(dispatch.status)) {
+    // Allow invoice generation for a set of statuses (case-insensitive)
+    const allowedStatuses = ['dispatched', 'approved', 'completed', 'updated', 'delivered', 'verified'];
+    const currentStatus = (dispatch.status || '').toString().toLowerCase();
+    if (!allowedStatuses.includes(currentStatus)) {
       return res.status(400).json({
         success: false,
         message: `Cannot generate invoice. Current status: ${dispatch.status}. Allowed statuses: ${allowedStatuses.join(', ')}`,
@@ -2732,24 +2744,45 @@ export const generateInvoiceForDC = async (req, res) => {
     const customerName = requestBody.customerName || dispatch.customer?.name || 'N/A';
     const customerCode = requestBody.customerCode || dispatch.customer?.customerCode || 'N/A';
 
-    // Find all items with the same DC number
-    let allDCItems = await Dispatch.find({
-      dcno: dispatch.dcno,
-      company: req.user.companyId
-    })
-      .populate('productId', 'name code category unit price salePrice gst')
-      .populate('salesPerson', 'fullName username email')
-      .populate('customer', 'name customerCode address phone email')
-      .populate({
-        path: 'orderId',
-        populate: {
-          path: 'products.product',
-          model: 'Item'
-        }
+    // If this route was called with a specific dispatch ID (dcId param),
+    // always generate invoice for that single dispatch record only.
+    // The `includeAll` flag is only honored when generating by DC number (legacy behavior).
+    const includeAll = requestBody.includeAll === true || requestBody.includeAll === 'true';
+
+    const singleDispatchMode = !!dcId; // true for this endpoint
+
+    let allDCItems;
+    if (singleDispatchMode || !includeAll) {
+      // Use only the requested dispatch
+      allDCItems = [dispatch.toObject ? dispatch.toObject() : dispatch];
+    } else {
+      // Fall back to previous behavior (all items with same dcno)
+      allDCItems = await Dispatch.find({
+        dcno: dispatch.dcno,
+        company: req.user.companyId
       })
-      .lean();
+        .populate('productId', 'name code category unit price salePrice gst')
+        .populate('salesPerson', 'fullName username email')
+        .populate('customer', 'name customerCode address phone email')
+        .populate({
+          path: 'orderId',
+          populate: {
+            path: 'products.product',
+            model: 'Item'
+          }
+        })
+        .lean();
+    }
 
     console.log('🔍 Found', allDCItems.length, 'items for DC:', dispatch.dcno);
+
+    // Debug: log item product names to help diagnose duplicate rows
+    try {
+      const itemNames = allDCItems.map(i => i.productName || (i.productId && (i.productId.name || i.productId)) || 'Unknown');
+      console.log('🔎 Invoice will include items:', itemNames);
+    } catch (err) {
+      console.warn('Could not log item names for invoice debug:', err.message);
+    }
 
     // If productId populate failed but we have productId references, fetch them manually
     for (let i = 0; i < allDCItems.length; i++) {
@@ -2778,57 +2811,49 @@ export const generateInvoiceForDC = async (req, res) => {
       });
     }
 
-    // Use items from request if provided, but ALWAYS enrich them with database values for financial accuracy
-    const items = (requestBody.items && requestBody.items.length > 0 ? requestBody.items : allDCItems).map(item => {
-      // Find corresponding DB item to get reliable price and GST
-      const dbItem = allDCItems.find(dbi =>
-        (dbi.productId?._id?.toString() === (item.productId?._id || item.productId)?.toString()) ||
-        (dbi._id?.toString() === (item.productId?._id || item.dispatchId || item._id)?.toString())
-      );
+    // Build items for invoice. If request provided explicit items, use them (enriched below).
+    // If includeAll is false (default), generate invoice only for the specific dispatch requested.
+    let items = [];
 
-      // Try multiple sources for product name
-      const productName = item.productName || dbItem?.productId?.name || dbItem?.productName || 'Unknown Product';
-
-      // Get rate from order or product or DB item
-      let rate = item.rate || item.price || 0;
-
-      if (rate === 0) {
-        // Try from DB item's order reference
-        if (dbItem?.orderId && dbItem.orderId.products && Array.isArray(dbItem.orderId.products)) {
-          const orderProduct = dbItem.orderId.products.find(
-            p => p.product && dbItem.productId &&
-              p.product.toString() === dbItem.productId._id.toString()
-          );
-          if (orderProduct) rate = orderProduct.price || 0;
+    if (requestBody.items && requestBody.items.length > 0) {
+      // Client provided items; enrich them similarly to legacy behavior
+      items = requestBody.items.map(i => ({ ...i }));
+    } else if (!includeAll) {
+      // Build a single-item invoice based strictly based on the requested dispatch
+      const productRef = dispatch.productId;
+      let productDetails = null;
+      try {
+        if (productRef) {
+          productDetails = await Item.findById(productRef).select('name salePrice price gst unit').lean();
         }
-
-        // Fallback to product model prices
-        if (rate === 0 && dbItem?.productId) {
-          rate = dbItem.productId.salePrice || dbItem.productId.price || 0;
-        }
+      } catch (err) {
+        console.error('Error fetching product details for single-dispatch invoice:', err.message);
       }
 
-      // Get GST from product or DB item
-      const gst = item.gst || dbItem?.productId?.gst || 0;
+      const rate = (productDetails && (productDetails.salePrice || productDetails.price)) || 0;
+      const gst = (productDetails && productDetails.gst) || 0;
 
-      console.log('📋 Mapping item:', {
-        productName,
-        indentQty: item.indentQty || dbItem?.indentQty || 0,
-        qtyIssued: item.qtyIssued || dbItem?.qtyIssued || 0,
+      items = [{
+        productName: dispatch.productName || productDetails?.name || dispatch.productGroup || 'Unknown Product',
+        productGroup: dispatch.productGroup || '',
+        indentQty: dispatch.indentQty || dispatch.totalIndentQuantityOrdersForTheDay || 0,
+        qtyIssued: dispatch.qtyIssued || dispatch.dispatchedQuantitySentToday || 0,
+        unit: (productDetails && productDetails.unit) || 'Pcs',
         rate,
         gst
-      });
-
-      return {
-        productName: productName,
-        productGroup: item.productGroup || dbItem?.productGroup || '',
-        indentQty: item.indentQty || dbItem?.indentQty || dbItem?.totalIndentQuantityOrdersForTheDay || 0,
-        qtyIssued: item.qtyIssued || dbItem?.qtyIssued || dbItem?.packedQuantityReadyForDispatch || dbItem?.dispatchedQuantitySentToday || 0,
-        unit: item.unit || dbItem?.productId?.unit || dbItem?.unit || 'Pcs',
-        rate: rate,
-        gst: gst
-      };
-    });
+      }];
+    } else {
+      // Legacy: include all items with same DC number
+      items = allDCItems.map(item => ({
+        productName: item.productId?.name || item.productName || 'Unknown Product',
+        productGroup: item.productGroup || '',
+        indentQty: item.indentQty || item.totalIndentQuantityOrdersForTheDay || 0,
+        qtyIssued: item.qtyIssued || item.dispatchedQuantitySentToday || 0,
+        unit: item.productId?.unit || 'Pcs',
+        rate: (item.productId && item.productId.salePrice) || item.rate || 0,
+        gst: (item.productId && item.productId.gst) || 0
+      }));
+    }
 
     // Don't update status - keep it as dispatched
     // Invoice generation should not change dispatch status
