@@ -734,7 +734,16 @@ export const updateSalesSummary = async (req, res) => {
         }
       } 
       // CASE 2: Already approved, but batchAdjusted changed - adjust batches
-      else if (oldStatus === 'approved' && updates.batchAdjusted !== undefined && updates.batchAdjusted !== oldBatchAdjusted) {
+      // IMPORTANT: Only run this when status remains approved (or unchanged).
+      // If frontend sends status "pending" together with a batchAdjusted change,
+      // we must NOT stay in the approved-flow; the pending case below should run
+      // so that ProductionBatch entries are removed.
+      else if (
+        oldStatus === 'approved' &&
+        (updates.status === undefined || updates.status === 'approved') &&
+        updates.batchAdjusted !== undefined &&
+        updates.batchAdjusted !== oldBatchAdjusted
+      ) {
         console.log('🔄 Unit Manager updated batchAdjusted on approved product - adjusting batches...');
         console.log(`   batchAdjusted changed: ${oldBatchAdjusted} → ${updates.batchAdjusted}`);
         
@@ -1509,65 +1518,161 @@ const createProductionBatchEntries = async ({
     const groupId = productionGroup ? productionGroup._id : null;
     console.log(`🔗 Product ${groupId ? 'IS' : 'IS NOT'} part of a production group: ${groupId}`);
 
-    // 🎯 SMART REUSE: Check if existing PENDING partial batches can accommodate this item
+    // For UNGROUPED products we want behavior identical to bulk approve:
+    // split batchAdjusted into full + remainder batches (e.g., 2.3 → 1,1,0.3)
+    // and recreate all pending batches for this product/date.
+    if (!groupId) {
+      console.log('🔹 Ungrouped product – using split-batch logic like bulk approve');
+
+      // Remove all existing pending/in-progress batches for this product on this date
+      const deleteResult = await ProductionBatch.deleteMany({
+        "combinedItems.itemId": productId,
+        companyId,
+        productionDate: today,
+        status: { $ne: 'completed' },
+        groupId: null
+      });
+      console.log(`   🗑️ Deleted ${deleteResult.deletedCount} existing ungrouped batches before recreation`);
+
+      const fullBatches = Math.floor(batchAdjusted);
+      const remainder = parseFloat((batchAdjusted - fullBatches).toFixed(2));
+      console.log(`   📈 Splitting batchAdjusted=${batchAdjusted} into ${fullBatches} full + ${remainder} remainder`);
+
+      // Find highest existing batch number for this date/company (after cleanup)
+      const existingBatches = await ProductionBatch.find({
+        companyId,
+        productionDate: today
+      }).select('batchNumber').sort({ batchNumber: -1 }).limit(1);
+
+      let nextBatchNumber = 1;
+      if (existingBatches.length > 0) {
+        nextBatchNumber = existingBatches[0].batchNumber + 1;
+      }
+
+      const createdBatches = [];
+      let batchCounter = 0;
+
+      // Full batches (1.0 each)
+      for (let i = 0; i < fullBatches; i++) {
+        const currentBatchNumber = nextBatchNumber + batchCounter;
+        const batchNo = `BATNO${String(currentBatchNumber).padStart(2, '0')}`;
+
+        const batchEntry = await ProductionBatch.create({
+          companyId,
+          groupId: null,
+          batchNumber: currentBatchNumber,
+          batchNo,
+          productionDate: today,
+          qtyPerBatch: qtyPerBatch || 0,
+          qtyAchieved: qtyPerBatch || 0,
+          totalBatchAdjusted: 1.0,
+          status: 'pending',
+          mouldingTime: null,
+          unloadingTime: null,
+          productionLoss: 0,
+          createdBy: approvedBy || 'system',
+          combinedItems: [{
+            itemId: productId,
+            DailyProductionId: dailyDetailsId || null,
+            batchAdjustedValue: 1.0,
+            qtyContribution: qtyPerBatch || 0
+          }],
+          notes: ''
+        });
+
+        console.log(`   ✅ Created full batch ${batchNo}`);
+        createdBatches.push(batchEntry);
+        batchCounter++;
+      }
+
+      // Remainder batch, if any
+      if (remainder > 0) {
+        const currentBatchNumber = nextBatchNumber + batchCounter;
+        const batchNo = `BATNO${String(currentBatchNumber).padStart(2, '0')}`;
+
+        const batchEntry = await ProductionBatch.create({
+          companyId,
+          groupId: null,
+          batchNumber: currentBatchNumber,
+          batchNo,
+          productionDate: today,
+          qtyPerBatch: qtyPerBatch || 0,
+          qtyAchieved: (qtyPerBatch || 0) * remainder,
+          totalBatchAdjusted: remainder,
+          status: 'pending',
+          mouldingTime: null,
+          unloadingTime: null,
+          productionLoss: 0,
+          createdBy: approvedBy || 'system',
+          combinedItems: [{
+            itemId: productId,
+            DailyProductionId: dailyDetailsId || null,
+            batchAdjustedValue: remainder,
+            qtyContribution: (qtyPerBatch || 0) * remainder
+          }],
+          notes: ''
+        });
+
+        console.log(`   ✅ Created remainder batch ${batchNo} with totalBatchAdjusted=${remainder}`);
+        createdBatches.push(batchEntry);
+      }
+
+      console.log(`   ✅ Created ${createdBatches.length} ungrouped batches for product`);
+      return createdBatches;
+    }
+
+    // GROUPED products keep SMART REUSE behavior to pack items into combined batches
     const existingPartialBatches = await ProductionBatch.find({
       companyId,
-      groupId: groupId || null, // Match groupId (null for ungrouped)
+      groupId,
       productionDate: today,
       status: 'pending',
-      totalBatchAdjusted: { $lt: 1.0 } // Has available space
-    }).sort({ createdAt: 1 }); // Oldest first (FIFO)
+      totalBatchAdjusted: { $lt: 1.0 }
+    }).sort({ createdAt: 1 });
     
-    console.log(`🔍 Found ${existingPartialBatches.length} existing partial batches with space`);
+    console.log(`🔍 Found ${existingPartialBatches.length} existing partial group batches with space`);
     
-    // Try to add to existing batch first
     for (const existingBatch of existingPartialBatches) {
       const availableSpace = parseFloat((1.0 - existingBatch.totalBatchAdjusted).toFixed(2));
-      
       console.log(`   📊 ${existingBatch.batchNo}: ${existingBatch.totalBatchAdjusted.toFixed(2)} used, ${availableSpace.toFixed(2)} available`);
-      
+
       if (batchAdjusted <= availableSpace) {
-        // ✅ FITS! Add to existing batch
-        console.log(`✅ Adding to existing ${existingBatch.batchNo}: ${batchAdjusted} fits in ${availableSpace} space`);
-        
+        console.log(`✅ Adding to existing group batch ${existingBatch.batchNo}: ${batchAdjusted} fits in ${availableSpace} space`);
+
         existingBatch.combinedItems.push({
           itemId: productId,
           DailyProductionId: dailyDetailsId || null,
           batchAdjustedValue: batchAdjusted,
           qtyContribution: qtyPerBatch
         });
-        
+
         const oldTotal = existingBatch.totalBatchAdjusted;
         existingBatch.totalBatchAdjusted = parseFloat(
           (existingBatch.totalBatchAdjusted + batchAdjusted).toFixed(2)
         );
-        
-        // Update notes to reflect the addition
+
         existingBatch.notes = `${existingBatch.notes || 'Combined batch'} + ${batchAdjusted} = ${existingBatch.totalBatchAdjusted.toFixed(2)}`;
-        
         await existingBatch.save();
-        
-        console.log(`🎉 Successfully added to existing batch ${existingBatch.batchNo}: ${oldTotal.toFixed(2)} → ${existingBatch.totalBatchAdjusted.toFixed(2)}`);
-        return [existingBatch]; // Return the updated batch
+
+        console.log(`🎉 Successfully added to existing group batch ${existingBatch.batchNo}: ${oldTotal.toFixed(2)} → ${existingBatch.totalBatchAdjusted.toFixed(2)}`);
+        return [existingBatch];
       }
     }
-    
-    // No existing batch can fit → Create new batch
-    console.log(`📦 No existing batch can fit ${batchAdjusted}, creating new batch...`);
-    
-    // Find the highest existing batch number for this date and company
+
+    console.log(`📦 No existing group batch can fit ${batchAdjusted}, creating new group batch...`);
+
     const existingBatches = await ProductionBatch.find({
       companyId,
       productionDate: today
     }).select('batchNumber').sort({ batchNumber: -1 }).limit(1);
-    
+
     let nextBatchNumber = 1;
     if (existingBatches.length > 0) {
       nextBatchNumber = existingBatches[0].batchNumber + 1;
     }
-    
+
     const batchNo = `BATNO${String(nextBatchNumber).padStart(2, '0')}`;
-    
+
     const newBatch = await ProductionBatch.create({
       companyId,
       groupId,
@@ -1590,8 +1695,8 @@ const createProductionBatchEntries = async ({
       }],
       notes: `Created with batch value ${batchAdjusted}`
     });
-    
-    console.log(`✅ Created new batch ${batchNo} with value ${batchAdjusted}`);
+
+    console.log(`✅ Created new group batch ${batchNo} with value ${batchAdjusted}`);
     return [newBatch];
     
   } catch (error) {
