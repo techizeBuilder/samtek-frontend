@@ -1422,9 +1422,19 @@ export const updateUngroupedItemProduction = async (req, res) => {
 
     console.log(`📦 Processing: itemId=${_id}, batchNo=${batchno}, field=${field}`);
 
-    // Set today's production date
-    const today = new Date();
-    today.setUTCHours(0, 0, 0, 0);
+    // Set production date - use from request if available, otherwise default to today
+    let productionDate;
+    if (req.body.productionDate) {
+      productionDate = new Date(req.body.productionDate);
+      productionDate.setUTCHours(0, 0, 0, 0);
+      console.log(`📅 Using productionDate from request: ${productionDate.toISOString()}`);
+    } else {
+      productionDate = new Date();
+      productionDate.setUTCHours(0, 0, 0, 0);
+      console.log(`📅 Using default productionDate (today): ${productionDate.toISOString()}`);
+    }
+    
+    const today = productionDate; // Keeping variable name for compatibility with existing code
 
     // Find existing ProductionBatch record by batchNo
     let productionRecord = await ProductionBatch.findOne({
@@ -1732,14 +1742,20 @@ export const updateUngroupedItemProductionWithBatch = async (req, res) => {
       });
     }
 
-    // Get today's production date in UTC to match existing batch dates
-    const today = new Date();
-    const productionDate = new Date(Date.UTC(
-      today.getUTCFullYear(),
-      today.getUTCMonth(),
-      today.getUTCDate(),
-      0, 0, 0, 0
-    ));
+    // Set production date - use from request if available, otherwise default to today
+    let productionDate;
+    if (req.body.productionDate) {
+      productionDate = new Date(req.body.productionDate);
+      productionDate.setUTCHours(0, 0, 0, 0);
+    } else {
+      const today = new Date();
+      productionDate = new Date(Date.UTC(
+        today.getUTCFullYear(),
+        today.getUTCMonth(),
+        today.getUTCDate(),
+        0, 0, 0, 0
+      ));
+    }
 
     console.log('📅 Production date (UTC):', productionDate.toISOString());
 
