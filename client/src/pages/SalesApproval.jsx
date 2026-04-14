@@ -271,11 +271,31 @@ const SalesApproval = () => {
       const orderIds = product.salesBreakdown && product.salesBreakdown.length > 0
         ? product.salesBreakdown.flatMap(sb => sb.orderIds || [])
         : [];
-      
+
+      // Use the same production values as bulk approve so that
+      // single approve behaves identically (1 -> 1, 0.3 -> 0.3,
+      // 1.3 -> 1 and 0.3 at the backend).
+      const productionInfo = productionData[productName] || {};
+      const batchAdjusted = productionInfo.batchAdjusted || product.batchAdjusted || 0;
+      const qtyPerBatch = productionInfo.qtyPerBatch || product.qtyPerBatch || 1;
+      const physicalStock = productionInfo.physicalStock || product.physicalStock || 0;
+      const packing = productionInfo.packing || product.packing || 0;
+      const toBeProducedDay = productionInfo.toBeProducedDay || product.toBeProducedDay || 0;
+      const produceBatches = productionInfo.produceBatches || product.produceBatches || 0;
+
+      const productionFinalBatches = parseFloat((batchAdjusted * qtyPerBatch).toFixed(2));
+
       const requestBody = {
         date: selectedDate,
         productId: actualProductId,
         updates: {
+          productionFinalBatches,
+          physicalStock,
+          batchAdjusted,
+          qtyPerBatch,
+          toBeProducedDay,
+          produceBatches,
+          packing,
           status: 'approved'
         },
         orderIds: orderIds,

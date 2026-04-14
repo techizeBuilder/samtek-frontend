@@ -2401,12 +2401,30 @@ const createBulkProductionBatchEntries = async ({
     console.log(`🔗 Product ${groupId ? 'IS' : 'IS NOT'} part of a production group: ${groupId}`);
 
     // Create ProductionBatch entries
+    // IMPORTANT: split batchAdjusted into full + remainder
+    // so "1.3" becomes [1.0, 0.3] instead of two 1.3 batches.
+
+    const safeBatchAdjusted = Math.max(0, Number(batchAdjusted) || 0);
+    const fullBatches = Math.floor(safeBatchAdjusted);
+    const remainder = parseFloat((safeBatchAdjusted - fullBatches).toFixed(2));
+    const totalBatchesToCreate = fullBatches + (remainder > 0 ? 1 : 0);
+
+    if (totalBatchesToCreate === 0) {
+      console.log(`⚠️ batchAdjusted=${batchAdjusted} results in 0 batches — skipping ProductionBatch creation for ${productName}`);
+      return [];
+    }
+
     const batchEntries = [];
 
-    for (let i = 0; i < produceBatches; i++) {
+    for (let i = 0; i < totalBatchesToCreate; i++) {
       const currentBatchNumber = nextBatchNumber + i;
       const paddedBatchNumber = String(currentBatchNumber).padStart(2, '0');
       const batchNo = `BATNO${paddedBatchNumber}`;
+
+      // Determine this batch's weight (1.0 for full batches, remainder for last one)
+      const isRemainderBatch = i >= fullBatches;
+      const batchWeight = isRemainderBatch && remainder > 0 ? remainder : 1.0;
+      const actualQty = (qtyPerBatch || 0) * batchWeight;
 
       const batchEntry = {
         companyId,
@@ -2414,25 +2432,25 @@ const createBulkProductionBatchEntries = async ({
         batchNumber: currentBatchNumber,
         batchNo,
         productionDate: today,
-        qtyPerBatch: qtyPerBatch, // Use original qtyPerBatch for each batch (don't divide)
-        qtyAchieved: qtyPerBatch * batchAdjusted, // Calculate based on batchAdjusted
+        qtyPerBatch: qtyPerBatch, // Base qty per batch
+        qtyAchieved: actualQty,
         productionLoss: 0,
         status: 'pending', // Start with pending status
         mouldingTime: null,
         unloadingTime: null,
         createdBy: approvedBy,
-        totalBatchAdjusted: batchAdjusted,
+        totalBatchAdjusted: batchWeight,
         combinedItems: [{
           itemId: productId,
           DailyProductionId: dailyDetailsId || null,
-          batchAdjustedValue: batchAdjusted,
-          qtyContribution: batchAdjusted
+          batchAdjustedValue: batchWeight,
+          qtyContribution: actualQty
         }],
         notes: `Created by unit manager bulk approval`
       };
 
       batchEntries.push(batchEntry);
-      console.log(`📦 Prepared batch ${i + 1}/${produceBatches}: ${batchNo} with qty ${qtyPerBatch}`);
+      console.log(`📦 Prepared batch ${i + 1}/${totalBatchesToCreate}: ${batchNo} with weight ${batchWeight} and qty ${actualQty}`);
     }
 
     // Insert all batch entries at once
