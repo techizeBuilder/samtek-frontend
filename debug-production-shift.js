@@ -1,4 +1,5 @@
-const axios = require('axios');
+import axios from 'axios';
+import fs from 'fs';
 
 async function testProductionShift() {
   try {
@@ -9,12 +10,9 @@ async function testProductionShift() {
     // Use the token from cookies.txt if available
     let token;
     try {
-      const fs = require('fs');
       const cookieData = fs.readFileSync('./cookies.txt', 'utf8');
       const match = cookieData.match(/token=([^;]+)/);
-      if (match) {
-        token = match[1];
-      }
+      if (match) token = match[1];
     } catch (e) {
       console.log('No cookies.txt found, will need manual token');
     }
@@ -53,9 +51,11 @@ async function testProductionShift() {
       }
       
       if (response.data.data.groups && response.data.data.groups.length > 0) {
-        console.log('\n👥 Production Groups:');
+        console.log('\n👥 Production Groups (qtyPerBatch from Item.batch):');
         response.data.data.groups.forEach((group, index) => {
-          console.log(`${index + 1}. Group: "${group.groupName}" - ${group.items?.length || 0} items`);
+          console.log(
+            `${index + 1}. Group: "${group.name}" → qtyPerBatch=${group.qtyPerBatch}, totalQuantity=${group.totalQuantity}, batches=${group.totalItems}`
+          );
         });
       }
     }

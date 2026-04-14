@@ -325,6 +325,35 @@ export const getProductionShiftData = async (req, res) => {
 
       console.log(`📦 Processing group "${group.name}" with ${batches.length} approved batches`);
 
+      // Resolve qtyPerBatch directly from Item.batch (as per requirement)
+      // Assumption: all items in the group share the same Item.batch value.
+      const parseQtyPerBatch = (value) => {
+        const num = typeof value === 'number' ? value : parseFloat(value);
+        return Number.isFinite(num) && num > 0 ? num : 0;
+      };
+
+      const calculateQtyAchieved = ({ totalBatchAdjusted, qtyPerBatch, productionLoss }) => {
+        const adjusted = Number(totalBatchAdjusted);
+        const perBatch = Number(qtyPerBatch);
+        const loss = Number(productionLoss);
+        const adjustedSafe = Number.isFinite(adjusted) ? adjusted : 1;
+        const perBatchSafe = Number.isFinite(perBatch) ? perBatch : 0;
+        const lossSafe = Number.isFinite(loss) ? loss : 0;
+        const achieved = (adjustedSafe * perBatchSafe) - lossSafe;
+        return Math.max(0, Math.round(achieved * 100) / 100);
+      };
+
+      const resolvedQtyPerBatchFromItems = (() => {
+        for (const batch of batches) {
+          if (!batch?.combinedItems?.length) continue;
+          for (const combined of batch.combinedItems) {
+            const fromItem = parseQtyPerBatch(combined?.itemId?.batch);
+            if (fromItem > 0) return fromItem;
+          }
+        }
+        return 0;
+      })();
+
       // Format items with ProductionBatch data
       // Handle both combined and individual batches
       const itemsWithBatchQty = batches.map(batch => {
@@ -340,7 +369,7 @@ export const getProductionShiftData = async (req, res) => {
             price: 0,
             image: null,
             productionFinalBatches: 1,
-            qtyPerBatch: batch.qtyPerBatch || 0,
+            qtyPerBatch: resolvedQtyPerBatchFromItems || batch.qtyPerBatch || 0,
             batchNo: batch.batchNo,
             batchNumber: batch.batchNumber,
             productionStatus: batch.productionStatus || 'not_started',
@@ -365,7 +394,7 @@ export const getProductionShiftData = async (req, res) => {
           price: batch.itemId.price || 0,
           image: batch.itemId.image,
           productionFinalBatches: 1,
-          qtyPerBatch: batch.qtyPerBatch || 0,
+          qtyPerBatch: resolvedQtyPerBatchFromItems || batch.qtyPerBatch || 0,
           batchNo: batch.batchNo,
           batchNumber: batch.batchNumber,
           productionStatus: batch.productionStatus || 'not_started',
@@ -378,6 +407,15 @@ export const getProductionShiftData = async (req, res) => {
 
       const batchDataMap = {};
       batches.forEach(batch => {
+        const effectiveQtyPerBatch = resolvedQtyPerBatchFromItems || batch.qtyPerBatch || 0;
+        const effectiveQtyAchieved = resolvedQtyPerBatchFromItems
+          ? calculateQtyAchieved({
+              totalBatchAdjusted: batch.totalBatchAdjusted !== undefined ? batch.totalBatchAdjusted : 1.0,
+              qtyPerBatch: effectiveQtyPerBatch,
+              productionLoss: batch.productionLoss || 0
+            })
+          : (batch.qtyAchieved || 0);
+
         batchDataMap[batch.batchNo] = {
           _id: batch._id,
           batchId: batch._id,
@@ -388,16 +426,17 @@ export const getProductionShiftData = async (req, res) => {
           productionStatus: batch.status || 'not_started', // Use batch.status field
           status: batch.status || 'not_started', // Also include status for consistency
           totalBatchAdjusted: batch.totalBatchAdjusted || 1.0, // Include batch remainder
-          qtyPerBatch: batch.qtyPerBatch || 0,
-          qtyAchieved: batch.qtyAchieved || 0,
+          qtyPerBatch: effectiveQtyPerBatch,
+          qtyAchieved: effectiveQtyAchieved,
           notes: batch.notes || '', // Include notes field
           combinedItems: batch.combinedItems || [] // Include populated combinedItems with full item details
         };
       });
 
-      // Calculate totalQuantity and qtyPerBatch from actual batch data
-      const totalQuantity = batches.reduce((sum, batch) => sum + (batch.qtyPerBatch || 0), 0);
-      const qtyPerBatch = batchCount > 0 ? Math.round(totalQuantity / batchCount) : 0;
+      // Use resolved qtyPerBatch from Item.batch; fallback to stored ProductionBatch.qtyPerBatch if missing.
+      const fallbackTotalQuantity = batches.reduce((sum, batch) => sum + (batch.qtyPerBatch || 0), 0);
+      const qtyPerBatch = resolvedQtyPerBatchFromItems || (batchCount > 0 ? Math.round(fallbackTotalQuantity / batchCount) : 0);
+      const totalQuantity = resolvedQtyPerBatchFromItems ? (qtyPerBatch * batchCount) : fallbackTotalQuantity;
 
       shiftData.push({
         _id: group._id,
@@ -452,7 +491,7 @@ export const getProductionShiftData = async (req, res) => {
     .populate({
       path: 'combinedItems.itemId',
       model: 'Item',
-      select: 'name code category subCategory qty unit price image'
+      select: 'name code category subCategory qty unit price image batch'
     })
     .sort({ batchNumber: 1 })
     .lean();
@@ -461,6 +500,20 @@ export const getProductionShiftData = async (req, res) => {
     
     // Format ungrouped items
     const formattedUngroupedItems = ungroupedBatches.map(batch => {
+      const parseQtyPerBatch = (value) => {
+        const num = typeof value === 'number' ? value : parseFloat(value);
+        return Number.isFinite(num) && num > 0 ? num : 0;
+      };
+
+      const resolvedQtyPerBatchFromItems = (() => {
+        if (!batch?.combinedItems?.length) return 0;
+        for (const combined of batch.combinedItems) {
+          const fromItem = parseQtyPerBatch(combined?.itemId?.batch);
+          if (fromItem > 0) return fromItem;
+        }
+        return 0;
+      })();
+
       // Handle combined batches without itemId
       if (batch.combinedItems && batch.combinedItems.length > 0) {
         console.log(`📦 Combined batch ${batch.batchNo} with ${batch.combinedItems.length} items`);
@@ -490,7 +543,7 @@ export const getProductionShiftData = async (req, res) => {
           unit: '',
           price: 0,
           image: batch.combinedItems[0]?.itemId?.image || null,
-          qtyPerBatch: batch.qtyPerBatch || 0,
+          qtyPerBatch: resolvedQtyPerBatchFromItems || batch.qtyPerBatch || 0,
           batchAdjusted: batch.totalBatchAdjusted || 0,
           batchNo: batch.batchNo,
           batchNumber: batch.batchNumber,
@@ -522,7 +575,7 @@ export const getProductionShiftData = async (req, res) => {
         unit: '',
         price: 0,
         image: null,
-        qtyPerBatch: batch.qtyPerBatch || 0,
+        qtyPerBatch: resolvedQtyPerBatchFromItems || batch.qtyPerBatch || 0,
         batchAdjusted: batch.totalBatchAdjusted || 1,
         batchNo: batch.batchNo,
         batchNumber: batch.batchNumber,
