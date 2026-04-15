@@ -3017,11 +3017,11 @@ export const generateInvoiceForDC = async (req, res) => {
     doc.fontSize(9).font('Helvetica-Bold').fillColor('#ffffff');
     doc.text('S.No', slCol, tableTop + 8, { width: 30 });
     doc.text('Product Name', itemCol, tableTop + 8, { width: 170 });
-    doc.text('Quantity', qtyCol, tableTop + 8, { width: 50, align: 'right' });
-    doc.text('Rate', rateCol, tableTop + 8, { width: 50, align: 'right' });
-    doc.text('Amount', amountCol, tableTop + 8, { width: 60, align: 'right' });
-    doc.text('GST%', gstCol, tableTop + 8, { width: 40, align: 'right' });
-    doc.text('Total', totalCol, tableTop + 8, { width: 55, align: 'right' });
+    doc.text('Quantity', qtyCol, tableTop + 8, { width: 55, align: 'right' });
+    doc.text('Rate', rateCol, tableTop + 8, { width: 55, align: 'right' });
+    doc.text('Amount', amountCol, tableTop + 8, { width: 65, align: 'right' });
+    doc.text('GST%', gstCol, tableTop + 8, { width: 45, align: 'right' });
+    doc.text('Total', totalCol, tableTop + 8, { width: 65, align: 'right' });
 
     doc.fillColor('#000000');
     let currentY = tableTop + 25;
@@ -3039,7 +3039,7 @@ export const generateInvoiceForDC = async (req, res) => {
         currentY = 50;
       }
 
-      const rowHeight = 28;
+      const rowHeight = 32;
 
       // Alternating row colors for better readability
       if (index % 2 === 0) {
@@ -3059,13 +3059,13 @@ export const generateInvoiceForDC = async (req, res) => {
       const totalAmount = amount + gstAmount;
 
       // Row data with financial columns
-      doc.text(`${index + 1}`, slCol, currentY + 10, { width: 30 });
-      doc.text(item.productName || 'N/A', itemCol, currentY + 6, { width: 170, ellipsis: true });
-      doc.text(`${quantity}`, qtyCol, currentY + 10, { width: 50, align: 'right' });
-      doc.text(`${rate.toFixed(2)}`, rateCol, currentY + 10, { width: 50, align: 'right' });
-      doc.text(`${amount.toFixed(2)}`, amountCol, currentY + 10, { width: 60, align: 'right' });
-      doc.text(`${gstRate}%`, gstCol, currentY + 10, { width: 40, align: 'right' });
-      doc.text(`${totalAmount.toFixed(2)}`, totalCol, currentY + 10, { width: 55, align: 'right' });
+      doc.text(`${index + 1}`, slCol, currentY + 12, { width: 30 });
+      doc.text(item.productName || 'N/A', itemCol, currentY + 10, { width: 170, ellipsis: true });
+      doc.text(`${quantity}`, qtyCol, currentY + 12, { width: 55, align: 'right' });
+      doc.text(`${rate.toFixed(2)}`, rateCol, currentY + 12, { width: 55, align: 'right' });
+      doc.text(`${amount.toFixed(2)}`, amountCol, currentY + 12, { width: 65, align: 'right' });
+      doc.text(`${gstRate}%`, gstCol, currentY + 12, { width: 45, align: 'right' });
+      doc.text(`${totalAmount.toFixed(2)}`, totalCol, currentY + 12, { width: 65, align: 'right' });
 
       subtotal += amount;
       totalGST += gstAmount;
@@ -3074,38 +3074,38 @@ export const generateInvoiceForDC = async (req, res) => {
     });
 
     // Subtotal Row
-    doc.rect(30, currentY, 535, 25).fillAndStroke('#e5e7eb', '#9ca3af');
+    doc.rect(30, currentY, 535, 30).fillAndStroke('#e5e7eb', '#9ca3af'); // Increased height to 30
     doc.fontSize(9).font('Helvetica-Bold').fillColor('#000000');
-    doc.text('SUBTOTAL:', itemCol, currentY + 8);
-    doc.text(`₹${subtotal.toFixed(2)}`, amountCol, currentY + 8, { width: 60, align: 'right' });
-    doc.text(`₹${totalGST.toFixed(2)}`, gstCol, currentY + 8, { width: 40, align: 'right' });
+    doc.text('SUBTOTAL:', itemCol, currentY + 10); // Offset to 10
+    doc.text(`Rs. ${subtotal.toFixed(2)}`, amountCol, currentY + 10, { width: 65, align: 'right' });
+    doc.text(`Rs. ${totalGST.toFixed(2)}`, gstCol, currentY + 10, { width: 45, align: 'right' });
     const grandTotal = subtotal + totalGST;
-    doc.text(`₹${grandTotal.toFixed(2)}`, totalCol, currentY + 8, { width: 55, align: 'right' });
+    doc.text(`Rs. ${grandTotal.toFixed(2)}`, totalCol, currentY + 10, { width: 65, align: 'right' });
 
-    currentY += 25;
+    currentY += 30;
 
     // Tax Calculation Section
     const taxY = currentY + 15;
 
     // Right side - Tax breakdown box
-    doc.rect(350, taxY, 215, 85).stroke();
+    doc.rect(350, taxY, 215, 100).stroke(); // Increased height to 100
     doc.fontSize(9).font('Helvetica').fillColor('#000000');
 
-    let taxLineY = taxY + 10;
+    let taxLineY = taxY + 12;
     doc.fillColor('#000000').text('Subtotal (Taxable):', 360, taxLineY);
-    doc.text(`₹${subtotal.toFixed(2)}`, 500, taxLineY, { width: 55, align: 'right' });
+    doc.text(`Rs. ${subtotal.toFixed(2)}`, 495, taxLineY, { width: 65, align: 'right' });
 
-    taxLineY += 18;
+    taxLineY += 22;
     doc.fillColor('#000000').text('Total GST:', 360, taxLineY);
-    doc.text(`₹${totalGST.toFixed(2)}`, 500, taxLineY, { width: 55, align: 'right' });
+    doc.text(`Rs. ${totalGST.toFixed(2)}`, 495, taxLineY, { width: 65, align: 'right' });
 
-    taxLineY += 18;
+    taxLineY += 22;
     doc.moveTo(360, taxLineY).lineTo(555, taxLineY).stroke();
-    taxLineY += 8;
+    taxLineY += 10;
 
     doc.fontSize(11).font('Helvetica-Bold').fillColor('#000000');
     doc.text('Grand Total:', 360, taxLineY);
-    doc.text(`₹${grandTotal.toFixed(2)}`, 500, taxLineY, { width: 55, align: 'right' });
+    doc.text(`Rs. ${grandTotal.toFixed(2)}`, 495, taxLineY, { width: 65, align: 'right' });
 
     // Left side - Amount in words
     doc.fontSize(9).font('Helvetica-Bold').fillColor('#000000');
@@ -3385,15 +3385,15 @@ export const generateInvoiceByDC = async (req, res) => {
       }
 
       doc.fontSize(8).font('Helvetica');
-      doc.text(index + 1, 35, yPosition, { width: 30, align: 'center' });
-      doc.text(productName, 70, yPosition, { width: 160, ellipsis: true });
-      doc.text(quantity.toString(), 235, yPosition, { width: 50, align: 'right' });
-      doc.text(rate.toFixed(2), 290, yPosition, { width: 55, align: 'right' });
-      doc.text(amount.toFixed(2), 350, yPosition, { width: 60, align: 'right' });
-      doc.text(gstRate.toFixed(0) + '%', 415, yPosition, { width: 40, align: 'right' });
-      doc.text(total.toFixed(2), 460, yPosition, { width: 100, align: 'right' });
+      doc.text(index + 1, 35, yPosition + 4, { width: 30, align: 'center' });
+      doc.text(productName, 70, yPosition + 4, { width: 160, ellipsis: true });
+      doc.text(quantity.toString(), 235, yPosition + 4, { width: 50, align: 'right' });
+      doc.text(rate.toFixed(2), 290, yPosition + 4, { width: 55, align: 'right' });
+      doc.text(amount.toFixed(2), 350, yPosition + 4, { width: 60, align: 'right' });
+      doc.text(gstRate.toFixed(0) + '%', 415, yPosition + 4, { width: 40, align: 'right' });
+      doc.text(total.toFixed(2), 460, yPosition + 4, { width: 100, align: 'right' });
 
-      yPosition += 20;
+      yPosition += 25; // Increased height from 20 to 25
     });
 
     // Totals Section

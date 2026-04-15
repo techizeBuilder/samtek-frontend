@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Input } from '@/components/ui/input';
 import { config } from '@/config/environment';
 import { useToast } from '@/hooks/use-toast';
+import { Calendar, Filter, RefreshCw } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 export default function PackingSheet() {
   const { toast } = useToast();
@@ -9,11 +11,12 @@ export default function PackingSheet() {
   const [groupTimings, setGroupTimings] = useState({});
   const [loading, setLoading] = useState(true);
   const [approvingBatches, setApprovingBatches] = useState({});
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const debounceTimeoutRef = useRef(null);
 
   useEffect(() => {
-    loadPackingData();
-  }, []);
+    loadPackingData(selectedDate);
+  }, [selectedDate]);
   
   // Cleanup timeout on component unmount
   useEffect(() => {
@@ -24,7 +27,7 @@ export default function PackingSheet() {
     };
   }, []);
 
-  const loadPackingData = async (silent = false) => {
+  const loadPackingData = async (date = selectedDate, silent = false) => {
     try {
       if (!silent) {
         setLoading(true);
@@ -34,7 +37,7 @@ export default function PackingSheet() {
       console.log('🌐 API URL:', `${config.baseURL}/api/packing/production-groups`);
       
       // Fetch production groups from the correct API
-      const response = await fetch(`${config.baseURL}/api/packing/production-groups`, {
+      const response = await fetch(`${config.baseURL}/api/packing/production-groups?date=${date}`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`,
           'Content-Type': 'application/json'
@@ -269,6 +272,7 @@ export default function PackingSheet() {
         productionGroupId: packingData[groupIndex].groupId.replace('individual-', '').replace('group-', ''), // Clean ID
         productionGroupName: packingData[groupIndex].productGroup,
         packingStartTime: now.toISOString(),
+        packingDate: selectedDate,
         status: 'in_progress',
         items: packingData[groupIndex].items.map(item => ({
           productId: item.id.replace('individual-', '').replace('group-', ''), // Clean ID
@@ -433,7 +437,7 @@ export default function PackingSheet() {
 
           // Refresh data after approval to get latest status from server
           setTimeout(() => {
-            loadPackingData();
+            loadPackingData(selectedDate);
           }, 1000);
         } else {
           const errorData = await response.json();
@@ -630,6 +634,7 @@ export default function PackingSheet() {
         productionGroupId: packingData[groupIndex].groupId?.replace('individual-', '').replace('group-', '') || null,
         productionGroupName: packingData[groupIndex].productGroup,
         packingStartTime: now.toISOString(),
+        packingDate: selectedDate,
         status: 'in_progress',
         items: [{
           productId: batch.itemId || packingData[groupIndex].items[itemIndex].id,
@@ -949,7 +954,7 @@ export default function PackingSheet() {
 
           // Refresh data after batch approval silently (without loading screen)
           setTimeout(() => {
-            loadPackingData(true);
+            loadPackingData(selectedDate, true);
           }, 1000);
         } else {
           throw new Error('Failed to approve batch');
@@ -1032,19 +1037,43 @@ export default function PackingSheet() {
     <div className="min-h-screen bg-gray-50 p-2 sm:p-4 lg:p-6">
       <div className="max-w-full mx-auto">
         {/* Header */}
-        <div className="mb-4 sm:mb-6">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
-            <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Packing Sheet</h1>
-            <button
-              onClick={loadPackingData}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Packing Sheet Management</h1>
+            <p className="text-gray-600">Track and manage packing progress and losses</p>
+          </div>
+          
+          <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+            {/* Refresh Button */}
+            <Button 
+              variant="outline" 
+              size="icon"
+              onClick={() => loadPackingData(selectedDate)}
               disabled={loading}
-              className="bg-blue-600 text-white px-3 py-2 sm:px-4 sm:py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center space-x-2 text-sm sm:text-base"
+              className="rounded-full hover:bg-slate-100"
+              title="Refresh Data"
             >
-              <svg className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-              <span>Refresh</span>
-            </button>
+              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            </Button>
+
+            {/* Date Picker Filter */}
+            <div className="flex items-center bg-white border border-slate-200 rounded-xl shadow-sm px-3 py-1.5 focus-within:ring-2 focus-within:ring-blue-500 transition-all duration-200 group">
+              <Calendar className="h-4 w-4 text-slate-400 group-focus-within:text-blue-500 mr-2" />
+              <div className="flex flex-col">
+                <span className="text-[10px] font-bold text-slate-400 uppercase leading-tight">Select Date</span>
+                <input 
+                  type="date" 
+                  value={selectedDate}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                  className="text-sm font-semibold text-slate-700 focus:outline-none bg-transparent"
+                />
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-1.5 px-3 py-2 bg-blue-50 text-blue-700 rounded-xl text-xs font-semibold border border-blue-100">
+              <Filter className="h-3.5 w-3.5" />
+              <span>{new Date(selectedDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+            </div>
           </div>
         </div>
 
@@ -1059,7 +1088,7 @@ export default function PackingSheet() {
               No production groups are available for packing. Please check if production groups have been created.
             </p>
             <button
-              onClick={loadPackingData}
+              onClick={() => loadPackingData(selectedDate)}
               className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 text-sm sm:text-base"
             >
               Refresh Data

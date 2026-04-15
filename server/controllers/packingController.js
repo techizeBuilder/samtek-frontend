@@ -688,9 +688,17 @@ export const createPackingSheet = async (req, res) => {
     const { productionGroupId, items, shift } = req.body;
     console.log('📋 Create/Update packing sheet for group:', productionGroupId);
 
-    // Set today's date range
-    const today = new Date();
-    today.setUTCHours(0, 0, 0, 0);
+    // Set production date - use from request if available, otherwise default to today
+    let packingDate;
+    if (req.body.packingDate) {
+      packingDate = new Date(req.body.packingDate);
+      packingDate.setUTCHours(0, 0, 0, 0);
+    } else {
+      packingDate = new Date();
+      packingDate.setUTCHours(0, 0, 0, 0);
+    }
+    
+    const today = packingDate; // Keeping variable name for compatibility
     const endOfDay = new Date(today);
     endOfDay.setUTCHours(23, 59, 59, 999);
 
