@@ -386,6 +386,21 @@ export default function UnitManagerDashboard() {
           </CardContent>
         </Card>
 
+        {/* Total Batches per Production */}
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center space-x-4">
+              <div className="p-3 bg-purple-100 rounded-lg">
+                <Factory className="h-6 w-6 text-purple-600" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{orders.inProductionOrders || 0}</p>
+                <p className="text-sm text-muted-foreground">Total Batches per Production</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Average Order Value */}
         {/* <Card>
           <CardContent className="p-6">
