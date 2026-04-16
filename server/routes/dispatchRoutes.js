@@ -8,6 +8,7 @@ import {
   deleteDispatch,
   getDispatchStats,
   getDispatchDashboardData,
+  getDispatchDashboardEntryHistory,
   getDeliveryChallanData,
   updateManualStock,
   getDispatchHistory,
@@ -19,6 +20,7 @@ import {
   generateInvoice,
   createDispatchOrder,
   getTodaysProducts,
+  getDispatchItemsHistory,
   validateDCNumber,
   createDeliveryChallan,
   generateInvoiceForDC,
@@ -39,6 +41,7 @@ router.use(authenticateToken);
 router.get('/', getDispatches);                    // GET /api/dispatches
 router.get('/stats', getDispatchStats);            // GET /api/dispatches/stats
 router.get('/dashboard', getDispatchDashboardData); // GET /api/dispatches/dashboard
+router.get('/dashboard-entry-history', getDispatchDashboardEntryHistory); // GET /api/dispatches/dashboard-entry-history
 router.get('/delivery-challan', getDeliveryChallanData); // GET /api/dispatches/delivery-challan
 router.get('/history', getDispatchHistory);        // GET /api/dispatches/history
 router.put('/manual-stock', updateManualStock);    // PUT /api/dispatches/manual-stock
@@ -50,6 +53,7 @@ router.post('/create-from-packing', createDispatchFromPacking); // POST /api/dis
 
 // Delivery Challan specific routes
 router.get('/todays-products', getTodaysProducts);              // GET /api/dispatches/todays-products
+router.get('/items-history', getDispatchItemsHistory);          // GET /api/dispatches/items-history
 router.get('/validate-dc-number', validateDCNumber);            // GET /api/dispatches/validate-dc-number
 router.post('/create-delivery-challan', createDeliveryChallan); // POST /api/dispatches/create-delivery-challan
 router.post('/generate-invoice/:dcId', generateInvoiceForDC);   // POST /api/dispatches/generate-invoice/:dcId
@@ -67,7 +71,7 @@ router.post('/approve-product', approveProduct);                // POST /api/dis
 router.post('/generate-invoice', generateInvoice);              // POST /api/dispatches/generate-invoice
 router.post('/generate-invoice-by-dc', generateInvoiceByDC);    // POST /api/dispatches/generate-invoice-by-dc
 
-router.get('/:id', getDispatchById);                   // GET /api/dispatches/:id
+router.get('/:id([0-9a-fA-F]{24})', getDispatchById);                   // GET /api/dispatches/:id
 router.post('/', createDispatch);                  // POST /api/dispatches
 router.put('/:id', updateDispatch);                // PUT /api/dispatches/:id
 router.delete('/:id', deleteDispatch);             // DELETE /api/dispatches/:id

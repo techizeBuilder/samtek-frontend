@@ -43,6 +43,10 @@ export default function DeliveryChallan() {
   const [selectedItems, setSelectedItems] = useState({}); // Track which items are selected for dispatch
   const [expandedGroup, setExpandedGroup] = useState({}); // Track which product groups are expanded
 
+  // Item history (last 30 days) for "Individual Items" expansion
+  const [itemsHistoryByGroup, setItemsHistoryByGroup] = useState({});
+  const [itemsHistoryLoadingByGroup, setItemsHistoryLoadingByGroup] = useState({});
+
   // Confirmation dialog for updating dispatched items
   const [showUpdateConfirmation, setShowUpdateConfirmation] = useState(false);
   const [pendingQtyUpdate, setPendingQtyUpdate] = useState(null);
@@ -82,6 +86,11 @@ export default function DeliveryChallan() {
   // When salesperson changes, just reset customer selection
   // Keep showing ALL customers (no filtering by salesperson)
   useEffect(() => {
+    // Reset expanded rows + history cache when filters change
+    setExpandedGroup({});
+    setItemsHistoryByGroup({});
+    setItemsHistoryLoadingByGroup({});
+
     if (selectedSalesman) {
       // Don't filter customers - show all customers
       // Only reset customer selection when salesman changes
@@ -98,6 +107,12 @@ export default function DeliveryChallan() {
       setQtyIssuedMap({});
     }
   }, [selectedSalesman]);
+
+  useEffect(() => {
+    setExpandedGroup({});
+    setItemsHistoryByGroup({});
+    setItemsHistoryLoadingByGroup({});
+  }, [selectedCustomer?._id]);
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -279,6 +294,58 @@ export default function DeliveryChallan() {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchItemsHistoryForGroup = async (groupId, items) => {
+    try {
+      const itemIds = (items || [])
+        .map(i => i?.itemId)
+        .filter(Boolean)
+        .map(id => String(id));
+
+      if (itemIds.length === 0) return;
+
+      setItemsHistoryLoadingByGroup(prev => ({
+        ...prev,
+        [groupId]: true
+      }));
+
+      const params = new URLSearchParams();
+      params.append('itemIds', itemIds.join(','));
+      params.append('days', '30');
+      if (selectedSalesman?._id) params.append('salesmanId', selectedSalesman._id);
+      if (selectedCustomer?._id) params.append('customerId', selectedCustomer._id);
+
+      const response = await fetch(`${config.baseURL}/api/dispatches/items-history?${params.toString()}`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result?.message || `HTTP error! status: ${response.status}`);
+      }
+
+      setItemsHistoryByGroup(prev => ({
+        ...prev,
+        [groupId]: result?.data?.items || {}
+      }));
+    } catch (error) {
+      console.error('❌ Error fetching items history:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to fetch items history (last 30 days)',
+        variant: 'destructive'
+      });
+    } finally {
+      setItemsHistoryLoadingByGroup(prev => ({
+        ...prev,
+        [groupId]: false
+      }));
     }
   };
 
@@ -1448,7 +1515,20 @@ export default function DeliveryChallan() {
           ) : (
             products.map((product) => {
               const isItemDispatched = product.status === 'dispatched';
-              const hasItems = product.items && product.items.length > 0;
+              const effectiveItems = Array.isArray(product.items) && product.items.length > 0
+                ? product.items
+                : (product.productId
+                    ? [{
+                        itemId: product.productId,
+                        productName: product.productName,
+                        batch: product.batchNo ?? null,
+                        stock: product.totalAvailableStock ?? 0,
+                        qtyIssued: product.qtyIssued ?? 0,
+                        status: product.status,
+                        totalAvailableStock: product.totalAvailableStock ?? 0
+                      }]
+                    : []);
+              const hasItems = effectiveItems.length > 0;
               
               return (
                 <div key={product._id} className="border-b border-gray-800">
@@ -1493,13 +1573,21 @@ export default function DeliveryChallan() {
                           )}
                           {hasItems && (
                             <button
-                              onClick={() => setExpandedGroup(prev => ({
-                                ...prev,
-                                [product._id]: !prev[product._id]
-                              }))}
+                              onClick={() => {
+                                const willOpen = !expandedGroup[product._id];
+
+                                setExpandedGroup(prev => ({
+                                  ...prev,
+                                  [product._id]: !prev[product._id]
+                                }));
+
+                                if (willOpen && !itemsHistoryLoadingByGroup[product._id] && !itemsHistoryByGroup[product._id]) {
+                                  fetchItemsHistoryForGroup(product._id, effectiveItems);
+                                }
+                              }}
                               className="text-xs text-blue-600 hover:text-blue-800 underline"
                             >
-                              {expandedGroup[product._id] ? 'Hide' : 'Show'} {product.items.length} items
+                              {expandedGroup[product._id] ? 'Hide' : 'Show'} {effectiveItems.length} items
                             </button>
                           )}
                         </div>
@@ -1537,19 +1625,91 @@ export default function DeliveryChallan() {
                   {expandedGroup[product._id] && hasItems && (
                     <div className="bg-gray-50 border-t border-gray-300">
                       <div className="px-6 py-2">
-                        <div className="text-xs font-semibold text-gray-600 mb-2">Individual Items:</div>
+                        <div className="text-xs font-semibold text-gray-600 mb-2">
+                          Individual Items:
+                          {itemsHistoryLoadingByGroup[product._id] && (
+                            <span className="ml-2 text-gray-400 font-normal">Loading last 30 days...</span>
+                          )}
+                        </div>
                         <div className="space-y-1">
-                          {product.items.map((item, idx) => (
-                            <div key={idx} className="flex items-center justify-between text-sm py-1 px-2 bg-white rounded border border-gray-200">
-                              <span className="font-medium text-gray-700">{item.productName}</span>
-                              <div className="flex items-center gap-3">
-                                <Badge variant="outline" className="bg-purple-100 text-purple-700 text-xs">
-                                  Batch/Qnt: {item.batch || 'N/A'}
-                                </Badge>
-                                <span className="text-gray-500 text-xs">Stock: {item.stock || 0}</span>
-                              </div>
-                            </div>
-                          ))}
+                          <div className="grid grid-cols-4 gap-2 px-2 py-1 text-[11px] font-semibold text-gray-600">
+                            <div>Item Name</div>
+                            <div className="text-center">Stock/Batch</div>
+                            <div className="text-center">Qty Issued</div>
+                            <div className="text-right">Date</div>
+                          </div>
+
+                          {effectiveItems.flatMap((item) => {
+                            const itemIdStr = String(item?.itemId || '');
+                            const history = itemsHistoryByGroup[product._id]?.[itemIdStr];
+                            const records = Array.isArray(history?.records) ? history.records : [];
+
+                            if (itemsHistoryLoadingByGroup[product._id]) {
+                              return [
+                                <div key={`${itemIdStr}-loading`} className="grid grid-cols-4 gap-2 items-center text-sm py-1 px-2 bg-white rounded border border-gray-200">
+                                  <span className="font-medium text-gray-700 truncate">{item.productName}</span>
+                                  <div className="text-center">
+                                    <Badge variant="outline" className="bg-purple-100 text-purple-700 text-xs">
+                                      Stock/Batch: ...
+                                    </Badge>
+                                  </div>
+                                  <div className="text-center">
+                                    <Badge variant="outline" className="bg-green-100 text-green-700 text-xs">
+                                      Qty Issued: ...
+                                    </Badge>
+                                  </div>
+                                  <div className="text-right text-xs text-gray-500">...</div>
+                                </div>
+                              ];
+                            }
+
+                            if (records.length === 0) {
+                              return [
+                                <div key={`${itemIdStr}-empty`} className="grid grid-cols-4 gap-2 items-center text-sm py-1 px-2 bg-white rounded border border-gray-200">
+                                  <span className="font-medium text-gray-700 truncate">{item.productName}</span>
+                                  <div className="text-center">
+                                    <Badge variant="outline" className="bg-purple-100 text-purple-700 text-xs">
+                                      Stock/Batch: {item.batch || 'N/A'}
+                                    </Badge>
+                                  </div>
+                                  <div className="text-center">
+                                    <Badge variant="outline" className="bg-green-100 text-green-700 text-xs">
+                                      Qty Issued: —
+                                    </Badge>
+                                  </div>
+                                  <div className="text-right text-xs text-gray-500">No history</div>
+                                </div>
+                              ];
+                            }
+
+                            return records.map((rec, recIdx) => {
+                              const dateValue = rec?.date;
+                              const d = dateValue ? new Date(dateValue) : null;
+                              const dateLabel = d && !Number.isNaN(d.getTime())
+                                ? d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' })
+                                : '—';
+
+                              const stockValue = rec?.totalAvailableStock ?? item.stock ?? 0;
+                              const batchValue = rec?.batchNo ?? item.batch ?? 'N/A';
+
+                              return (
+                                <div key={`${itemIdStr}-${recIdx}`} className="grid grid-cols-4 gap-2 items-center text-sm py-1 px-2 bg-white rounded border border-gray-200">
+                                  <span className="font-medium text-gray-700 truncate">{item.productName}</span>
+                                  <div className="text-center">
+                                    <Badge variant="outline" className="bg-purple-100 text-purple-700 text-xs">
+                                      Stock/Batch: {stockValue} / {batchValue}
+                                    </Badge>
+                                  </div>
+                                  <div className="text-center">
+                                    <Badge variant="outline" className="bg-green-100 text-green-700 text-xs">
+                                      Qty Issued: {rec?.qtyIssued ?? 0}
+                                    </Badge>
+                                  </div>
+                                  <div className="text-right text-xs text-gray-600">{dateLabel}</div>
+                                </div>
+                              );
+                            });
+                          })}
                         </div>
                       </div>
                     </div>

@@ -70,6 +70,23 @@ export default function ProductionDashboard() {
     assignedItemsCount: 0
   };
 
+  const totalGroupedBatchesForProduction = productGroups.reduce((sum, group) => {
+    const val = Number(group?.noOfBatchesForProduction);
+    return sum + (Number.isFinite(val) ? val : 0);
+  }, 0);
+
+  const totalUngroupedBatchesForProduction = ungroupedItems.reduce((sum, item) => {
+    const val = Number(item?.noOfBatchesForProduction ?? item?.batchAdjusted);
+    return sum + (Number.isFinite(val) ? val : 0);
+  }, 0);
+
+  const totalBatchesPerProduction = totalGroupedBatchesForProduction + totalUngroupedBatchesForProduction;
+
+  const formatBatches = (batches) => {
+    const val = Number(batches);
+    return new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 }).format(Number.isFinite(val) ? val : 0);
+  };
+
   // Simplified debug
   console.log('🔄 Render - showUngroupedItems:', showUngroupedItems, '| Items count:', ungroupedStats.ungroupedItemsCount);
 
@@ -163,9 +180,9 @@ export default function ProductionDashboard() {
               </div>
               <div>
                 <p className="text-2xl font-bold text-orange-900">
-                  {ungroupedLoading ? '...' : ungroupedStats.ungroupedItemsCount}
+                  {isLoading || ungroupedLoading ? '...' : formatBatches(totalBatchesPerProduction)}
                 </p>
-                <p className="text-sm text-orange-600">Ungrouped Items</p>
+                <p className="text-sm text-orange-600">Total Batches per Production</p>
               </div>
             </div>
           </CardContent>

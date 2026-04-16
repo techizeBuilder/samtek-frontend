@@ -9,7 +9,9 @@ import {
   TrendingUp,
   AlertTriangle,
   Users,
-  BarChart3
+  BarChart3,
+  ChevronDown,
+  ChevronRight
 } from 'lucide-react';
 
 // Simple Card component to replace the problematic UI imports
@@ -77,7 +79,75 @@ export default function DispatchDashboard() {
   const [endDate, setEndDate] = useState('');
   const [manualStockEntries, setManualStockEntries] = useState({});
   const [dispatchedQuantities, setDispatchedQuantities] = useState({});
+
+  const [expandedEntryKeys, setExpandedEntryKeys] = useState({});
+  const [entryHistoryByKey, setEntryHistoryByKey] = useState({});
+  const [entryHistoryLoadingByKey, setEntryHistoryLoadingByKey] = useState({});
+  const [entryHistoryErrorByKey, setEntryHistoryErrorByKey] = useState({});
+
   const { toast } = useToast();
+
+  const getEntryHistoryKey = (entry) => {
+    const groupStr = typeof entry?.productGroup === 'string' ? entry.productGroup : '';
+    const isUngrouped = groupStr.toLowerCase().startsWith('ungrouped items');
+
+    if (isUngrouped && groupStr) return `group:${groupStr}`;
+    if (entry?.productId) return `product:${entry.productId}`;
+    return `group:${groupStr || 'unknown'}`;
+  };
+
+  const fetchEntryHistory = async (entry, historyKey) => {
+    try {
+      setEntryHistoryLoadingByKey(prev => ({
+        ...prev,
+        [historyKey]: true
+      }));
+      setEntryHistoryErrorByKey(prev => ({
+        ...prev,
+        [historyKey]: null
+      }));
+
+      const params = new URLSearchParams();
+      params.append('days', '30');
+      if (entry?.productId) params.append('productId', entry.productId);
+      if (entry?.productGroup) params.append('productGroup', entry.productGroup);
+
+      const response = await fetch(`${config.baseURL}/api/dispatches/dashboard-entry-history?${params.toString()}`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result?.success) {
+        throw new Error(result?.message || `HTTP error! status: ${response.status}`);
+      }
+
+      setEntryHistoryByKey(prev => ({
+        ...prev,
+        [historyKey]: result.data
+      }));
+    } catch (err) {
+      console.error('Error fetching entry history:', err);
+      const msg = err?.message || 'Failed to load history';
+      setEntryHistoryErrorByKey(prev => ({
+        ...prev,
+        [historyKey]: msg
+      }));
+      toast({
+        title: 'Error',
+        description: msg,
+        variant: 'destructive'
+      });
+    } finally {
+      setEntryHistoryLoadingByKey(prev => ({
+        ...prev,
+        [historyKey]: false
+      }));
+    }
+  };
 
   const fetchDashboardData = async (opts = {}) => {
     try {
@@ -522,87 +592,192 @@ export default function DispatchDashboard() {
                     </td>
                   </tr>
 
-                  {dashboardData?.dispatchConsoleEntries?.map((entry, index) => (
-                    <tr key={entry.id || index}>
-                      <td className="border border-gray-900 p-2">
-                        <div>
-                          <div className="font-medium">{entry.productGroup || 'N/A'}</div>
-                          <div className="text-sm text-gray-600">
-                            {entry.packingSheetSlNo ? `Sheet: ${entry.packingSheetSlNo}` : 'No Sheet'}
-                            {entry.batchNo && ` • Batch: ${entry.batchNo}`}
-                          </div>
-                          {formatDisplayDate(entry.date || entry.packingDate) && (
-                            <div className="text-xs text-gray-500">
-                              Date: {formatDisplayDate(entry.date || entry.packingDate)}
+                  {dashboardData?.dispatchConsoleEntries?.map((entry, index) => {
+                    const historyKey = getEntryHistoryKey(entry);
+                    const isExpanded = !!expandedEntryKeys[historyKey];
+                    const historyData = entryHistoryByKey[historyKey];
+                    const isHistoryLoading = !!entryHistoryLoadingByKey[historyKey];
+                    const historyError = entryHistoryErrorByKey[historyKey];
+
+                    return (
+                      <React.Fragment key={entry.id || historyKey || index}>
+                        <tr>
+                          <td className="border border-gray-900 p-2">
+                            <div className="flex items-start gap-2">
+                              <button
+                                type="button"
+                                className="mt-0.5 text-gray-600 hover:text-gray-900"
+                                onClick={() => {
+                                  const willOpen = !expandedEntryKeys[historyKey];
+                                  setExpandedEntryKeys(prev => ({
+                                    ...prev,
+                                    [historyKey]: willOpen
+                                  }));
+
+                                  if (willOpen && !entryHistoryByKey[historyKey] && !entryHistoryLoadingByKey[historyKey]) {
+                                    fetchEntryHistory(entry, historyKey);
+                                  }
+                                }}
+                                aria-label={isExpanded ? 'Collapse history' : 'Expand history'}
+                              >
+                                {isExpanded ? (
+                                  <ChevronDown className="h-4 w-4" />
+                                ) : (
+                                  <ChevronRight className="h-4 w-4" />
+                                )}
+                              </button>
+
+                              <div className="min-w-0">
+                                <div className="font-medium">{entry.productGroup || 'N/A'}</div>
+                                <div className="text-sm text-gray-600">
+                                  {entry.packingSheetSlNo ? `Sheet: ${entry.packingSheetSlNo}` : 'No Sheet'}
+                                  {entry.batchNo && ` • Batch: ${entry.batchNo}`}
+                                </div>
+                                {formatDisplayDate(entry.date || entry.packingDate) && (
+                                  <div className="text-xs text-gray-500">
+                                    Date: {formatDisplayDate(entry.date || entry.packingDate)}
+                                  </div>
+                                )}
+                              </div>
                             </div>
-                          )}
-                        </div>
-                      </td>
-                      <td className="border border-gray-900 p-2 text-center font-medium">{(entry.packedQuantityReadyForDispatch || 0).toFixed(2)}</td>
-                      <td className="border border-gray-900 p-2 text-center">{(entry.previousClosingStockYesterdayBalance || 0).toFixed(2)}</td>
-                      <td className="border border-gray-900 p-2 text-center">{(entry.returnQuantityYesterdayReturns || 0).toFixed(2)}</td>
-                      <td className="border border-gray-900 p-2 text-center font-medium">{(entry.totalAvailableStock || 0).toFixed(2)}</td>
-                      <td className="border border-gray-900 p-2 text-center">{(entry.totalIndentQuantityOrdersForTheDay || 0).toFixed(2)}</td>
-                      <td className="border border-gray-900 p-2 text-center">
-                        <span className={`font-medium ${
-                          (entry.excessShortage || 0) >= 0 
-                            ? 'text-green-600' 
-                            : 'text-red-600'
-                        }`}>
-                          {(entry.excessShortage || 0).toFixed(2)}
-                        </span>
-                      </td>
-                      <td className="border border-gray-900 p-2 text-center">
-                        <input
-                          type="number"
-                          className="w-20 p-1 border rounded text-center"
-                          value={dispatchedQuantities[`${entry.productGroup}_${entry.packingSheetId}`] ?? entry.dispatchedQuantitySentToday ?? 0}
-                          placeholder="0"
-                          onChange={(e) => {
-                            const key = `${entry.productGroup}_${entry.packingSheetId}`;
-                            updateDispatchedQuantityLocal(key, e.target.value);
-                          }}
-                          onBlur={(e) => {
-                            handleDispatchedQuantityUpdate(
-                              entry.productGroup, 
-                              entry.packingSheetId,
-                              entry.productId,
-                              e.target.value
-                            );
-                          }}
-                        />
-                      </td>
-                      <td className="border border-gray-900 p-2 text-center">{(entry.closingStockEndOfDayBalance || 0).toFixed(2)}</td>
-                      <td className="border border-gray-900 p-2 text-center">
-                        <input
-                          type="number"
-                          className="w-20 p-1 border rounded text-center"
-                          value={manualStockEntries[`${entry.productGroup}_${entry.packingSheetId}`] ?? entry.physicalStockEntryManualVerification ?? 0}
-                          placeholder="Manual"
-                          onChange={(e) => {
-                            const key = `${entry.productGroup}_${entry.packingSheetId}`;
-                            updateManualStockLocal(key, e.target.value);
-                          }}
-                          onBlur={(e) => {
-                            handleManualStockEntry(
-                              entry.productGroup,
-                              entry.packingSheetId,
-                              e.target.value
-                            );
-                          }}
-                        />
-                      </td>
-                      <td className="border border-gray-900 p-2 text-center">
-                        <span className={`font-medium ${
-                          (entry.overallLoss || 0) !== 0 
-                            ? 'text-red-600' 
-                            : 'text-green-600'
-                        }`}>
-                          {(entry.overallLoss || 0).toFixed(2)}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                          </td>
+                          <td className="border border-gray-900 p-2 text-center font-medium">{(entry.packedQuantityReadyForDispatch || 0).toFixed(2)}</td>
+                          <td className="border border-gray-900 p-2 text-center">{(entry.previousClosingStockYesterdayBalance || 0).toFixed(2)}</td>
+                          <td className="border border-gray-900 p-2 text-center">{(entry.returnQuantityYesterdayReturns || 0).toFixed(2)}</td>
+                          <td className="border border-gray-900 p-2 text-center font-medium">{(entry.totalAvailableStock || 0).toFixed(2)}</td>
+                          <td className="border border-gray-900 p-2 text-center">{(entry.totalIndentQuantityOrdersForTheDay || 0).toFixed(2)}</td>
+                          <td className="border border-gray-900 p-2 text-center">
+                            <span className={`font-medium ${
+                              (entry.excessShortage || 0) >= 0
+                                ? 'text-green-600'
+                                : 'text-red-600'
+                            }`}>
+                              {(entry.excessShortage || 0).toFixed(2)}
+                            </span>
+                          </td>
+                          <td className="border border-gray-900 p-2 text-center">
+                            <input
+                              type="number"
+                              className="w-20 p-1 border rounded text-center"
+                              value={dispatchedQuantities[`${entry.productGroup}_${entry.packingSheetId}`] ?? entry.dispatchedQuantitySentToday ?? 0}
+                              placeholder="0"
+                              onChange={(e) => {
+                                const key = `${entry.productGroup}_${entry.packingSheetId}`;
+                                updateDispatchedQuantityLocal(key, e.target.value);
+                              }}
+                              onBlur={(e) => {
+                                handleDispatchedQuantityUpdate(
+                                  entry.productGroup,
+                                  entry.packingSheetId,
+                                  entry.productId,
+                                  e.target.value
+                                );
+                              }}
+                            />
+                          </td>
+                          <td className="border border-gray-900 p-2 text-center">{(entry.closingStockEndOfDayBalance || 0).toFixed(2)}</td>
+                          <td className="border border-gray-900 p-2 text-center">
+                            <input
+                              type="number"
+                              className="w-20 p-1 border rounded text-center"
+                              value={manualStockEntries[`${entry.productGroup}_${entry.packingSheetId}`] ?? entry.physicalStockEntryManualVerification ?? 0}
+                              placeholder="Manual"
+                              onChange={(e) => {
+                                const key = `${entry.productGroup}_${entry.packingSheetId}`;
+                                updateManualStockLocal(key, e.target.value);
+                              }}
+                              onBlur={(e) => {
+                                handleManualStockEntry(
+                                  entry.productGroup,
+                                  entry.packingSheetId,
+                                  e.target.value
+                                );
+                              }}
+                            />
+                          </td>
+                          <td className="border border-gray-900 p-2 text-center">
+                            <span className={`font-medium ${
+                              (entry.overallLoss || 0) !== 0
+                                ? 'text-red-600'
+                                : 'text-green-600'
+                            }`}>
+                              {(entry.overallLoss || 0).toFixed(2)}
+                            </span>
+                          </td>
+                        </tr>
+
+                        {isExpanded && (
+                          <tr className="bg-gray-50">
+                            <td colSpan="11" className="border border-gray-900 p-3">
+                              {isHistoryLoading ? (
+                                <div className="text-sm text-gray-500 flex items-center gap-2">
+                                  <RefreshCw className="h-4 w-4 animate-spin" />
+                                  Loading history...
+                                </div>
+                              ) : historyError ? (
+                                <div className="text-sm text-red-600">{historyError}</div>
+                              ) : (
+                                <div className="overflow-x-auto">
+                                  <table className="w-full border-collapse border border-gray-300">
+                                    <thead>
+                                      <tr>
+                                        <th className="border border-gray-300 p-2 text-left text-xs bg-white">Date</th>
+                                        <th className="border border-gray-300 p-2 text-center text-xs bg-white">Packed</th>
+                                        <th className="border border-gray-300 p-2 text-center text-xs bg-white">Prev Closing</th>
+                                        <th className="border border-gray-300 p-2 text-center text-xs bg-white">Returns (Y)</th>
+                                        <th className="border border-gray-300 p-2 text-center text-xs bg-white">Total Available</th>
+                                        <th className="border border-gray-300 p-2 text-center text-xs bg-white">Indent</th>
+                                        <th className="border border-gray-300 p-2 text-center text-xs bg-white">Excess/Shortage</th>
+                                        <th className="border border-gray-300 p-2 text-center text-xs bg-white">Dispatched</th>
+                                        <th className="border border-gray-300 p-2 text-center text-xs bg-white">Closing</th>
+                                        <th className="border border-gray-300 p-2 text-center text-xs bg-white">Physical</th>
+                                        <th className="border border-gray-300 p-2 text-center text-xs bg-white">Overall Loss</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {(historyData?.history || []).map((h) => (
+                                        <tr key={h.date}>
+                                          <td className="border border-gray-300 p-2 text-xs">
+                                            {formatDisplayDate(h.date) || h.date}
+                                          </td>
+                                          <td className="border border-gray-300 p-2 text-center text-xs">{(h.packedQuantityReadyForDispatch || 0).toFixed(2)}</td>
+                                          <td className="border border-gray-300 p-2 text-center text-xs">{(h.previousClosingStockYesterdayBalance || 0).toFixed(2)}</td>
+                                          <td className="border border-gray-300 p-2 text-center text-xs">{(h.returnQuantityYesterdayReturns || 0).toFixed(2)}</td>
+                                          <td className="border border-gray-300 p-2 text-center text-xs">{(h.totalAvailableStock || 0).toFixed(2)}</td>
+                                          <td className="border border-gray-300 p-2 text-center text-xs">{(h.totalIndentQuantityOrdersForTheDay || 0).toFixed(2)}</td>
+                                          <td className="border border-gray-300 p-2 text-center text-xs">
+                                            <span className={(h.excessShortage || 0) >= 0 ? 'text-green-700' : 'text-red-700'}>
+                                              {(h.excessShortage || 0).toFixed(2)}
+                                            </span>
+                                          </td>
+                                          <td className="border border-gray-300 p-2 text-center text-xs">{(h.dispatchedQuantitySentToday || 0).toFixed(2)}</td>
+                                          <td className="border border-gray-300 p-2 text-center text-xs">{(h.closingStockEndOfDayBalance || 0).toFixed(2)}</td>
+                                          <td className="border border-gray-300 p-2 text-center text-xs">{(h.physicalStockEntryManualVerification || 0).toFixed(2)}</td>
+                                          <td className="border border-gray-300 p-2 text-center text-xs">
+                                            <span className={(h.overallLoss || 0) !== 0 ? 'text-red-700' : 'text-green-700'}>
+                                              {(h.overallLoss || 0).toFixed(2)}
+                                            </span>
+                                          </td>
+                                        </tr>
+                                      ))}
+
+                                      {(!historyData?.history || historyData.history.length === 0) && (
+                                        <tr>
+                                          <td colSpan="11" className="border border-gray-300 p-3 text-center text-xs text-gray-500">
+                                            No history found
+                                          </td>
+                                        </tr>
+                                      )}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
                   
                   {(!dashboardData?.dispatchConsoleEntries || dashboardData.dispatchConsoleEntries.length === 0) && (
                     <tr>

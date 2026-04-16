@@ -95,6 +95,11 @@ export const getDispatches = async (req, res) => {
 export const getDispatchById = async (req, res) => {
   try {
     const { id } = req.params;
+
+    if (!mongoose.isValidObjectId(id)) {
+      return res.status(400).json({ message: 'Invalid dispatch id' });
+    }
+
     const dispatch = await Dispatch.findById(id)
       .populate('packingSheetId', 'slNo productionGroupName status totalPackedQty')
       .populate('productId', 'name code category unit')
@@ -373,6 +378,91 @@ export const getDispatchDashboardData = async (req, res) => {
       .populate('company', 'name location')
       .sort({ createdAt: -1 });
 
+    // Infer Previous Closing Stock as cumulative Physical Stock entries up to previous day (single-day view)
+    // Example: 14th physical=20, 15th physical=30 => 16th previous closing shows 50
+    const inferredPreviousClosingByProductId = new Map();
+    const inferredPreviousClosingByProductGroup = new Map();
+
+    // Infer "Return Quantity Yesterday Returns" from Return entries of previous day (single-day view)
+    const inferredReturnsYesterdayByProductId = new Map();
+
+    const isSingleDayView =
+      startOfDay &&
+      endOfDay &&
+      startOfDay.getFullYear() === endOfDay.getFullYear() &&
+      startOfDay.getMonth() === endOfDay.getMonth() &&
+      startOfDay.getDate() === endOfDay.getDate();
+
+    if (isSingleDayView) {
+      const { date: _ignoredDate, ...baseQueryWithoutDate } = baseQuery;
+      const priorQuery = { ...baseQueryWithoutDate, date: { $lt: startOfDay } };
+
+      const byProductId = await Dispatch.aggregate([
+        { $match: { ...priorQuery, productId: { $ne: null } } },
+        {
+          $group: {
+            _id: '$productId',
+            totalPhysical: { $sum: { $ifNull: ['$physicalStockEntryManualVerification', 0] } }
+          }
+        }
+      ]);
+
+      for (const row of byProductId) {
+        inferredPreviousClosingByProductId.set(String(row._id), Number(row.totalPhysical) || 0);
+      }
+
+      const byProductGroup = await Dispatch.aggregate([
+        { $match: { ...priorQuery, productGroup: { $ne: null } } },
+        {
+          $group: {
+            _id: '$productGroup',
+            totalPhysical: { $sum: { $ifNull: ['$physicalStockEntryManualVerification', 0] } }
+          }
+        }
+      ]);
+
+      for (const row of byProductGroup) {
+        inferredPreviousClosingByProductGroup.set(String(row._id), Number(row.totalPhysical) || 0);
+      }
+
+      // Yesterday's returns (Return model) for this company (or selected companies for super user)
+      const Return = (await import('../models/Return.js')).default;
+
+      const prevStart = new Date(startOfDay);
+      prevStart.setDate(prevStart.getDate() - 1);
+      prevStart.setHours(0, 0, 0, 0);
+
+      const prevEnd = new Date(startOfDay);
+      prevEnd.setDate(prevEnd.getDate() - 1);
+      prevEnd.setHours(23, 59, 59, 999);
+
+      let companyIdMatch = baseQuery.company;
+      if (companyIdMatch && typeof companyIdMatch === 'object' && Array.isArray(companyIdMatch.$in)) {
+        companyIdMatch = { $in: companyIdMatch.$in };
+      }
+
+      const returnsAgg = await Return.aggregate([
+        {
+          $match: {
+            companyId: companyIdMatch,
+            returnDate: { $gte: prevStart, $lte: prevEnd },
+            status: { $in: ['approved', 'completed'] }
+          }
+        },
+        { $unwind: '$items' },
+        {
+          $group: {
+            _id: '$items.productId',
+            totalQty: { $sum: { $ifNull: ['$items.quantity', 0] } }
+          }
+        }
+      ]);
+
+      for (const row of returnsAgg) {
+        inferredReturnsYesterdayByProductId.set(String(row._id), Number(row.totalQty) || 0);
+      }
+    }
+
     // Get approved packing sheets that don't have dispatch entries yet
     const PackingSheet = (await import('../models/Packing.js')).default;
     // For packing sheets, apply same company filter as dispatch query
@@ -397,8 +487,38 @@ export const getDispatchDashboardData = async (req, res) => {
     const formattedData = dispatchConsoleData.map(entry => {
       // Calculate values on-the-fly (in case database has old 0 values)
       const packedQty = entry.packedQuantityReadyForDispatch || 0;
-      const previousClosing = entry.previousClosingStockYesterdayBalance || 0;
-      const returns = entry.returnQuantityYesterdayReturns || 0;
+
+      const productIdStr = entry.productId?._id
+        ? String(entry.productId._id)
+        : (entry.productId ? String(entry.productId) : null);
+
+      const productGroupStr = entry.productGroup ? String(entry.productGroup) : '';
+      const isUngrouped = productGroupStr.toLowerCase().startsWith('ungrouped items');
+
+      // NOTE: physical stock is updated by productGroup in UI, so for Ungrouped rows
+      // use productGroup-based cumulative previous closing.
+      const inferredPreviousClosing = isUngrouped && productGroupStr && inferredPreviousClosingByProductGroup.has(productGroupStr)
+        ? inferredPreviousClosingByProductGroup.get(productGroupStr)
+        : (productIdStr && inferredPreviousClosingByProductId.has(productIdStr)
+            ? inferredPreviousClosingByProductId.get(productIdStr)
+            : (productGroupStr && inferredPreviousClosingByProductGroup.has(productGroupStr)
+                ? inferredPreviousClosingByProductGroup.get(productGroupStr)
+                : 0));
+
+      const storedPreviousClosingRaw = Number(entry.previousClosingStockYesterdayBalance);
+      const previousClosing = isSingleDayView
+        ? inferredPreviousClosing
+        : (Number.isFinite(storedPreviousClosingRaw) ? storedPreviousClosingRaw : 0);
+
+      const inferredReturnsYesterday = productIdStr && inferredReturnsYesterdayByProductId.has(productIdStr)
+        ? inferredReturnsYesterdayByProductId.get(productIdStr)
+        : 0;
+
+      const storedReturnsRaw = Number(entry.returnQuantityYesterdayReturns);
+      const returns = isSingleDayView
+        ? inferredReturnsYesterday
+        : (Number.isFinite(storedReturnsRaw) ? storedReturnsRaw : 0);
+
       const totalIndent = entry.totalIndentQuantityOrdersForTheDay || 0;
       const dispatched = entry.dispatchedQuantitySentToday || 0;
       const physicalStock = entry.physicalStockEntryManualVerification || 0;
@@ -505,6 +625,199 @@ export const getDispatchDashboardData = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to fetch dispatch dashboard data',
+      error: error.message
+    });
+  }
+};
+
+// Get dispatch dashboard entry history (for row expand)
+export const getDispatchDashboardEntryHistory = async (req, res) => {
+  try {
+    const { productId, productGroup, days = 30 } = req.query;
+
+    const daysIntRaw = parseInt(String(days), 10);
+    const daysInt = Number.isFinite(daysIntRaw) ? Math.min(Math.max(daysIntRaw, 1), 31) : 30;
+
+    if (!productId && !productGroup) {
+      return res.status(400).json({
+        success: false,
+        message: 'productId or productGroup is required'
+      });
+    }
+
+    if (productId && !mongoose.isValidObjectId(String(productId))) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid productId'
+      });
+    }
+
+    const endDate = new Date();
+    endDate.setHours(23, 59, 59, 999);
+
+    const startDate = new Date();
+    startDate.setHours(0, 0, 0, 0);
+    startDate.setDate(startDate.getDate() - (daysInt - 1));
+
+    // Company filter (same behavior as dashboard)
+    let companyFilter;
+    if (req.user.role !== USER_ROLES.SUPER_USER) {
+      companyFilter = req.user.companyId;
+    } else {
+      companyFilter = req.user.companyId;
+    }
+
+    const dispatchQuery = {
+      company: companyFilter,
+      date: { $gte: startDate, $lte: endDate }
+    };
+
+    const productGroupStr = productGroup ? String(productGroup) : '';
+    const isUngrouped = productGroupStr.toLowerCase().startsWith('ungrouped items');
+
+    // NOTE: physical/dispatched updates are saved by productGroup in UI, so for Ungrouped rows
+    // prefer matching by productGroup even if a productId exists.
+    if (isUngrouped && productGroupStr) {
+      dispatchQuery.productGroup = productGroupStr;
+    } else if (productId) {
+      dispatchQuery.productId = new mongoose.Types.ObjectId(String(productId));
+    } else {
+      dispatchQuery.productGroup = productGroupStr;
+    }
+
+    const docs = await Dispatch.find(dispatchQuery)
+      .select([
+        'date',
+        'productId',
+        'productGroup',
+        'packedQuantityReadyForDispatch',
+        'totalIndentQuantityOrdersForTheDay',
+        'dispatchedQuantitySentToday',
+        'physicalStockEntryManualVerification'
+      ].join(' '))
+      .sort({ date: 1, createdAt: 1 })
+      .lean();
+
+    const perDay = new Map();
+    for (const d of docs) {
+      const dateObj = d.date ? new Date(d.date) : null;
+      if (!dateObj || Number.isNaN(dateObj.getTime())) continue;
+
+      const dateKey = dateObj.toISOString().split('T')[0];
+      if (!perDay.has(dateKey)) {
+        perDay.set(dateKey, {
+          date: dateKey,
+          packedQuantityReadyForDispatch: 0,
+          totalIndentQuantityOrdersForTheDay: 0,
+          dispatchedQuantitySentToday: 0,
+          physicalStockEntryManualVerification: 0
+        });
+      }
+
+      const row = perDay.get(dateKey);
+      row.packedQuantityReadyForDispatch += Number(d.packedQuantityReadyForDispatch) || 0;
+      row.totalIndentQuantityOrdersForTheDay += Number(d.totalIndentQuantityOrdersForTheDay) || 0;
+      row.dispatchedQuantitySentToday += Number(d.dispatchedQuantitySentToday) || 0;
+      row.physicalStockEntryManualVerification += Number(d.physicalStockEntryManualVerification) || 0;
+    }
+
+    // Returns aggregation (only reliable when productId is known)
+    const returnsOnDay = new Map();
+    if (productId) {
+      const Return = (await import('../models/Return.js')).default;
+
+      const prevStart = new Date(startDate);
+      prevStart.setDate(prevStart.getDate() - 1);
+      prevStart.setHours(0, 0, 0, 0);
+
+      const prevEnd = new Date(endDate);
+      prevEnd.setDate(prevEnd.getDate() - 1);
+      prevEnd.setHours(23, 59, 59, 999);
+
+      const returnsAgg = await Return.aggregate([
+        {
+          $match: {
+            companyId: companyFilter,
+            returnDate: { $gte: prevStart, $lte: prevEnd },
+            status: { $in: ['approved', 'completed'] }
+          }
+        },
+        { $unwind: '$items' },
+        { $match: { 'items.productId': new mongoose.Types.ObjectId(String(productId)) } },
+        {
+          $group: {
+            _id: {
+              date: {
+                $dateToString: {
+                  format: '%Y-%m-%d',
+                  date: '$returnDate'
+                }
+              }
+            },
+            totalQty: { $sum: { $ifNull: ['$items.quantity', 0] } }
+          }
+        }
+      ]);
+
+      for (const r of returnsAgg) {
+        const dateKey = r?._id?.date;
+        if (!dateKey) continue;
+        returnsOnDay.set(String(dateKey), Number(r.totalQty) || 0);
+      }
+    }
+
+    // Build history with cumulative previous closing and "yesterday returns"
+    const dayKeysAsc = Array.from(perDay.keys()).sort();
+    let cumulativePhysical = 0;
+
+    const history = dayKeysAsc.map((dateKey) => {
+      const row = perDay.get(dateKey);
+
+      const prevClosing = cumulativePhysical;
+      const prevDate = new Date(dateKey);
+      prevDate.setDate(prevDate.getDate() - 1);
+      const prevDateKey = prevDate.toISOString().split('T')[0];
+
+      const returnsYesterday = returnsOnDay.get(prevDateKey) || 0;
+
+      const totalAvailable = (row.packedQuantityReadyForDispatch || 0) + prevClosing + returnsYesterday;
+      const excessShortage = (row.totalIndentQuantityOrdersForTheDay || 0) - totalAvailable;
+      const closingStock = totalAvailable - (row.dispatchedQuantitySentToday || 0);
+      const overallLoss = totalAvailable - (row.dispatchedQuantitySentToday || 0) - (row.physicalStockEntryManualVerification || 0);
+
+      cumulativePhysical += (row.physicalStockEntryManualVerification || 0);
+
+      return {
+        date: dateKey,
+        packedQuantityReadyForDispatch: row.packedQuantityReadyForDispatch || 0,
+        previousClosingStockYesterdayBalance: prevClosing,
+        returnQuantityYesterdayReturns: returnsYesterday,
+        totalAvailableStock: totalAvailable,
+        totalIndentQuantityOrdersForTheDay: row.totalIndentQuantityOrdersForTheDay || 0,
+        excessShortage,
+        dispatchedQuantitySentToday: row.dispatchedQuantitySentToday || 0,
+        physicalStockEntryManualVerification: row.physicalStockEntryManualVerification || 0,
+        closingStockEndOfDayBalance: closingStock,
+        overallLoss
+      };
+    }).reverse();
+
+    return res.json({
+      success: true,
+      data: {
+        days: daysInt,
+        startDate: startDate.toISOString().split('T')[0],
+        endDate: endDate.toISOString().split('T')[0],
+        productId: productId || null,
+        productGroup: productGroup || null,
+        history
+      }
+    });
+  } catch (error) {
+    console.error('❌ Error fetching dispatch dashboard entry history:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch dispatch dashboard entry history',
       error: error.message
     });
   }
@@ -2100,6 +2413,19 @@ export const getTodaysProducts = async (req, res) => {
             console.log(`  ❌ No productId in group!`);
           }
 
+          // Ensure this "no production group" case still behaves like an ungrouped item on frontend
+          if (!Array.isArray(group.items) || group.items.length === 0) {
+            group.items = [{
+              itemId: group.productId,
+              productName: group.productName || item?.name || 'Unknown',
+              batch: item?.batch || group.batchNo || null,
+              stock: item?.stock || item?.qty || group.totalAvailableStock || 0,
+              qtyIssued: group.qtyIssued || 0,
+              status: group.status || 'pending',
+              totalAvailableStock: group.totalAvailableStock || (item?.stock || item?.qty || 0)
+            }];
+          }
+
           // Set totalItemBatch directly
           group.totalItemBatch = batchValue;
           group.indentQty = group.indentQty || 0;
@@ -2223,6 +2549,146 @@ export const getTodaysProducts = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to fetch today\'s products',
+      error: error.message
+    });
+  }
+};
+
+// Get dispatch history summary for specific items (default: last 30 days)
+export const getDispatchItemsHistory = async (req, res) => {
+  try {
+    const { itemIds, days = 30, salesmanId, customerId } = req.query;
+
+    if (!req.user?.companyId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Authentication required with valid company'
+      });
+    }
+
+    if (!itemIds) {
+      return res.status(400).json({
+        success: false,
+        message: 'itemIds is required'
+      });
+    }
+
+    const idsCsv = Array.isArray(itemIds) ? itemIds.join(',') : String(itemIds);
+    const idStrings = idsCsv
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean);
+
+    if (idStrings.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'itemIds must contain at least one id'
+      });
+    }
+
+    if (idStrings.length > 200) {
+      return res.status(400).json({
+        success: false,
+        message: 'Too many itemIds (max 200)'
+      });
+    }
+
+    const invalidIds = idStrings.filter(id => !mongoose.isValidObjectId(id));
+    if (invalidIds.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid itemIds provided',
+        invalidIds
+      });
+    }
+
+    const itemObjectIds = idStrings.map(id => new mongoose.Types.ObjectId(id));
+
+    const daysIntRaw = parseInt(String(days), 10);
+    const daysInt = Number.isFinite(daysIntRaw) ? Math.min(Math.max(daysIntRaw, 1), 31) : 30;
+
+    const companyIdStr = String(req.user.companyId);
+    if (!mongoose.isValidObjectId(companyIdStr)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid companyId'
+      });
+    }
+
+    const companyObjectId = new mongoose.Types.ObjectId(companyIdStr);
+
+    const endDate = new Date();
+    endDate.setHours(23, 59, 59, 999);
+
+    const startDate = new Date();
+    startDate.setHours(0, 0, 0, 0);
+    startDate.setDate(startDate.getDate() - (daysInt - 1));
+
+    const query = {
+      company: companyObjectId,
+      productId: { $in: itemObjectIds },
+      date: { $gte: startDate, $lte: endDate },
+      status: { $in: ['dispatched', 'completed'] }
+    };
+
+    if (salesmanId) {
+      if (!mongoose.isValidObjectId(salesmanId)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid salesmanId'
+        });
+      }
+      query.salesPerson = new mongoose.Types.ObjectId(salesmanId);
+    }
+
+    if (customerId) {
+      if (!mongoose.isValidObjectId(customerId)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid customerId'
+        });
+      }
+      query.customer = new mongoose.Types.ObjectId(customerId);
+    }
+
+    const docs = await Dispatch.find(query)
+      .select('productId qtyIssued date dcno batchNo totalAvailableStock createdAt')
+      .sort({ date: -1, createdAt: -1 })
+      .lean();
+
+    const items = {};
+    for (const doc of docs) {
+      const productIdStr = String(doc.productId);
+      const qty = Number(doc.qtyIssued);
+      if (!Number.isFinite(qty) || qty <= 0) continue;
+
+      if (!items[productIdStr]) {
+        items[productIdStr] = { records: [] };
+      }
+
+      items[productIdStr].records.push({
+        qtyIssued: qty,
+        date: doc.date || doc.createdAt || null,
+        dcno: doc.dcno || null,
+        batchNo: doc.batchNo || null,
+        totalAvailableStock: doc.totalAvailableStock || 0
+      });
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        days: daysInt,
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString(),
+        items
+      }
+    });
+  } catch (error) {
+    console.error('❌ Error fetching dispatch items history:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch dispatch items history',
       error: error.message
     });
   }

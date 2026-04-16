@@ -3466,10 +3466,19 @@ export const createUnitManagerReturn = async (req, res) => {
       });
     }
 
+    // Normalize optional order id
+    const normalizedOrder = order === '' ? null : order;
+    if (normalizedOrder && !mongoose.isValidObjectId(String(normalizedOrder))) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid order id'
+      });
+    }
+
     // Fetch orderDate if order is provided
     let orderDate = null;
-    if (order) {
-      const orderRecord = await Order.findById(order);
+    if (normalizedOrder) {
+      const orderRecord = await Order.findById(normalizedOrder);
       if (orderRecord) {
         orderDate = orderRecord.orderDate || orderRecord.createdAt;
       }
@@ -3478,7 +3487,7 @@ export const createUnitManagerReturn = async (req, res) => {
     // Prepare return data with associations
     const finalReturnData = {
       ...returnData,
-      order,
+      order: normalizedOrder,
       orderDate,
       companyId: unitManager.companyId,
       salesPerson: salesPersonId,
@@ -3536,11 +3545,32 @@ export const updateUnitManagerReturn = async (req, res) => {
       });
     }
 
+    // Build safe update payload (avoid ObjectId cast errors from empty strings)
+    const updatePayload = { ...req.body };
+
+    // Normalize optional ObjectId fields
+    if (updatePayload.order === '') {
+      updatePayload.order = null;
+      updatePayload.orderDate = null;
+    } else if (updatePayload.order === null) {
+      updatePayload.orderDate = null;
+    } else if (updatePayload.order !== undefined) {
+      if (!mongoose.isValidObjectId(String(updatePayload.order))) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid order id'
+        });
+      }
+
+      const orderRecord = await Order.findById(updatePayload.order);
+      updatePayload.orderDate = orderRecord ? (orderRecord.orderDate || orderRecord.createdAt) : null;
+    }
+
     // Update the return
     const updatedReturn = await Return.findByIdAndUpdate(
       id,
       {
-        ...req.body,
+        ...updatePayload,
         updatedBy: unitManager._id,
         updatedAt: new Date()
       },

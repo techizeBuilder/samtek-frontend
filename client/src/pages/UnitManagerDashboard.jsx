@@ -91,6 +91,16 @@ export default function UnitManagerDashboard() {
   const productSummaries = productSummariesData?.data?.summaries || [];
   const productSummariesStats = productSummariesData?.data?.stats || {};
 
+  const totalApprovedBatchAdjusted = productSummaries.reduce((sum, summary) => {
+    const val = Number(summary?.batchAdjusted);
+    return sum + (Number.isFinite(val) ? val : 0);
+  }, 0);
+
+  const formatBatches = (batches) => {
+    const val = Number(batches);
+    return new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 }).format(Number.isFinite(val) ? val : 0);
+  };
+
   // Debug logging
   console.log('🔍 Dashboard state:', {
     isLoading,
@@ -394,7 +404,16 @@ export default function UnitManagerDashboard() {
                 <Factory className="h-6 w-6 text-purple-600" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{orders.inProductionOrders || 0}</p>
+                <p className="text-2xl font-bold">
+                  {isLoadingProductSummaries ? (
+                    <span className="inline-flex items-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Loading
+                    </span>
+                  ) : (
+                    formatBatches(totalApprovedBatchAdjusted)
+                  )}
+                </p>
                 <p className="text-sm text-muted-foreground">Total Batches per Production</p>
               </div>
             </div>

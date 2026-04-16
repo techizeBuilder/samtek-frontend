@@ -88,13 +88,6 @@ const CreateReturnForm = ({
 
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
 
-  // Initialize selectedCustomerId if editData exists
-  React.useEffect(() => {
-    if (editData?.customerId && customers.length > 0) {
-      setSelectedCustomerId(editData.customerId);
-    }
-  }, [editData, customers]);
-
   // Fetch orders for selected customer
   const { data: ordersResponse, isLoading: ordersLoading } = useQuery({
     queryKey: ["/api/sales/orders", selectedCustomerId],
@@ -141,6 +134,13 @@ const CreateReturnForm = ({
   const customers = customersResponse?.customers || [];
   const categories = categoriesResponse?.categories || [];
   const items = itemsResponse?.items || [];
+
+  // Initialize selectedCustomerId if editData exists
+  React.useEffect(() => {
+    if (editData?.customerId && customers.length > 0) {
+      setSelectedCustomerId(editData.customerId);
+    }
+  }, [editData, customers]);
 
   // Group items by category
   const itemsByCategory = React.useMemo(() => {
