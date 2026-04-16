@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -51,7 +51,10 @@ import {
   User,
   Eye,
   X,
-  Edit
+  Edit,
+  ChevronDown,
+  ChevronUp,
+  Layers
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
@@ -59,7 +62,7 @@ import { useToast } from '@/hooks/use-toast';
 export default function DispatchHistory() {
   const { user } = useAuth();
   const { toast } = useToast();
-  
+
   // Filter states
   const [filters, setFilters] = useState({
     page: 1,
@@ -72,8 +75,11 @@ export default function DispatchHistory() {
     search: ''
   });
 
-  // Modal state
-  const [selectedDispatch, setSelectedDispatch] = useState(null);
+  // Expanded DC groups
+  const [expandedGroups, setExpandedGroups] = useState({});
+
+  // Modal state — selectedGroup holds an array of dispatches for the same DC No.
+  const [selectedGroup, setSelectedGroup] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
   const [updateFormData, setUpdateFormData] = useState({
@@ -82,48 +88,59 @@ export default function DispatchHistory() {
   });
   const [isUpdating, setIsUpdating] = useState(false);
 
-  const handleViewDetails = (dispatch) => {
-    setSelectedDispatch(dispatch);
+  // Toggle expand/collapse for a DC group
+  const toggleGroup = (dcno) => {
+    setExpandedGroups(prev => ({ ...prev, [dcno]: !prev[dcno] }));
+  };
+
+  const handleViewDetails = (group) => {
+    setSelectedGroup(group);
     setIsModalOpen(true);
   };
 
   const handleCloseModal = () => {
     setIsModalOpen(false);
-    setSelectedDispatch(null);
+    setSelectedGroup(null);
   };
 
-  const handleUpdateClick = (dispatch) => {
-    setSelectedDispatch(dispatch);
+  const handleUpdateClick = (group) => {
+    setSelectedGroup(group);
+    // Pre-fill delivery date from first item in group
+    const first = group.items[0];
     setUpdateFormData({
-      deliveryDate: dispatch.deliveryDate ? new Date(dispatch.deliveryDate).toISOString().split('T')[0] : '',
-      qtyIssued: dispatch.qtyIssued || ''
+      deliveryDate: first.deliveryDate ? new Date(first.deliveryDate).toISOString().split('T')[0] : '',
+      qtyIssued: ''
     });
     setIsUpdateModalOpen(true);
   };
 
+  // Update ALL items in the group with same deliveryDate
   const handleUpdateSubmit = async (e) => {
     e.preventDefault();
     setIsUpdating(true);
 
     try {
-      const response = await apiRequest(
-        'PUT',
-        `/api/dispatches/update-delivery/${selectedDispatch.id}`,
-        {
-          deliveryDate: updateFormData.deliveryDate || null,
-          qtyIssued: updateFormData.qtyIssued ? parseFloat(updateFormData.qtyIssued) : null
-        }
+      // Update each dispatch item in the group
+      const promises = selectedGroup.items.map(dispatch =>
+        apiRequest(
+          'PUT',
+          `/api/dispatches/update-delivery/${dispatch.id}`,
+          {
+            deliveryDate: updateFormData.deliveryDate || null,
+            qtyIssued: updateFormData.qtyIssued ? parseFloat(updateFormData.qtyIssued) : null
+          }
+        )
       );
 
-      if (response.success) {
-        toast({
-          title: 'Success',
-          description: 'Dispatch updated successfully',
-        });
-        setIsUpdateModalOpen(false);
-        setUpdateFormData({ deliveryDate: '', qtyIssued: '' });
-        refetch();
-      }
+      await Promise.all(promises);
+
+      toast({
+        title: 'Success',
+        description: `DC ${selectedGroup.dcno}: All ${selectedGroup.items.length} item(s) updated successfully`,
+      });
+      setIsUpdateModalOpen(false);
+      setUpdateFormData({ deliveryDate: '', qtyIssued: '' });
+      refetch();
     } catch (error) {
       toast({
         title: 'Error',
@@ -145,7 +162,7 @@ export default function DispatchHistory() {
     queryKey: ['dispatchHistory', filters],
     queryFn: async () => {
       const queryParams = new URLSearchParams();
-      
+
       Object.entries(filters).forEach(([key, value]) => {
         if (value && value !== 'all' && value !== '') {
           queryParams.append(key, value);
@@ -154,7 +171,7 @@ export default function DispatchHistory() {
       const response = await apiRequest('GET', `/api/dispatches/history?${queryParams}`);
       return response;
     },
-    staleTime: 30000, // 30 seconds
+    staleTime: 30000,
     retry: 2,
     refetchOnWindowFocus: false
   });
@@ -163,53 +180,102 @@ export default function DispatchHistory() {
   const pagination = historyData?.data?.pagination || {};
   const summary = historyData?.data?.summary || {};
 
+  // ─────────────────────────────────────────────────
+  // GROUP reports by DC No.
+  // ─────────────────────────────────────────────────
+  const groupedReports = useMemo(() => {
+    const map = new Map();
+
+    reports.forEach(dispatch => {
+      const key = dispatch.dcno || `__NO_DC_${dispatch.id}`;
+      if (!map.has(key)) {
+        map.set(key, {
+          dcno: dispatch.dcno || null,
+          key,
+          items: [],
+          // Aggregate quantities
+          totalIndent: 0,
+          totalAvailable: 0,
+          totalDispatched: 0,
+          // Take first item values for shared fields
+          customer: dispatch.customer,
+          salesPerson: dispatch.salesPerson,
+          status: dispatch.status,
+          date: dispatch.date || dispatch.createdAt,
+          deliveryDate: dispatch.deliveryDate,
+          verifiedBy: dispatch.verifiedBy,
+          invoiceGenerated: dispatch.invoiceGenerated,
+        });
+      }
+      const group = map.get(key);
+      group.items.push(dispatch);
+
+      // Aggregate quantities
+      group.totalIndent += dispatch.quantities?.totalIndent || 0;
+      group.totalAvailable += dispatch.quantities?.totalAvailable || 0;
+      group.totalDispatched += dispatch.quantities?.dispatched || 0;
+
+      // Update shared fields - use latest/first found
+      if (!group.customer && dispatch.customer) group.customer = dispatch.customer;
+      if (!group.salesPerson && dispatch.salesPerson) group.salesPerson = dispatch.salesPerson;
+      // Use the latest delivery date
+      if (dispatch.deliveryDate && (!group.deliveryDate || new Date(dispatch.deliveryDate) > new Date(group.deliveryDate))) {
+        group.deliveryDate = dispatch.deliveryDate;
+      }
+      // invoiceGenerated - true if any item has it
+      if (dispatch.invoiceGenerated) group.invoiceGenerated = true;
+    });
+
+    return Array.from(map.values());
+  }, [reports]);
+
   // Status badge styling
   const getStatusBadge = (status) => {
     const statusConfig = {
-      'delivered': { 
-        variant: 'default', 
-        icon: CheckCircle2, 
-        className: 'bg-green-100 text-green-800 hover:bg-green-200' 
+      'delivered': {
+        variant: 'default',
+        icon: CheckCircle2,
+        className: 'bg-green-100 text-green-800 hover:bg-green-200'
       },
-      'completed': { 
-        variant: 'default', 
-        icon: CheckCircle2, 
-        className: 'bg-green-100 text-green-800 hover:bg-green-200' 
+      'completed': {
+        variant: 'default',
+        icon: CheckCircle2,
+        className: 'bg-green-100 text-green-800 hover:bg-green-200'
       },
-      'dispatched': { 
-        variant: 'default', 
-        icon: Truck, 
-        className: 'bg-blue-100 text-blue-800 hover:bg-blue-200' 
+      'dispatched': {
+        variant: 'default',
+        icon: Truck,
+        className: 'bg-blue-100 text-blue-800 hover:bg-blue-200'
       },
-      'in_transit': { 
-        variant: 'secondary', 
-        icon: Truck, 
-        className: 'bg-blue-100 text-blue-800 hover:bg-blue-200' 
+      'in_transit': {
+        variant: 'secondary',
+        icon: Truck,
+        className: 'bg-blue-100 text-blue-800 hover:bg-blue-200'
       },
-      'verified': { 
-        variant: 'secondary', 
-        icon: CheckCircle2, 
-        className: 'bg-teal-100 text-teal-800 hover:bg-teal-200' 
+      'verified': {
+        variant: 'secondary',
+        icon: CheckCircle2,
+        className: 'bg-teal-100 text-teal-800 hover:bg-teal-200'
       },
-      'approved': { 
-        variant: 'secondary', 
-        icon: CheckCircle2, 
-        className: 'bg-indigo-100 text-indigo-800 hover:bg-indigo-200' 
+      'approved': {
+        variant: 'secondary',
+        icon: CheckCircle2,
+        className: 'bg-indigo-100 text-indigo-800 hover:bg-indigo-200'
       },
-      'updated': { 
-        variant: 'secondary', 
-        icon: Activity, 
-        className: 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200' 
+      'updated': {
+        variant: 'secondary',
+        icon: Activity,
+        className: 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200'
       },
-      'pending': { 
-        variant: 'destructive', 
-        icon: AlertCircle, 
-        className: 'bg-orange-100 text-orange-800 hover:bg-orange-200' 
+      'pending': {
+        variant: 'destructive',
+        icon: AlertCircle,
+        className: 'bg-orange-100 text-orange-800 hover:bg-orange-200'
       },
-      'cancelled': { 
-        variant: 'outline', 
-        icon: XCircle, 
-        className: 'bg-red-100 text-red-800 hover:bg-red-200' 
+      'cancelled': {
+        variant: 'outline',
+        icon: XCircle,
+        className: 'bg-red-100 text-red-800 hover:bg-red-200'
       }
     };
 
@@ -241,15 +307,8 @@ export default function DispatchHistory() {
       endDate: '',
       status: 'all',
       vehicleId: '',
-      customerId: ''
-    });
-  };
-
-  // Export functionality
-  const handleExport = () => {
-    toast({
-      title: "Export Started",
-      description: "Dispatch history export is being prepared...",
+      customerId: '',
+      search: ''
     });
   };
 
@@ -269,22 +328,35 @@ export default function DispatchHistory() {
     return `₹${amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
   };
 
-  // Download invoice PDF for a dispatch (uses DC ID endpoint)
-  const handleDownloadInvoice = async (dispatch) => {
+  // Download grouped invoice — one single PDF for all items in the DC group
+  const handleDownloadInvoice = async (group) => {
     try {
-      toast({ title: 'Preparing download', description: 'Generating invoice PDF...' });
+      if (!group.dcno) {
+        toast({
+          title: 'No DC Number',
+          description: 'Invoice can only be downloaded for dispatches with a valid DC Number.',
+          variant: 'destructive'
+        });
+        return;
+      }
+
+      toast({ title: 'Preparing download', description: `Generating combined invoice for DC ${group.dcno}...` });
 
       const token = localStorage.getItem('token');
-      const res = await fetch(`/api/dispatches/generate-invoice/${dispatch.id}`, {
+
+      // Single API call: POST /api/dispatches/generate-invoice-by-dc  { dcNo }
+      // Returns one PDF that lists ALL items for this DC No.
+      const res = await fetch('/api/dispatches/generate-invoice-by-dc', {
         method: 'POST',
         headers: {
+          'Content-Type': 'application/json',
           Accept: 'application/pdf',
           Authorization: token ? `Bearer ${token}` : ''
-        }
+        },
+        body: JSON.stringify({ dcNo: group.dcno })
       });
 
       if (!res.ok) {
-        // Try to parse JSON error
         let errMsg = `${res.status} ${res.statusText}`;
         try {
           const json = await res.json();
@@ -297,14 +369,16 @@ export default function DispatchHistory() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      const fileName = `invoice-${dispatch.dcno || dispatch.id}.pdf`;
-      a.download = fileName;
+      a.download = `invoice-DC-${group.dcno}.pdf`;
       document.body.appendChild(a);
       a.click();
       a.remove();
       window.URL.revokeObjectURL(url);
 
-      toast({ title: 'Download started', description: `Invoice ${fileName} is downloading` });
+      toast({
+        title: 'Download started',
+        description: `Combined invoice for DC ${group.dcno} (${group.items.length} items) is downloading`
+      });
     } catch (error) {
       toast({ title: 'Error', description: error.message || 'Failed to download invoice', variant: 'destructive' });
       console.error('Invoice download error:', error);
@@ -336,7 +410,7 @@ export default function DispatchHistory() {
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Dispatch History</h1>
-            <p className="text-gray-600">Track and analyze dispatch operations performance</p>
+            <p className="text-gray-600">Track and analyze dispatch operations — grouped by DC No.</p>
           </div>
         </div>
 
@@ -353,7 +427,19 @@ export default function DispatchHistory() {
               </div>
             </CardContent>
           </Card>
-          
+
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-600">DC Groups</p>
+                  <p className="text-2xl font-bold text-indigo-600">{groupedReports.length}</p>
+                </div>
+                <Layers className="h-8 w-8 text-indigo-500" />
+              </div>
+            </CardContent>
+          </Card>
+
           <Card>
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
@@ -365,7 +451,7 @@ export default function DispatchHistory() {
               </div>
             </CardContent>
           </Card>
-          
+
           <Card>
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
@@ -374,18 +460,6 @@ export default function DispatchHistory() {
                   <p className="text-2xl font-bold text-blue-600">{summary.inTransitDispatches || 0}</p>
                 </div>
                 <Truck className="h-8 w-8 text-blue-500" />
-              </div>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Total Value</p>
-                  <p className="text-2xl font-bold text-purple-600">{formatCurrency(summary.totalValue || 0)}</p>
-                </div>
-                <TrendingUp className="h-8 w-8 text-purple-500" />
               </div>
             </CardContent>
           </Card>
@@ -460,8 +534,8 @@ export default function DispatchHistory() {
               </div>
             </div>
             <div className="flex justify-end">
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 onClick={clearFilters}
               >
                 Clear Filters
@@ -470,13 +544,16 @@ export default function DispatchHistory() {
           </CardContent>
         </Card>
 
-        {/* Dispatch History Table */}
+        {/* Dispatch History Table — Grouped by DC No. */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <BarChart3 className="h-5 w-5" />
                 Dispatch History
+                <Badge variant="outline" className="ml-2 text-indigo-700 border-indigo-300">
+                  Grouped by DC No.
+                </Badge>
                 {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
               </div>
               <Button variant="ghost" size="sm" onClick={() => refetch()}>
@@ -490,7 +567,7 @@ export default function DispatchHistory() {
                 <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
                 <span className="ml-2">Loading dispatch history...</span>
               </div>
-            ) : reports.length === 0 ? (
+            ) : groupedReports.length === 0 ? (
               <div className="text-center py-8">
                 <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                 <p className="text-gray-500">No dispatch records found</p>
@@ -500,11 +577,13 @@ export default function DispatchHistory() {
               <>
                 <Table>
                   <TableHeader>
-                    <TableRow>
-                      <TableHead>DC ID</TableHead>
+                    <TableRow className="bg-indigo-50">
+                      <TableHead className="w-8"></TableHead>
+                      <TableHead>DC No.</TableHead>
                       <TableHead>Customer</TableHead>
                       <TableHead>Sales Person</TableHead>
-                      <TableHead>Quantities & Value</TableHead>
+                      <TableHead>Items</TableHead>
+                      <TableHead>Total Quantities</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Date</TableHead>
                       <TableHead>Delivery Date</TableHead>
@@ -512,154 +591,225 @@ export default function DispatchHistory() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {reports.map((dispatch) => (
-                      <TableRow key={dispatch.id} className="hover:bg-gray-50">
-                        <TableCell className="font-medium">
-                          {dispatch.dcno ? (
-                            <span className="px-2 py-1 bg-indigo-50 text-indigo-700 rounded font-mono text-sm">
-                              {dispatch.dcno}
-                            </span>
-                          ) : (
-                            <span className="text-gray-400 text-sm">Not assigned</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <div>
-                            {dispatch.customer?.name ? (
-                              <>
-                                <p className="font-medium">{dispatch.customer.name}</p>
-                                {dispatch.customer.phone && (
-                                  <p className="text-sm text-gray-500">{dispatch.customer.phone}</p>
+                    {groupedReports.map((group) => {
+                      const isExpanded = !!expandedGroups[group.key];
+                      return (
+                        <React.Fragment key={group.key}>
+                          {/* ── DC Group Header Row ── */}
+                          <TableRow
+                            className="hover:bg-indigo-50 cursor-pointer bg-white border-l-4 border-l-indigo-400"
+                            onClick={() => toggleGroup(group.key)}
+                          >
+                            {/* Expand toggle */}
+                            <TableCell className="p-2">
+                              <button
+                                className="text-indigo-600 hover:text-indigo-800 transition-colors"
+                                onClick={(e) => { e.stopPropagation(); toggleGroup(group.key); }}
+                              >
+                                {isExpanded
+                                  ? <ChevronUp className="w-4 h-4" />
+                                  : <ChevronDown className="w-4 h-4" />}
+                              </button>
+                            </TableCell>
+
+                            {/* DC No. */}
+                            <TableCell className="font-medium">
+                              {group.dcno ? (
+                                <span className="px-2 py-1 bg-indigo-100 text-indigo-700 rounded font-mono text-sm font-bold">
+                                  {group.dcno}
+                                </span>
+                              ) : (
+                                <span className="text-gray-400 text-sm">Not assigned</span>
+                              )}
+                            </TableCell>
+
+                            {/* Customer */}
+                            <TableCell>
+                              <div>
+                                {group.customer?.name ? (
+                                  <>
+                                    <p className="font-medium">{group.customer.name}</p>
+                                    {group.customer.phone && (
+                                      <p className="text-sm text-gray-500">{group.customer.phone}</p>
+                                    )}
+                                  </>
+                                ) : (
+                                  <div className="flex items-center gap-1 text-gray-400">
+                                    <User className="w-4 h-4" />
+                                    <span>Not assigned</span>
+                                  </div>
                                 )}
-                              </>
-                            ) : (
-                              <div className="flex items-center gap-1 text-gray-400">
-                                <User className="w-4 h-4" />
-                                <span>Not assigned</span>
                               </div>
-                            )}
-                          </div>
-                        </TableCell>
-                       
-                        <TableCell>
-                          <div>
-                            {dispatch.salesPerson ? (
-                              <>
-                                <p className="font-medium">{dispatch.salesPerson.fullName || dispatch.salesPerson.username}</p>
-                                {dispatch.salesPerson.username && dispatch.salesPerson.fullName && (
-                                  <p className="text-sm text-gray-500">@{dispatch.salesPerson.username}</p>
+                            </TableCell>
+
+                            {/* Sales Person */}
+                            <TableCell>
+                              <div>
+                                {group.salesPerson ? (
+                                  <>
+                                    <p className="font-medium">{group.salesPerson.fullName || group.salesPerson.username}</p>
+                                    {group.salesPerson.username && group.salesPerson.fullName && (
+                                      <p className="text-sm text-gray-500">@{group.salesPerson.username}</p>
+                                    )}
+                                  </>
+                                ) : (
+                                  <div className="flex items-center gap-1 text-gray-400">
+                                    <Users className="w-4 h-4" />
+                                    <span>Not assigned</span>
+                                  </div>
                                 )}
-                              </>
-                            ) : (
-                              <div className="flex items-center gap-1 text-gray-400">
-                                <Users className="w-4 h-4" />
-                                <span>Not assigned</span>
                               </div>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="space-y-1">
-                            {dispatch.quantities && (
-                              <>
-                                {dispatch.quantities.totalIndent > 0 && (
+                            </TableCell>
+
+                            {/* Items count */}
+                            <TableCell>
+                              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                                <Package className="w-3 h-3 mr-1" />
+                                {group.items.length} item{group.items.length > 1 ? 's' : ''}
+                              </Badge>
+                            </TableCell>
+
+                            {/* Aggregated quantities */}
+                            <TableCell>
+                              <div className="space-y-1">
+                                {group.totalIndent > 0 && (
                                   <div className="text-xs">
                                     <span className="text-gray-500">Indent:</span>
-                                    <span className="ml-1 font-medium">{dispatch.quantities.totalIndent.toFixed(2)}</span>
+                                    <span className="ml-1 font-medium">{group.totalIndent.toFixed(2)}</span>
                                   </div>
                                 )}
-                                {dispatch.quantities.totalAvailable > 0 && (
+                                {group.totalAvailable > 0 && (
                                   <div className="text-xs">
                                     <span className="text-gray-500">Available:</span>
-                                    <span className="ml-1 font-medium text-blue-600">{dispatch.quantities.totalAvailable.toFixed(2)}</span>
+                                    <span className="ml-1 font-medium text-blue-600">{group.totalAvailable.toFixed(2)}</span>
                                   </div>
                                 )}
-                                {dispatch.quantities.dispatched > 0 && (
+                                {group.totalDispatched > 0 && (
                                   <div className="text-xs">
                                     <span className="text-gray-500">Dispatched:</span>
-                                    <span className="ml-1 font-medium text-green-600">{dispatch.quantities.dispatched.toFixed(2)}</span>
+                                    <span className="ml-1 font-medium text-green-600">{group.totalDispatched.toFixed(2)}</span>
                                   </div>
                                 )}
-                                {dispatch.calculations?.excessShortage !== undefined && dispatch.calculations.excessShortage !== 0 && (
-                                  <div className="text-xs">
-                                    <span className="text-gray-500">{dispatch.calculations.excessShortage < 0 ? 'Shortage:' : 'Excess:'}</span>
-                                    <span className={`ml-1 font-medium ${dispatch.calculations.excessShortage < 0 ? 'text-red-600' : 'text-green-600'}`}>
-                                      {Math.abs(dispatch.calculations.excessShortage).toFixed(2)}
-                                    </span>
-                                  </div>
-                                )}
-                                {dispatch.calculations?.overallLoss !== undefined && dispatch.calculations.overallLoss !== 0 && (
-                                  <div className="text-xs">
-                                    <span className="text-gray-500">Loss:</span>
-                                    <span className="ml-1 font-medium text-orange-600">{Math.abs(dispatch.calculations.overallLoss).toFixed(2)}</span>
-                                  </div>
-                                )}
-                              </>
-                            )}
-                            {(!dispatch.quantities || 
-                              (dispatch.quantities.totalIndent === 0 && 
-                               dispatch.quantities.totalAvailable === 0 && 
-                               dispatch.quantities.dispatched === 0)) && (
-                              <span className="text-xs text-gray-400">No quantity data</span>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="space-y-1">
-                            {getStatusBadge(dispatch.status || 'pending')}
-                            {dispatch.verifiedBy && (
-                              <div className="text-xs text-gray-500 mt-1">
-                                ✓ Verified
                               </div>
-                            )}
-                            {dispatch.invoiceGenerated && (
-                              <div className="text-xs text-green-600 mt-1">
-                                📄 Invoice Generated
+                            </TableCell>
+
+                            {/* Status */}
+                            <TableCell>
+                              <div className="space-y-1">
+                                {getStatusBadge(group.status || 'pending')}
+                                {group.verifiedBy && (
+                                  <div className="text-xs text-gray-500 mt-1">✓ Verified</div>
+                                )}
+                                {group.invoiceGenerated && (
+                                  <div className="text-xs text-green-600 mt-1">📄 Invoice Generated</div>
+                                )}
                               </div>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          {formatDateTime(dispatch.date || dispatch.createdAt)}
-                        </TableCell>
-                        <TableCell>
-                          {dispatch.deliveryDate ? formatDateTime(dispatch.deliveryDate) : (
-                            <span className="text-gray-400">Pending</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleViewDetails(dispatch)}
-                              className="flex items-center gap-1"
+                            </TableCell>
+
+                            {/* Date */}
+                            <TableCell>{formatDateTime(group.date)}</TableCell>
+
+                            {/* Delivery Date */}
+                            <TableCell>
+                              {group.deliveryDate ? formatDateTime(group.deliveryDate) : (
+                                <span className="text-gray-400">Pending</span>
+                              )}
+                            </TableCell>
+
+                            {/* Actions */}
+                            <TableCell onClick={(e) => e.stopPropagation()}>
+                              <div className="flex gap-2 flex-wrap">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleViewDetails(group)}
+                                  className="flex items-center gap-1"
+                                >
+                                  <Eye className="w-3 h-3" />
+                                  View
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleDownloadInvoice(group)}
+                                  className="flex items-center gap-1"
+                                >
+                                  <Download className="w-3 h-3" />
+                                  Invoice
+                                </Button>
+                                <Button
+                                  variant="default"
+                                  size="sm"
+                                  onClick={() => handleUpdateClick(group)}
+                                  className="flex items-center gap-1 bg-blue-600 hover:bg-blue-700"
+                                >
+                                  <Edit className="w-3 h-3" />
+                                  Update
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+
+                          {/* ── Expanded Sub-rows: individual items in the group ── */}
+                          {isExpanded && group.items.map((dispatch, idx) => (
+                            <TableRow
+                              key={dispatch.id}
+                              className="bg-slate-50 hover:bg-slate-100 border-l-4 border-l-slate-200"
                             >
-                              <Eye className="w-3 h-3" />
-                              View
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleDownloadInvoice(dispatch)}
-                              className="flex items-center gap-1"
-                            >
-                              <Download className="w-3 h-3" />
-                              Invoice
-                            </Button>
-                            <Button
-                              variant="default"
-                              size="sm"
-                              onClick={() => handleUpdateClick(dispatch)}
-                              className="flex items-center gap-1 bg-blue-600 hover:bg-blue-700"
-                            >
-                              <Edit className="w-3 h-3" />
-                              Update
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                              <TableCell></TableCell>
+                              {/* DC No. (same, greyed out) */}
+                              <TableCell>
+                                <span className="text-xs text-gray-400 font-mono pl-4">└ Item {idx + 1}</span>
+                              </TableCell>
+                              {/* Product name */}
+                              <TableCell colSpan={2}>
+                                <div className="flex items-center gap-2">
+                                  <Package className="w-3 h-3 text-purple-500 flex-shrink-0" />
+                                  <span className="text-sm font-medium">
+                                    {dispatch.product?.name && dispatch.product.name !== 'N/A'
+                                      ? dispatch.product.name
+                                      : dispatch.packingSheet?.productGroup || 'N/A'}
+                                  </span>
+                                  {dispatch.batchNo && (
+                                    <Badge variant="outline" className="text-xs text-gray-500">
+                                      {dispatch.batchNo}
+                                    </Badge>
+                                  )}
+                                </div>
+                              </TableCell>
+                              {/* Empty items cell */}
+                              <TableCell></TableCell>
+                              {/* Per-item quantities */}
+                              <TableCell>
+                                <div className="space-y-0.5">
+                                  {dispatch.quantities?.totalIndent > 0 && (
+                                    <div className="text-xs">
+                                      <span className="text-gray-400">Indent:</span>
+                                      <span className="ml-1">{dispatch.quantities.totalIndent.toFixed(2)}</span>
+                                    </div>
+                                  )}
+                                  {dispatch.quantities?.dispatched > 0 && (
+                                    <div className="text-xs">
+                                      <span className="text-gray-400">Dispatched:</span>
+                                      <span className="ml-1 text-green-600">{dispatch.quantities.dispatched.toFixed(2)}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              </TableCell>
+                              {/* Status per item */}
+                              <TableCell>{getStatusBadge(dispatch.status || 'pending')}</TableCell>
+                              {/* Date */}
+                              <TableCell className="text-xs text-gray-500">{formatDateTime(dispatch.date || dispatch.createdAt)}</TableCell>
+                              {/* Delivery Date */}
+                              <TableCell className="text-xs text-gray-500">
+                                {dispatch.deliveryDate ? formatDateTime(dispatch.deliveryDate) : <span className="text-gray-300">—</span>}
+                              </TableCell>
+                              <TableCell></TableCell>
+                            </TableRow>
+                          ))}
+                        </React.Fragment>
+                      );
+                    })}
                   </TableBody>
                 </Table>
 
@@ -668,9 +818,9 @@ export default function DispatchHistory() {
                   <div className="text-sm text-gray-600">
                     Showing {((pagination.currentPage - 1) * (pagination.limit || 20)) + 1} to{' '}
                     {Math.min((pagination.currentPage || 1) * (pagination.limit || 20), pagination.totalCount || reports.length)} of{' '}
-                    {pagination.totalCount || reports.length} entries
+                    {pagination.totalCount || reports.length} entries ({groupedReports.length} DC groups)
                   </div>
-                  
+
                   <div className="flex items-center gap-2">
                     <Button
                       variant="outline"
@@ -681,13 +831,13 @@ export default function DispatchHistory() {
                       <ChevronLeft className="w-4 h-4" />
                       Previous
                     </Button>
-                    
+
                     <div className="flex items-center gap-1">
                       <span className="text-sm">
                         Page {pagination.currentPage || 1} of {pagination.totalPages || 1}
                       </span>
                     </div>
-                    
+
                     <Button
                       variant="outline"
                       size="sm"
@@ -705,59 +855,52 @@ export default function DispatchHistory() {
         </Card>
       </div>
 
-      {/* Product Details Modal */}
+      {/* ─────────────────────────────────────────────────────────────── */}
+      {/* View Details Modal — shows ALL items in the DC group           */}
+      {/* ─────────────────────────────────────────────────────────────── */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-2xl font-bold flex items-center gap-2">
               <Package className="w-6 h-6 text-blue-600" />
               Dispatch Details
+              {selectedGroup?.dcno && (
+                <span className="px-3 py-1 bg-indigo-100 text-indigo-700 rounded-lg font-mono text-lg">
+                  DC: {selectedGroup.dcno}
+                </span>
+              )}
             </DialogTitle>
             <DialogDescription>
-              Complete information about this dispatch entry
+              Complete information for DC group — {selectedGroup?.items?.length || 0} item(s)
             </DialogDescription>
           </DialogHeader>
 
-          {selectedDispatch && (
+          {selectedGroup && (
             <div className="space-y-6">
-              {/* Header Info */}
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 p-4 bg-gray-50 rounded-lg">
+              {/* DC Header Info */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-indigo-50 rounded-lg border border-indigo-100">
                 <div>
                   <p className="text-xs text-gray-500 mb-1">DC Number</p>
-                  <p className="font-mono font-bold text-indigo-700">
-                    {selectedDispatch.dcno || 'Not assigned'}
+                  <p className="font-mono font-bold text-indigo-700 text-lg">
+                    {selectedGroup.dcno || 'Not assigned'}
                   </p>
                 </div>
                 <div>
                   <p className="text-xs text-gray-500 mb-1">Status</p>
-                  {getStatusBadge(selectedDispatch.status)}
+                  {getStatusBadge(selectedGroup.status)}
                 </div>
                 <div>
                   <p className="text-xs text-gray-500 mb-1">Date</p>
-                  <p className="font-medium">{formatDateTime(selectedDispatch.date || selectedDispatch.createdAt)}</p>
+                  <p className="font-medium text-sm">{formatDateTime(selectedGroup.date)}</p>
                 </div>
-                {selectedDispatch.batchNo && (
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1">Batch No</p>
-                    <p className="font-mono text-sm">{selectedDispatch.batchNo}</p>
-                  </div>
-                )}
-                {selectedDispatch.vehicleNumber && (
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1">Vehicle Number</p>
-                    <p className="font-medium">{selectedDispatch.vehicleNumber}</p>
-                  </div>
-                )}
-                {selectedDispatch.transporterName && (
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1">Transporter</p>
-                    <p className="font-medium">{selectedDispatch.transporterName}</p>
-                  </div>
-                )}
+                <div>
+                  <p className="text-xs text-gray-500 mb-1">Total Items</p>
+                  <p className="font-bold text-blue-700">{selectedGroup.items.length}</p>
+                </div>
               </div>
 
               {/* Customer Information */}
-              {selectedDispatch.customer && (
+              {selectedGroup.customer && (
                 <Card>
                   <CardHeader className="pb-3">
                     <CardTitle className="text-lg flex items-center gap-2">
@@ -769,24 +912,24 @@ export default function DispatchHistory() {
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <p className="text-xs text-gray-500">Name</p>
-                        <p className="font-medium">{selectedDispatch.customer.name}</p>
+                        <p className="font-medium">{selectedGroup.customer.name}</p>
                       </div>
-                      {selectedDispatch.customer.phone && (
+                      {selectedGroup.customer.phone && (
                         <div>
                           <p className="text-xs text-gray-500">Phone</p>
-                          <p className="font-medium">{selectedDispatch.customer.phone}</p>
+                          <p className="font-medium">{selectedGroup.customer.phone}</p>
                         </div>
                       )}
-                      {selectedDispatch.customer.email && (
+                      {selectedGroup.customer.email && (
                         <div>
                           <p className="text-xs text-gray-500">Email</p>
-                          <p className="font-medium text-sm">{selectedDispatch.customer.email}</p>
+                          <p className="font-medium text-sm">{selectedGroup.customer.email}</p>
                         </div>
                       )}
-                      {selectedDispatch.customer.city && (
+                      {selectedGroup.customer.city && (
                         <div>
                           <p className="text-xs text-gray-500">City</p>
-                          <p className="font-medium">{selectedDispatch.customer.city}</p>
+                          <p className="font-medium">{selectedGroup.customer.city}</p>
                         </div>
                       )}
                     </div>
@@ -794,8 +937,8 @@ export default function DispatchHistory() {
                 </Card>
               )}
 
-              {/* Sales Person Information */}
-              {selectedDispatch.salesPerson && (
+              {/* Sales Person */}
+              {selectedGroup.salesPerson && (
                 <Card>
                   <CardHeader className="pb-3">
                     <CardTitle className="text-lg flex items-center gap-2">
@@ -805,213 +948,94 @@ export default function DispatchHistory() {
                   </CardHeader>
                   <CardContent>
                     <p className="font-medium">
-                      {selectedDispatch.salesPerson.fullName || selectedDispatch.salesPerson.username}
+                      {selectedGroup.salesPerson.fullName || selectedGroup.salesPerson.username}
                     </p>
                   </CardContent>
                 </Card>
               )}
 
-              {/* Product Information */}
+              {/* All Items Table */}
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-lg flex items-center gap-2">
-                    <Package className="w-5 h-5 text-purple-600" />
-                    Product Information
+                    <Layers className="w-5 h-5 text-purple-600" />
+                    All Items in DC {selectedGroup.dcno}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-3">
-                    {selectedDispatch.product && selectedDispatch.product.name !== 'N/A' ? (
-                      <>
-                        <div>
-                          <p className="text-xs text-gray-500 mb-2">Products</p>
-                          {(() => {
-                            // Split products if they're concatenated
-                            const productName = selectedDispatch.product.name;
-                            const products = productName.includes('), ') 
-                              ? productName.split('), ').map((p, i, arr) => i < arr.length - 1 ? p + ')' : p)
-                              : [productName];
-                            
-                            return (
-                              <div className="space-y-2">
-                                {products.map((product, index) => (
-                                  <div key={index} className="flex items-start gap-2 p-2 bg-gray-50 rounded-lg">
-                                    <Package className="w-4 h-4 text-purple-600 mt-0.5 flex-shrink-0" />
-                                    <span className="text-sm font-medium">{product.trim()}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            );
-                          })()}
-                        </div>
-                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 pt-2">
-                          {selectedDispatch.product.code && (
-                            <div>
-                              <p className="text-xs text-gray-500">Product Code</p>
-                              <p className="font-mono text-sm">{selectedDispatch.product.code}</p>
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-gray-50">
+                        <TableHead>#</TableHead>
+                        <TableHead>Product</TableHead>
+                        <TableHead>Batch No.</TableHead>
+                        <TableHead>Indent Qty</TableHead>
+                        <TableHead>Available</TableHead>
+                        <TableHead>Dispatched</TableHead>
+                        <TableHead>Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {selectedGroup.items.map((dispatch, idx) => (
+                        <TableRow key={dispatch.id}>
+                          <TableCell className="text-gray-500 text-sm">{idx + 1}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <Package className="w-4 h-4 text-purple-500 flex-shrink-0" />
+                              <span className="font-medium text-sm">
+                                {dispatch.product?.name && dispatch.product.name !== 'N/A'
+                                  ? dispatch.product.name
+                                  : dispatch.packingSheet?.productGroup || 'N/A'}
+                              </span>
                             </div>
-                          )}
-                          {selectedDispatch.product.category && (
-                            <div>
-                              <p className="text-xs text-gray-500">Category</p>
-                              <Badge className="bg-blue-100 text-blue-800">
-                                {selectedDispatch.product.category}
-                              </Badge>
-                            </div>
-                          )}
-                          {selectedDispatch.product.unit && (
-                            <div>
-                              <p className="text-xs text-gray-500">Unit</p>
-                              <p className="font-medium">{selectedDispatch.product.unit}</p>
-                            </div>
-                          )}
-                        </div>
-                        {selectedDispatch.packingSheet?.productGroup && 
-                         selectedDispatch.packingSheet.productGroup !== 'N/A' && 
-                         selectedDispatch.packingSheet.productGroup !== 'Ungrouped Items' && (
-                          <div>
-                            <p className="text-xs text-gray-500">Product Group</p>
-                            <Badge className="bg-purple-100 text-purple-800">
-                              📦 {selectedDispatch.packingSheet.productGroup}
-                            </Badge>
-                          </div>
-                        )}
-                      </>
-                    ) : (
-                      <p className="text-gray-400">No product information available</p>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
+                            {dispatch.product?.category && (
+                              <Badge className="mt-1 bg-blue-50 text-blue-700 text-xs">{dispatch.product.category}</Badge>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <span className="font-mono text-sm text-gray-600">{dispatch.batchNo || '—'}</span>
+                          </TableCell>
+                          <TableCell>
+                            <span className="font-medium">{dispatch.quantities?.totalIndent?.toFixed(2) || '0.00'}</span>
+                          </TableCell>
+                          <TableCell>
+                            <span className="text-blue-600 font-medium">{dispatch.quantities?.totalAvailable?.toFixed(2) || '0.00'}</span>
+                          </TableCell>
+                          <TableCell>
+                            <span className="text-green-600 font-medium">{dispatch.quantities?.dispatched?.toFixed(2) || '0.00'}</span>
+                          </TableCell>
+                          <TableCell>{getStatusBadge(dispatch.status || 'pending')}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
 
-              {/* Quantity Details */}
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <BarChart3 className="w-5 h-5 text-orange-600" />
-                    Quantity Details
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                    {selectedDispatch.quantities?.packedQty !== undefined && (
-                      <div className="p-3 bg-blue-50 rounded-lg">
-                        <p className="text-xs text-gray-600 mb-1">Packed Quantity</p>
-                        <p className="text-xl font-bold text-blue-700">
-                          {selectedDispatch.quantities.packedQty.toFixed(2)}
-                        </p>
-                      </div>
-                    )}
-                    {selectedDispatch.quantities?.totalIndent !== undefined && (
-                      <div className="p-3 bg-purple-50 rounded-lg">
-                        <p className="text-xs text-gray-600 mb-1">Total Indent</p>
-                        <p className="text-xl font-bold text-purple-700">
-                          {selectedDispatch.quantities.totalIndent.toFixed(2)}
-                        </p>
-                      </div>
-                    )}
-                    {selectedDispatch.quantities?.totalAvailable !== undefined && (
-                      <div className="p-3 bg-teal-50 rounded-lg">
-                        <p className="text-xs text-gray-600 mb-1">Total Available</p>
-                        <p className="text-xl font-bold text-teal-700">
-                          {selectedDispatch.quantities.totalAvailable.toFixed(2)}
-                        </p>
-                      </div>
-                    )}
-                    {selectedDispatch.quantities?.dispatched !== undefined && (
-                      <div className="p-3 bg-green-50 rounded-lg">
-                        <p className="text-xs text-gray-600 mb-1">Dispatched</p>
-                        <p className="text-xl font-bold text-green-700">
-                          {selectedDispatch.quantities.dispatched.toFixed(2)}
-                        </p>
-                      </div>
-                    )}
-                    {selectedDispatch.quantities?.closingStock !== undefined && (
-                      <div className="p-3 bg-gray-50 rounded-lg">
-                        <p className="text-xs text-gray-600 mb-1">Closing Stock</p>
-                        <p className="text-xl font-bold text-gray-700">
-                          {selectedDispatch.quantities.closingStock.toFixed(2)}
-                        </p>
-                      </div>
-                    )}
-                    {selectedDispatch.quantities?.previousClosing !== undefined && (
-                      <div className="p-3 bg-amber-50 rounded-lg">
-                        <p className="text-xs text-gray-600 mb-1">Previous Closing</p>
-                        <p className="text-xl font-bold text-amber-700">
-                          {selectedDispatch.quantities.previousClosing.toFixed(2)}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Loss & Shortage Details */}
-              {(selectedDispatch.calculations?.excessShortage !== undefined || 
-                selectedDispatch.calculations?.overallLoss !== undefined) && (
-                <Card>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <TrendingUp className="w-5 h-5 text-red-600" />
-                      Loss & Shortage Analysis
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-2 gap-4">
-                      {selectedDispatch.calculations?.excessShortage !== undefined && (
-                        <div className={`p-4 rounded-lg ${
-                          selectedDispatch.calculations.excessShortage < 0 
-                            ? 'bg-red-50' 
-                            : 'bg-green-50'
-                        }`}>
-                          <p className="text-xs text-gray-600 mb-1">
-                            {selectedDispatch.calculations.excessShortage < 0 ? 'Shortage' : 'Excess'}
-                          </p>
-                          <p className={`text-2xl font-bold ${
-                            selectedDispatch.calculations.excessShortage < 0 
-                              ? 'text-red-700' 
-                              : 'text-green-700'
-                          }`}>
-                            {Math.abs(selectedDispatch.calculations.excessShortage).toFixed(2)}
-                          </p>
-                        </div>
-                      )}
-                      {selectedDispatch.calculations?.overallLoss !== undefined && (
-                        <div className="p-4 bg-orange-50 rounded-lg">
-                          <p className="text-xs text-gray-600 mb-1">Overall Loss</p>
-                          <p className="text-2xl font-bold text-orange-700">
-                            {Math.abs(selectedDispatch.calculations.overallLoss).toFixed(2)}
-                          </p>
-                        </div>
-                      )}
+                  {/* Totals Row */}
+                  <div className="mt-4 p-3 bg-indigo-50 rounded-lg flex flex-wrap gap-6">
+                    <div>
+                      <p className="text-xs text-gray-500">Total Indent</p>
+                      <p className="font-bold text-indigo-700">{selectedGroup.totalIndent.toFixed(2)}</p>
                     </div>
-                  </CardContent>
-                </Card>
-              )}
+                    <div>
+                      <p className="text-xs text-gray-500">Total Available</p>
+                      <p className="font-bold text-blue-700">{selectedGroup.totalAvailable.toFixed(2)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500">Total Dispatched</p>
+                      <p className="font-bold text-green-700">{selectedGroup.totalDispatched.toFixed(2)}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
 
-              {/* Remarks */}
-              {selectedDispatch.remarks && (
-                <Card>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <FileText className="w-5 h-5 text-gray-600" />
-                      Remarks
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-gray-700">{selectedDispatch.remarks}</p>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Verification Info */}
-              {(selectedDispatch.verifiedBy || selectedDispatch.lastUpdatedBy) && (
-                <div className="border-t pt-4 text-sm text-gray-500">
-                  {selectedDispatch.verifiedBy && (
-                    <p>✓ Verified by: <span className="font-medium">{selectedDispatch.verifiedBy}</span></p>
+              {/* Delivery & Verification */}
+              {(selectedGroup.deliveryDate || selectedGroup.verifiedBy) && (
+                <div className="border-t pt-4 text-sm text-gray-500 space-y-1">
+                  {selectedGroup.deliveryDate && (
+                    <p>📅 Delivery Date: <span className="font-medium text-gray-700">{formatDateTime(selectedGroup.deliveryDate)}</span></p>
                   )}
-                  {selectedDispatch.lastUpdatedBy && (
-                    <p>Last updated by: <span className="font-medium">{selectedDispatch.lastUpdatedBy}</span></p>
+                  {selectedGroup.verifiedBy && (
+                    <p>✓ Verified by: <span className="font-medium">{selectedGroup.verifiedBy}</span></p>
                   )}
                 </div>
               )}
@@ -1020,32 +1044,56 @@ export default function DispatchHistory() {
         </DialogContent>
       </Dialog>
 
-      {/* Update Delivery Modal */}
+      {/* ─────────────────────────────────────────────────────────────── */}
+      {/* Update Delivery Modal — updates ALL items in the DC group      */}
+      {/* ─────────────────────────────────────────────────────────────── */}
       <Dialog open={isUpdateModalOpen} onOpenChange={setIsUpdateModalOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle className="text-xl font-bold flex items-center gap-2">
               <Edit className="w-5 h-5 text-blue-600" />
-              Update Dispatch
+              Update DC Group
             </DialogTitle>
             <DialogDescription>
-              Update delivery date and quantity issued for this dispatch
+              Update delivery date for all items in DC{' '}
+              <span className="font-mono font-bold text-indigo-700">{selectedGroup?.dcno || 'N/A'}</span>
+              {' '}({selectedGroup?.items?.length || 0} item{selectedGroup?.items?.length !== 1 ? 's' : ''})
             </DialogDescription>
           </DialogHeader>
 
-          {selectedDispatch && (
+          {selectedGroup && (
             <form onSubmit={handleUpdateSubmit} className="space-y-4">
               {/* DC Number Info */}
-              <div className="p-3 bg-gray-50 rounded-lg">
+              <div className="p-3 bg-indigo-50 rounded-lg">
                 <p className="text-xs text-gray-500">DC Number</p>
-                <p className="font-mono font-bold text-indigo-700">
-                  {selectedDispatch.dcno || 'Not assigned'}
+                <p className="font-mono font-bold text-indigo-700 text-lg">
+                  {selectedGroup.dcno || 'Not assigned'}
                 </p>
+                <p className="text-xs text-gray-500 mt-1">
+                  This update will apply to all {selectedGroup.items.length} item(s) in this DC group.
+                </p>
+              </div>
+
+              {/* Items summary */}
+              <div className="rounded-lg border divide-y max-h-40 overflow-y-auto">
+                {selectedGroup.items.map((dispatch, idx) => (
+                  <div key={dispatch.id} className="flex items-center justify-between px-3 py-2 text-sm">
+                    <div className="flex items-center gap-2">
+                      <Package className="w-3 h-3 text-purple-500 flex-shrink-0" />
+                      <span className="font-medium">
+                        {dispatch.product?.name && dispatch.product.name !== 'N/A'
+                          ? dispatch.product.name
+                          : dispatch.packingSheet?.productGroup || `Item ${idx + 1}`}
+                      </span>
+                    </div>
+                    <span className="text-gray-500 text-xs">{dispatch.quantities?.dispatched?.toFixed(2) || '0'} dispatched</span>
+                  </div>
+                ))}
               </div>
 
               {/* Delivery Date */}
               <div>
-                <Label htmlFor="deliveryDate">Delivery Date</Label>
+                <Label htmlFor="deliveryDate">Delivery Date (applies to all items)</Label>
                 <Input
                   type="date"
                   id="deliveryDate"
@@ -1057,7 +1105,7 @@ export default function DispatchHistory() {
 
               {/* Qty Issued */}
               <div>
-                <Label htmlFor="qtyIssued">Quantity Issued</Label>
+                <Label htmlFor="qtyIssued">Quantity Issued (per item)</Label>
                 <Input
                   type="number"
                   id="qtyIssued"
@@ -1068,26 +1116,8 @@ export default function DispatchHistory() {
                   className="mt-1"
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  Current: {selectedDispatch.qtyIssued?.toFixed(2) || '0.00'}
+                  Leave blank to keep existing quantity for each item.
                 </p>
-              </div>
-
-              {/* Current Values Display */}
-              <div className="grid grid-cols-2 gap-3 p-3 bg-blue-50 rounded-lg">
-                <div>
-                  <p className="text-xs text-gray-600">Current Delivery Date</p>
-                  <p className="text-sm font-medium">
-                    {selectedDispatch.deliveryDate 
-                      ? new Date(selectedDispatch.deliveryDate).toLocaleDateString() 
-                      : 'Not set'}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-600">Packed Qty</p>
-                  <p className="text-sm font-medium">
-                    {selectedDispatch.quantities?.packedQty?.toFixed(2) || '0.00'}
-                  </p>
-                </div>
               </div>
 
               {/* Action Buttons */}
@@ -1111,12 +1141,12 @@ export default function DispatchHistory() {
                   {isUpdating ? (
                     <>
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Updating...
+                      Updating {selectedGroup.items.length} item(s)…
                     </>
                   ) : (
                     <>
                       <CheckCircle2 className="w-4 h-4 mr-2" />
-                      Update
+                      Update All ({selectedGroup.items.length})
                     </>
                   )}
                 </Button>

@@ -311,11 +311,7 @@ export default function MyDeliveries() {
   
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [priorityFilter, setPriorityFilter] = useState('all');
-  const [dateFilter, setDateFilter] = useState('all');
   const [currentPage, setCurrentPage] = useState(1);
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [selectedDelivery, setSelectedDelivery] = useState(null);
 
@@ -336,6 +332,14 @@ export default function MyDeliveries() {
 
   const deliveries = deliveriesResponse?.deliveries || [];
   const pagination = deliveriesResponse?.pagination || {};
+
+  // Calculate stats from real data if available
+  const stats = {
+    total: pagination.total || 0,
+    dispatched: deliveries.filter(d => d.status === 'dispatched' || d.status === 'approved').length,
+    verified: deliveries.filter(d => d.status === 'verified').length,
+    completed: deliveries.filter(d => d.status === 'completed').length
+  };
 
   // Early return if no view permission
   if (!permissions.canView) {
@@ -388,18 +392,13 @@ export default function MyDeliveries() {
     setCurrentPage(1);
   };
 
-  const handlePriorityFilterChange = (value) => {
-    setPriorityFilter(value);
-    setCurrentPage(1);
-  };
-
   const getStatusVariant = (status) => {
     switch (status) {
-      case 'Delivered': return 'default';
-      case 'In Transit': return 'secondary';
-      case 'Scheduled': return 'outline';
-      case 'Pending': return 'secondary';
-      case 'Cancelled': return 'destructive';
+      case 'completed': return 'default';
+      case 'dispatched': return 'secondary';
+      case 'verified': return 'outline';
+      case 'approved': return 'default';
+      case 'pending': return 'secondary';
       default: return 'outline';
     }
   };
@@ -415,324 +414,18 @@ export default function MyDeliveries() {
 
   const getStatusIcon = (status) => {
     switch (status) {
-      case 'Delivered': return <CheckCircle className="h-4 w-4" />;
-      case 'In Transit': return <Truck className="h-4 w-4" />;
-      case 'Scheduled': return <Clock className="h-4 w-4" />;
-      case 'Pending': return <AlertCircle className="h-4 w-4" />;
-      case 'Cancelled': return <AlertCircle className="h-4 w-4" />;
+      case 'completed': return <CheckCircle className="h-4 w-4" />;
+      case 'dispatched': return <Truck className="h-4 w-4" />;
+      case 'verified': return <Clock className="h-4 w-4" />;
+      case 'approved': return <CheckCircle className="h-4 w-4" />;
+      case 'pending': return <AlertCircle className="h-4 w-4" />;
       default: return <Clock className="h-4 w-4" />;
-    }
-  };
-
-  const resetForm = () => {
-    setFormData({
-      orderNo: '',
-      customerName: '',
-      customerAddress: '',
-      deliveryDate: '',
-      timeSlot: '09:00 AM - 12:00 PM',
-      driverName: '',
-      vehicleNo: '',
-      contactNumber: '',
-      notes: ''
-    });
-  };
-
-  const handleCreate = () => {
-    const newDelivery = {
-      id: `D${(deliveries.length + 1).toString().padStart(3, '0')}`,
-      ...formData,
-      status: 'Scheduled', // Default status for new deliveries
-      priority: 'Medium', // Default priority for new deliveries
-      items: [],
-      deliveredAt: null,
-      createdAt: new Date().toISOString().split('T')[0]
-    };
-    setDeliveries([...deliveries, newDelivery]);
-    setIsCreateModalOpen(false);
-    resetForm();
-  };
-
-  const handleEdit = (delivery) => {
-    setSelectedDelivery(delivery);
-    setFormData({
-      orderNo: delivery.orderNo,
-      customerName: delivery.customerName,
-      customerAddress: delivery.customerAddress,
-      deliveryDate: delivery.deliveryDate,
-      timeSlot: delivery.timeSlot,
-      driverName: delivery.driverName,
-      vehicleNo: delivery.vehicleNo,
-      contactNumber: delivery.contactNumber,
-      status: delivery.status,
-      priority: delivery.priority,
-      notes: delivery.notes
-    });
-    setIsEditModalOpen(true);
-  };
-
-  const handleUpdate = () => {
-    const updatedDeliveries = deliveries.map(delivery =>
-      delivery.id === selectedDelivery.id
-        ? { ...delivery, ...formData }
-        : delivery
-    );
-    setDeliveries(updatedDeliveries);
-    setIsEditModalOpen(false);
-    setSelectedDelivery(null);
-    resetForm();
-  };
-
-  const handleDelete = (id) => {
-    if (window.confirm('Are you sure you want to delete this delivery?')) {
-      setDeliveries(deliveries.filter(delivery => delivery.id !== id));
     }
   };
 
   const handleView = (delivery) => {
     setSelectedDelivery(delivery);
     setIsViewModalOpen(true);
-  };
-
-  // Create form with isolated state to fix input focus issue
-  const CreateDeliveryForm = () => {
-    const [localFormData, setLocalFormData] = useState({
-      orderNo: '',
-      customerName: '',
-      customerAddress: '',
-      deliveryDate: '',
-      timeSlot: '09:00 AM - 12:00 PM',
-      driverName: '',
-      vehicleNo: '',
-      contactNumber: '',
-      notes: ''
-    });
-
-    const handleSubmit = () => {
-      if (!localFormData.orderNo || !localFormData.customerName || !localFormData.deliveryDate) {
-        return;
-      }
-      
-      const newDelivery = {
-        id: `DEL${(deliveries.length + 1).toString().padStart(3, '0')}`,
-        ...localFormData,
-        status: 'Scheduled',
-        estimatedDelivery: localFormData.deliveryDate,
-        trackingCode: `TR${Date.now().toString().slice(-6)}`,
-        createdAt: new Date().toISOString().split('T')[0]
-      };
-      
-      setDeliveries([...deliveries, newDelivery]);
-      setIsCreateModalOpen(false);
-    };
-
-    return <DeliveryFormUI formData={localFormData} setFormData={setLocalFormData} onSubmit={handleSubmit} onCancel={() => setIsCreateModalOpen(false)} submitText="Schedule Delivery" />;
-  };
-
-  // Edit form using existing formData state
-  const EditDeliveryForm = () => (
-    <DeliveryFormUI formData={formData} setFormData={setFormData} onSubmit={handleUpdate} onCancel={() => { setIsEditModalOpen(false); resetForm(); }} submitText="Update Delivery" />
-  );
-
-  const DeliveryFormUI = ({ formData, setFormData, onSubmit, onCancel, submitText }) => (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <Label>Order Number *</Label>
-          <Popover open={orderSearchOpen} onOpenChange={setOrderSearchOpen}>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                role="combobox"
-                aria-expanded={orderSearchOpen}
-                className="w-full justify-between"
-              >
-                {formData.orderNo || "Select order number..."}
-                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-full p-0">
-              <Command>
-                <CommandInput placeholder="Search orders..." />
-                <CommandEmpty>No order found.</CommandEmpty>
-                <CommandGroup>
-                  {dummyOrders.map((order) => (
-                    <CommandItem
-                      key={order.id}
-                      value={order.id}
-                      onSelect={(currentValue) => {
-                        const selectedOrder = dummyOrders.find(o => o.id === currentValue);
-                        if (selectedOrder) {
-                          setFormData({ 
-                            ...formData, 
-                            orderNo: selectedOrder.id,
-                            customerName: selectedOrder.customerName,
-                            customerAddress: dummyCustomers.find(c => c.name === selectedOrder.customerName)?.address || ''
-                          });
-                        }
-                        setOrderSearchOpen(false);
-                      }}
-                    >
-                      <Check
-                        className={`mr-2 h-4 w-4 ${
-                          formData.orderNo === order.id ? "opacity-100" : "opacity-0"
-                        }`}
-                      />
-                      <div className="flex flex-col">
-                        <span className="font-medium">{order.id}</span>
-                        <span className="text-sm text-muted-foreground">{order.customerName} - ₹{order.amount.toLocaleString()}</span>
-                      </div>
-                    </CommandItem>
-                  ))}
-                </CommandGroup>
-              </Command>
-            </PopoverContent>
-          </Popover>
-        </div>
-        <div>
-          <Label>Customer Name *</Label>
-          <Popover open={customerSearchOpen} onOpenChange={setCustomerSearchOpen}>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                role="combobox"
-                aria-expanded={customerSearchOpen}
-                className="w-full justify-between"
-              >
-                {formData.customerName || "Select customer..."}
-                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-full p-0">
-              <Command>
-                <CommandInput placeholder="Search customers..." />
-                <CommandEmpty>No customer found.</CommandEmpty>
-                <CommandGroup>
-                  {dummyCustomers.map((customer) => (
-                    <CommandItem
-                      key={customer.id}
-                      value={customer.name}
-                      onSelect={(currentValue) => {
-                        const selectedCustomer = dummyCustomers.find(c => c.name.toLowerCase() === currentValue.toLowerCase());
-                        if (selectedCustomer) {
-                          setFormData({ 
-                            ...formData, 
-                            customerName: selectedCustomer.name,
-                            customerAddress: selectedCustomer.address
-                          });
-                        }
-                        setCustomerSearchOpen(false);
-                      }}
-                    >
-                      <Check
-                        className={`mr-2 h-4 w-4 ${
-                          formData.customerName === customer.name ? "opacity-100" : "opacity-0"
-                        }`}
-                      />
-                      <div className="flex flex-col">
-                        <span className="font-medium">{customer.name}</span>
-                        <span className="text-sm text-muted-foreground">{customer.address}</span>
-                      </div>
-                    </CommandItem>
-                  ))}
-                </CommandGroup>
-              </Command>
-            </PopoverContent>
-          </Popover>
-        </div>
-        <div className="md:col-span-2">
-          <Label htmlFor="customerAddress">Customer Address *</Label>
-          <Textarea
-            id="customerAddress"
-            value={formData.customerAddress}
-            onChange={(e) => setFormData({ ...formData, customerAddress: e.target.value })}
-            placeholder="Enter customer address"
-            rows={2}
-          />
-        </div>
-        <div>
-          <Label htmlFor="deliveryDate">Delivery Date *</Label>
-          <Input
-            id="deliveryDate"
-            type="date"
-            value={formData.deliveryDate}
-            onChange={(e) => setFormData({ ...formData, deliveryDate: e.target.value })}
-          />
-        </div>
-        <div>
-          <Label htmlFor="timeSlot">Time Slot</Label>
-          <Select value={formData.timeSlot} onValueChange={(value) => setFormData({ ...formData, timeSlot: value })}>
-            <SelectTrigger>
-              <SelectValue placeholder="Select time slot" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="06:00 AM - 09:00 AM">06:00 AM - 09:00 AM</SelectItem>
-              <SelectItem value="09:00 AM - 12:00 PM">09:00 AM - 12:00 PM</SelectItem>
-              <SelectItem value="12:00 PM - 03:00 PM">12:00 PM - 03:00 PM</SelectItem>
-              <SelectItem value="03:00 PM - 06:00 PM">03:00 PM - 06:00 PM</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        {isAdmin && (
-          <>
-            <div>
-              <Label htmlFor="driverName">Driver Name *</Label>
-              <Input
-                id="driverName"
-                value={formData.driverName}
-                onChange={(e) => setFormData({ ...formData, driverName: e.target.value })}
-                placeholder="Enter driver name"
-              />
-            </div>
-            <div>
-              <Label htmlFor="vehicleNo">Vehicle Number *</Label>
-              <Input
-                id="vehicleNo"
-                value={formData.vehicleNo}
-                onChange={(e) => setFormData({ ...formData, vehicleNo: e.target.value })}
-                placeholder="Enter vehicle number"
-              />
-            </div>
-          </>
-        )}
-        <div>
-          <Label htmlFor="contactNumber">Contact Number *</Label>
-          <Input
-            id="contactNumber"
-            value={formData.contactNumber}
-            onChange={(e) => setFormData({ ...formData, contactNumber: e.target.value })}
-            placeholder="Enter contact number"
-          />
-        </div>
-
-        <div className="md:col-span-2">
-          <Label htmlFor="notes">Notes</Label>
-          <Textarea
-            id="notes"
-            value={formData.notes}
-            onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-            placeholder="Enter delivery notes"
-            rows={3}
-          />
-        </div>
-      </div>
-      <div className="flex justify-end space-x-3 pt-4">
-        <Button type="button" variant="outline" onClick={onCancel}>
-          Cancel
-        </Button>
-        <Button type="button" onClick={onSubmit} disabled={!formData.orderNo || !formData.customerName || !formData.deliveryDate}>
-          {submitText}
-        </Button>
-      </div>
-    </div>
-  );
-
-  // Calculate stats
-  const stats = {
-    total: deliveries.length,
-    scheduled: deliveries.filter(d => d.status === 'Scheduled').length,
-    inTransit: deliveries.filter(d => d.status === 'In Transit').length,
-    delivered: deliveries.filter(d => d.status === 'Delivered').length
   };
 
   return (
@@ -746,24 +439,6 @@ export default function MyDeliveries() {
             <h1 className="text-lg font-semibold">My Deliveries</h1>
           </div>
           <div className="flex items-center space-x-2">
-            {permissions.canAdd && (
-              <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
-                <DialogTrigger asChild>
-                  <Button variant="secondary" className="bg-white text-blue-600 hover:bg-blue-50 text-sm px-3 py-2">
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto mx-2 sm:mx-auto" key="create-delivery-modal">
-                  <DialogHeader>
-                    <DialogTitle className="text-lg sm:text-xl">Schedule New Delivery</DialogTitle>
-                    <DialogDescription>
-                      Schedule a new delivery for customer orders.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <CreateDeliveryForm />
-                </DialogContent>
-              </Dialog>
-            )}
             <Button variant="outline" className="bg-white/10 border-white/20 text-white hover:bg-white/20 text-sm px-3 py-2">
               <RefreshCw className="h-4 w-4" />
             </Button>
@@ -778,25 +453,6 @@ export default function MyDeliveries() {
             <span className="hidden lg:inline text-blue-100 text-sm">Track and manage deliveries</span>
           </div>
           <div className="flex items-center space-x-3">
-            {permissions.canAdd && (
-              <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
-                <DialogTrigger asChild>
-                  <Button variant="secondary" className="bg-white text-blue-600 hover:bg-blue-50 text-sm px-3 py-2">
-                    <Plus className="h-4 w-4 mr-2" />
-                    <span>Schedule Delivery</span>
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto mx-2 sm:mx-auto" key="create-delivery-modal-desktop">
-                  <DialogHeader>
-                    <DialogTitle className="text-lg sm:text-xl">Schedule New Delivery</DialogTitle>
-                    <DialogDescription>
-                      Schedule a new delivery for customer orders.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <CreateDeliveryForm />
-                </DialogContent>
-              </Dialog>
-            )}
             <Button variant="outline" className="bg-white/10 border-white/20 text-white hover:bg-white/20 text-sm px-3 py-2">
               <RefreshCw className="h-4 w-4 mr-2" />
               <span>Refresh</span>
@@ -807,47 +463,39 @@ export default function MyDeliveries() {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4 lg:gap-6 px-0 sm:px-0">
-        <div className="bg-white border border-gray-200 rounded-lg sm:rounded-lg p-3 sm:p-6">
-          <div className="flex items-center justify-between">
-            <div className="flex-1">
-              <p className="text-xs sm:text-sm font-medium text-gray-600">Total Deliveries</p>
-              <p className="text-sm sm:text-2xl font-bold text-gray-900">{stats.total}</p>
-            </div>
-            <div className="flex-shrink-0 flex items-center justify-center">
-              <Package className="h-3 w-3 sm:h-8 sm:w-8 text-gray-500" />
+        <div className="bg-white border border-gray-200 rounded-lg sm:rounded-lg p-3 sm:p-6 shadow-sm">
+          <p className="text-xs sm:text-sm font-medium text-gray-500 uppercase tracking-wider">Total Dispatches</p>
+          <div className="flex items-center justify-between mt-1 sm:mt-2">
+            <p className="text-xl sm:text-3xl font-bold text-gray-900">{stats.total}</p>
+            <div className="p-2 bg-blue-50 rounded-full">
+              <Package className="h-4 w-4 sm:h-6 sm:w-6 text-blue-600" />
             </div>
           </div>
         </div>
-        <div className="bg-white border border-gray-200 rounded-lg sm:rounded-lg p-3 sm:p-6">
-          <div className="flex items-center justify-between">
-            <div className="flex-1">
-              <p className="text-xs sm:text-sm font-medium text-gray-600">Scheduled</p>
-              <p className="text-sm sm:text-2xl font-bold text-gray-900">{stats.scheduled}</p>
-            </div>
-            <div className="flex-shrink-0 flex items-center justify-center">
-              <Clock className="h-3 w-3 sm:h-8 sm:w-8 text-gray-500" />
+        <div className="bg-white border border-gray-200 rounded-lg sm:rounded-lg p-3 sm:p-6 shadow-sm">
+          <p className="text-xs sm:text-sm font-medium text-gray-500 uppercase tracking-wider">Verified</p>
+          <div className="flex items-center justify-between mt-1 sm:mt-2">
+            <p className="text-xl sm:text-3xl font-bold text-gray-900">{stats.verified}</p>
+            <div className="p-2 bg-amber-50 rounded-full">
+              <Clock className="h-4 w-4 sm:h-6 sm:w-6 text-amber-600" />
             </div>
           </div>
         </div>
-        <div className="bg-white border border-gray-200 rounded-lg sm:rounded-lg p-3 sm:p-6">
-          <div className="flex items-center justify-between">
-            <div className="flex-1">
-              <p className="text-xs sm:text-sm font-medium text-gray-600">In Transit</p>
-              <p className="text-sm sm:text-2xl font-bold text-gray-900">{stats.inTransit}</p>
-            </div>
-            <div className="flex-shrink-0 flex items-center justify-center">
-              <Truck className="h-3 w-3 sm:h-8 sm:w-8 text-gray-500" />
+        <div className="bg-white border border-gray-200 rounded-lg sm:rounded-lg p-3 sm:p-6 shadow-sm">
+          <p className="text-xs sm:text-sm font-medium text-gray-500 uppercase tracking-wider">Dispatched</p>
+          <div className="flex items-center justify-between mt-1 sm:mt-2">
+            <p className="text-xl sm:text-3xl font-bold text-gray-900">{stats.dispatched}</p>
+            <div className="p-2 bg-indigo-50 rounded-full">
+              <Truck className="h-4 w-4 sm:h-6 sm:w-6 text-indigo-600" />
             </div>
           </div>
         </div>
-        <div className="bg-white border border-gray-200 rounded-lg sm:rounded-lg p-3 sm:p-6">
-          <div className="flex items-center justify-between">
-            <div className="flex-1">
-              <p className="text-xs sm:text-sm font-medium text-gray-600">Delivered</p>
-              <p className="text-sm sm:text-2xl font-bold text-gray-900">{stats.delivered}</p>
-            </div>
-            <div className="flex-shrink-0 flex items-center justify-center">
-              <CheckCircle className="h-3 w-3 sm:h-8 sm:w-8 text-gray-500" />
+        <div className="bg-white border border-gray-200 rounded-lg sm:rounded-lg p-3 sm:p-6 shadow-sm">
+          <p className="text-xs sm:text-sm font-medium text-gray-500 uppercase tracking-wider">Completed</p>
+          <div className="flex items-center justify-between mt-1 sm:mt-2">
+            <p className="text-xl sm:text-3xl font-bold text-gray-900">{stats.completed}</p>
+            <div className="p-2 bg-green-50 rounded-full">
+              <CheckCircle className="h-4 w-4 sm:h-6 sm:w-6 text-green-600" />
             </div>
           </div>
         </div>
@@ -873,21 +521,10 @@ export default function MyDeliveries() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="Scheduled">Scheduled</SelectItem>
-              <SelectItem value="In Transit">In Transit</SelectItem>
-              <SelectItem value="Delivered">Delivered</SelectItem>
-              <SelectItem value="Cancelled">Cancelled</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={priorityFilter} onValueChange={handlePriorityFilterChange}>
-            <SelectTrigger className="w-full sm:w-48">
-              <SelectValue placeholder="Filter by priority" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Priority</SelectItem>
-              <SelectItem value="High">High</SelectItem>
-              <SelectItem value="Medium">Medium</SelectItem>
-              <SelectItem value="Low">Low</SelectItem>
+              <SelectItem value="verified">Verified</SelectItem>
+              <SelectItem value="dispatched">Dispatched</SelectItem>
+              <SelectItem value="completed">Completed</SelectItem>
+              <SelectItem value="approved">Approved</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -897,17 +534,14 @@ export default function MyDeliveries() {
         <div className="overflow-x-auto">
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead className="hidden sm:table-cell w-28">Delivery ID</TableHead>
-                <TableHead className="hidden sm:table-cell">Order No</TableHead>
+              <TableRow className="bg-gray-50:bg-gray-800">
+                <TableHead className="w-[120px]">DC Number</TableHead>
                 <TableHead>Customer</TableHead>
-                <TableHead className="hidden md:table-cell">Delivery Date</TableHead>
-                {!isDeliveryPersonnel && <TableHead className="hidden lg:table-cell">Driver & Vehicle</TableHead>}
+                <TableHead className="hidden md:table-cell">Dispatch Date</TableHead>
+                <TableHead className="hidden lg:table-cell">Vehicle Information</TableHead>
+                <TableHead className="text-right">Items</TableHead>
                 <TableHead className="text-center">Status</TableHead>
-                <TableHead className="hidden sm:table-cell text-center">Priority</TableHead>
-                {(permissions.canView || permissions.canEdit || permissions.canDelete) && (
-                  <TableHead className="text-center w-24">Actions</TableHead>
-                )}
+                <TableHead className="text-center w-20">View</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -932,79 +566,51 @@ export default function MyDeliveries() {
                 </TableRow>
               ) : (
                 filteredDeliveries.map((delivery) => (
-                  <TableRow key={delivery.id} className="hover:bg-gray-50:bg-gray-700">
-                    <TableCell className="hidden sm:table-cell font-medium">{delivery.id}</TableCell>
-                    <TableCell className="hidden sm:table-cell">{delivery.orderNo}</TableCell>
+                  <TableRow key={delivery._id} className="hover:bg-gray-50:bg-gray-700 transition-colors">
+                    <TableCell className="font-bold text-blue-600">{delivery.dcno}</TableCell>
                     <TableCell>
                       <div className="flex flex-col">
-                        <span className="font-medium">{delivery.customerName}</span>
-                        <span className="text-sm text-gray-500 sm:hidden">{delivery.id}</span>
-                        <span className="text-sm text-gray-500 hidden sm:inline">{delivery.orderNo}</span>
+                        <span className="font-medium text-gray-900">{delivery.customer?.name || 'Unknown Customer'}</span>
+                        <span className="text-xs text-gray-500">{delivery.customer?.area || delivery.customer?.city || ''}</span>
                       </div>
                     </TableCell>
                     <TableCell className="hidden md:table-cell">
-                      <div className="flex flex-col">
-                        <span className="font-medium">{delivery.deliveryDate}</span>
-                        <span className="text-sm text-gray-500">{delivery.timeSlot}</span>
+                      <div className="flex items-center text-sm text-gray-600">
+                        <Calendar className="mr-2 h-3.5 w-3.5" />
+                        {new Date(delivery.date).toLocaleDateString()}
                       </div>
                     </TableCell>
-                    {!isDeliveryPersonnel && (
-                      <TableCell className="hidden lg:table-cell">
-                        <div className="flex flex-col">
-                          <span className="font-medium">{delivery.driverName}</span>
-                          <span className="text-sm text-gray-500">{delivery.vehicleNo}</span>
+                    <TableCell className="hidden lg:table-cell text-sm">
+                      <div className="flex flex-col text-gray-600">
+                        <div className="flex items-center">
+                          <Truck className="mr-2 h-3.5 w-3.5" />
+                          {delivery.vehicleNumber || 'N/A'}
                         </div>
-                      </TableCell>
-                    )}
+                        {delivery.transporterName && <span className="text-xs ml-5.5">{delivery.transporterName}</span>}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right font-medium">
+                      <Badge variant="outline" className="bg-gray-50">
+                        {delivery.totalItems} {delivery.totalItems === 1 ? 'Item' : 'Items'}
+                      </Badge>
+                    </TableCell>
                     <TableCell className="text-center">
                       <div className="flex justify-center">
-                        <Badge variant={getStatusVariant(delivery.status)} className="flex items-center gap-1">
-                          {getStatusIcon(delivery.status)}
+                        <Badge variant={getStatusVariant(delivery.status)} className="capitalize px-2.5 py-0.5">
                           {delivery.status}
                         </Badge>
                       </div>
                     </TableCell>
-                    <TableCell className="hidden sm:table-cell text-center">
-                      <Badge variant={getPriorityVariant(delivery.priority)}>
-                        {delivery.priority}
-                      </Badge>
+                    <TableCell className="text-center">
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="h-8 w-8 p-0 hover:bg-blue-50 hover:text-blue-600"
+                        onClick={() => handleView(delivery)}
+                      >
+                        <Eye className="h-4 w-4" />
+                      </Button>
                     </TableCell>
-                    {(permissions.canView || permissions.canEdit || permissions.canDelete) && (
-                      <TableCell className="text-center">
-                        <div className="flex justify-center space-x-1">
-                          {permissions.canView && (
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
-                              className="h-7 w-7 p-0 hover:bg-gray-100 hover:text-gray-600"
-                              onClick={() => handleView(delivery)}
-                            >
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                          )}
-                          {permissions.canEdit && (
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
-                              className="h-7 w-7 p-0 hover:bg-gray-100 hover:text-gray-600"
-                              onClick={() => handleEdit(delivery)}
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                          )}
-                          {permissions.canDelete && (
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
-                              className="h-7 w-7 p-0 hover:bg-gray-100 hover:text-gray-600"
-                              onClick={() => handleDelete(delivery.id)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          )}
-                        </div>
-                      </TableCell>
-                    )}
                   </TableRow>
                 ))
               )}
@@ -1013,18 +619,6 @@ export default function MyDeliveries() {
         </div>
       </div>
 
-      {/* Edit Modal */}
-      <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto mx-2 sm:mx-auto">
-          <DialogHeader>
-            <DialogTitle className="text-lg sm:text-xl">Edit Delivery - {selectedDelivery?.orderNo}</DialogTitle>
-            <DialogDescription>
-              Update delivery information and modify delivery details.
-            </DialogDescription>
-          </DialogHeader>
-          <EditDeliveryForm />
-        </DialogContent>
-      </Dialog>
 
       {/* View Modal */}
       <Dialog open={isViewModalOpen} onOpenChange={setIsViewModalOpen}>
@@ -1036,113 +630,92 @@ export default function MyDeliveries() {
             </DialogDescription>
           </DialogHeader>
           {selectedDelivery && (
-            <div className="space-y-4 sm:space-y-6">
-              {/* Order Information Section */}
-              <div className="border border-gray-200 rounded-lg p-3 sm:p-4">
-                <div className="flex items-center mb-3 sm:mb-4">
-                  <h3 className="text-base sm:text-lg font-medium text-gray-900">Order Information</h3>
+            <div className="space-y-6">
+              {/* Header Box */}
+              <div className="bg-gray-50 border border-gray-100 rounded-xl p-4 flex justify-between items-start">
+                <div>
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">DC Number</p>
+                  <p className="text-2xl font-bold text-blue-600 mt-1">{selectedDelivery.dcno}</p>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                  <div>
-                    <Label className="text-sm font-medium text-gray-500">Order Number</Label>
-                    <p className="text-sm font-semibold text-gray-900">{selectedDelivery.orderNo}</p>
-                  </div>
-                  <div>
-                    <Label className="text-sm font-medium text-gray-500">Customer</Label>
-                    <p className="text-sm font-semibold text-gray-900">{selectedDelivery.customerName}</p>
-                  </div>
-                  <div className="sm:col-span-2">
-                    <Label className="text-sm font-medium text-gray-500">Delivery Address</Label>
-                    <p className="text-sm font-semibold text-gray-900">{selectedDelivery.customerAddress}</p>
-                  </div>
+                <div className="text-right">
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Dispatch Date</p>
+                  <p className="text-sm font-medium text-gray-900 mt-1">{new Date(selectedDelivery.date || selectedDelivery.createdAt).toLocaleDateString()}</p>
                 </div>
               </div>
 
-              {/* Delivery Schedule Section */}
-              <div className="border border-gray-200 rounded-lg p-3 sm:p-4">
-                <div className="flex items-center mb-3 sm:mb-4">
-                  <h3 className="text-base sm:text-lg font-medium text-gray-900">Delivery Schedule</h3>
+              {/* Information Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-4">
+                  <div>
+                    <Label className="text-gray-400 text-xs font-bold uppercase">Customer Information</Label>
+                    <div className="mt-2 text-sm">
+                      <p className="font-bold text-gray-900">{selectedDelivery.customer?.name}</p>
+                      <p className="text-gray-600 mt-1">{selectedDelivery.customer?.address}</p>
+                      <p className="text-gray-600">{selectedDelivery.customer?.city}, {selectedDelivery.customer?.area}</p>
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-gray-400 text-xs font-bold uppercase">Status</Label>
+                    <div className="mt-2">
+                       <Badge variant={getStatusVariant(selectedDelivery.status)} className="capitalize px-4 py-1 text-sm font-semibold">
+                         {selectedDelivery.status}
+                       </Badge>
+                    </div>
+                  </div>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+
+                <div className="space-y-4">
                   <div>
-                    <Label className="text-sm font-medium text-gray-500">Delivery Date</Label>
-                    <p className="text-sm font-semibold text-gray-900">{selectedDelivery.deliveryDate}</p>
+                    <Label className="text-gray-400 text-xs font-bold uppercase">Logistics Details</Label>
+                    <div className="mt-2 space-y-2">
+                      <div className="flex items-center text-sm text-gray-700">
+                        <Truck className="h-4 w-4 mr-2 text-gray-400" />
+                        <span className="font-medium">Vehicle:</span>
+                        <span className="ml-2">{selectedDelivery.vehicleNumber || 'Not Specified'}</span>
+                      </div>
+                      <div className="flex items-center text-sm text-gray-700">
+                        <User className="h-4 w-4 mr-2 text-gray-400" />
+                        <span className="font-medium">Transporter:</span>
+                        <span className="ml-2">{selectedDelivery.transporterName || 'N/A'}</span>
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <Label className="text-sm font-medium text-gray-500">Time Slot</Label>
-                    <p className="text-sm font-semibold text-gray-900">{selectedDelivery.timeSlot}</p>
-                  </div>
-                  <div>
-                    <Label className="text-sm font-medium text-gray-500">Status</Label>
-                    <Badge variant={getStatusVariant(selectedDelivery.status)} className="flex items-center gap-1 w-fit">
-                      {getStatusIcon(selectedDelivery.status)}
-                      {selectedDelivery.status}
-                    </Badge>
-                  </div>
-                  <div>
-                    <Label className="text-sm font-medium text-gray-500">Priority</Label>
-                    <Badge variant={getPriorityVariant(selectedDelivery.priority)}>
-                      {selectedDelivery.priority}
-                    </Badge>
-                  </div>
-                  {selectedDelivery.deliveredAt && (
-                    <div className="sm:col-span-2">
-                      <Label className="text-sm font-medium text-gray-500">Delivered At</Label>
-                      <p className="text-sm font-semibold text-green-600">{selectedDelivery.deliveredAt}</p>
+                  {selectedDelivery.notes && (
+                    <div>
+                      <Label className="text-gray-400 text-xs font-bold uppercase">Internal Notes</Label>
+                      <p className="mt-2 text-sm text-gray-600 bg-amber-50 p-3 rounded-lg flex items-start">
+                        <AlertCircle className="h-4 w-4 mr-2 mt-0.5 text-amber-600 flex-shrink-0" />
+                        {selectedDelivery.notes}
+                      </p>
                     </div>
                   )}
                 </div>
               </div>
 
-              {/* Logistics Information Section */}
-              <div className="border border-gray-200 rounded-lg p-3 sm:p-4">
-                <div className="flex items-center mb-3 sm:mb-4">
-                  <h3 className="text-base sm:text-lg font-medium text-gray-900">Logistics Information</h3>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                  <div>
-                    <Label className="text-sm font-medium text-gray-500">Driver</Label>
-                    <p className="text-sm font-semibold text-gray-900">{selectedDelivery.driverName}</p>
-                  </div>
-                  <div>
-                    <Label className="text-sm font-medium text-gray-500">Vehicle</Label>
-                    <p className="text-sm font-semibold text-gray-900">{selectedDelivery.vehicleNo}</p>
-                  </div>
-                  <div>
-                    <Label className="text-sm font-medium text-gray-500">Contact Number</Label>
-                    <p className="text-sm font-semibold text-gray-900">{selectedDelivery.contactNumber}</p>
-                  </div>
+              {/* Items Table */}
+              <div>
+                <Label className="text-gray-400 text-xs font-bold uppercase mb-3 block text-center bg-gray-100 py-1.5 rounded-t-lg">Dispatched Items ({selectedDelivery.items?.length})</Label>
+                <div className="border border-gray-100 rounded-lg overflow-hidden">
+                  <Table>
+                    <TableHeader className="bg-gray-50/50">
+                      <TableRow>
+                        <TableHead>Product Name</TableHead>
+                        <TableHead className="text-right">Quantity</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {selectedDelivery.items?.map((item, idx) => (
+                        <TableRow key={idx} className="hover:bg-gray-50/50">
+                          <TableCell className="font-medium text-gray-800">{item.productName}</TableCell>
+                          <TableCell className="text-right font-bold text-indigo-600">
+                            {item.quantity} <span className="text-xs font-medium text-gray-400 ml-1">Units</span>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
                 </div>
               </div>
-
-              {/* Items and Notes Section */}
-              {(selectedDelivery.items?.length > 0 || selectedDelivery.notes) && (
-                <div className="border border-gray-200 rounded-lg p-3 sm:p-4">
-                  <div className="flex items-center mb-3 sm:mb-4">
-                    <h3 className="text-base sm:text-lg font-medium text-gray-900">Additional Information</h3>
-                  </div>
-                  <div className="space-y-3 sm:space-y-4">
-                    {selectedDelivery.items && selectedDelivery.items.length > 0 && (
-                      <div>
-                        <Label className="text-sm font-medium text-gray-500">Items</Label>
-                        <div className="space-y-1 mt-1">
-                          {selectedDelivery.items.map((item, index) => (
-                            <p key={index} className="text-sm font-medium text-gray-900">
-                              {item.name} - {item.quantity} {item.unit}
-                            </p>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {selectedDelivery.notes && (
-                      <div>
-                        <Label className="text-sm font-medium text-gray-500">Notes</Label>
-                        <p className="text-sm font-medium text-gray-900 mt-1">{selectedDelivery.notes}</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
             </div>
           )}
         </DialogContent>

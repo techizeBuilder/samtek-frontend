@@ -18,9 +18,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
-import { 
-  Loader2, 
-  Package, 
+import {
+  Loader2,
+  Package,
   AlertCircle,
   Upload,
   Plus
@@ -31,14 +31,14 @@ const ITEM_TYPES = ['Product', 'Material', 'Spares', 'Assemblies'];
 const IMPORTANCE_LEVELS = ['Low', 'Normal', 'High', 'Critical'];
 const UNITS = ['pieces', 'kg', 'liters', 'meters', 'sheets', 'boxes', 'units', 'tons', 'cartons'];
 
-export default function SimpleInventoryForm({ 
-  isOpen, 
-  onClose, 
-  item = null, 
-  categories = [], 
+export default function SimpleInventoryForm({
+  isOpen,
+  onClose,
+  item = null,
+  categories = [],
   customerCategories = [],
   companies = [],
-  onSubmit, 
+  onSubmit,
   isLoading = false,
   onOpenCategoryManagement
 }) {
@@ -46,7 +46,7 @@ export default function SimpleInventoryForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState({});
   const [imagePreview, setImagePreview] = useState(null);
-  
+
   const [formData, setFormData] = useState({
     name: '',
     code: '',
@@ -65,13 +65,14 @@ export default function SimpleInventoryForm({
     mrp: 0,
     gst: 0,
     hsn: '',
-      batch: '',
-      store: '',
-      leadTime: 0,
+    batch: '',
+    store: '',
+    leadTime: 0,
     internalManufacturing: false,
     purchase: true,
     internalNotes: '',
-    image: ''
+    image: '',
+    quantity: ''
   });
 
   // Auto-select default store location for Unit Head
@@ -79,7 +80,7 @@ export default function SimpleInventoryForm({
     console.log('🏢 Companies data:', companies);
     console.log('📝 Form data store:', formData.store);
     console.log('✏️ Is editing item:', !!item);
-    
+
     if (companies && companies.length > 0 && !item && formData.store === '') {
       // For new items, auto-select the first company as default (user's company)
       const defaultCompany = companies[0];
@@ -129,9 +130,10 @@ export default function SimpleInventoryForm({
         internalManufacturing: Boolean(item.internalManufacturing),
         purchase: Boolean(item.purchase !== false),
         internalNotes: item.internalNotes || '',
-        image: item.image || ''
+        image: item.image || '',
+        quantity: item.quantity || ''
       };
-      
+
       setFormData(itemData);
       setErrors({});
       setImagePreview(item.image || null);
@@ -166,7 +168,8 @@ export default function SimpleInventoryForm({
       internalManufacturing: false,
       purchase: true,
       internalNotes: '',
-      image: ''
+      image: '',
+      quantity: ''
     });
     setErrors({});
     setImagePreview(null);
@@ -210,23 +213,23 @@ export default function SimpleInventoryForm({
   const handleSubmit = async () => {
     setIsSubmitting(true);
     setErrors({});
-    
+
     try {
       // Basic frontend validation
       const validationErrors = {};
-      
+
       if (!formData.name.trim()) {
         validationErrors.name = 'Item name is required';
       }
-      
+
       if (!formData.store || formData.store.trim() === '') {
         validationErrors.store = 'Store location is required';
       }
-      
+
       if (!formData.category) {
         validationErrors.category = 'Category is required';
       }
-      
+
       if (Object.keys(validationErrors).length > 0) {
         setErrors(validationErrors);
         toast({
@@ -237,7 +240,7 @@ export default function SimpleInventoryForm({
         setIsSubmitting(false);
         return;
       }
-      
+
       // Convert string numbers to actual numbers
       const processedData = {
         ...formData,
@@ -250,21 +253,21 @@ export default function SimpleInventoryForm({
         gst: Number(formData.gst) || 0,
         leadTime: Number(formData.leadTime) || 0
       };
-      
+
       await onSubmit(processedData);
-      
+
       // Only close modal and reset form if we reach here (no errors thrown)
       resetForm();
       onClose();
-      
+
       toast({
         title: `Item ${item ? 'Updated' : 'Created'}`,
         description: `Item "${formData.name}" has been ${item ? 'updated' : 'created'} successfully`,
       });
-      
+
     } catch (error) {
       console.error('Form submission error:', error);
-      
+
       // Handle validation errors from backend
       if (error.response?.data?.errors) {
         const backendErrors = {};
@@ -272,20 +275,20 @@ export default function SimpleInventoryForm({
           backendErrors[err.field] = err.message;
         });
         setErrors(backendErrors);
-        
+
         // Show comprehensive validation error toast
         const errorCount = error.response.data.errors.length;
         const firstError = error.response.data.errors[0];
-        
+
         toast({
           title: `Validation Failed (${errorCount} error${errorCount > 1 ? 's' : ''})`,
-          description: errorCount === 1 
-            ? firstError.message 
+          description: errorCount === 1
+            ? firstError.message
             : `${firstError.message} and ${errorCount - 1} more error${errorCount > 2 ? 's' : ''}`,
           variant: "destructive",
           duration: 8000,
         });
-        
+
         // Scroll to first error field
         const firstErrorField = document.getElementById(firstError.field);
         if (firstErrorField) {
@@ -300,7 +303,7 @@ export default function SimpleInventoryForm({
         });
       } else {
         toast({
-          title: "Error", 
+          title: "Error",
           description: error?.message || "Failed to save item",
           variant: "destructive",
         });
@@ -350,6 +353,16 @@ export default function SimpleInventoryForm({
                     <p className="text-red-500 text-xs leading-tight">{errors.name}</p>
                   </div>
                 )}
+              </div>
+              <div>
+                <Label htmlFor="quantity" className="text-sm font-medium text-gray-700">Quantity / Specification</Label>
+                <Input
+                  id="quantity"
+                  value={formData.batch}
+                  onChange={(e) => handleInputChange('quantity', e.target.value)}
+                  placeholder="e.g. 400g, 300g, Premium"
+                  className="mt-1"
+                />
               </div>
               <div className="md:col-span-2">
                 <Label htmlFor="description" className="text-sm font-medium text-gray-700">Description</Label>
@@ -401,9 +414,9 @@ export default function SimpleInventoryForm({
                 {/* Current Image or Preview */}
                 {(imagePreview || formData.image) && (
                   <div className="relative w-32 h-32 rounded-lg overflow-hidden border-2 border-gray-200">
-                    <img 
-                      src={imagePreview || formData.image} 
-                      alt="Product preview" 
+                    <img
+                      src={imagePreview || formData.image}
+                      alt="Product preview"
                       className="w-full h-full object-cover"
                     />
                     <button
@@ -415,7 +428,7 @@ export default function SimpleInventoryForm({
                     </button>
                   </div>
                 )}
-                
+
                 {/* Upload Button */}
                 <div className="flex items-center gap-4">
                   <Input
@@ -449,8 +462,8 @@ export default function SimpleInventoryForm({
               <div>
                 <Label htmlFor="category" className="text-sm font-medium text-gray-700">Category *</Label>
                 <div className="flex gap-2 mt-1">
-                  <Select 
-                    value={formData.category} 
+                  <Select
+                    value={formData.category}
                     onValueChange={(value) => {
                       handleInputChange('category', value);
                       handleInputChange('subCategory', ''); // Clear subcategory when category changes
@@ -487,8 +500,8 @@ export default function SimpleInventoryForm({
               </div>
               <div>
                 <Label htmlFor="subCategory" className="text-sm font-medium text-gray-700">Sub Category</Label>
-                <Select 
-                  value={formData.subCategory} 
+                <Select
+                  value={formData.subCategory}
                   onValueChange={(value) => handleInputChange('subCategory', value)}
                   disabled={!formData.category || availableSubCategories.length === 0}
                 >
@@ -743,16 +756,16 @@ export default function SimpleInventoryForm({
 
           {/* Form Actions */}
           <div className="flex flex-col sm:flex-row justify-end space-y-2 sm:space-y-0 sm:space-x-2 pt-4">
-            <Button 
+            <Button
               type="button"
-              variant="outline" 
+              variant="outline"
               onClick={handleCancel}
               className="w-full sm:w-auto"
               disabled={isSubmitting}
             >
               Cancel
             </Button>
-            <Button 
+            <Button
               type="button"
               onClick={handleSubmit}
               disabled={isSubmitting || !formData.name || !formData.category || !formData.type || !formData.unit}
