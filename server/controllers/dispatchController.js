@@ -6,41 +6,119 @@ import { USER_ROLES } from '../../shared/schema.js';
 import mongoose from 'mongoose';
 import User from '../models/User.js';
 import { Item } from '../models/Inventory.js';
+import Sale from '../models/Sale.js';
+import { Transaction, Account } from '../models/Account.js';
+import { convertNumberToWords, generateStandardizedInvoicePDF } from '../utils/invoicePdf.js';
 
-// Helper function to convert number to words (Indian numbering system)
-const convertNumberToWords = (num) => {
-  const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
-  const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
-  const teens = ['Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
 
-  if (num === 0) return 'Zero';
+/**
+ * Reusable helper to ensure a formal Sale record exists for a given DC.
+ * This links the Dispatch to the Accounts/Payments module.
+ */
+const ensureSaleRecordForDC = async (dcNo, dispatches, user, companyId) => {
+  try {
+    if (!dispatches || dispatches.length === 0) return null;
+    
+    const firstDispatch = dispatches[0];
+    
+    // 1. Check if Sale already exists for this DC to prevent duplicates
+    const existingSale = await Sale.findOne({ invoiceNumber: dcNo, companyId });
+    if (existingSale) return existingSale;
 
-  const convertTwoDigit = (n) => {
-    if (n < 10) return ones[n];
-    if (n >= 10 && n < 20) return teens[n - 10];
-    return tens[Math.floor(n / 10)] + (n % 10 ? ' ' + ones[n % 10] : '');
-  };
+    let subtotal = 0;
+    let totalTax = 0;
+    
+    const saleItems = dispatches.map(d => {
+      const qty = d.qtyIssued || d.indentQty || 0;
+      const rate = d.productId?.salePrice || d.rate || 0;
+      const itemTotal = qty * rate;
+      const gstPercent = d.productId?.gst || 0;
+      const itemTax = itemTotal * (gstPercent / 100);
+      
+      subtotal += itemTotal;
+      totalTax += itemTax;
+      
+      return {
+        productName: d.productId?.name || d.productName || d.productGroup || 'Unknown',
+        quantity: qty,
+        unitPrice: rate,
+        totalPrice: itemTotal,
+        tax: gstPercent
+      };
+    });
 
-  const convertThreeDigit = (n) => {
-    if (n < 100) return convertTwoDigit(n);
-    return ones[Math.floor(n / 100)] + ' Hundred' + (n % 100 ? ' ' + convertTwoDigit(n % 100) : '');
-  };
+    const totalAmount = subtotal + totalTax;
 
-  if (num < 1000) return convertThreeDigit(num);
+    const sale = new Sale({
+      invoiceNumber: dcNo,
+      customer: firstDispatch.customer?._id || firstDispatch.customer,
+      order: firstDispatch.orderId,
+      dispatch: firstDispatch._id,
+      items: saleItems,
+      subtotal,
+      taxAmount: totalTax,
+      totalAmount,
+      dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // Default 7 days
+      unit: firstDispatch.unit || user.unit,
+      companyId: companyId,
+      createdBy: user.id || user._id,
+      notes: firstDispatch.notes || `Auto-generated from Delivery Challan: ${dcNo}`
+    });
 
-  let crores = Math.floor(num / 10000000);
-  let lakhs = Math.floor((num % 10000000) / 100000);
-  let thousands = Math.floor((num % 100000) / 1000);
-  let remainder = num % 1000;
+    await sale.save();
+    
+    // Update Customer Outstanding Amount
+    await Customer.findByIdAndUpdate(sale.customer, {
+      $inc: { outstandingAmount: totalAmount }
+    });
 
-  let words = '';
-  if (crores > 0) words += convertTwoDigit(crores) + ' Crore ';
-  if (lakhs > 0) words += convertTwoDigit(lakhs) + ' Lakh ';
-  if (thousands > 0) words += convertTwoDigit(thousands) + ' Thousand ';
-  if (remainder > 0) words += convertThreeDigit(remainder);
+    // 4. Auto Journal Posting (Ledger)
+    const unit = sale.unit;
+    const receivableAccount = await Account.findOne({ accountName: 'Accounts Receivable', unit });
+    const salesAccount = await Account.findOne({ accountName: 'Sales Account', unit });
+    const gstAccount = await Account.findOne({ accountName: 'Output GST', unit });
 
-  return words.trim();
+    if (receivableAccount && salesAccount && gstAccount) {
+      const entries = [
+        { account: receivableAccount._id, debit: totalAmount, credit: 0 },
+        { account: salesAccount._id, debit: 0, credit: subtotal },
+        { account: gstAccount._id, debit: 0, credit: totalTax }
+      ];
+
+      const txn = new Transaction({
+        transactionNumber: `TXN-DCINV-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`,
+        description: `Dispatch Invoice: ${sale.invoiceNumber} to ${firstDispatch.customer?.name || 'Customer'}`,
+        reference: sale.invoiceNumber,
+        totalAmount: totalAmount,
+        unit,
+        relatedDocument: 'Sale',
+        relatedDocumentId: sale._id,
+        createdBy: user.id || user._id,
+        entries
+      });
+      
+      await txn.save();
+
+      // Update account balances
+      receivableAccount.balance += totalAmount;
+      salesAccount.balance += subtotal;
+      gstAccount.balance += totalTax;
+
+      await receivableAccount.save();
+      await salesAccount.save();
+      await gstAccount.save();
+      
+      console.log(`📊 Ledger posting completed for DC Invoice: ${dcNo}`);
+    }
+
+    console.log(`✅ Formal Sales Invoice created for ${dcNo}. Total Amount: ${totalAmount}`);
+    return sale;
+  } catch (error) {
+    console.error('❌ Error in ensureSaleRecordForDC:', error);
+    return null;
+  }
 };
+
 
 export const getDispatches = async (req, res) => {
   try {
@@ -1325,366 +1403,61 @@ export const generateInvoice = async (req, res) => {
     const { dcNo } = req.body;
 
     if (!dcNo) {
-      return res.status(400).json({
-        success: false,
-        message: 'DC No is required'
-      });
+      return res.status(400).json({ success: false, message: 'DC No is required' });
     }
 
-    // Import PDFKit dynamically
-    const PDFDocument = (await import('pdfkit')).default;
+    const { Company } = await import('../models/Company.js');
 
-    // Fetch delivery challan details with related data (note: field name is 'dcno' in DB)
-    const dispatch = await Dispatch.findOne({ dcno: dcNo })
-      .populate('productId', 'name code category unit')
-      .populate('company', 'name address phone email');
+    // Get all dispatches for this DC number
+    const dispatches = await Dispatch.find({ dcno: dcNo })
+      .populate('productId', 'name code unit salePrice gst hsn')
+      .populate('customer', 'name address1 mobile email gstin city state pin customerCode')
+      .populate('company', 'name unitName address mobile email gst city state locationPin');
 
-    if (!dispatch) {
-      return res.status(404).json({
-        success: false,
-        message: 'Delivery challan not found with DC No: ' + dcNo
-      });
+    if (!dispatches || dispatches.length === 0) {
+      return res.status(404).json({ success: false, message: 'Delivery challan not found with DC No: ' + dcNo });
     }
 
-    // Check if approved or in an allowed status (case-insensitive)
-    const allowedStatusesForInvoice = ['approved', 'dispatched', 'completed', 'updated', 'delivered', 'verified'];
-    const dispatchStatus = (dispatch.status || '').toString().toLowerCase();
-    if (!allowedStatusesForInvoice.includes(dispatchStatus)) {
-      return res.status(400).json({
-        success: false,
-        message: `Cannot generate invoice. Current status: ${dispatch.status}. Please approve the product before generating invoice or change status to one of: ${allowedStatusesForInvoice.join(', ')}`
-      });
+    const firstDispatch = dispatches[0];
+
+    // Validate status
+    const allowedStatuses = ['approved', 'dispatched', 'completed', 'updated', 'delivered', 'verified'];
+    const status = (firstDispatch.status || '').toLowerCase();
+    if (!allowedStatuses.includes(status)) {
+      return res.status(400).json({ success: false, message: `Cannot generate invoice. Status: ${firstDispatch.status}` });
     }
 
-    // Fetch customer and order information based on company and today's date
-    const Order = (await import('../models/Order.js')).default;
-    const Customer = (await import('../models/Customer.js')).default;
+    const company = await Company.findById(req.user.companyId);
+    const customerDoc = firstDispatch.customer;
 
-    // Find orders for today with this company and product
-    const today = new Date(dispatch.date);
-    const startOfDay = new Date(today.setHours(0, 0, 0, 0));
-    const endOfDay = new Date(today.setHours(23, 59, 59, 999));
+    await generateStandardizedInvoicePDF(res, {
+      company: company ? company.toObject() : (firstDispatch.company || {}),
+      customer: customerDoc ? (customerDoc.toObject ? customerDoc.toObject() : customerDoc) : {},
+      invoiceNo: dcNo,
+      date: new Date(firstDispatch.date || firstDispatch.createdAt).toLocaleDateString('en-IN'),
+      ref: firstDispatch.salesPerson?.fullName || '',
+      notes: firstDispatch.notes || '',
+      items: dispatches.map(d => ({
+        productName: d.productId?.name || d.productName || d.productGroup || 'Unknown',
+        hsn: d.productId?.hsn || '',
+        quantity: d.qtyIssued || d.indentQty || 0,
+        unit: d.productId?.unit || 'nos',
+        rate: d.productId?.salePrice || d.rate || 0,
+        discount: 0,
+        mrp: d.productId?.salePrice || d.rate || 0,
+      }))
+    });
 
-    const orders = await Order.find({
-      companyId: dispatch.company,
-      orderDate: { $gte: startOfDay, $lte: endOfDay },
-      'products.product': dispatch.productId
-    })
-      .populate('customer', 'name address phone email customerCode')
-      .populate('salesPerson', 'fullName username')
-      .sort({ createdAt: -1 })
-      .limit(5);
+    // Mark invoice as generated
+    await Dispatch.updateMany({ dcno: dcNo }, { invoiceGenerated: true, invoiceGeneratedAt: new Date() });
 
-    // Get customer info from first order or use company info
-    let customerInfo = null;
-    let orderCount = 0;
-    let orderDetails = null;
-
-    if (orders.length > 0) {
-      customerInfo = orders[0].customer;
-      orderDetails = orders[0];
-      // Count total orders for this customer
-      if (customerInfo) {
-        orderCount = await Order.countDocuments({ customer: customerInfo._id });
-      }
-    }
-
-    // If no customer found, try to get any customer associated with this company
-    if (!customerInfo) {
-      const anyCustomer = await Customer.findOne({ companyId: dispatch.company });
-      if (anyCustomer) {
-        customerInfo = anyCustomer;
-      }
-    }
-
-    // Create PDF document
-    const doc = new PDFDocument({ margin: 50, size: 'A4' });
-
-    // Set response headers for PDF download
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename=invoice-${dcNo}.pdf`);
-
-    // Pipe PDF to response
-    doc.pipe(res);
-
-    // Add company header
-    doc.fontSize(22)
-      .font('Helvetica-Bold')
-      .text(dispatch.company?.name || 'SUNRISE BAKERY', { align: 'center' })
-      .fontSize(10)
-      .font('Helvetica')
-      .text('Premium Quality Bakery Products', { align: 'center' });
-
-    if (dispatch.company?.address) {
-      doc.text(`Address: ${dispatch.company.address}`, { align: 'center' });
-    } else {
-      doc.text('Address: Your Company Address, City, State - PIN', { align: 'center' });
-    }
-
-    if (dispatch.company?.phone) {
-      doc.text(`Phone: ${dispatch.company.phone} | Email: ${dispatch.company.email || 'info@sunrise.com'}`, { align: 'center' });
-    } else {
-      doc.text('Phone: +91 XXXXXXXXXX | Email: info@sunrise.com', { align: 'center' });
-    }
-
-    doc.text('GSTIN: XXXXXXXXXXXX', { align: 'center' })
-      .moveDown(0.5);
-
-    // Add invoice title
-    doc.fontSize(18)
-      .font('Helvetica-Bold')
-      .text('DELIVERY INVOICE', { align: 'center' })
-      .moveDown(0.5);
-
-    // Add horizontal line
-    doc.moveTo(50, doc.y)
-      .lineTo(550, doc.y)
-      .stroke()
-      .moveDown(0.5);
-
-    // Invoice details - Left side
-    const leftColumn = 50;
-    const rightColumn = 320;
-    let yPosition = doc.y;
-
-    doc.fontSize(11)
-      .font('Helvetica-Bold')
-      .text('Invoice Details:', leftColumn, yPosition);
-
-    yPosition += 18;
-    doc.font('Helvetica')
-      .text(`DC No: `, leftColumn, yPosition, { continued: true })
-      .font('Helvetica-Bold')
-      .text(`${dispatch.dcNo || dcNo}`);
-
-    yPosition += 15;
-    doc.font('Helvetica')
-      .text(`Invoice Date: ${new Date().toLocaleDateString('en-IN')}`, leftColumn, yPosition);
-
-    yPosition += 15;
-    doc.text(`Dispatch Date: ${new Date(dispatch.createdAt).toLocaleDateString('en-IN')}`, leftColumn, yPosition);
-
-    yPosition += 15;
-    doc.font('Helvetica-Bold')
-      .fillColor('#228B22')
-      .text(`Status: ${dispatch.status.toUpperCase()}`, leftColumn, yPosition)
-      .fillColor('#000000');
-
-    if (dispatch.orderId?.orderNo) {
-      yPosition += 15;
-      doc.font('Helvetica')
-        .text(`Order No: ${dispatch.orderId.orderNo}`, leftColumn, yPosition);
-    } else if (orderDetails?.orderCode) {
-      yPosition += 15;
-      doc.font('Helvetica')
-        .text(`Order No: ${orderDetails.orderCode}`, leftColumn, yPosition);
-    }
-
-    // Customer details - Right side
-    yPosition = doc.y - 90;
-    doc.font('Helvetica-Bold')
-      .text('Bill To:', rightColumn, yPosition);
-
-    yPosition += 18;
-    doc.font('Helvetica-Bold')
-      .fontSize(11)
-      .text(`${customerInfo?.name || dispatch.company?.name || 'Walk-in Customer'}`, rightColumn, yPosition);
-
-    yPosition += 15;
-    doc.font('Helvetica')
-      .fontSize(10);
-
-    if (customerInfo?.customerCode) {
-      doc.text(`Customer Code: ${customerInfo.customerCode}`, rightColumn, yPosition);
-      yPosition += 15;
-    }
-
-    if (customerInfo?.address) {
-      doc.text(`Address: ${customerInfo.address}`, rightColumn, yPosition, { width: 230 });
-      yPosition += 25;
-    }
-
-    if (customerInfo?.phone) {
-      doc.text(`Phone: ${customerInfo.phone}`, rightColumn, yPosition);
-      yPosition += 15;
-    }
-
-    if (customerInfo?.email) {
-      doc.text(`Email: ${customerInfo.email}`, rightColumn, yPosition);
-      yPosition += 15;
-    }
-
-    // Order information
-    if (orderCount > 0) {
-      doc.font('Helvetica-Bold')
-        .text(`Total Orders: ${orderCount}`, rightColumn, yPosition);
-      yPosition += 15;
-    }
-
-    if (orders.length > 0) {
-      doc.font('Helvetica')
-        .text(`Today's Orders: ${orders.length}`, rightColumn, yPosition);
-    }
-
-    doc.moveDown(1);
-
-    // Add horizontal line
-    doc.moveTo(50, doc.y)
-      .lineTo(550, doc.y)
-      .stroke()
-      .moveDown(0.5);
-
-    // Product table header
-    const tableTop = doc.y;
-    doc.fontSize(10)
-      .font('Helvetica-Bold')
-      .fillColor('#000000');
-
-    // Table headers with borders
-    doc.rect(50, tableTop - 5, 500, 20).stroke();
-
-    doc.text('S.No', 55, tableTop, { width: 30 });
-    doc.text('Product Name / Group', 100, tableTop, { width: 180 });
-    doc.text('Batch No', 290, tableTop, { width: 70 });
-    doc.text('Indent Qty', 370, tableTop, { width: 80, align: 'center' });
-    doc.text('Issued Qty', 460, tableTop, { width: 80, align: 'center' });
-
-    // Product details
-    let productY = tableTop + 25;
-    doc.fontSize(10)
-      .font('Helvetica');
-
-    // Draw row border
-    doc.rect(50, productY - 5, 500, 45).stroke();
-
-    doc.text('1', 55, productY, { width: 30 });
-
-    const productName = dispatch.productId?.name || dispatch.productName || 'N/A';
-    const productGroup = dispatch.productGroup || '';
-
-    doc.text(productName, 100, productY, { width: 180 });
-    if (productGroup) {
-      doc.fontSize(8)
-        .fillColor('#666666')
-        .text(productGroup, 100, productY + 12, { width: 180 })
-        .fillColor('#000000')
-        .fontSize(10);
-    }
-
-    doc.text(dispatch.batchNo || 'N/A', 290, productY, { width: 70 });
-    doc.text((dispatch.indentQty || dispatch.totalIndentQuantityOrdersForTheDay || 0).toString(), 370, productY, { width: 80, align: 'center' });
-    doc.font('Helvetica-Bold')
-      .text((dispatch.qtyIssued || 0).toString(), 460, productY, { width: 80, align: 'center' });
-
-    doc.font('Helvetica');
-    productY += 45;
-
-    doc.moveDown(0.5);
-
-    // Summary section
-    const summaryY = productY + 10;
-    doc.fontSize(10)
-      .font('Helvetica-Bold')
-      .text('Summary:', leftColumn, summaryY);
-
-    doc.font('Helvetica')
-      .text(`Total Indent Quantity: ${dispatch.indentQty || dispatch.totalIndentQuantityOrdersForTheDay || 0}`, leftColumn, summaryY + 20);
-
-    doc.font('Helvetica-Bold')
-      .text(`Total Issued Quantity: ${dispatch.qtyIssued || 0}`, leftColumn, summaryY + 35);
-
-    // Additional information
-    doc.moveDown(1);
-    doc.fontSize(9)
-      .font('Helvetica')
-      .text('Additional Information:', leftColumn, doc.y);
-
-    doc.moveDown(0.3);
-
-    if (dispatch.unit) {
-      doc.text(`Unit: ${dispatch.unit}`, leftColumn);
-    }
-
-    if (dispatch.vehicleNumber) {
-      doc.moveDown(0.3);
-      doc.text(`Vehicle Number: ${dispatch.vehicleNumber}`, leftColumn);
-    }
-
-    if (dispatch.transporterName) {
-      doc.moveDown(0.3);
-      doc.text(`Transporter: ${dispatch.transporterName}`, leftColumn);
-    }
-
-    if (dispatch.notes) {
-      doc.moveDown(0.5);
-      doc.text(`Notes: ${dispatch.notes}`, leftColumn, doc.y, { width: 500 });
-    }
-
-    // Terms and conditions
-    doc.moveDown(1);
-    doc.fontSize(8)
-      .font('Helvetica-Bold')
-      .text('Terms & Conditions:', leftColumn, doc.y);
-
-    doc.font('Helvetica')
-      .fontSize(7)
-      .text('1. All goods once sold are not returnable.', leftColumn, doc.y + 8)
-      .text('2. Delivery subject to availability.', leftColumn, doc.y + 13)
-      .text('3. Disputes if any subject to local jurisdiction.', leftColumn, doc.y + 18);
-
-    // Footer with signature
-    doc.moveDown(1.5);
-
-    const footerY = doc.y;
-
-    // Authorized Signature - Left
-    doc.fontSize(9)
-      .font('Helvetica')
-      .text('Received By:', leftColumn, footerY)
-      .moveTo(leftColumn, footerY + 50)
-      .lineTo(leftColumn + 150, footerY + 50)
-      .stroke()
-      .text('Customer Signature', leftColumn, footerY + 55);
-
-    // Company Signature - Right
-    doc.text('For Sunrise Bakery:', rightColumn + 80, footerY)
-      .moveTo(rightColumn + 80, footerY + 50)
-      .lineTo(rightColumn + 230, footerY + 50)
-      .stroke()
-      .text('Authorized Signatory', rightColumn + 80, footerY + 55);
-
-    // Bottom border line
-    doc.moveDown(1);
-    doc.moveTo(50, doc.y)
-      .lineTo(550, doc.y)
-      .stroke();
-
-    // Computer generated invoice note
-    doc.moveDown(0.5);
-    doc.fontSize(7)
-      .font('Helvetica-Oblique')
-      .fillColor('#666666')
-      .text(`This is a computer generated invoice and does not require a signature. Generated on: ${new Date().toLocaleString('en-IN')}`, { align: 'center' });
-
-    // Finalize PDF
-    doc.end();
-
-    // Update invoice generated status in database
-    dispatch.invoiceGenerated = true;
-    dispatch.invoiceGeneratedAt = new Date();
-    dispatch.updatedAt = new Date();
-    await dispatch.save();
+    // ─── AUTO-CREATE FORMAL SALE RECORD ─────────────────────────────────────
+    await ensureSaleRecordForDC(dcNo, dispatches, req.user, req.user.companyId);
 
   } catch (error) {
     console.error('Error in generateInvoice:', error);
-
-    // Check if response headers are already sent
     if (!res.headersSent) {
-      res.status(500).json({
-        success: false,
-        message: 'Failed to generate invoice',
-        error: error.message
-      });
+      res.status(500).json({ success: false, message: 'Failed to generate invoice', error: error.message });
     }
   }
 };
@@ -2697,457 +2470,63 @@ export const generateInvoiceForDC = async (req, res) => {
     const { dcId } = req.params;
     const requestBody = req.body || {};
 
-    console.log('🧾 Generating invoice for DC ID:', dcId);
-    console.log('📦 Request body:', requestBody);
+    const { Company } = await import('../models/Company.js');
 
-    // Find the dispatch entry with company details
     const dispatch = await Dispatch.findById(dcId)
-      .populate('productId', 'name code category unit')
-      .populate('salesPerson', 'fullName username email')
-      .populate('customer', 'name customerCode address phone email')
-      .populate('company', 'name address phone email gstin pan city state pincode');
+      .populate('productId', 'name code unit salePrice gst hsn')
+      .populate('customer', 'name address1 mobile email gstin city state pin customerCode')
+      .populate('salesPerson', 'fullName username')
+      .populate('company', 'name unitName address mobile email gst city state locationPin');
 
     if (!dispatch) {
-      return res.status(404).json({
-        success: false,
-        message: 'Delivery challan not found'
-      });
+      return res.status(404).json({ success: false, message: 'Delivery challan not found' });
     }
 
-    // Get full company details
-    const { Company } = await import('../models/Company.js');
-    const companyDetails = await Company.findById(req.user.companyId);
-
-    if (!companyDetails) {
-      return res.status(404).json({
-        success: false,
-        message: 'Company details not found'
-      });
-    }
-
-    console.log('📋 Dispatch status:', dispatch.status);
-
-    // Allow invoice generation for a set of statuses (case-insensitive)
     const allowedStatuses = ['dispatched', 'approved', 'completed', 'updated', 'delivered', 'verified'];
-    const currentStatus = (dispatch.status || '').toString().toLowerCase();
+    const currentStatus = (dispatch.status || '').toLowerCase();
     if (!allowedStatuses.includes(currentStatus)) {
       return res.status(400).json({
         success: false,
-        message: `Cannot generate invoice. Current status: ${dispatch.status}. Allowed statuses: ${allowedStatuses.join(', ')}`,
+        message: `Cannot generate invoice. Current status: ${dispatch.status}`,
         currentStatus: dispatch.status
       });
     }
 
-    // Use data from request body if provided, otherwise use dispatch data
-    const dcNo = requestBody.dcNo || dispatch.dcno;
-    const salesmanName = requestBody.salesmanName || dispatch.salesPerson?.fullName || dispatch.salesPerson?.username || 'N/A';
-    const customerName = requestBody.customerName || dispatch.customer?.name || 'N/A';
-    const customerCode = requestBody.customerCode || dispatch.customer?.customerCode || 'N/A';
+    const company = await Company.findById(req.user.companyId);
 
-    // If this route was called with a specific dispatch ID (dcId param),
-    // always generate invoice for that single dispatch record only.
-    // The `includeAll` flag is only honored when generating by DC number (legacy behavior).
-    const includeAll = requestBody.includeAll === true || requestBody.includeAll === 'true';
+    // Get all items for this DC number
+    const allDCItems = await Dispatch.find({ dcno: dispatch.dcno, company: req.user.companyId })
+      .populate('productId', 'name code unit salePrice gst hsn')
+      .lean();
 
-    const singleDispatchMode = !!dcId; // true for this endpoint
+    const customerDoc = dispatch.customer;
 
-    let allDCItems;
-    if (singleDispatchMode || !includeAll) {
-      // Use only the requested dispatch
-      allDCItems = [dispatch.toObject ? dispatch.toObject() : dispatch];
-    } else {
-      // Fall back to previous behavior (all items with same dcno)
-      allDCItems = await Dispatch.find({
-        dcno: dispatch.dcno,
-        company: req.user.companyId
-      })
-        .populate('productId', 'name code category unit price salePrice gst')
-        .populate('salesPerson', 'fullName username email')
-        .populate('customer', 'name customerCode address phone email')
-        .populate({
-          path: 'orderId',
-          populate: {
-            path: 'products.product',
-            model: 'Item'
-          }
-        })
-        .lean();
-    }
-
-    console.log('🔍 Found', allDCItems.length, 'items for DC:', dispatch.dcno);
-
-    // Debug: log item product names to help diagnose duplicate rows
-    try {
-      const itemNames = allDCItems.map(i => i.productName || (i.productId && (i.productId.name || i.productId)) || 'Unknown');
-      console.log('🔎 Invoice will include items:', itemNames);
-    } catch (err) {
-      console.warn('Could not log item names for invoice debug:', err.message);
-    }
-
-    // If productId populate failed but we have productId references, fetch them manually
-    for (let i = 0; i < allDCItems.length; i++) {
-      const item = allDCItems[i];
-      if (item.productId && typeof item.productId === 'string' && !item.productId.name) {
-        console.log('⚠️ Product not populated, fetching manually for productId:', item.productId);
-        const product = await Item.findById(item.productId).select('name code category unit salePrice gst').lean();
-        if (product) {
-          allDCItems[i].productId = product;
-          console.log('✅ Manually fetched product with price:', product.name, product.salePrice);
-        }
-      }
-    }
-
-    // Log first item details for debugging
-    if (allDCItems.length > 0) {
-      const firstItem = allDCItems[0];
-      console.log('📦 First item details:', {
-        _id: firstItem._id,
-        productId: firstItem.productId?._id,
-        productIdName: firstItem.productId?.name,
-        productName: firstItem.productName,
-        productGroup: firstItem.productGroup,
-        indentQty: firstItem.indentQty,
-        qtyIssued: firstItem.qtyIssued
-      });
-    }
-
-    // Build items for invoice. If request provided explicit items, use them (enriched below).
-    // If includeAll is false (default), generate invoice only for the specific dispatch requested.
-    let items = [];
-
-    if (requestBody.items && requestBody.items.length > 0) {
-      // Client provided items; enrich them similarly to legacy behavior
-      items = requestBody.items.map(i => ({ ...i }));
-    } else if (!includeAll) {
-      // Build a single-item invoice based strictly based on the requested dispatch
-      const productRef = dispatch.productId;
-      let productDetails = null;
-      try {
-        if (productRef) {
-          productDetails = await Item.findById(productRef).select('name salePrice price gst unit').lean();
-        }
-      } catch (err) {
-        console.error('Error fetching product details for single-dispatch invoice:', err.message);
-      }
-
-      const rate = (productDetails && (productDetails.salePrice || productDetails.price)) || 0;
-      const gst = (productDetails && productDetails.gst) || 0;
-
-      items = [{
-        productName: dispatch.productName || productDetails?.name || dispatch.productGroup || 'Unknown Product',
-        productGroup: dispatch.productGroup || '',
-        indentQty: dispatch.indentQty || dispatch.totalIndentQuantityOrdersForTheDay || 0,
-        qtyIssued: dispatch.qtyIssued || dispatch.dispatchedQuantitySentToday || 0,
-        unit: (productDetails && productDetails.unit) || 'Pcs',
-        rate,
-        gst
-      }];
-    } else {
-      // Legacy: include all items with same DC number
-      items = allDCItems.map(item => ({
-        productName: item.productId?.name || item.productName || 'Unknown Product',
-        productGroup: item.productGroup || '',
-        indentQty: item.indentQty || item.totalIndentQuantityOrdersForTheDay || 0,
-        qtyIssued: item.qtyIssued || item.dispatchedQuantitySentToday || 0,
-        unit: item.productId?.unit || 'Pcs',
-        rate: (item.productId && item.productId.salePrice) || item.rate || 0,
-        gst: (item.productId && item.productId.gst) || 0
-      }));
-    }
-
-    // Don't update status - keep it as dispatched
-    // Invoice generation should not change dispatch status
-
-    console.log(`✅ Generating PDF invoice for DC ${dcNo} with ${items.length} items`);
-
-    // Generate PDF using PDFKit
-    const PDFDocument = (await import('pdfkit')).default;
-    const doc = new PDFDocument({ margin: 40, size: 'A4' });
-
-    // Set response headers for PDF download
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename=invoice-${dcNo}.pdf`);
-
-    // Pipe the PDF to the response
-    doc.pipe(res);
-
-    // Modern Professional Header with Company Branding
-    // Header background with gradient effect
-    doc.rect(30, 30, 535, 120).fillAndStroke('#1e3a8a', '#1e3a8a');
-
-    // Company Name - Large and Bold
-    doc.fontSize(28).font('Helvetica-Bold').fillColor('#ffffff')
-      .text((companyDetails.name || 'SUNRISE BAKERY').toUpperCase(), 40, 50, { align: 'center' });
-
-    // Tagline
-    doc.fontSize(10).font('Helvetica').fillColor('#e0e7ff')
-      .text(companyDetails.tagline || 'Premium Quality Baked Goods Since 2020', 40, 85, { align: 'center' });
-
-    // Company Details - Left Side
-    doc.fontSize(8).fillColor('#ffffff');
-    const companyAddress = companyDetails.address || 'Company Address Not Set';
-    const companyCity = companyDetails.city || '';
-    const companyPincode = companyDetails.pincode || '';
-    const fullAddress = `${companyAddress}${companyCity ? ', ' + companyCity : ''}${companyPincode ? ' - ' + companyPincode : ''}`;
-    doc.text(fullAddress, 40, 105, { align: 'left', width: 350 });
-
-    const companyPhone = companyDetails.phone || 'Not Available';
-    const companyEmail = companyDetails.email || 'Not Available';
-    doc.text(`${companyPhone} |${companyEmail}`, 40, 118, { align: 'left', width: 350 });
-
-    // GST Details - Right Side
-    const gstin = companyDetails.gstin || 'GSTIN Not Set';
-    const pan = companyDetails.pan || 'PAN Not Set';
-    doc.text(`GSTIN: ${gstin}`, 400, 105, { align: 'left' });
-    doc.text(`PAN: ${pan}`, 400, 118, { align: 'left' });
-
-    doc.fillColor('#000000');
-    doc.y = 160;
-
-    // Invoice Title Banner
-    doc.rect(30, doc.y, 535, 35).fillAndStroke('#f3f4f6', '#d1d5db');
-    doc.fontSize(18).font('Helvetica-Bold').fillColor('#1e3a8a')
-      .text('TAX INVOICE / DELIVERY CHALLAN', 40, doc.y + 10, { align: 'center' });
-
-    doc.fillColor('#000000');
-    doc.y += 45;
-
-    // Invoice Details Section - Modern Grid Layout
-    const invoiceDetailsY = doc.y;
-
-    // Left Box - Invoice Info
-    doc.rect(30, invoiceDetailsY, 260, 85).stroke();
-    doc.fontSize(11).font('Helvetica-Bold').text('Invoice Details', 40, invoiceDetailsY + 8);
-    doc.fontSize(9).font('Helvetica');
-    doc.text(`Invoice No: `, 40, invoiceDetailsY + 28, { continued: true });
-    doc.font('Helvetica-Bold').text(`${dcNo}`);
-    doc.font('Helvetica').text(`Invoice Date: ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}`, 40, invoiceDetailsY + 43);
-    doc.text(`Invoice Time: ${new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}`, 40, invoiceDetailsY + 58);
-    const placeOfSupply = companyDetails.state || 'Maharashtra';
-    doc.text(`Place of Supply: ${placeOfSupply}`, 40, invoiceDetailsY + 73);
-
-    // Right Box - Payment Terms
-    doc.rect(305, invoiceDetailsY, 260, 85).stroke();
-    doc.fontSize(11).font('Helvetica-Bold').text('Payment Terms', 315, invoiceDetailsY + 8);
-    doc.fontSize(9).font('Helvetica');
-    doc.text(`Payment Mode: Cash`, 315, invoiceDetailsY + 28);
-    doc.text(`Due Date: ${new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString('en-IN')}`, 315, invoiceDetailsY + 43);
-    doc.text(`Terms: Payment within 7 days`, 315, invoiceDetailsY + 58);
-    doc.text(`Status: `, 315, invoiceDetailsY + 73, { continued: true });
-    doc.font('Helvetica-Bold').fillColor('#059669').text('PAID');
-
-    doc.fillColor('#000000');
-    doc.y = invoiceDetailsY + 95;
-
-    // Bill To and Ship To Section
-    const partyDetailsY = doc.y;
-
-    // Bill To - Customer Details (Left)
-    doc.rect(30, partyDetailsY, 260, 120).stroke();
-    doc.fontSize(11).font('Helvetica-Bold').fillColor('#1e3a8a')
-      .text('BILL TO', 40, partyDetailsY + 8);
-    doc.fillColor('#000000').fontSize(10).font('Helvetica-Bold');
-    doc.text(customerName, 40, partyDetailsY + 28, { width: 240 });
-
-    doc.fontSize(8).font('Helvetica');
-    let billY = partyDetailsY + 45;
-    doc.text(`Customer Code: ${customerCode}`, 40, billY);
-    billY += 12;
-
-    const customerPhone = dispatch.customer?.phone || requestBody.customerPhone || 'N/A';
-    doc.text(`Phone: ${customerPhone}`, 40, billY);
-    billY += 12;
-
-    const customerEmail = dispatch.customer?.email || requestBody.customerEmail || '';
-    if (customerEmail) {
-      doc.text(`Email: ${customerEmail}`, 40, billY, { width: 240 });
-      billY += 12;
-    }
-
-    const customerAddress = dispatch.customer?.address || requestBody.customerAddress || '';
-    if (customerAddress) {
-      doc.text(`Address: ${customerAddress}`, 40, billY, { width: 240 });
-    }
-
-    // Ship To - Salesman Details (Right)
-    doc.rect(305, partyDetailsY, 260, 120).stroke();
-    doc.fontSize(11).font('Helvetica-Bold').fillColor('#1e3a8a')
-      .text('HANDLED BY', 315, partyDetailsY + 8);
-    doc.fillColor('#000000').fontSize(10).font('Helvetica-Bold');
-    doc.text(salesmanName, 315, partyDetailsY + 28, { width: 240 });
-
-    doc.fontSize(8).font('Helvetica');
-    let shipY = partyDetailsY + 45;
-
-    const salesmanUsername = dispatch.salesPerson?.username || requestBody.salesmanUsername || '';
-    if (salesmanUsername && salesmanUsername !== salesmanName) {
-      doc.text(`Username: ${salesmanUsername}`, 315, shipY, { width: 240 });
-      shipY += 12;
-    }
-
-    const salesmanEmail = dispatch.salesPerson?.email || requestBody.salesmanEmail || '';
-    if (salesmanEmail) {
-      doc.text(`Email: ${salesmanEmail}`, 315, shipY, { width: 240 });
-      shipY += 12;
-    }
-
-    doc.text(`Company: ${companyDetails.name}`, 315, shipY, { width: 240 });
-    shipY += 12;
-    doc.text(`Role: Sales Representative`, 315, shipY, { width: 240 });
-
-    doc.y = partyDetailsY + 130;
-
-    doc.y = partyDetailsY + 130;
-
-    // Items Table - Modern Professional Design
-    const tableTop = doc.y;
-
-    // Table Header with Blue Background
-    doc.rect(30, tableTop, 535, 25).fillAndStroke('#1e3a8a', '#1e3a8a');
-
-    // Column positions for professional layout with financial columns
-    const slCol = 40;
-    const itemCol = 80;
-    const qtyCol = 260;
-    const rateCol = 320;
-    const amountCol = 380;
-    const gstCol = 450;
-    const totalCol = 500;
-
-    doc.fontSize(9).font('Helvetica-Bold').fillColor('#ffffff');
-    doc.text('S.No', slCol, tableTop + 8, { width: 30 });
-    doc.text('Product Name', itemCol, tableTop + 8, { width: 170 });
-    doc.text('Quantity', qtyCol, tableTop + 8, { width: 55, align: 'right' });
-    doc.text('Rate', rateCol, tableTop + 8, { width: 55, align: 'right' });
-    doc.text('Amount', amountCol, tableTop + 8, { width: 65, align: 'right' });
-    doc.text('GST%', gstCol, tableTop + 8, { width: 45, align: 'right' });
-    doc.text('Total', totalCol, tableTop + 8, { width: 65, align: 'right' });
-
-    doc.fillColor('#000000');
-    let currentY = tableTop + 25;
-
-
-    // Table Rows with alternating colors
-    doc.fontSize(8).font('Helvetica');
-    let subtotal = 0;
-    let totalGST = 0;
-
-    items.forEach((item, index) => {
-      // Check if we need a new page
-      if (currentY > 720) {
-        doc.addPage();
-        currentY = 50;
-      }
-
-      const rowHeight = 32;
-
-      // Alternating row colors for better readability
-      if (index % 2 === 0) {
-        doc.rect(30, currentY, 535, rowHeight).fillAndStroke('#f9fafb', '#e5e7eb');
-      } else {
-        doc.rect(30, currentY, 535, rowHeight).stroke('#e5e7eb');
-      }
-
-      doc.fillColor('#000000');
-
-      // Get quantity, rate, and GST
-      const quantity = item.qtyIssued || 0;
-      const rate = item.rate || item.price || 0;
-      const gstRate = item.gst || 0;
-      const amount = quantity * rate;
-      const gstAmount = amount * (gstRate / 100);
-      const totalAmount = amount + gstAmount;
-
-      // Row data with financial columns
-      doc.text(`${index + 1}`, slCol, currentY + 12, { width: 30 });
-      doc.text(item.productName || 'N/A', itemCol, currentY + 10, { width: 170, ellipsis: true });
-      doc.text(`${quantity}`, qtyCol, currentY + 12, { width: 55, align: 'right' });
-      doc.text(`${rate.toFixed(2)}`, rateCol, currentY + 12, { width: 55, align: 'right' });
-      doc.text(`${amount.toFixed(2)}`, amountCol, currentY + 12, { width: 65, align: 'right' });
-      doc.text(`${gstRate}%`, gstCol, currentY + 12, { width: 45, align: 'right' });
-      doc.text(`${totalAmount.toFixed(2)}`, totalCol, currentY + 12, { width: 65, align: 'right' });
-
-      subtotal += amount;
-      totalGST += gstAmount;
-
-      currentY += rowHeight;
+    await generateStandardizedInvoicePDF(res, {
+      company: company ? company.toObject() : (dispatch.company || {}),
+      customer: customerDoc ? (customerDoc.toObject ? customerDoc.toObject() : customerDoc) : {},
+      invoiceNo: dispatch.dcno,
+      date: new Date(dispatch.date || dispatch.createdAt).toLocaleDateString('en-IN'),
+      ref: requestBody.salesmanName || dispatch.salesPerson?.fullName || '',
+      notes: dispatch.notes || requestBody.notes || '',
+      items: allDCItems.map(d => ({
+        productName: d.productId?.name || d.productName || d.productGroup || 'Unknown',
+        hsn: d.productId?.hsn || '',
+        quantity: d.qtyIssued || d.indentQty || 0,
+        unit: d.productId?.unit || 'nos',
+        rate: d.productId?.salePrice || d.rate || 0,
+        discount: 0,
+        mrp: d.productId?.salePrice || d.rate || 0,
+      }))
     });
 
-    // Subtotal Row
-    doc.rect(30, currentY, 535, 30).fillAndStroke('#e5e7eb', '#9ca3af'); // Increased height to 30
-    doc.fontSize(9).font('Helvetica-Bold').fillColor('#000000');
-    doc.text('SUBTOTAL:', itemCol, currentY + 10); // Offset to 10
-    doc.text(`Rs. ${subtotal.toFixed(2)}`, amountCol, currentY + 10, { width: 65, align: 'right' });
-    doc.text(`Rs. ${totalGST.toFixed(2)}`, gstCol, currentY + 10, { width: 45, align: 'right' });
-    const grandTotal = subtotal + totalGST;
-    doc.text(`Rs. ${grandTotal.toFixed(2)}`, totalCol, currentY + 10, { width: 65, align: 'right' });
-
-    currentY += 30;
-
-    // Tax Calculation Section
-    const taxY = currentY + 15;
-
-    // Right side - Tax breakdown box
-    doc.rect(350, taxY, 215, 100).stroke(); // Increased height to 100
-    doc.fontSize(9).font('Helvetica').fillColor('#000000');
-
-    let taxLineY = taxY + 12;
-    doc.fillColor('#000000').text('Subtotal (Taxable):', 360, taxLineY);
-    doc.text(`Rs. ${subtotal.toFixed(2)}`, 495, taxLineY, { width: 65, align: 'right' });
-
-    taxLineY += 22;
-    doc.fillColor('#000000').text('Total GST:', 360, taxLineY);
-    doc.text(`Rs. ${totalGST.toFixed(2)}`, 495, taxLineY, { width: 65, align: 'right' });
-
-    taxLineY += 22;
-    doc.moveTo(360, taxLineY).lineTo(555, taxLineY).stroke();
-    taxLineY += 10;
-
-    doc.fontSize(11).font('Helvetica-Bold').fillColor('#000000');
-    doc.text('Grand Total:', 360, taxLineY);
-    doc.text(`Rs. ${grandTotal.toFixed(2)}`, 495, taxLineY, { width: 65, align: 'right' });
-
-    // Left side - Amount in words
-    doc.fontSize(9).font('Helvetica-Bold').fillColor('#000000');
-    doc.text('Amount in Words:', 40, taxY + 10);
-    doc.fontSize(8).font('Helvetica').fillColor('#000000');
-    const amountInWords = convertNumberToWords(Math.round(grandTotal));
-    doc.text(`${amountInWords} Rupees Only`, 40, taxY + 28, { width: 290 });
-
-    doc.y = taxY + 100;
-
-
-
-    doc.y += 50;
-
-    // Signature Section
-    const signY = doc.y;
-
-    // Customer Signature
-    doc.fontSize(8).font('Helvetica').fillColor('#000000');
-    doc.text('Received By:', 40, signY);
-    doc.moveTo(40, signY + 40).lineTo(180, signY + 40).stroke();
-    doc.text('Customer Signature', 40, signY + 45);
-    doc.text(`Date: ${new Date().toLocaleDateString('en-IN')}`, 40, signY + 58);
-
-    // Company Stamp
-    doc.text(`For ${companyDetails.name}:`, 380, signY);
-    doc.moveTo(380, signY + 40).lineTo(520, signY + 40).stroke();
-    doc.text('Authorized Signatory', 380, signY + 45);
-    doc.text('(Company Seal)', 380, signY + 58);
-
-    // Finalize the PDF
-    doc.end();
-
-    console.log(`✅ PDF invoice generated for DC ${dcNo}`);
+    // ─── AUTO-CREATE FORMAL SALE RECORD ─────────────────────────────────────
+    await ensureSaleRecordForDC(dispatch.dcno, allDCItems, req.user, req.user.companyId);
 
   } catch (error) {
-    console.error('❌ Error generating invoice:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to generate invoice',
-      error: error.message
-    });
+    console.error('❌ Error generating invoice for DC:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: 'Failed to generate invoice', error: error.message });
+    }
   }
 };
 
@@ -3156,307 +2535,61 @@ export const generateInvoiceByDC = async (req, res) => {
   try {
     const { dcNo, salesPersonId } = req.body;
 
-    console.log('📄 Generating invoice for DC:', dcNo);
-
     if (!dcNo) {
-      return res.status(400).json({
-        success: false,
-        message: 'DC Number is required'
-      });
+      return res.status(400).json({ success: false, message: 'DC Number is required' });
     }
 
-    // Find all dispatch entries with this DC number
+    const { Company } = await import('../models/Company.js');
+
     const dispatches = await Dispatch.find({ dcno: dcNo })
-      .populate('productId')
-      .populate('customer')
-      .populate('company')
-      .populate('salesPerson')
-      .populate({
-        path: 'orderId',
-        populate: {
-          path: 'products.product',
-          model: 'Item'
-        }
-      })
+      .populate('productId', 'name code unit salePrice gst hsn')
+      .populate('customer', 'name address1 mobile email gstin city state pin customerCode')
+      .populate('salesPerson', 'fullName username')
+      .populate('company', 'name unitName address mobile email gst city state locationPin')
       .sort({ createdAt: 1 });
 
-    console.log(`📦 Found ${dispatches.length} dispatch entries for DC ${dcNo}`);
-
     if (!dispatches || dispatches.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: 'No dispatches found with this DC number'
-      });
+      return res.status(404).json({ success: false, message: 'No dispatches found with this DC number' });
     }
 
-    // Use the first dispatch for common details
     const firstDispatch = dispatches[0];
 
+    // ─── AUTO-CREATE FORMAL SALE RECORD ─────────────────────────────────────
+    await ensureSaleRecordForDC(dcNo, dispatches, req.user, (req.user.companyId || firstDispatch.company));
+
     // Override salesperson if provided
-    let salesPerson = firstDispatch.salesPerson;
+    let salesPersonName = firstDispatch.salesPerson?.fullName || firstDispatch.salesPerson?.username || '';
     if (salesPersonId) {
-      const customSalesPerson = await User.findById(salesPersonId);
-      if (customSalesPerson) {
-        salesPerson = customSalesPerson;
-      }
+      const sp = await User.findById(salesPersonId);
+      if (sp) salesPersonName = sp.fullName || sp.username || salesPersonName;
     }
 
-    const customer = firstDispatch.customer;
-    const company = firstDispatch.company;
+    const company = await Company.findById(req.user.companyId);
+    const customerDoc = firstDispatch.customer;
 
-    if (!customer) {
-      return res.status(404).json({
-        success: false,
-        message: 'Customer information not found'
-      });
-    }
-
-    // Setup PDF generation
-    const PDFDocument = (await import('pdfkit')).default;
-    const doc = new PDFDocument({ margin: 30, size: 'A4' });
-
-    // Set response headers
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="Invoice_${dcNo}_${Date.now()}.pdf"`);
-
-    // Company details with defaults
-    const companyDetails = {
-      name: company?.name || 'SUNRISE BAKERY',
-      tagline: company?.tagline || 'Premium Quality Baked Goods Since 2020',
-      address: company?.address || 'Company Address Not Set',
-      city: company?.city || '',
-      pincode: company?.pincode || '',
-      phone: company?.phone || 'Not Available',
-      email: company?.email || 'Not Available',
-      gstin: company?.gstin || 'GSTIN Not Set',
-      pan: company?.pan || 'PAN Not Set'
-    };
-
-    doc.pipe(res);
-
-    // Header
-    doc.rect(30, 30, 535, 120).fillAndStroke('#1e3a8a', '#1e3a8a');
-    doc.fontSize(28).font('Helvetica-Bold').fillColor('#ffffff')
-      .text(companyDetails.name.toUpperCase(), 40, 50, { align: 'center' });
-    doc.fontSize(10).font('Helvetica').fillColor('#e0e7ff')
-      .text(companyDetails.tagline, 40, 85, { align: 'center' });
-
-    doc.fontSize(8).fillColor('#ffffff');
-    const fullAddress = `${companyDetails.address}${companyDetails.city ? ', ' + companyDetails.city : ''}${companyDetails.pincode ? ' - ' + companyDetails.pincode : ''}`;
-    doc.text(fullAddress, 40, 105, { align: 'left', width: 350 });
-    doc.text(`${companyDetails.phone} | ${companyDetails.email}`, 40, 118, { align: 'left', width: 350 });
-    doc.text(`GSTIN: ${companyDetails.gstin}`, 400, 105, { align: 'left' });
-    doc.text(`PAN: ${companyDetails.pan}`, 400, 118, { align: 'left' });
-
-    doc.fillColor('#000000');
-    doc.y = 160;
-
-    // Invoice Title
-    doc.rect(30, doc.y, 535, 35).fillAndStroke('#f3f4f6', '#d1d5db');
-    doc.fontSize(18).font('Helvetica-Bold').fillColor('#1e3a8a')
-      .text('TAX INVOICE / DELIVERY CHALLAN', 40, doc.y + 10, { align: 'center' });
-
-    doc.fillColor('#000000');
-    doc.y += 45;
-
-    // Invoice Details & Party Information Section
-    const invoiceDetailsY = doc.y;
-
-    // Left Box - Invoice Info and Sales Person
-    doc.rect(30, invoiceDetailsY, 260, 120).stroke();
-    doc.fontSize(11).font('Helvetica-Bold').fillColor('#1e3a8a').text('Invoice Details', 40, invoiceDetailsY + 8);
-    doc.fillColor('#000000').fontSize(9).font('Helvetica');
-    doc.text(`DC No: `, 40, invoiceDetailsY + 28, { continued: true });
-    doc.font('Helvetica-Bold').text(`${dcNo}`);
-    doc.font('Helvetica').text(`Date: ${new Date(firstDispatch.date).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}`, 40, invoiceDetailsY + 43);
-    doc.text(`Time: ${new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}`, 40, invoiceDetailsY + 58);
-
-    // Divider line
-    doc.moveTo(40, invoiceDetailsY + 75).lineTo(280, invoiceDetailsY + 75).stroke();
-
-    // Sales Person info
-    doc.fontSize(10).font('Helvetica-Bold').fillColor('#1e3a8a').text('Sales Person', 40, invoiceDetailsY + 82);
-    doc.fillColor('#000000').fontSize(9).font('Helvetica');
-    const salesPersonName = salesPerson?.fullName || salesPerson?.username || salesPerson?.name || 'N/A';
-    doc.text(salesPersonName, 40, invoiceDetailsY + 98, { width: 240, ellipsis: true });
-
-    // Right Box - Bill To (Customer Details)
-    doc.rect(305, invoiceDetailsY, 260, 120).stroke();
-    doc.fontSize(11).font('Helvetica-Bold').fillColor('#1e3a8a').text('Bill To', 315, invoiceDetailsY + 8);
-    doc.fillColor('#000000').fontSize(10).font('Helvetica-Bold');
-    doc.text(customer.name || 'N/A', 315, invoiceDetailsY + 28, { width: 240, ellipsis: true });
-
-    doc.fontSize(8).font('Helvetica');
-    let customerY = invoiceDetailsY + 45;
-
-    const customerCode = customer.customerCode || 'N/A';
-    doc.text(`Code: ${customerCode}`, 315, customerY);
-    customerY += 13;
-
-    const customerPhone = customer.phone || 'N/A';
-    doc.text(`Phone: ${customerPhone}`, 315, customerY);
-    customerY += 13;
-
-    const customerAddress = customer.address || '';
-    if (customerAddress && customerAddress.trim() !== '') {
-      // Use text with proper wrapping
-      const addressLines = doc.heightOfString(customerAddress, { width: 240 });
-      if (addressLines > 26) {
-        // If address is too long, truncate with ellipsis
-        doc.text(customerAddress, 315, customerY, { width: 240, height: 26, ellipsis: true });
-      } else {
-        doc.text(customerAddress, 315, customerY, { width: 240, lineGap: 1 });
-      }
-    } else {
-      doc.text('Address: N/A', 315, customerY);
-    }
-
-    doc.y = invoiceDetailsY + 130;
-
-    // Items Table Header
-    const tableTop = doc.y;
-    doc.rect(30, tableTop, 535, 25).fillAndStroke('#1e3a8a', '#1e3a8a');
-    doc.fontSize(9).font('Helvetica-Bold').fillColor('#ffffff');
-    doc.text('S.No', 35, tableTop + 8, { width: 30, align: 'center' });
-    doc.text('Product Name', 70, tableTop + 8, { width: 160 });
-    doc.text('Quantity', 235, tableTop + 8, { width: 50, align: 'right' });
-    doc.text('Rate', 290, tableTop + 8, { width: 55, align: 'right' });
-    doc.text('Amount', 350, tableTop + 8, { width: 60, align: 'right' });
-    doc.text('GST%', 415, tableTop + 8, { width: 40, align: 'right' });
-    doc.text('Total', 460, tableTop + 8, { width: 100, align: 'right' });
-
-    doc.fillColor('#000000');
-    let yPosition = tableTop + 33;
-
-    // Items
-    let subtotal = 0;
-    let totalGST = 0;
-
-    dispatches.forEach((dispatch, index) => {
-      // Get product name from populated productId or fallback to productName field
-      const productName = dispatch.productId?.name || dispatch.productName || 'Unknown Product';
-
-      // Get quantity from qtyIssued or indentQty
-      const quantity = dispatch.qtyIssued || dispatch.indentQty || 0;
-
-      // Get rate and GST
-      let rate = 0;
-      let gstRate = 0;
-
-      // Try to get from the order first
-      if (dispatch.orderId && dispatch.orderId.products && Array.isArray(dispatch.orderId.products)) {
-        // Find the matching product in the order
-        const orderProduct = dispatch.orderId.products.find(
-          p => p.product && dispatch.productId &&
-            p.product.toString() === dispatch.productId._id.toString()
-        );
-
-        if (orderProduct) {
-          // Order stores 'price' field (not unitPrice)
-          rate = orderProduct.price || 0;
-          console.log(`📊 Found rate ${rate} from order for ${productName}`);
-        }
-      }
-
-      // Get GST from product model (Item has 'gst' field)
-      if (dispatch.productId && dispatch.productId.gst !== undefined) {
-        gstRate = dispatch.productId.gst || 0;
-        console.log(`📊 Found GST ${gstRate}% from product for ${productName}`);
-      }
-
-      // If no rate found in order, use product's salePrice
-      if (rate === 0 && dispatch.productId) {
-        rate = dispatch.productId.salePrice || dispatch.productId.price || 0;
-        console.log(`📊 Using product salePrice ${rate} for ${productName}`);
-      }
-
-      const amount = quantity * rate;
-      const gstAmount = (amount * gstRate) / 100;
-      const total = amount + gstAmount;
-
-      console.log(`📦 ${productName}: Qty=${quantity}, Rate=${rate}, GST=${gstRate}%, Amount=${amount.toFixed(2)}, Total=${total.toFixed(2)}`);
-
-      subtotal += amount;
-      totalGST += gstAmount;
-
-      if (yPosition > 700) {
-        doc.addPage();
-        yPosition = 50;
-      }
-
-      doc.fontSize(8).font('Helvetica');
-      doc.text(index + 1, 35, yPosition + 4, { width: 30, align: 'center' });
-      doc.text(productName, 70, yPosition + 4, { width: 160, ellipsis: true });
-      doc.text(quantity.toString(), 235, yPosition + 4, { width: 50, align: 'right' });
-      doc.text(rate.toFixed(2), 290, yPosition + 4, { width: 55, align: 'right' });
-      doc.text(amount.toFixed(2), 350, yPosition + 4, { width: 60, align: 'right' });
-      doc.text(gstRate.toFixed(0) + '%', 415, yPosition + 4, { width: 40, align: 'right' });
-      doc.text(total.toFixed(2), 460, yPosition + 4, { width: 100, align: 'right' });
-
-      yPosition += 25; // Increased height from 20 to 25
+    await generateStandardizedInvoicePDF(res, {
+      company: company ? company.toObject() : (firstDispatch.company || {}),
+      customer: customerDoc ? (customerDoc.toObject ? customerDoc.toObject() : customerDoc) : {},
+      invoiceNo: dcNo,
+      date: new Date(firstDispatch.date || firstDispatch.createdAt).toLocaleDateString('en-IN'),
+      ref: salesPersonName,
+      notes: '',
+      items: dispatches.map(d => ({
+        productName: d.productId?.name || d.productName || d.productGroup || 'Unknown',
+        hsn: d.productId?.hsn || '',
+        quantity: d.qtyIssued || d.indentQty || 0,
+        unit: d.productId?.unit || 'nos',
+        rate: d.productId?.salePrice || d.rate || 0,
+        discount: 0,
+        mrp: d.productId?.salePrice || d.rate || 0,
+      }))
     });
-
-    // Totals Section
-    doc.moveTo(30, yPosition).lineTo(565, yPosition).stroke();
-    yPosition += 15;
-
-    const grandTotal = subtotal + totalGST;
-
-    // Subtotal row
-    doc.fontSize(9).font('Helvetica-Bold');
-    doc.text('Subtotal:', 380, yPosition, { width: 80, align: 'right' });
-    doc.text('Rs.', 465, yPosition, { width: 25, align: 'left' });
-    doc.text(subtotal.toFixed(2), 490, yPosition, { width: 70, align: 'right' });
-    yPosition += 18;
-
-    // GST row
-    doc.text('GST:', 380, yPosition, { width: 80, align: 'right' });
-    doc.text('Rs.', 465, yPosition, { width: 25, align: 'left' });
-    doc.text(totalGST.toFixed(2), 490, yPosition, { width: 70, align: 'right' });
-    yPosition += 20;
-
-    // Grand Total box with better alignment
-    doc.rect(380, yPosition - 5, 185, 28).fillAndStroke('#f3f4f6', '#1e3a8a');
-    doc.fontSize(11).font('Helvetica-Bold').fillColor('#1e3a8a');
-    doc.text('Grand', 390, yPosition + 2, { width: 40, align: 'left' });
-    doc.text('Total:', 390, yPosition + 14, { width: 40, align: 'left' });
-    doc.fontSize(12);
-    doc.text('Rs.', 465, yPosition + 7, { width: 25, align: 'left' });
-    doc.text(grandTotal.toFixed(2), 490, yPosition + 7, { width: 70, align: 'right' });
-
-    doc.fillColor('#000000');
-    yPosition += 40;
-
-    // Amount in Words
-    const amountInWords = convertNumberToWords(Math.round(grandTotal));
-    doc.fontSize(9).font('Helvetica-Bold').text('Amount in Words:', 40, yPosition);
-    doc.font('Helvetica').text(`${amountInWords} Rupees Only`, 40, yPosition + 15, { width: 520 });
-
-    yPosition += 50;
-
-    // Signature Section
-    doc.fontSize(8).font('Helvetica');
-    doc.text('Received By:', 40, yPosition);
-    doc.moveTo(40, yPosition + 40).lineTo(180, yPosition + 40).stroke();
-    doc.text('Customer Signature', 40, yPosition + 45);
-    doc.text(`Date: ${new Date().toLocaleDateString('en-IN')}`, 40, yPosition + 58);
-
-    doc.text(`For ${companyDetails.name}:`, 380, yPosition);
-    doc.moveTo(380, yPosition + 40).lineTo(520, yPosition + 40).stroke();
-    doc.text('Authorized Signatory', 380, yPosition + 45);
-    doc.text('(Company Seal)', 380, yPosition + 58);
-
-    doc.end();
-
-    console.log(`✅ Invoice generated for DC ${dcNo}`);
 
   } catch (error) {
     console.error('❌ Error generating invoice by DC:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to generate invoice',
-      error: error.message
-    });
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: 'Failed to generate invoice', error: error.message });
+    }
   }
 };
 

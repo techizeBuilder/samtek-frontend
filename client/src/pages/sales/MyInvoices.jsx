@@ -62,25 +62,33 @@ const MyInvoices = () => {
         }
     };
 
-    const generatePDF = (invoice) => {
-        // Simple PDF/Text generation logic as before
-        const pdfContent = `
-INVOICE: ${invoice.invoiceNumber}
-Order No: ${invoice.order?.orderCode || 'N/A'}
-Customer: ${invoice.customer?.name}
-Date: ${new Date(invoice.saleDate).toLocaleDateString()}
+    const generatePDF = async (invoice) => {
+        try {
+            const token = localStorage.getItem('token');
+            const baseUrl = import.meta.env.VITE_API_BASE_URL || '';
+            const url = `${baseUrl}/api/sales/invoice/${invoice._id}/pdf`;
 
-Total Amount: ₹${invoice.totalAmount.toLocaleString()}
-Status: ${invoice.paymentStatus}
-        `;
-        const blob = new Blob([pdfContent], { type: 'text/plain' });
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `invoice-${invoice.invoiceNumber}.txt`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
+            const res = await fetch(url, {
+                headers: {
+                    Authorization: token ? `Bearer ${token}` : ''
+                }
+            });
+
+            if (!res.ok) throw new Error('Failed to download PDF');
+
+            const blob = await res.blob();
+            const downloadUrl = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = downloadUrl;
+            a.download = `Invoice-${invoice.invoiceNumber}.pdf`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            window.URL.revokeObjectURL(downloadUrl);
+        } catch (error) {
+            console.error('Download error:', error);
+            alert('Failed to download PDF invoice. Please try again.');
+        }
     };
 
     return (

@@ -45,7 +45,8 @@ export const getCompanySalesInvoices = async (req, res) => {
 
     // Get all orders for the company
     const allOrders = await Order.find(orderQuery)
-      .populate('customer', 'name email phone category')
+      .populate('customer', 'name email mobile gstin address1 city state pin contactPerson')
+      .populate('companyId', 'name unitName address city state locationPin mobile email gst')
       .populate('salesPerson', 'fullName username email')
       .sort({ createdAt: sortOrder === 'asc' ? 1 : -1 });
 
@@ -58,8 +59,10 @@ export const getCompanySalesInvoices = async (req, res) => {
         invoiceNo: order.orderCode || `INV-${order._id.toString().slice(-6).toUpperCase()}`,
         customerName: order.customer?.name || 'Unknown Customer',
         customerId: order.customer?._id,
+        customer: order.customer, // Full customer object
         customerEmail: order.customer?.email,
-        customerPhone: order.customer?.phone,
+        customerPhone: order.customer?.mobile || order.customer?.phone,
+        company: order.companyId, // Full company object
         date: order.createdAt,
         amount: order.totalAmount || 0,
         discount: order.discountAmount || 0,
