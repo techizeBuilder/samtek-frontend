@@ -5,11 +5,11 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { useActionPermissions } from '@/components/permissions/ActionButton';
 import { useToast } from '@/hooks/use-toast';
 import apiService from '@/services/api';
-import { 
-  Card, 
-  CardContent, 
-  CardHeader, 
-  CardTitle 
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle
 } from '@/components/ui/card';
 import {
   Table,
@@ -56,8 +56,27 @@ import {
   FolderPlus,
   Tags,
   Users,
-  Building2
+  Building2,
+  GripVertical,
+  Scale
 } from 'lucide-react';
+
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 import SimpleInventoryForm from './SimpleInventoryForm';
 import ViewItemModal from './ViewItemModal';
@@ -71,7 +90,7 @@ import { showSmartToast } from '@/lib/toast-utils';
 // Helper function to get role-based API path
 function getInventoryApiPath(user) {
   if (!user) return '/api';
-  
+
   switch (user.role) {
     case 'Super Admin':
       return '/api/super-admin/inventory';
@@ -166,19 +185,151 @@ function ModernStats({ stats, isLoading }) {
   );
 }
 
+// Sortable Row Component
+function SortableRow({
+  id,
+  item,
+  index,
+  selectedItems,
+  handleSelectItem,
+  handleView,
+  handleEdit,
+  handleDelete,
+  inventoryPermissions,
+  isDraggable = true
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging
+  } = useSortable({ id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 50 : 'auto',
+    opacity: isDragging ? 0.8 : 1,
+    boxShadow: isDragging ? '0 5px 15px rgba(0,0,0,0.1)' : 'none',
+    position: isDragging ? 'relative' : 'static'
+  };
+
+  return (
+    <TableRow
+      ref={setNodeRef}
+      style={style}
+      className={`hover:bg-gray-50:bg-gray-800/50 transition-colors ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
+        } ${selectedItems.has(item._id) ? 'bg-blue-50' : ''} ${isDragging ? 'bg-blue-100/50 border-2 border-blue-500' : ''}`}
+    >
+      {inventoryPermissions.canDelete && (
+        <TableCell className="py-4">
+          <Checkbox
+            checked={selectedItems.has(item._id)}
+            onCheckedChange={(checked) => handleSelectItem(item._id, checked)}
+          />
+        </TableCell>
+      )}
+      <TableCell className="py-4">
+        {isDraggable && (
+          <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing p-1 hover:bg-gray-200 rounded">
+            <GripVertical className="h-4 w-4 text-gray-400" />
+          </div>
+        )}
+      </TableCell>
+      <TableCell className="py-4">
+        <div className="w-12 h-12 rounded-lg overflow-hidden bg-gray-100 flex items-center justify-center">
+          {item.image ? (
+            <img
+              src={item.image}
+              alt={item.name}
+              className="w-full h-full object-cover"
+              onError={(e) => {
+                e.target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjQwIiBoZWlnaHQ9IjQwIiBmaWxsPSIjRjNGNEY2Ii8+CjxwYXRoIGQ9Ik0xNiAxNkMyMC40MTgzIDE2IDI0IDE5LjU4MTcgMjQgMjRTMjAuNDE4MyAzMiAxNiAzMlM4IDI4LjQxODMgOCAyNFMxMS41ODE3IDE2IDE2IDE2WiIgZmlsbD0iIzlDQTNBRiIvPgo8L3N2Zz4K';
+              }}
+            />
+          ) : (
+            <Package className="h-6 w-6 text-gray-400" />
+          )}
+        </div>
+      </TableCell>
+      <TableCell className="py-4">
+        <div>
+          <div className="font-medium text-gray-900">{item.name}</div>
+          <div className="text-sm text-gray-500">{item.type}</div>
+        </div>
+      </TableCell>
+      <TableCell className="py-4 text-gray-600">{item.batch || '-'}</TableCell>
+      <TableCell className="py-4">
+        <div>
+          <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+            {item.category}
+          </Badge>
+          {item.subCategory && (
+            <div className="text-xs text-gray-500 mt-1">
+              {item.subCategory}
+            </div>
+          )}
+        </div>
+      </TableCell>
+      <TableCell className="py-4">
+        <Badge variant="secondary" className="bg-purple-50 text-purple-700 border-purple-200">
+          {item.storeLocation || item.store || 'No location'}
+        </Badge>
+      </TableCell>
+      <TableCell className="py-4">
+        <div>
+          <div className="font-medium text-gray-900">{item.qty} {item.unit}</div>
+          <div className="text-xs text-gray-500">
+            Min: {item.minStock} {item.unit}
+          </div>
+        </div>
+      </TableCell>
+      <TableCell className="py-4">
+        <div className="font-medium text-gray-900">₹{item.salePrice?.toLocaleString()}</div>
+      </TableCell>
+      <TableCell className="py-4">
+        {item.qty <= item.minStock ? (
+          <Badge variant="destructive" className="bg-red-50 text-red-700 border-red-200">Low Stock</Badge>
+        ) : (
+          <Badge variant="success" className="bg-green-50 text-green-700 border-green-200">In Stock</Badge>
+        )}
+      </TableCell>
+      <TableCell className="py-4">
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="sm" onClick={() => handleView(item)}>
+            <Eye className="h-4 w-4" />
+          </Button>
+          {inventoryPermissions.canEdit && (
+            <Button variant="ghost" size="sm" onClick={() => handleEdit(item)}>
+              <Edit className="h-4 w-4" />
+            </Button>
+          )}
+          {inventoryPermissions.canDelete && (
+            <Button variant="ghost" size="sm" onClick={() => handleDelete(item)} className="text-red-500 hover:text-red-700">
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+      </TableCell>
+    </TableRow>
+  );
+}
+
 export default function ModernInventoryUI() {
   const { user } = useAuth();
   const { canPerformAction } = usePermissions();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  
+
   // Get role-based API path
   const apiBasePath = getInventoryApiPath(user);
-  
+
   // Check inventory permissions based on user role
   const moduleName = user?.role === 'Unit Head' ? 'unitHead' : 'inventory';
   const featureKey = user?.role === 'Unit Head' ? 'inventory' : 'items';
-  
+
   const inventoryPermissions = {
     canView: canPerformAction(moduleName, featureKey, 'view'),
     canAdd: canPerformAction(moduleName, featureKey, 'add'),
@@ -186,7 +337,7 @@ export default function ModernInventoryUI() {
     canDelete: canPerformAction(moduleName, featureKey, 'delete'),
     canAlter: canPerformAction(moduleName, featureKey, 'alter')
   };
-  
+
   // State management
   const [showForm, setShowForm] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
@@ -201,8 +352,10 @@ export default function ModernInventoryUI() {
   const [selectedStore, setSelectedStore] = useState('all');
   const [selectedLocation, setSelectedLocation] = useState('all');
   const [sortBy, setSortBy] = useState('newest');
+  const [sortOrder, setSortOrder] = useState('asc'); // Added sortOrder state
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage] = useState(10); // Frontend pagination: 10 items per page
+  const [itemsPerPage, setItemsPerPage] = useState(10); // Dynamic items per page
+  const [localItems, setLocalItems] = useState([]); // For real-time drag-and-drop feedback
   const [categoryManagementOpen, setCategoryManagementOpen] = useState(false);
   const [showCustomerCategoryModal, setShowCustomerCategoryModal] = useState(false);
 
@@ -215,9 +368,21 @@ export default function ModernInventoryUI() {
     return () => clearTimeout(timer);
   }, [searchTerm]);
 
+  // Set up sensors for drag and drop
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 5,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
   // Data fetching with React Query - let API handle ALL filtering
   const { data: itemsData, isLoading: itemsLoading } = useQuery({
-    queryKey: [`${apiBasePath}/items`, debouncedSearchTerm, selectedCategory, selectedType, selectedStore, selectedLocation],
+    queryKey: [`${apiBasePath}/items`, debouncedSearchTerm, selectedCategory, selectedType, selectedStore, selectedLocation, sortBy, sortOrder],
     queryFn: () => {
       const params = new URLSearchParams({
         page: 1,
@@ -226,11 +391,20 @@ export default function ModernInventoryUI() {
         ...(selectedCategory && selectedCategory !== 'all' && { category: selectedCategory }),
         ...(selectedType && selectedType !== 'all' && { type: selectedType }),
         ...(selectedStore && selectedStore !== 'all' && { store: selectedStore }),
-        ...(selectedLocation && selectedLocation !== 'all' && { location: selectedLocation })
+        ...(selectedLocation && selectedLocation !== 'all' && { location: selectedLocation }),
+        sortBy,
+        sortOrder
       });
       return apiRequest('GET', `${apiBasePath}/items?${params.toString()}`);
     },
   });
+
+  // Update local items when API data changes
+  useEffect(() => {
+    if (itemsData?.items) {
+      setLocalItems(itemsData.items);
+    }
+  }, [itemsData]);
 
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: [`${apiBasePath}/stats`],
@@ -278,6 +452,19 @@ export default function ModernInventoryUI() {
     }
   });
 
+  const reorderMutation = useMutation({
+    mutationFn: (itemOrders) => apiRequest('PUT', `${apiBasePath}/items/reorder`, { itemOrders }),
+    onSuccess: () => {
+      // Refresh stats but don't strictly need to refresh items as we updated them locally
+      queryClient.invalidateQueries([`${apiBasePath}/stats`]);
+    },
+    onError: (error) => {
+      showSmartToast(error, 'Reorder Items');
+      // Revert local items on error if needed
+      queryClient.invalidateQueries([`${apiBasePath}/items`]);
+    }
+  });
+
   const bulkDeleteItemsMutation = useMutation({
     mutationFn: (itemIds) => apiRequest('POST', `${apiBasePath}/items/bulk-delete`, { itemIds }),
     onSuccess: (data) => {
@@ -285,14 +472,14 @@ export default function ModernInventoryUI() {
       queryClient.invalidateQueries([`${apiBasePath}/stats`]);
       setSelectedItems(new Set());
       setBulkDeleteConfirm({ isOpen: false, items: [] });
-      
+
       // Show detailed success message
       const { deletedCount, requestedCount, warning } = data;
       let message = `Successfully deleted ${deletedCount} item${deletedCount === 1 ? '' : 's'}`;
       if (warning) {
         message += ` (${warning})`;
       }
-      
+
       toast({
         title: "Bulk Delete Complete",
         description: message,
@@ -319,7 +506,7 @@ export default function ModernInventoryUI() {
     },
     onError: (error) => {
       console.error('Create item error details:', error);
-      
+
       // DON'T close the modal on error - let user fix the issue
       // Show proper validation error message
       if (error.status === 400 && error.message) {
@@ -397,8 +584,8 @@ export default function ModernInventoryUI() {
   };
 
   const handleDelete = (item) => {
-    setDeleteConfirm({ 
-      isOpen: true, 
+    setDeleteConfirm({
+      isOpen: true,
       item,
       title: "Delete Item",
       description: `Are you sure you want to delete this inventory item?`,
@@ -472,7 +659,7 @@ export default function ModernInventoryUI() {
   // Reset to first page when search or filter changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [debouncedSearchTerm, selectedCategory, selectedType, selectedStore, selectedLocation, sortBy]);
+  }, [debouncedSearchTerm, selectedCategory, selectedType, selectedStore, selectedLocation, sortBy, sortOrder]);
 
   // Auto-select location for Unit Head users
   useEffect(() => {
@@ -487,10 +674,31 @@ export default function ModernInventoryUI() {
     // Frontend pagination - no API refetch needed
   };
 
+  const handleDragEnd = (event) => {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id) {
+      const oldIndex = localItems.findIndex(item => item._id === active.id);
+      const newIndex = localItems.findIndex(item => item._id === over.id);
+
+      const newItems = arrayMove(localItems, oldIndex, newIndex);
+      setLocalItems(newItems);
+
+      // Calculate new orders for all items based on their new positions
+      // We'll update the 'order' field for ALL items in the current filtered list
+      const itemOrders = newItems.map((item, index) => ({
+        id: item._id,
+        order: index + 1 // 1-based ordering
+      }));
+
+      reorderMutation.mutate(itemOrders);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <ModernStats stats={stats} isLoading={statsLoading} />
-      
+
       {/* Modern Action Bar */}
       <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
         <CardContent className="p-6">
@@ -500,7 +708,7 @@ export default function ModernInventoryUI() {
                 {!inventoryPermissions.canAdd && !inventoryPermissions.canEdit && !inventoryPermissions.canDelete ? 'Inventory Monitoring' : 'Quick Actions'}
               </h2>
               <p className="text-sm text-blue-600">
-                {!inventoryPermissions.canAdd && !inventoryPermissions.canEdit && !inventoryPermissions.canDelete 
+                {!inventoryPermissions.canAdd && !inventoryPermissions.canEdit && !inventoryPermissions.canDelete
                   ? 'Monitor inventory levels, view item details and track stock status'
                   : 'Manage your inventory efficiently with these actions'
                 }
@@ -508,7 +716,7 @@ export default function ModernInventoryUI() {
             </div>
             <div className="flex flex-wrap gap-3">
               {inventoryPermissions.canAdd && (
-                <Button 
+                <Button
                   onClick={() => setShowForm(true)}
                   className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg hover:shadow-xl transition-all duration-200"
                 >
@@ -518,7 +726,7 @@ export default function ModernInventoryUI() {
               )}
               {(inventoryPermissions.canAdd || inventoryPermissions.canEdit) && (
                 <>
-                  <Button 
+                  <Button
                     onClick={() => setCategoryManagementOpen(true)}
                     variant="outline"
                     className="border-purple-300 text-purple-700 hover:bg-purple-50:bg-purple-950/30"
@@ -526,7 +734,7 @@ export default function ModernInventoryUI() {
                     <Tag className="h-4 w-4 mr-2" />
                     Categories
                   </Button>
-                  <Button 
+                  <Button
                     onClick={() => setShowCustomerCategoryModal(true)}
                     variant="outline"
                     className="border-green-300 text-green-700 hover:bg-green-50:bg-green-950/30"
@@ -536,7 +744,7 @@ export default function ModernInventoryUI() {
                   </Button>
                 </>
               )}
-              
+
               {/* Excel Import/Export - Available to all users with view permissions */}
               {inventoryPermissions.canView && (
                 <ExcelImportExport type="items" />
@@ -556,20 +764,19 @@ export default function ModernInventoryUI() {
         </CardHeader>
         <CardContent className="p-6">
           <div className="space-y-6">
-            <div className="flex flex-col lg:flex-row gap-4">
-              <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <div className="flex items-center gap-3 overflow-x-auto pb-1 scrollbar-hide">
+              <div className="min-w-[180px] sm:min-w-[240px] relative">
+                <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
                 <Input
-                  placeholder="Search items by name, code, or description..."
+                  placeholder="Search..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10 w-full border-gray-300 focus:border-blue-500:border-blue-400"
+                  className="pl-8 h-9 w-full border-gray-300 focus:border-blue-500 text-sm"
                 />
               </div>
-              <div className="flex flex-col sm:flex-row gap-3">
+              <div className="flex flex-nowrap gap-2">
                 <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-                  <SelectTrigger className="w-full sm:w-[200px] border-gray-300 focus:border-blue-500:border-blue-400">
-                    <Filter className="h-4 w-4 mr-2 text-gray-400" />
+                  <SelectTrigger className="w-[110px] sm:w-[130px] h-9 border-gray-300 focus:border-blue-500 text-xs px-2">
                     <SelectValue placeholder="All Categories" />
                   </SelectTrigger>
                   <SelectContent>
@@ -579,7 +786,7 @@ export default function ModernInventoryUI() {
                         All Categories
                       </div>
                     </SelectItem>
-                    {categories.length > 0 && categories.map((category) => (
+                    {categories.length > 0 && [...categories].sort((a, b) => a.name.localeCompare(b.name)).map((category) => (
                       <SelectItem key={category._id || category.name} value={category.name}>
                         <div className="flex items-center gap-2">
                           <Tag className="h-4 w-4" />
@@ -590,8 +797,7 @@ export default function ModernInventoryUI() {
                   </SelectContent>
                 </Select>
                 <Select value={selectedType} onValueChange={setSelectedType}>
-                  <SelectTrigger className="w-full sm:w-[180px] border-gray-300 focus:border-blue-500:border-blue-400">
-                    <Package className="h-4 w-4 mr-2 text-gray-400" />
+                  <SelectTrigger className="w-[100px] sm:w-[120px] h-9 border-gray-300 focus:border-blue-500 text-xs px-2">
                     <SelectValue placeholder="All Types" />
                   </SelectTrigger>
                   <SelectContent>
@@ -628,8 +834,7 @@ export default function ModernInventoryUI() {
                   </SelectContent>
                 </Select>
                 <Select value={selectedLocation} onValueChange={setSelectedLocation}>
-                  <SelectTrigger className="w-full sm:w-[280px] border-gray-300 focus:border-blue-500:border-blue-400">
-                    <Building2 className="h-4 w-4 mr-2 text-gray-400" />
+                  <SelectTrigger className="w-[140px] sm:w-[180px] h-9 border-gray-300 focus:border-blue-500 text-xs px-2">
                     <SelectValue placeholder="All Locations" />
                   </SelectTrigger>
                   <SelectContent>
@@ -651,17 +856,29 @@ export default function ModernInventoryUI() {
                     ))}
                   </SelectContent>
                 </Select>
+
                 <Select value={sortBy} onValueChange={setSortBy}>
-                  <SelectTrigger className="w-full sm:w-[150px] border-gray-300 focus:border-blue-500:border-blue-400">
-                    <BarChart3 className="h-4 w-4 mr-2 text-gray-400" />
+                  <SelectTrigger className="w-[100px] sm:w-[120px] h-9 border-gray-300 focus:border-blue-500 text-xs px-2">
                     <SelectValue placeholder="Sort by" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="newest">Newest First</SelectItem>
                     <SelectItem value="name">Name A-Z</SelectItem>
-                    <SelectItem value="code">Code</SelectItem>
                     <SelectItem value="category">Category</SelectItem>
-                    <SelectItem value="qty">Quantity</SelectItem>
+                    <SelectItem value="qty">Stock Quantity</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <Select value={itemsPerPage.toString()} onValueChange={(val) => setItemsPerPage(parseInt(val))}>
+                  <SelectTrigger className="w-[90px] sm:w-[110px] h-9 border-gray-300 focus:border-blue-500 text-xs px-2">
+                    <SelectValue placeholder="Items per page" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="10">10 per page</SelectItem>
+                    <SelectItem value="20">20 per page</SelectItem>
+                    <SelectItem value="30">30 per page</SelectItem>
+                    <SelectItem value="50">50 per page</SelectItem>
+                    <SelectItem value="100">100 per page</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -712,8 +929,10 @@ export default function ModernInventoryUI() {
                         />
                       </TableHead>
                     )}
+                    <TableHead className="w-[40px] font-semibold text-gray-900"></TableHead>
                     <TableHead className="font-semibold text-gray-900">Image</TableHead>
                     <TableHead className="font-semibold text-gray-900">Name</TableHead>
+                    <TableHead className="font-semibold text-gray-900">Quantity</TableHead>
                     <TableHead className="font-semibold text-gray-900">Category</TableHead>
                     <TableHead className="font-semibold text-gray-900">Store Location</TableHead>
                     <TableHead className="font-semibold text-gray-900">Stock</TableHead>
@@ -723,143 +942,50 @@ export default function ModernInventoryUI() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {itemsLoading ? (
-                    <TableRow>
-                      <TableCell colSpan={inventoryPermissions.canDelete ? 9 : 8} className="text-center py-8">
-                        Loading items...
-                      </TableCell>
-                    </TableRow>
-                  ) : filteredItems.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={inventoryPermissions.canDelete ? 9 : 8} className="text-center py-8 text-muted-foreground">
-                        No items found. Add your first inventory item to get started.
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    paginatedItems.map((item, index) => (
-                      <TableRow 
-                        key={item._id} 
-                        className={`hover:bg-gray-50:bg-gray-800/50 transition-colors ${
-                          index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
-                        } ${selectedItems.has(item._id) ? 'bg-blue-50' : ''}`}
-                      >
-                        {inventoryPermissions.canDelete && (
-                          <TableCell className="py-4">
-                            <Checkbox
-                              checked={selectedItems.has(item._id)}
-                              onCheckedChange={(checked) => handleSelectItem(item._id, checked)}
-                            />
+                  <DndContext
+                    sensors={sensors}
+                    collisionDetection={closestCenter}
+                    onDragEnd={handleDragEnd}
+                  >
+                    <SortableContext
+                      items={localItems.map(item => item._id)}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      {itemsLoading ? (
+                        <TableRow>
+                          <TableCell colSpan={inventoryPermissions.canDelete ? 11 : 10} className="text-center py-8">
+                            Loading items...
                           </TableCell>
-                        )}
-                        <TableCell className="py-4">
-                          <div className="w-12 h-12 rounded-lg overflow-hidden bg-gray-100 flex items-center justify-center">
-                            {item.image ? (
-                              <img 
-                                src={item.image} 
-                                alt={item.name} 
-                                className="w-full h-full object-cover"
-                                onError={(e) => {
-                                  e.target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjQwIiBoZWlnaHQ9IjQwIiBmaWxsPSIjRjNGNEY2Ii8+CjxwYXRoIGQ9Ik0xNiAxNkMyMC40MTgzIDE2IDI0IDE5LjU4MTcgMjQgMjRTMjAuNDE4MyAzMiAxNiAzMlM4IDI4LjQxODMgOCAyNFMxMS41ODE3IDE2IDE2IDE2WiIgZmlsbD0iIzlDQTNBRiIvPgo8L3N2Zz4K';
-                                }}
-                              />
-                            ) : (
-                              <Package className="h-6 w-6 text-gray-400" />
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell className="py-4">
-                          <div>
-                            <div className="font-medium text-gray-900">{item.name}</div>
-                            <div className="text-sm text-gray-500">{item.type}</div>
-                          </div>
-                        </TableCell>
-                        <TableCell className="py-4">
-                          <div>
-                            <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-                              {item.category}
-                            </Badge>
-                            {item.subCategory && (
-                              <div className="text-xs text-gray-500 mt-1">
-                                {item.subCategory}
-                              </div>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell className="py-4">
-                          <Badge variant="secondary" className="bg-purple-50 text-purple-700 border-purple-200">
-                            {item.storeLocation || item.store || 'No location'}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="py-4">
-                          <div>
-                            <div className="font-medium text-gray-900">{item.qty} {item.unit}</div>
-                            <div className="text-xs text-gray-500">
-                              Min: {item.minStock} {item.unit}
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell className="py-4">
-                          <span className="font-medium text-green-600">
-                            ₹{item.salePrice?.toLocaleString() || 0}
-                          </span>
-                        </TableCell>
-                        <TableCell className="py-4">
-                          <Badge 
-                            variant={(item.qty || 0) <= (item.minStock || 0) ? 'destructive' : 'default'}
-                            className={
-                              (item.qty || 0) <= (item.minStock || 0) 
-                                ? 'bg-red-100 text-red-800' 
-                                : 'bg-green-100 text-green-800'
-                            }
-                          >
-                            {(item.qty || 0) <= (item.minStock || 0) ? 'Low Stock' : 'In Stock'}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="py-4">
-                          <div className="flex items-center gap-1">
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
-                              onClick={() => handleView(item)}
-                              className="h-8 w-8 p-0 hover:bg-blue-50:bg-blue-900/30"
-                              title="View Details"
-                            >
-                              <Eye className="h-4 w-4 text-blue-600" />
-                            </Button>
-                            {(inventoryPermissions.canEdit || inventoryPermissions.canDelete) && (
-                              <>
-                                {inventoryPermissions.canEdit && (
-                                  <Button 
-                                    variant="ghost" 
-                                    size="sm" 
-                                    onClick={() => handleEdit(item)}
-                                    className="h-8 w-8 p-0 hover:bg-green-50:bg-green-900/30"
-                                    title="Edit Item"
-                                  >
-                                    <Edit className="h-4 w-4 text-green-600" />
-                                  </Button>
-                                )}
-                                {inventoryPermissions.canDelete && (
-                                  <Button 
-                                    variant="ghost" 
-                                    size="sm" 
-                                    onClick={() => handleDelete(item)}
-                                    className="h-8 w-8 p-0 hover:bg-red-50:bg-red-900/30"
-                                    title="Delete Item"
-                                >
-                                  <Trash2 className="h-4 w-4 text-red-600" />
-                                </Button>
-                                )}                        </>
-                            )}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
+                        </TableRow>
+                      ) : localItems.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={inventoryPermissions.canDelete ? 11 : 10} className="text-center py-8 text-muted-foreground">
+                            No items found. Add your first inventory item to get started.
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        localItems.slice(startIndex, startIndex + itemsPerPage).map((item, index) => (
+                          <SortableRow
+                            key={item._id}
+                            id={item._id}
+                            item={item}
+                            index={index}
+                            selectedItems={selectedItems}
+                            handleSelectItem={handleSelectItem}
+                            handleView={handleView}
+                            handleEdit={handleEdit}
+                            handleDelete={handleDelete}
+                            inventoryPermissions={inventoryPermissions}
+                            isDraggable={sortBy === 'newest' && !searchTerm} // Only allow drag when in default view
+                          />
+                        ))
+                      )}
+                    </SortableContext>
+                  </DndContext>
                 </TableBody>
               </Table>
             </div>
-            
+
             {/* Pagination */}
             {totalPages > 1 && (
               <div className="flex items-center justify-between px-2 py-4">
@@ -875,7 +1001,7 @@ export default function ModernInventoryUI() {
                   >
                     Previous
                   </Button>
-                  
+
                   {/* Page numbers */}
                   {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
                     let page;
@@ -888,7 +1014,7 @@ export default function ModernInventoryUI() {
                     } else {
                       page = currentPage - 2 + i;
                     }
-                    
+
                     return (
                       <Button
                         key={page}
@@ -901,7 +1027,7 @@ export default function ModernInventoryUI() {
                       </Button>
                     );
                   })}
-                  
+
                   <Button
                     variant="outline"
                     size="sm"
@@ -952,15 +1078,15 @@ export default function ModernInventoryUI() {
             itemName={deleteConfirm.item?.name}
             isLoading={deleteItemMutation.isPending}
           />
-          
+
           <DeleteConfirmDialog
             isOpen={bulkDeleteConfirm.isOpen}
             onClose={() => setBulkDeleteConfirm({ isOpen: false, items: [] })}
             onConfirm={confirmBulkDelete}
             title="Bulk Delete Items"
             description={`Are you sure you want to delete ${bulkDeleteConfirm.items.length} item${bulkDeleteConfirm.items.length === 1 ? '' : 's'}? This action cannot be undone.`}
-            itemName={bulkDeleteConfirm.items.length > 0 ? 
-              bulkDeleteConfirm.items.length === 1 
+            itemName={bulkDeleteConfirm.items.length > 0 ?
+              bulkDeleteConfirm.items.length === 1
                 ? bulkDeleteConfirm.items[0].name
                 : `${bulkDeleteConfirm.items.length} items: ${bulkDeleteConfirm.items.slice(0, 3).map(item => item.name).join(', ')}${bulkDeleteConfirm.items.length > 3 ? '...' : ''}`
               : ''
@@ -974,13 +1100,13 @@ export default function ModernInventoryUI() {
       {/* Category Management Modals - Show based on permissions */}
       {(inventoryPermissions.canAdd || inventoryPermissions.canEdit) && (
         <>
-          <CategoryManagement 
+          <CategoryManagement
             isOpen={categoryManagementOpen}
             onClose={() => setCategoryManagementOpen(false)}
             initialTab="product"
           />
-          
-          <CategoryManagement 
+
+          <CategoryManagement
             isOpen={showCustomerCategoryModal}
             onClose={() => setShowCustomerCategoryModal(false)}
             initialTab="customer"

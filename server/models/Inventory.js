@@ -124,6 +124,15 @@ const itemSchema = new mongoose.Schema({
     type: String,
     trim: true,
     default: null
+  },
+  quantity: {
+    type: String,
+    trim: true,
+    default: ""
+  },
+  order: {
+    type: Number,
+    default: 0
   }
 }, {
   timestamps: true
@@ -168,6 +177,7 @@ itemSchema.index({ name: 1, code: 1 });
 itemSchema.index({ category: 1, subCategory: 1 });
 itemSchema.index({ type: 1 });
 itemSchema.index({ qty: 1, minStock: 1 });
+itemSchema.index({ order: 1 });
 
 export const Item = mongoose.model('Item', itemSchema);
 export const Category = mongoose.model('Category', categorySchema);

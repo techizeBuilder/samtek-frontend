@@ -8,6 +8,7 @@ import { USER_ROLES } from '../../shared/schema.js';
 import User from '../models/User.js';
 import PriorityProduct from '../models/PriorityProduct.js';
 import CutoffTime from '../models/CutoffTime.js';
+import Dispatch from '../models/Dispatch.js';
 
 export const getSales = async (req, res) => {
   try {
@@ -467,62 +468,97 @@ export const getSalespersonCustomers = async (req, res) => {
 
 export const getSalespersonDeliveries = async (req, res) => {
   try {
-    const { page = 1, limit = 10, status = '', search = '' } = req.query;
+    const { page = 1, limit = 10, search = '', status = '' } = req.query;
     const salespersonId = req.user._id || req.user.id;
-    const userRole = req.user.role;
     const userCompanyId = req.user.companyId;
+    const userRole = req.user.role;
 
-    console.log('🚚 getSalespersonDeliveries called:', {
+    console.log('🚚 getSalespersonDeliveries (Dispatch-Based) called:', {
       userId: salespersonId,
       role: userRole,
       companyId: userCompanyId
     });
 
-    // Build filter query based on user role with company isolation
-    let query = {
-      status: { $in: ['Shipped', 'Out for Delivery', 'Delivered'] }
+    // Build match stage
+    const matchQuery = {
+      // For Dispatch model, the field is 'company' (ObjectId)
+      company: userCompanyId
     };
 
-    // Always filter by company for data isolation
-    if (userCompanyId) {
-      query.companyId = userCompanyId;
+    // Role-based filtering
+    if (userRole === 'Sales' || (userRole !== 'Super Admin' && userRole !== 'Unit Manager' && userRole !== 'Unit Head')) {
+      matchQuery.salesPerson = salespersonId;
     }
 
-    // If user is Sales role, only show their deliveries
-    if (userRole === 'Sales') {
-      query.salesPerson = salespersonId;
-    }
-    // Unit Manager can see all deliveries from their company
-    // Super Admin can see all deliveries
-    else if (userRole !== 'Super Admin' && userRole !== 'Unit Manager') {
-      query.salesPerson = salespersonId;
-    }
+    // Only show dispatches that are verified or further
+    matchQuery.status = { $in: ['verified', 'dispatched', 'completed', 'approved'] };
 
-    if (status) {
-      query.status = status;
+    if (status && status !== 'all') {
+      matchQuery.status = status;
     }
 
     if (search) {
-      query.$or = [
-        { orderCode: { $regex: search, $options: 'i' } },
-        { notes: { $regex: search, $options: 'i' } }
+      matchQuery.$or = [
+        { dcno: { $regex: search, $options: 'i' } },
+        { productName: { $regex: search, $options: 'i' } },
+        { vehicleNumber: { $regex: search, $options: 'i' } }
       ];
     }
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
-    const deliveries = await Order.find(query)
-      .populate('customer', 'name email mobile city')
-      .populate('products.product', 'name')
-      .sort({ updatedAt: -1 })
-      .skip(skip)
-      .limit(parseInt(limit));
+    // Use aggregation to group individual dispatch product entries by DC number
+    const aggregationStages = [
+      { $match: matchQuery },
+      { $sort: { createdAt: -1 } },
+      {
+        $group: {
+          _id: '$dcno',
+          dcno: { $first: '$dcno' },
+          date: { $first: '$date' },
+          customer: { $first: '$customer' },
+          vehicleNumber: { $first: '$vehicleNumber' },
+          transporterName: { $first: '$transporterName' },
+          status: { $first: '$status' },
+          notes: { $first: '$notes' },
+          items: {
+            $push: {
+              productName: '$productName',
+              quantity: '$dispatchedQuantitySentToday',
+              indentQty: '$indentQty',
+              productId: '$productId'
+            }
+          },
+          totalItems: { $sum: 1 },
+          createdAt: { $first: '$createdAt' }
+        }
+      },
+      { $sort: { createdAt: -1 } },
+      {
+        $facet: {
+          metadata: [{ $count: 'total' }],
+          data: [{ $skip: skip }, { $limit: parseInt(limit) }]
+        }
+      }
+    ];
 
-    const total = await Order.countDocuments(query);
+    const results = await Dispatch.aggregate(aggregationStages);
+
+    // Populate customer info for the grouped results
+    const deliveries = results[0].data;
+    const total = results[0].metadata[0]?.total || 0;
+
+    // Manual population because aggregate doesn't support easy multi-level population across models
+    const populatedDeliveries = await Promise.all(deliveries.map(async (delivery) => {
+      if (delivery.customer) {
+        delivery.customer = await Customer.findById(delivery.customer).select('name email mobile city area address category').lean();
+      }
+      return delivery;
+    }));
 
     res.json({
       success: true,
-      deliveries,
+      deliveries: populatedDeliveries,
       pagination: {
         page: parseInt(page),
         limit: parseInt(limit),
@@ -532,7 +568,7 @@ export const getSalespersonDeliveries = async (req, res) => {
     });
   } catch (error) {
     console.error('Get salesperson deliveries error:', error);
-    res.status(500).json({ message: 'Internal server error' });
+    res.status(500).json({ message: 'Internal server error', error: error.message });
   }
 };
 
@@ -587,16 +623,29 @@ export const getSalespersonInvoices = async (req, res) => {
 
     const invoices = await Sale.find(query)
       .populate('order', 'orderCode')
-      .populate('customer', 'name email phone')
+      .populate('customer', 'name email mobile gstin customerCode')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit));
 
     const total = await Sale.countDocuments(query);
 
+    // Calculate stats for the salesman's filtered invoices (ignoring pagination for stats)
+    const statsQuery = { order: { $in: orderIds } };
+    const allSalesmanInvoices = await Sale.find(statsQuery).select('totalAmount paidAmount balanceAmount paymentStatus');
+
+    const stats = allSalesmanInvoices.reduce((acc, inv) => {
+      acc.totalAmount += (inv.totalAmount || 0);
+      acc.paidAmount += (inv.paidAmount || 0);
+      acc.balanceAmount += (inv.balanceAmount || 0);
+      if (inv.paymentStatus === 'Overdue') acc.overdueCount += 1;
+      return acc;
+    }, { totalAmount: 0, paidAmount: 0, balanceAmount: 0, overdueCount: 0 });
+
     res.json({
       success: true,
       invoices,
+      stats,
       pagination: {
         page: parseInt(page),
         limit: parseInt(limit),

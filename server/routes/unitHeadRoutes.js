@@ -77,7 +77,8 @@ import {
   exportItemsToExcel,
   importItemsFromExcel,
   exportCategoriesToExcel,
-  exportCustomerCategoriesToExcel
+  exportCustomerCategoriesToExcel,
+  reorderItems
 } from '../controllers/inventoryController.js';
 
 const router = express.Router();
@@ -214,6 +215,11 @@ router.post('/inventory/items/bulk-delete',
   bulkDeleteItems
 );
 
+router.put('/inventory/items/reorder',
+  checkPermission('unitHead', 'inventory', 'edit'),
+  reorderItems
+);
+
 router.put('/inventory/items/:id', 
   checkPermission('unitHead', 'inventory', 'edit'), 
   updateItem
@@ -228,6 +234,7 @@ router.post('/inventory/items/:id/adjust-stock',
   checkPermission('unitHead', 'inventory', 'edit'), 
   adjustStock
 );
+
 
 // Category routes (Full CRUD access)
 router.get('/inventory/categories', 
