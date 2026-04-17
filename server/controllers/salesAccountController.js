@@ -153,8 +153,8 @@ export const getSalesInvoices = async (req, res) => {
         }
 
         const invoices = await Sale.find(query)
-            .populate('customer', 'name mobile email gstin')
-            .populate('companyId', 'gst')
+            .populate('customer', 'name mobile email gstin address1 city state pin contactPerson')
+            .populate('companyId', 'name unitName address city state locationPin email mobile gst')
             .sort({ saleDate: -1 })
             .skip((page - 1) * limit)
             .limit(parseInt(limit));

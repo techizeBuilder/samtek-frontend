@@ -1,14 +1,15 @@
-import Sale from '../models/Sale.js';
-import Order from '../models/Order.js';
+import User from '../models/User.js';
 import Customer from '../models/Customer.js';
+import Order from '../models/Order.js';
+import Dispatch from '../models/Dispatch.js';
+import Sale from '../models/Sale.js';
 import Return from '../models/Return.js';
 import { Item } from '../models/Inventory.js';
 import { Company } from '../models/Company.js';
 import { USER_ROLES } from '../../shared/schema.js';
-import User from '../models/User.js';
 import PriorityProduct from '../models/PriorityProduct.js';
 import CutoffTime from '../models/CutoffTime.js';
-import Dispatch from '../models/Dispatch.js';
+import { generateStandardizedInvoicePDF } from '../utils/invoicePdf.js';
 
 export const getSales = async (req, res) => {
   try {
@@ -579,72 +580,168 @@ export const getSalespersonInvoices = async (req, res) => {
     const userRole = req.user.role;
     const userCompanyId = req.user.companyId;
 
-    console.log('🧾 getSalespersonInvoices called:', {
+    console.log('🧾 getSalespersonInvoices (Unified) called:', {
       userId: salespersonId,
       role: userRole,
       companyId: userCompanyId
     });
 
-    // Find orders by role-based filtering with company isolation
-    let orderQuery = {};
-
-    // Always filter by company for data isolation
-    if (userCompanyId) {
-      orderQuery.companyId = userCompanyId;
-    }
-
-    // If user is Sales role, only show their invoices
-    if (userRole === 'Sales') {
-      orderQuery.salesPerson = salespersonId;
-    }
-    // Unit Manager can see all invoices from their company
-    // Super Admin can see all invoices
-    else if (userRole !== 'Super Admin' && userRole !== 'Unit Manager') {
+    // 1. Fetch Orders for the salesperson (company isolation included)
+    let orderQuery = { companyId: userCompanyId };
+    if (userRole === 'Sales' || (userRole !== 'Super Admin' && userRole !== 'Unit Manager')) {
       orderQuery.salesPerson = salespersonId;
     }
 
     const salespersonOrders = await Order.find(orderQuery).select('_id');
     const orderIds = salespersonOrders.map(order => order._id);
 
-    // Build filter query for sales/invoices related to orders
-    let query = { order: { $in: orderIds } };
+    // 4. Fetch and Format Dispatches (Delivery Challans)
+    // Only fetch dispatches that are 'verified', 'dispatched' or 'completed'
+    let dispatchMatch = {
+      company: userCompanyId,
+      status: { $in: ['verified', 'dispatched', 'completed', 'approved'] },
+      dcno: { $exists: true, $ne: null }
+    };
+
+    if (userRole === 'Sales' || (userRole !== 'Super Admin' && userRole !== 'Unit Manager')) {
+      dispatchMatch.salesPerson = salespersonId;
+    }
+    
+    if (search) {
+      dispatchMatch.dcno = { $regex: search, $options: 'i' };
+    }
+
+    // Get basic dispatch info to help find associated Sales records
+    const salespersonDispatches = await Dispatch.find(dispatchMatch).select('_id dcno').lean();
+    const salespersonDispatchIds = salespersonDispatches.map(d => d._id);
+    const salespersonDCNumbers = salespersonDispatches.map(d => d.dcno);
+
+    // 2. Build filter query for existing Sale records (BROADENED)
+    let saleQuery = { 
+      companyId: userCompanyId,
+      $or: [
+        { order: { $in: orderIds } },
+        { dispatch: { $in: salespersonDispatchIds } },
+        { invoiceNumber: { $in: salespersonDCNumbers } }
+      ]
+    };
+
+    // Also include common prefixes if they exist in the DB
+    const prefixedDCNumbers = salespersonDCNumbers.map(n => `INV-${n}`);
+    saleQuery.$or.push({ invoiceNumber: { $in: prefixedDCNumbers } });
 
     if (paymentStatus) {
-      query.paymentStatus = paymentStatus;
+      saleQuery.paymentStatus = paymentStatus;
     }
-
     if (search) {
-      query.$or = [
-        { invoiceNumber: { $regex: search, $options: 'i' } }
-      ];
+      saleQuery.$or = saleQuery.$or || [];
+      saleQuery.$or.push({ invoiceNumber: { $regex: search, $options: 'i' } });
     }
 
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-
-    const invoices = await Sale.find(query)
+    // 3. Get existing Sale records
+    const sales = await Sale.find(saleQuery)
       .populate('order', 'orderCode')
       .populate('customer', 'name email mobile gstin customerCode')
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(parseInt(limit));
+      .lean();
 
-    const total = await Sale.countDocuments(query);
+    // Track which dispatches are already formally invoiced
+    const invoicedDispatchIds = sales.filter(s => s.dispatch).map(s => s.dispatch.toString());
+    const invoicedDCNumbers = sales.map(s => s.invoiceNumber.replace(/^INV-/, '')); // Normalize for matching
 
-    // Calculate stats for the salesman's filtered invoices (ignoring pagination for stats)
-    const statsQuery = { order: { $in: orderIds } };
-    const allSalesmanInvoices = await Sale.find(statsQuery).select('totalAmount paidAmount balanceAmount paymentStatus');
+    // Aggregate dispatches into "invoice-like" groups by dcno
+    const dispatchInvoicesRaw = await Dispatch.aggregate([
+      { $match: dispatchMatch },
+      {
+        $lookup: {
+          from: 'items',
+          localField: 'productId',
+          foreignField: '_id',
+          as: 'product'
+        }
+      },
+      { $unwind: { path: '$product', preserveNullAndEmptyArrays: true } },
+      {
+        $group: {
+          _id: '$dcno',
+          invoiceNumber: { $first: '$dcno' },
+          customer: { $first: '$customer' },
+          order: { $first: '$orderId' },
+          saleDate: { $first: { $ifNull: ['$date', '$createdAt'] } },
+          createdAt: { $first: '$createdAt' },
+          paymentStatus: { $first: 'Pending' },
+          dispatchId: { $first: '$_id' },
+          totalAmount: {
+            $sum: { $multiply: ['$dispatchedQuantitySentToday', { $ifNull: ['$product.salePrice', 0] }] }
+          },
+          items: {
+            $push: {
+              productName: '$productName',
+              quantity: '$dispatchedQuantitySentToday',
+              unitPrice: { $ifNull: ['$product.salePrice', 0] },
+              totalPrice: { $multiply: ['$dispatchedQuantitySentToday', { $ifNull: ['$product.salePrice', 0] }] }
+            }
+          }
+        }
+      }
+    ]);
 
-    const stats = allSalesmanInvoices.reduce((acc, inv) => {
+    // Format Dispatches and filter out those already in 'sales'
+    const pendingDispatches = [];
+    for (const dInv of dispatchInvoicesRaw) {
+      // Robust check: Skip if this DC number (normalized) exists in the Sales list
+      const normalizedInvNo = dInv.invoiceNumber.replace(/^INV-/, '');
+      const isAlreadyInvoiced = sales.some(s => s.invoiceNumber === dInv.invoiceNumber) || 
+                               invoicedDCNumbers.includes(normalizedInvNo) ||
+                               invoicedDispatchIds.includes(dInv.dispatchId.toString());
+      
+      if (!isAlreadyInvoiced) {
+        // Populate customer info (Aggregation doesn't populate nested models easily)
+        const customer = await Customer.findById(dInv.customer).select('name email mobile gstin customerCode').lean();
+        const order = dInv.order ? await Order.findById(dInv.order).select('orderCode').lean() : null;
+
+        pendingDispatches.push({
+          _id: `pending_${dInv._id}`,
+          invoiceNumber: dInv.invoiceNumber,
+          customer: customer,
+          order: order,
+          totalAmount: dInv.totalAmount,
+          paidAmount: 0,
+          balanceAmount: dInv.totalAmount,
+          saleDate: dInv.saleDate,
+          createdAt: dInv.createdAt,
+          paymentStatus: 'Pending',
+          items: dInv.items,
+          isDispatchOriginal: true
+        });
+      }
+    }
+
+    // 5. Combine and Paginate
+    const allInvoices = [...sales, ...pendingDispatches]
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    // Filter by paymentStatus if requested (pending dispatches are always 'Pending')
+    let filteredInvoices = allInvoices;
+    if (paymentStatus && paymentStatus !== 'all') {
+      filteredInvoices = allInvoices.filter(inv => inv.paymentStatus === paymentStatus);
+    }
+
+    const total = filteredInvoices.length;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const paginatedInvoices = filteredInvoices.slice(skip, skip + parseInt(limit));
+
+    // 6. Calculate Stats (on full filtered set)
+    const stats = filteredInvoices.reduce((acc, inv) => {
       acc.totalAmount += (inv.totalAmount || 0);
       acc.paidAmount += (inv.paidAmount || 0);
-      acc.balanceAmount += (inv.balanceAmount || 0);
+      acc.balanceAmount += ((inv.totalAmount || 0) - (inv.paidAmount || 0));
       if (inv.paymentStatus === 'Overdue') acc.overdueCount += 1;
       return acc;
     }, { totalAmount: 0, paidAmount: 0, balanceAmount: 0, overdueCount: 0 });
 
     res.json({
       success: true,
-      invoices,
+      invoices: paginatedInvoices,
       stats,
       pagination: {
         page: parseInt(page),
@@ -655,7 +752,94 @@ export const getSalespersonInvoices = async (req, res) => {
     });
   } catch (error) {
     console.error('Get salesperson invoices error:', error);
-    res.status(500).json({ message: 'Internal server error' });
+    res.status(500).json({ success: false, message: 'Internal server error', error: error.message });
+  }
+};
+
+/**
+ * Downloads a professional Tax Invoice PDF for a given Sale or Dispatch record
+ */
+export const downloadInvoicePDF = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userCompanyId = req.user.companyId;
+
+    // 1. Fetch Sale record with all relevant details
+    const sale = await Sale.findById(id)
+      .populate('customer')
+      .populate('order', 'orderCode')
+      .populate('dispatch')
+      .populate('companyId')
+      .lean();
+
+    if (!sale) {
+      // If it's not a Sale ID, check if it's a Dispatch ID (for 'Pending' dispatches)
+      const dispatch = await Dispatch.findById(id)
+        .populate('customer')
+        .populate('orderId', 'orderCode')
+        .populate('productId')
+        .lean();
+
+      if (!dispatch) {
+        return res.status(404).json({ success: false, message: 'Invoice not found' });
+      }
+
+      // Map Dispatch to PDF invoice format
+      const company = await Company.findById(userCompanyId || dispatch.company).lean();
+      
+      const invoiceData = {
+        company: company || {},
+        customer: dispatch.customer || {},
+        invoiceNo: dispatch.dcno,
+        date: new Date(dispatch.date || dispatch.createdAt).toLocaleDateString('en-IN'),
+        ref: dispatch.salesPersonName || '',
+        notes: dispatch.notes || '',
+        items: [{
+          productName: dispatch.productId?.name || dispatch.productName || 'Product',
+          hsn: dispatch.productId?.hsn || '',
+          quantity: dispatch.qtyIssued || dispatch.indentQty || 0,
+          unit: dispatch.productId?.unit || 'nos',
+          rate: dispatch.productId?.salePrice || dispatch.rate || 0,
+          discount: 0,
+          mrp: dispatch.productId?.salePrice || dispatch.rate || 0
+        }]
+      };
+
+      return await generateStandardizedInvoicePDF(res, invoiceData);
+    }
+
+    // 2. Fetch Company details
+    const company = sale.companyId || await Company.findById(userCompanyId).lean();
+
+    // 3. Map Sale items to PDF items format
+    const items = (sale.items || []).map(item => ({
+      productName: item.productName || 'Product',
+      hsn: item.hsn || '',
+      quantity: item.quantity || 0,
+      unit: item.unit || 'nos',
+      rate: item.unitPrice || item.rate || 0,
+      discount: item.discount || 0,
+      mrp: item.mrp || item.unitPrice || 0
+    }));
+
+    // 4. Generate PDF
+    const invoiceData = {
+      company: company || {},
+      customer: sale.customer || {},
+      invoiceNo: sale.invoiceNumber,
+      date: new Date(sale.saleDate || sale.createdAt).toLocaleDateString('en-IN'),
+      ref: sale.order?.orderCode || '',
+      notes: sale.notes || '',
+      items: items
+    };
+
+    await generateStandardizedInvoicePDF(res, invoiceData);
+
+  } catch (error) {
+    console.error('❌ Error downloading invoice PDF:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: 'Failed to generate PDF', error: error.message });
+    }
   }
 };
 
