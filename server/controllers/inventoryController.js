@@ -385,20 +385,20 @@ export const getItems = async (req, res) => {
           return index === -1 ? 999999 : index;
         };
 
-        const aIndex = getChallanIndex(aName);
-        const bIndex = getChallanIndex(bName);
-
-        // Level 1: Challan Order Match
-        if (aIndex !== bIndex) {
-          return aIndex - bIndex;
-        }
-
-        // Level 2: Custom Manual Order (from drag-and-drop)
+        // Level 1: Custom Manual Order (from drag-and-drop) - Now takes Priority 1
         const aOrder = (a.order && a.order > 0) ? a.order : 999999;
         const bOrder = (b.order && b.order > 0) ? b.order : 999999;
         
         if (aOrder !== bOrder) {
           return aOrder - bOrder;
+        }
+
+        const aIndex = getChallanIndex(aName);
+        const bIndex = getChallanIndex(bName);
+
+        // Level 2: Challan Order Match - Now takes Priority 2 (fallback)
+        if (aIndex !== bIndex) {
+          return aIndex - bIndex;
         }
         
         // Level 3: Newest First

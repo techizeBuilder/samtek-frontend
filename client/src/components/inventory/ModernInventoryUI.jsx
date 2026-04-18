@@ -764,8 +764,8 @@ export default function ModernInventoryUI() {
         </CardHeader>
         <CardContent className="p-6">
           <div className="space-y-6">
-            <div className="flex items-center gap-3 overflow-x-auto pb-1 scrollbar-hide">
-              <div className="min-w-[180px] sm:min-w-[240px] relative">
+            <div className="flex flex-wrap items-center gap-3 pb-1">
+              <div className="flex-1 min-w-[200px] sm:min-w-[240px] relative">
                 <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
                 <Input
                   placeholder="Search..."
@@ -774,7 +774,7 @@ export default function ModernInventoryUI() {
                   className="pl-8 h-9 w-full border-gray-300 focus:border-blue-500 text-sm"
                 />
               </div>
-              <div className="flex flex-nowrap gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Select value={selectedCategory} onValueChange={setSelectedCategory}>
                   <SelectTrigger className="w-[110px] sm:w-[130px] h-9 border-gray-300 focus:border-blue-500 text-xs px-2">
                     <SelectValue placeholder="All Categories" />
