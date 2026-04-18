@@ -21,7 +21,8 @@ import {
   addPriorityProduct,
   removePriorityProduct,
   updatePriorityProductUsage,
-  getSalesCutoffTimeStatus
+  getSalesCutoffTimeStatus,
+  downloadInvoicePDF
 } from '../controllers/salesController.js';
 // Import with different names to avoid conflicts
 import { 
@@ -203,5 +204,6 @@ salesRouter.post('/create-damage', createSalespersonDamage);
 salesRouter.put('/update-damage/:id', updateSalespersonDamage);
 salesRouter.delete('/delete-damage/:id', deleteSalespersonDamage);
 salesRouter.get('/items', getSalespersonItems);
+salesRouter.get('/invoice/:id/pdf', downloadInvoicePDF);
 
 export default salesRouter;

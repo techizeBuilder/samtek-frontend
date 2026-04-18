@@ -8,6 +8,37 @@ import { USER_ROLES } from '../../shared/schema.js';
 import notificationService from '../services/notificationService.js';
 import { initializeProductSummary, updateProductSummary } from '../services/productionSummaryService.js';
 
+// Delivery Challan Order for Unit Head Inventory
+const DELIVERY_CHALLAN_ORDER = [
+  "PM 400",
+  "SW 400",
+  "WHEAT",
+  "BROWN",
+  "SW-800",
+  "PAV-200",
+  "BURGER",
+  "Pizza Base",
+  "Milk 250",
+  "BUN 350",
+  "Kova Bun250g",
+  "CB 12PC",
+  "CB 1Pc",
+  "OB-300",
+  "RAAGI",
+  "JAR CAKE",
+  "TwinBun",
+  "5 Pc Bun",
+  "PIZZA 9\"",
+  "PIZZA 11\"",
+  "CupBun 12 PC",
+  "Rusk 10",
+  "Rusk 35",
+  "Milk 200",
+  "Milk 300",
+  "800 Brown",
+  "Pizza 4\""
+];
+
 // Helper function to check inventory permissions
 const checkInventoryPermission = (user, action) => {
   // Super Admin and Unit Head have all permissions
@@ -335,36 +366,32 @@ export const getItems = async (req, res) => {
       })
     );
 
-    // Apply priority sorting for Unit Head: 400g and 300g items FIRST
-    if (isUnitHead && (!sortBy || sortBy === 'newest' || sortBy === 'name')) {
-      itemsWithCompanyNames.sort((a, b) => {
-        const aName = a.name.toLowerCase();
-        const bName = b.name.toLowerCase();
-        const aPriority = aName.includes('400g') || aName.includes('300g') || aName.includes('400 g') || aName.includes('300 g');
-        const bPriority = bName.includes('400g') || bName.includes('300g') || bName.includes('400 g') || bName.includes('300 g');
-
-        if (aPriority && !bPriority) return -1;
-        if (!aPriority && bPriority) return 1;
-
-        // If both have priority or both don't, maintain the current order (which is by 'order' or 'createdAt')
-        return 0;
-      });
-    }
-
-    // Apply primary sorting for Unit Head: Numbering Priority ONLY for 'newest' sort
+    // Apply custom Delivery Challan sorting for Unit Head
     if (isUnitHead && (!sortBy || sortBy === 'newest')) {
-      // Broad regex to match weights/sizes: e.g. 400g, 250gm, 12 Pc, 4", 10, 35, etc.
-      const priorityRegex = /\d+\s*(?:g|gm|kg|pc|ml|")|\b\d+\b/i;
-
       itemsWithCompanyNames.sort((a, b) => {
-        // level 1: Numbering/Weights in Name (MUST BE FIRST)
-        const aName = a.name;
-        const bName = b.name;
-        const aPriority = priorityRegex.test(aName);
-        const bPriority = priorityRegex.test(bName);
-        
-        if (aPriority && !bPriority) return -1;
-        if (!aPriority && bPriority) return 1;
+        const aName = (a.name || '').trim().toLowerCase();
+        const bName = (b.name || '').trim().toLowerCase();
+
+        // Helper to find index in DELIVERY_CHALLAN_ORDER with improved matching
+        const getChallanIndex = (name) => {
+          const normalizedName = (name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+          if (!normalizedName) return 999999;
+
+          const index = DELIVERY_CHALLAN_ORDER.findIndex(item => {
+            const normalizedItem = item.toLowerCase().replace(/[^a-z0-9]/g, '');
+            // Check if normalized name contains the normalized list item
+            return normalizedName.includes(normalizedItem);
+          });
+          return index === -1 ? 999999 : index;
+        };
+
+        const aIndex = getChallanIndex(aName);
+        const bIndex = getChallanIndex(bName);
+
+        // Level 1: Challan Order Match
+        if (aIndex !== bIndex) {
+          return aIndex - bIndex;
+        }
 
         // Level 2: Custom Manual Order (from drag-and-drop)
         const aOrder = (a.order && a.order > 0) ? a.order : 999999;

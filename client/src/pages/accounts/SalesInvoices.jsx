@@ -170,124 +170,186 @@ const SalesInvoices = () => {
     // ─── Print / PDF Invoice ────────────────────────────────────────
     const handlePrintInvoice = (inv) => {
         if (!inv) return;
-        const rows = (inv.items || []).map((item, i) => `
-            <tr style="border-bottom:1px solid #f1f5f9;">
-                <td style="padding:12px 16px;font-weight:600;color:#1e293b;">${i + 1}. ${item.productName || item.itemName || 'Item'}</td>
-                <td style="padding:12px 16px;text-align:center;color:#475569;">${item.quantity}</td>
-                <td style="padding:12px 16px;text-align:right;color:#475569;">₹${(item.unitPrice || 0).toLocaleString('en-IN')}</td>
-                <td style="padding:12px 16px;text-align:center;color:#64748b;">${item.tax || item.gstPercent || 0}%</td>
-                <td style="padding:12px 16px;text-align:right;font-weight:700;color:#0f172a;">₹${(item.totalPrice || 0).toLocaleString('en-IN')}</td>
-            </tr>
-        `).join('');
 
-        // Sunrise logo as inline SVG (sun icon)
-        const logoSVG = `<svg xmlns="http://www.w3.org/2000/svg" width="54" height="54" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="4.22" y1="4.22" x2="6.34" y2="6.34"/><line x1="17.66" y1="17.66" x2="19.78" y2="19.78"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/><line x1="4.22" y1="19.78" x2="6.34" y2="17.66"/><line x1="17.66" y1="6.34" x2="19.78" y2="4.22"/></svg>`;
+        // Number to words helper
+        const toWords = (num) => {
+            const ones = ['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine'];
+            const teens = ['Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen'];
+            const tens = ['','','Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety'];
+            if (!num || num === 0) return 'Zero';
+            const cvt2 = n => n < 10 ? ones[n] : n < 20 ? teens[n-10] : tens[Math.floor(n/10)] + (n%10 ? ' '+ones[n%10] : '');
+            const cvt3 = n => n < 100 ? cvt2(n) : ones[Math.floor(n/100)]+' Hundred'+(n%100 ? ' '+cvt2(n%100) : '');
+            const cvtAll = n => {
+                if (n < 1000) return cvt3(n);
+                const cr = Math.floor(n/10000000), lk = Math.floor((n%10000000)/100000), th = Math.floor((n%100000)/1000), rm = n%1000;
+                return (cr ? cvtAll(cr)+' Crore ' : '') + (lk ? cvtAll(lk)+' Lakh ' : '') + (th ? cvtAll(th)+' Thousand ' : '') + (rm ? cvt3(rm) : '');
+            };
+            const fixed = parseFloat(num).toFixed(2).split('.');
+            const rp = parseInt(fixed[0]), pa = parseInt(fixed[1]);
+            return cvtAll(rp).trim()+' Rupees'+(pa > 0 ? ' and '+cvtAll(pa).trim()+' Paise' : '')+' Only';
+        };
+
+        const company = inv.companyId || inv.company || {};
+        const customer = inv.customer || {};
+
+        // Robust Mapping
+        const compName  = company.name || company.unitName || company.legalName || 'Sunrise Bakery';
+        const compAddr  = company.address || company.addressLine1 || '';
+        const compGST   = company.gst || company.gstin || '';
+        const compPhone = company.mobile || company.phone || '';
+        const compEmail = company.email || '';
+
+        const custName  = customer.name || 'Unknown Customer';
+        const custAddr  = customer.address || 
+                         [customer.address1, customer.city, customer.state, customer.pin].filter(Boolean).join(', ') || 
+                         '';
+        const custGST   = customer.gstin || customer.gst || '';
+
+        const items = inv.items || [];
+        const grandTotal = inv.totalAmount || 0;
+        const roundOff = parseFloat((Math.round(grandTotal) - grandTotal).toFixed(2));
+
+        const rows = items.map((item, i) => {
+            const qty = item.quantity || 0;
+            const rate = item.unitPrice || 0;
+            const discPct = item.discount || 0;
+            const lessDisc = parseFloat(((rate * qty) * discPct / 100).toFixed(2));
+            const taxable = parseFloat((rate * qty - lessDisc).toFixed(2));
+            const mrp = rate;
+            const amount = taxable;
+            return `<tr style="background:${i%2===0?'#fff':'#f9f9f9'};">
+                <td style="padding:6px 5px;text-align:center;border:1px solid #ddd;">${i+1}</td>
+                <td style="padding:6px 5px;border:1px solid #ddd;">${item.productName||item.itemName||'Item'}</td>
+                <td style="padding:6px 5px;text-align:center;border:1px solid #ddd;">${item.hsn||''}</td>
+                <td style="padding:6px 5px;text-align:right;border:1px solid #ddd;">${qty}</td>
+                <td style="padding:6px 5px;text-align:center;border:1px solid #ddd;">${item.unit||'nos'}</td>
+                <td style="padding:6px 5px;text-align:right;border:1px solid #ddd;">${rate.toFixed(2)}</td>
+                <td style="padding:6px 5px;text-align:right;border:1px solid #ddd;">${lessDisc>0?lessDisc.toFixed(2):'—'}</td>
+                <td style="padding:6px 5px;text-align:right;border:1px solid #ddd;">${discPct>0?discPct.toFixed(2)+'%':'—'}</td>
+                <td style="padding:6px 5px;text-align:right;border:1px solid #ddd;">${taxable.toFixed(2)}</td>
+                <td style="padding:6px 5px;text-align:right;border:1px solid #ddd;">${mrp.toFixed(2)}</td>
+                <td style="padding:6px 5px;text-align:right;border:1px solid #ddd;">${amount.toFixed(2)}</td>
+            </tr>`;
+        }).join('');
 
         const html = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8" />
-  <title>Invoice ${inv.invoiceNumber}</title>
-  <style>
-    @page { size: A4; margin: 20mm; }
-    * { margin:0; padding:0; box-sizing:border-box; font-family:'Segoe UI',Arial,sans-serif; }
-    body { background:#fff; color:#1e293b; }
-    .header { background: linear-gradient(135deg,#1e3a8a,#3730a3); color:#fff; padding:32px 40px; border-radius:12px 12px 0 0; display:flex; justify-content:space-between; align-items:center; }
-    .logo-area { display:flex; align-items:center; gap:16px; }
-    .company-name { font-size:28px; font-weight:900; letter-spacing:-1px; }
-    .company-sub  { font-size:11px; color:#bfdbfe; margin-top:4px; text-transform:uppercase; letter-spacing:2px; }
-    .company-gst  { font-size:10px; color:#93c5fd; margin-top:6px; font-weight:600; letter-spacing:1px; }
-    .invoice-badge { background:rgba(255,255,255,0.15); padding:12px 24px; border-radius:50px; text-align:right; }
-    .invoice-no { font-size:20px; font-weight:900; }
-    .invoice-label { font-size:10px; color:#bfdbfe; text-transform:uppercase; letter-spacing:2px; }
-    .meta { display:flex; justify-content:space-between; padding:24px 40px; background:#f8fafc; border-left:4px solid #3730a3; margin:0; }
-    .meta-block label { font-size:9px; font-weight:800; color:#94a3b8; text-transform:uppercase; letter-spacing:2px; display:block; margin-bottom:4px; }
-    .meta-block span  { font-size:14px; font-weight:700; color:#0f172a; }
-    .meta-block .sub-info { font-size:11px; color:#64748b; margin-top:2px; }
-    .section { padding:24px 40px; }
-    .section-title { font-size:10px; font-weight:900; color:#94a3b8; text-transform:uppercase; letter-spacing:3px; margin-bottom:16px; }
-    table { width:100%; border-collapse:collapse; }
-    thead tr { background:#f1f5f9; }
-    thead th { padding:10px 16px; text-align:left; font-size:9px; font-weight:900; text-transform:uppercase; letter-spacing:2px; color:#64748b; }
-    thead th.right { text-align:right; }
-    thead th.center { text-align:center; }
-    .totals { margin:0 40px; border-radius:12px; background:#f8fafc; padding:20px 28px; }
-    .totals-row { display:flex; justify-content:space-between; padding:6px 0; font-size:13px; color:#475569; }
-    .totals-row.grand { padding-top:12px; margin-top:8px; border-top:2px solid #e2e8f0; font-size:20px; font-weight:900; color:#1e3a8a; }
-    .footer { padding:20px 40px; text-align:center; color:#94a3b8; font-size:10px; border-top:1px solid #f1f5f9; margin-top:16px; }
-    .status-badge { display:inline-block; padding:4px 14px; border-radius:50px; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:1px; }
-    .status-paid { background:#dcfce7; color:#15803d; }
-    .status-pending { background:#fef9c3; color:#a16207; }
-    .status-overdue { background:#fee2e2; color:#b91c1c; }
-    @media print { body { -webkit-print-color-adjust:exact; print-color-adjust:exact; } }
-  </style>
-</head>
-<body>
-  <div class="header">
-    <div class="logo-area">
-      ${logoSVG}
-      <div>
-        <div class="company-name">SUNRISE</div>
-        <div class="company-sub">Sales &amp; Distribution ERP</div>
-        <div class="company-gst">GST No: ${inv.companyId?.gst || '—'}</div>
-      </div>
+<html><head><meta charset="UTF-8"/><title>Tax Invoice ${inv.invoiceNumber}</title>
+<style>
+  @page { size: A4; margin: 14mm 14mm 14mm 14mm; }
+  * { margin:0; padding:0; box-sizing:border-box; font-family: Arial, sans-serif; font-size: 9pt; color: #000; }
+  body { background:#fff; }
+  .wrap { width:100%; }
+  .company-name { font-size:15pt; font-weight:bold; margin-bottom:4px; }
+  .company-info { font-size:8.5pt; line-height:1.7; margin-bottom:2px; }
+  .label { font-weight:bold; }
+  .sep { border:none; border-top:1px solid #bbb; margin:8px 0; }
+  .title-row { text-align:center; font-size:13pt; font-weight:bold; margin:10px 0 6px; }
+  .inv-ref { text-align:right; font-size:9pt; line-height:1.9; margin-bottom:8px; }
+  .addr-table { width:100%; border-collapse:collapse; margin-bottom:7px; }
+  .addr-table td, .addr-table th { border:1px solid #bbb; padding:5px 7px; vertical-align:top; }
+  .addr-table th { background:#f0f0f0; font-weight:bold; font-size:8.5pt; }
+  .items-table { width:100%; border-collapse:collapse; margin-bottom:6px; }
+  .items-table th { background:#f0f0f0; border:1px solid #bbb; padding:8px 4px; text-align:center; font-size:8pt; font-weight:bold; vertical-align:middle; }
+  .items-table td { border:1px solid #ccc; padding:8px 6px; font-size:8.5pt; line-height: 1.4; }
+  .totals-box { width:100%; border-collapse:collapse; margin-bottom:6px; }
+  .totals-box td { border:1px solid #bbb; padding:6px 8px; }
+  .notes { font-size:8.5pt; margin-bottom:8px; }
+  .footer-grid { display:grid; grid-template-columns:55fr 45fr; border:1px solid #bbb; min-height:65px; }
+  .footer-left { padding:8px 10px; display:flex; align-items:flex-end; }
+  .footer-right { border-left:1px solid #bbb; padding:8px 10px; display:flex; flex-direction:column; justify-content:space-between; align-items:center; }
+  @media print { body { -webkit-print-color-adjust:exact; print-color-adjust:exact; } }
+</style>
+</head><body><div class="wrap">
+
+  <div class="company-name">${compName}</div>
+  <div class="company-info">
+    ${compAddr ? `<div>${compAddr}</div>` : ''}
+    ${compGST ? `<div><span class="label">GST :</span> ${compGST}</div>` : ''}
+    ${compPhone ? `<div><span class="label">Phone :</span> ${compPhone}</div>` : ''}
+    ${compEmail ? `<div><span class="label">Email :</span> ${compEmail}</div>` : ''}
+  </div>
+
+  <hr class="sep"/>
+
+  <div class="title-row">Tax Invoice</div>
+
+  <div class="inv-ref">
+    <div><span class="label">Invoice No. :</span> <strong>${inv.invoiceNumber || '—'}</strong></div>
+    <div><span class="label">Date :</span> ${new Date(inv.saleDate).toLocaleDateString('en-IN', {day:'2-digit',month:'short',year:'numeric'})}</div>
+    ${inv.notes ? `<div><span class="label">Ref. :</span> ${inv.notes}</div>` : ''}
+  </div>
+
+
+  <table class="addr-table">
+    <tr>
+      <th style="width:50%">Billing Address</th>
+      <th style="width:50%">Shipping Address</th>
+    </tr>
+    <tr>
+      <td>
+        <div><strong>${custName}</strong></div>
+        ${custAddr ? `<div>${custAddr}</div>` : ''}
+        ${custGST ? `<div>GSTIN : ${custGST}</div>` : ''}
+      </td>
+      <td>
+        <div><strong>${custName}</strong></div>
+        ${custAddr ? `<div>${custAddr}</div>` : ''}
+        ${custGST ? `<div>GSTIN : ${custGST}</div>` : ''}
+      </td>
+    </tr>
+  </table>
+
+  <table class="items-table">
+    <thead>
+      <tr>
+        <th style="width:22px">No.</th>
+        <th>Item &amp; Description</th>
+        <th style="width:52px">HSN / SAC</th>
+        <th style="width:26px">Qty</th>
+        <th style="width:42px">Unit</th>
+        <th style="width:46px">Rate (&#x20B9;)</th>
+        <th style="width:46px">Less:<br/>Discount<br/>(&#x20B9;)</th>
+        <th style="width:42px">Discount</th>
+        <th style="width:50px">Taxable (&#x20B9;)</th>
+        <th style="width:42px">MRP (&#x20B9;)</th>
+        <th style="width:50px">Amount (&#x20B9;)</th>
+      </tr>
+    </thead>
+    <tbody>${rows}</tbody>
+  </table>
+
+  <table class="totals-box">
+    <tr>
+      <td style="width:53%">
+        <div><span class="label">Total Invoice Amount in Words :</span></div>
+        <div style="margin-top:4px;">${toWords(Math.round(grandTotal))}</div>
+      </td>
+      <td style="width:47%">
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+          <span>Round Off (&#x20B9;)</span>
+          <span style="font-weight:bold;">${roundOff.toFixed(2)}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;border-top:1px solid #bbb;padding-top:6px;">
+          <span style="font-weight:bold;">Grand Total (&#x20B9;)</span>
+          <span style="font-weight:bold;">${Math.round(grandTotal).toFixed(2)}</span>
+        </div>
+      </td>
+    </tr>
+  </table>
+
+  ${inv.notes ? `<div class="notes"><span class="label">Notes :</span> ${inv.notes}</div>` : ''}
+
+  <div class="footer-grid">
+    <div class="footer-left">
+      <div style="margin-top:40px;font-size:7.5pt;color:#555;">This is a computer-generated invoice. E. &amp; O. E.</div>
     </div>
-    <div class="invoice-badge">
-      <div class="invoice-label">Tax Invoice</div>
-      <div class="invoice-no">${inv.invoiceNumber}</div>
+    <div class="footer-right">
+      <div style="font-weight:bold;margin-bottom:36px;">For, ${company.name || ''}</div>
+      <div style="font-weight:bold;">Authorised Signatory</div>
     </div>
   </div>
 
-  <div class="meta">
-    <div class="meta-block">
-      <label>Billed To</label>
-      <span>${inv.customer?.name || 'N/A'}</span>
-      <div class="sub-info">GST No: ${inv.customer?.gstin || '—'}</div>
-    </div>
-    <div class="meta-block">
-      <label>Invoice Date</label>
-      <span>${new Date(inv.saleDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
-    </div>
-    <div class="meta-block">
-      <label>Due Date</label>
-      <span>${inv.dueDate ? new Date(inv.dueDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</span>
-    </div>
-    <div class="meta-block">
-      <label>Status</label>
-      <span class="status-badge ${inv.paymentStatus === 'Paid' ? 'status-paid' : inv.paymentStatus === 'Overdue' ? 'status-overdue' : 'status-pending'}">${inv.paymentStatus || 'Pending'}</span>
-    </div>
-  </div>
-
-  <div class="section">
-    <div class="section-title">Item Details</div>
-    <table>
-      <thead>
-        <tr>
-          <th>Description</th>
-          <th class="center">Qty</th>
-          <th class="right">Rate (₹)</th>
-          <th class="center">GST %</th>
-          <th class="right">Amount (₹)</th>
-        </tr>
-      </thead>
-      <tbody>${rows}</tbody>
-    </table>
-  </div>
-
-    <div class="totals">
-    <div class="totals-row"><span>Subtotal</span><span>₹${(inv.subtotal || 0).toLocaleString('en-IN')}</span></div>
-    <div class="totals-row"><span>Tax (GST)</span><span>₹${(inv.taxAmount || 0).toLocaleString('en-IN')}</span></div>
-    ${inv.tdsAmount > 0 ? `<div class="totals-row" style="color:#e11d48;font-weight:600;"><span>TDS Deduction (${inv.tdsPercent}%)</span><span>- ₹${(inv.tdsAmount || 0).toLocaleString('en-IN')}</span></div>` : ''}
-    <div class="totals-row grand"><span>Grand Total</span><span>₹${(inv.totalAmount || 0).toLocaleString('en-IN')}</span></div>
-  </div>
-
-  ${inv.notes ? `<div class="section"><div class="section-title">Remarks</div><p style="color:#475569;font-style:italic;">${inv.notes}</p></div>` : ''}
-
-  <div class="footer">
-    Generated by Sunrise ERP &bull; This is a computer-generated invoice and does not require a signature.
-  </div>
-</body>
-</html>`;
+</div></body></html>`;
 
         const win = window.open('', '_blank', 'width=900,height=700');
         win.document.write(html);
