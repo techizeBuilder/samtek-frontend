@@ -388,7 +388,7 @@ export const getItems = async (req, res) => {
         // Level 1: Custom Manual Order (from drag-and-drop) - Now takes Priority 1
         const aOrder = (a.order && a.order > 0) ? a.order : 999999;
         const bOrder = (b.order && b.order > 0) ? b.order : 999999;
-        
+
         if (aOrder !== bOrder) {
           return aOrder - bOrder;
         }
@@ -400,7 +400,7 @@ export const getItems = async (req, res) => {
         if (aIndex !== bIndex) {
           return aIndex - bIndex;
         }
-        
+
         // Level 3: Newest First
         return new Date(b.createdAt) - new Date(a.createdAt);
       });
@@ -899,7 +899,7 @@ export const updateItem = async (req, res) => {
 
     const { id } = req.params;
     const itemData = req.body;
-
+    //'🔧 UPDATE ITEM - Item data:';
     // Enhanced validation
     const validation = validateItemData(itemData);
     if (!validation.isValid) {
