@@ -2146,10 +2146,10 @@ export const getTodaysProducts = async (req, res) => {
 
     console.log('📦 Fetching today\'s products for:', { salesmanId, customerId, companyId: req.user.companyId });
 
-    // Get today's date range (start and end of day) - Use local time, not UTC
+    // Get today's date range (start and end of day) - Use UTC time for consistency
     const today = new Date();
-    const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0);
-    const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
+    const startOfDay = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate(), 0, 0, 0, 0));
+    const endOfDay = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate(), 23, 59, 59, 999));
 
     console.log('📅 Date range:', { startOfDay, endOfDay, today });
 
@@ -2227,9 +2227,10 @@ export const getTodaysProducts = async (req, res) => {
       console.log(`   Has packingSheetId? ${!!packingSheetId}`);
 
       if (!packingSheetId) {
-        // Handle ungrouped items (no packing sheet) - Each dispatch is a separate entry
+        // Handle ungrouped items (no packing sheet) - Group by productId to avoid duplicates
         console.log(`   ✅ THIS IS AN UNGROUPED ITEM`);
-        const key = `ungrouped_${dispatch._id}`;
+        const productIdStr = dispatch.productId?._id?.toString() || dispatch.productId?.toString() || `unknown_${dispatch._id}`;
+        const key = `ungrouped_${productIdStr}`;
 
         // Add item details for ungrouped item
         let itemDetails = null;
@@ -2245,6 +2246,32 @@ export const getTodaysProducts = async (req, res) => {
           } catch (err) {
             console.error(`❌ Could not fetch item details for productId: ${dispatch.productId}`, err.message);
           }
+        }
+
+        // Check if this ungrouped item already exists - if so, consolidate quantities
+        if (groupedByPackingSheet[key]) {
+          console.log(`   ✅ CONSOLIDATING: Item already exists, merging quantities...`);
+          const existing = groupedByPackingSheet[key];
+          // Accumulate quantities
+          existing.indentQty = (existing.indentQty || 0) + (dispatch.indentQty || 0);
+          existing.qtyIssued = (existing.qtyIssued || 0) + (dispatch.qtyIssued || 0);
+          existing.totalIndentQuantityOrdersForTheDay = (existing.totalIndentQuantityOrdersForTheDay || 0) + (dispatch.totalIndentQuantityOrdersForTheDay || 0);
+          existing.dispatchedQuantitySentToday = (existing.dispatchedQuantitySentToday || 0) + (dispatch.dispatchedQuantitySentToday || 0);
+          // Update items array with new dispatch info if not already present
+          const existingItemIds = existing.items?.map(i => i.itemId?.toString?.() || i.itemId?.toString?.() || i.itemId) || [];
+          const newItemId = dispatch.productId?._id?.toString?.() || dispatch.productId?.toString?.();
+          if (!existingItemIds.includes(newItemId)) {
+            existing.items.push({
+              itemId: dispatch.productId?._id || dispatch.productId,
+              productName: dispatch.productName || itemDetails?.name || 'Unknown',
+              batch: itemDetails?.batch || dispatch.batchNo || null,
+              stock: itemDetails?.stock || itemDetails?.qty || dispatch.totalAvailableStock || 0,
+              qtyIssued: dispatch.qtyIssued || 0,
+              status: dispatch.status,
+              totalAvailableStock: dispatch.totalAvailableStock || 0
+            });
+          }
+          continue;
         }
 
         // Create a separate entry for each ungrouped item (no grouping)
@@ -2390,10 +2417,11 @@ export const getTodaysProducts = async (req, res) => {
 
           // Simple: Get batch from Item table using productId
           let batchValue = 0;
+          let item = null;
           if (group.productId) {
             try {
               console.log(`  📡 Querying Item collection for ID: ${group.productId}`);
-              const item = await Item.findById(group.productId).select('name batch stock qty').lean();
+              item = await Item.findById(group.productId).select('name batch stock qty').lean();
               console.log(`  📦 Item query result:`, item);
 
               if (item) {
