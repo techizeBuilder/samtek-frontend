@@ -195,7 +195,9 @@ export default function Profile() {
       const res = await axios.get(`${API}/users`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      setManagers(res.data.users || res.data.data?.users || res.data || []);
+      const allUsers = res.data.users || res.data.data?.users || res.data || [];
+      const managerUsers = allUsers.filter((u: any) => u.role?.toLowerCase() === "manager");
+      setManagers(managerUsers);
     } catch (err) {
       console.error("Failed to fetch managers", err);
       setManagers([]);
@@ -344,7 +346,45 @@ export default function Profile() {
             </button>
           </div>
 
+          {/* ================= DOCUMENTS SECTION (SEPARATE CARD) ================= */}
+          <div className="bg-white border rounded-xl shadow-sm p-5">
+            <h3 className="text-xs font-bold text-gray-700 mb-4 uppercase tracking-wide flex items-center gap-2">
+              <FileText size={16} className="text-indigo-500" />
+              Documents
+            </h3>
 
+            {documents.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-4 text-gray-400 gap-1">
+                <p className="text-xs">No documents uploaded</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {documents.map((doc) => {
+                  const meta = DOC_LABELS[doc.type] || { label: doc.type, icon: "📄" };
+                  return (
+                    <div
+                      key={doc._id}
+                      className="flex items-center justify-between gap-2 p-2.5 border rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-lg">{meta.icon}</span>
+                        <p className="text-xs font-semibold text-gray-800 truncate">{meta.label}</p>
+                      </div>
+                      <a
+                        href={`${BASE_URL}/${doc.fileUrl}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center gap-1 p-1.5 bg-white border shadow-sm text-indigo-600 rounded-lg hover:bg-indigo-50 transition-colors"
+                        title="View"
+                      >
+                        <Eye size={14} />
+                      </a>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
 
 
@@ -354,7 +394,7 @@ export default function Profile() {
             title="Personal Details"
             onEdit={() => setOpenPersonal(true)}
           >
-            <Info label="Full Name" value={user.name} icon={<User />} />
+            <Info label="Full Name" value={user.fullName || user.name} icon={<User />} />
             <Info label="Gender" value={user.gender} />
             <Info
               label="Date of Birth"
@@ -379,7 +419,7 @@ export default function Profile() {
             />
             <Info
               label="Reporting Manager"
-              value={user.managerId?.fullName || user.managerId?.name || "—"}
+              value={user.reportingManager?.fullName || user.reportingManager?.name || "—"}
               icon={<Users />}
             />
             <Info label="Employment Type" value={user.employmentType} />
@@ -389,57 +429,6 @@ export default function Profile() {
             />
           </Section>
 
-          {/* ================= DOCUMENTS SECTION ================= */}
-          <div className="bg-white border rounded-xl shadow-sm p-5">
-            <h3 className="text-sm font-bold text-gray-700 mb-4 uppercase tracking-wide flex items-center gap-2">
-              <FileText size={16} className="text-indigo-500" />
-              Employee Documents
-            </h3>
-
-            {documents.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-8 text-gray-400 gap-2">
-                <AlertCircle size={32} className="text-gray-300" />
-                <p className="text-sm">No documents uploaded yet</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {documents.map((doc) => {
-                  const meta = DOC_LABELS[doc.type] || { label: doc.type, icon: "📄" };
-                  const statusMap: Record<DocStatus, { icon: React.ReactNode; text: string; cls: string }> = {
-                    UPLOADED: { icon: <Clock size={12} />, text: "Pending", cls: "bg-amber-50 text-amber-700 border-amber-200" },
-                    VERIFIED: { icon: <ShieldCheck size={12} />, text: "Verified", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
-                    REJECTED: { icon: <XCircle size={12} />, text: "Rejected", cls: "bg-rose-50 text-rose-700 border-rose-200" },
-                  };
-                  const { icon: sIcon, text: sText, cls } = statusMap[doc.status] || statusMap.UPLOADED;
-                  return (
-                    <div
-                      key={doc._id}
-                      className="flex items-center justify-between gap-3 p-3 border rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors"
-                    >
-                      <div className="flex items-center gap-3">
-                        <span className="text-xl">{meta.icon}</span>
-                        <div>
-                          <p className="text-sm font-semibold text-gray-800">{meta.label}</p>
-                          <span className={`inline-flex items-center gap-1 text-xs font-semibold px-1.5 py-0.5 rounded-full border ${cls}`}>
-                            {sIcon}{sText}
-                          </span>
-                        </div>
-                      </div>
-                      <a
-                        href={`${BASE_URL}/${doc.fileUrl}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex items-center gap-1 px-3 py-1.5 bg-indigo-600 text-white text-xs rounded-lg hover:bg-indigo-700 transition-colors font-semibold shadow-sm"
-                      >
-                        <Eye size={13} />
-                        View
-                      </a>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
 
           {/* ================= PROBATION CONFIRMATION SECTION ================= */}
           <div className="bg-white border rounded-xl shadow-sm p-6 space-y-4">

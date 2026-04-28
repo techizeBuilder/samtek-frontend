@@ -5,8 +5,8 @@ import axios from "axios";
 import { MoreVertical } from "lucide-react";
 import DesignationModal from "./DesignationModal";
 import DeleteDesignationModal from "./DeleteDesignationModal";
-import Loader from "@/pages/hrms/Loader";
-import { toast } from "../../../hooks/use-toast";
+import Loader from "../Loader";
+import { toast } from "../../Alert/Toast";
 const API_BASE = import.meta.env.VITE_API_URL;
 
 export default function Designation() {
@@ -44,9 +44,9 @@ export default function Designation() {
       });
 
       toast({
-        
+        type: "success",
         title: "Designation Deleted",
-        description: `${itemToDelete.name} successfully removed.`,
+        message: `${itemToDelete.name} successfully removed.`,
       });
 
       setOpenDeleteModal(false);
@@ -54,9 +54,9 @@ export default function Designation() {
       fetchData();
     } catch (error: any) {
       toast({
-        variant: "destructive",
+        type: "error",
         title: "Delete Failed",
-        description: error?.response?.data?.message || "Something went wrong.",
+        message: error?.response?.data?.message || "Something went wrong.",
       });
     }
   };
@@ -191,6 +191,3 @@ export default function Designation() {
     </div>
   );
 }
-
-
-

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import axios from "axios";
-import { toast } from "../../../hooks/use-toast";
+import { toast } from "../../Alert/Toast";
 const API_BASE = import.meta.env.VITE_API_URL;
 
 export interface Company {
@@ -57,7 +57,7 @@ export default function BranchModal({ isOpen, mode, branch, onClose }: Props) {
     const res = await axios.get(`${API_BASE}/companies`, {
       headers: { Authorization: `Bearer ${token}` },
     });
-    setCompanies(res.data);
+    setCompanies(res.data?.companies || []);
   };
 
   useEffect(() => {
@@ -139,9 +139,9 @@ const handleSubmit = async () => {
       });
 
       toast({
-        
+        type: "success",
         title: "Branch Created",
-        description: res.data?.message || "Branch created successfully",
+        message: res.data?.message || "Branch created successfully",
       });
     }
 
@@ -151,18 +151,18 @@ const handleSubmit = async () => {
       });
 
       toast({
-        
+        type: "success",
         title: "Branch Updated",
-        description: res.data?.message || "Branch updated successfully",
+        message: res.data?.message || "Branch updated successfully",
       });
     }
 
     onClose();
   } catch (error: any) {
     toast({
-      variant: "destructive",
+      type: "error",
       title: "Operation Failed",
-      description:
+      message:
         error?.response?.data?.message ||
         (mode === "add"
           ? "Unable to create branch. Please try again."
@@ -303,4 +303,3 @@ const handleSubmit = async () => {
     </div>
   );
 }
-

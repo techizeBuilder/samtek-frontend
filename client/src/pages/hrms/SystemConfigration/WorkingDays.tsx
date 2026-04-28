@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import axios from "axios";
-import Loader from "@/pages/hrms/Loader";
-import { toast } from "../../../hooks/use-toast";
+import Loader from "../../Loader";
+import { toast } from "../../Alert/Toast";
 import { Save, Calendar, Clock, List } from "lucide-react";
 
 const API_BASE = import.meta.env.VITE_API_URL;
@@ -108,15 +108,15 @@ export default function WorkingDays() {
                 headers: { Authorization: `Bearer ${token}` },
             });
             toast({
-                
+                type: "success",
                 title: "Settings Saved",
-                description: "Working Days configuration updated successfully",
+                message: "Working Days configuration updated successfully",
             });
         } catch (error) {
             toast({
-                variant: "destructive",
+                type: "error",
                 title: "Save Failed",
-                description: "Failed to update working days configuration",
+                message: "Failed to update working days configuration",
             });
         } finally {
             setSaving(false);
@@ -271,6 +271,3 @@ export default function WorkingDays() {
         </div>
     );
 }
-
-
-

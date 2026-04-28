@@ -5,8 +5,8 @@ import axios from "axios";
 import { MoreVertical } from "lucide-react";
 import CostCenterModal from "./CostCenterModal";
 import DeleteCostCenterModal from "./DeleteCostCenterModal";
-import Loader from "@/pages/hrms/Loader";
-import { toast } from "../../../hooks/use-toast";
+import Loader from "../../Loader";
+import { toast } from "../../Alert/Toast";
 
 const API_BASE = import.meta.env.VITE_API_URL;
 
@@ -62,9 +62,9 @@ export default function CostCenters() {
             });
 
             toast({
-                
+                type: "success",
                 title: "Cost Center Deleted",
-                description: `${costCenterToDelete.name} successfully removed`,
+                message: `${costCenterToDelete.name} successfully removed`,
             });
 
             setOpenDeleteModal(false);
@@ -72,9 +72,9 @@ export default function CostCenters() {
             fetchCostCenters();
         } catch (error) {
             toast({
-                variant: "destructive",
+                type: "error",
                 title: "Delete Failed",
-                description: "Failed to delete cost center",
+                message: "Failed to delete cost center",
             });
         }
     };
@@ -245,6 +245,3 @@ export default function CostCenters() {
         </div>
     );
 }
-
-
-

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import axios from "axios";
-import { toast } from "../../../hooks/use-toast";
+import { toast } from "../../Alert/Toast";
 
 const API_BASE = import.meta.env.VITE_API_URL;
 
@@ -46,7 +46,7 @@ export default function DepartmentModal({
       .get(`${API_BASE}/companies`, {
         headers: { Authorization: `Bearer ${token}` },
       })
-      .then((r) => setCompanies(r.data));
+      .then((r) => setCompanies(r.data?.companies || []));
 
     axios
       .get(`${API_BASE}/branches`, {
@@ -59,8 +59,9 @@ export default function DepartmentModal({
         headers: { Authorization: `Bearer ${token}` },
       })
       .then((r) => {
-        const onlyManagers = r.data.filter(
-          (user: any) => user.role === "manager"
+        const users = Array.isArray(r.data?.users) ? r.data.users : [];
+        const onlyManagers = users.filter(
+          (user: any) => user.role?.toLowerCase() === "manager"
         );
         setManagers(onlyManagers);
       });
@@ -142,9 +143,9 @@ const payload = {
 });
 
       toast({
-        
+        type: "success",
         title: "Department Created",
-        description: res.data?.message || "Department created successfully.",
+        message: res.data?.message || "Department created successfully.",
       });
     }
 
@@ -158,18 +159,18 @@ const payload = {
 );
 
       toast({
-        
+        type: "success",
         title: "Department Updated",
-        description: res.data?.message || "Department updated successfully.",
+        message: res.data?.message || "Department updated successfully.",
       });
     }
 
     handleClose();
   } catch (error: any) {
     toast({
-      variant: "destructive",
+      type: "error",
       title: "Operation Failed",
-      description:
+      message:
         error?.response?.data?.message ||
         (mode === "add"
           ? "Unable to create department. Please try again."
@@ -336,4 +337,3 @@ const payload = {
     </div>
   );
 }
-

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import axios from "axios";
-import { toast } from "../../../hooks/use-toast";
+import { toast } from "../../Alert/Toast";
 
 const API_BASE = import.meta.env.VITE_API_URL;
 
@@ -67,9 +67,9 @@ export default function RoleModal({ isOpen, mode, role, onClose }: Props) {
         });
 
         toast({
-          
+          type: "success",
           title: "Role Created",
-          description: "Role created successfully",
+          message: "Role created successfully",
         });
       }
 
@@ -79,18 +79,18 @@ export default function RoleModal({ isOpen, mode, role, onClose }: Props) {
         });
 
         toast({
-          
+          type: "success",
           title: "Role Updated",
-          description: "Role updated successfully",
+          message: "Role updated successfully",
         });
       }
 
       onClose();
     } catch (error: any) {
       toast({
-        variant: "destructive",
+        type: "error",
         title: "Operation Failed",
-        description: "Something went wrong. Try again.",
+        message: "Something went wrong. Try again.",
       });
     }
   };
@@ -181,4 +181,3 @@ export default function RoleModal({ isOpen, mode, role, onClose }: Props) {
     </div>
   );
 }
-

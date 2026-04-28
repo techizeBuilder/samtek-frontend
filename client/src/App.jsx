@@ -114,6 +114,13 @@ import HRMSPolicies from "@/pages/hrms/SystemConfigration/Policies";
 import HRMSAddUser from "@/pages/hrms/AddUser";
 import HRMSProfile from "@/pages/hrms/Profile";
 import HRMSStatutoryReport from "@/pages/hrms/Payroll/StatutoryReport";
+
+// System Configuration Imports
+import HRMSCompany from "@/pages/hrms/SystemConfigration/Company";
+import HRMSBranches from "@/pages/hrms/SystemConfigration/Branches";
+import HRMSDepartments from "@/pages/hrms/SystemConfigration/Departments";
+import HRMSDesignation from "@/pages/hrms/SystemConfigration/Desigantion";
+
 import ManagerDashboard from "@/pages/hrms/Manager/ManagerDashboard";
 import ManagerLeaveRequest from "@/pages/hrms/Manager/Approvals/LeaveRequest";
 import ManagerAttendanceRequest from "@/pages/hrms/Manager/Approvals/AttendanceRequest";
@@ -216,6 +223,28 @@ function Router() {
       <Route exact path="/hrms/SuperAdmin/hr-policy">
         <ProtectedRoute requiredRole="HR-Admin">
           <HRMSPolicies />
+        </ProtectedRoute>
+      </Route>
+
+      {/* System Configuration Routes */}
+      <Route exact path="/hrms/SuperAdmin/companies">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HRMSCompany />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/SuperAdmin/branches">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HRMSBranches />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/SuperAdmin/departments">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HRMSDepartments />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/SuperAdmin/designations">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HRMSDesignation />
         </ProtectedRoute>
       </Route>
 

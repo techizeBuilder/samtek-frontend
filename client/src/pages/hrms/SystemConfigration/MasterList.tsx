@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import axios from "axios";
-import Loader from "@/pages/hrms/Loader";
-import { toast } from "../../../hooks/use-toast";
+import Loader from "../../Loader";
+import { toast } from "../../Alert/Toast";
 import { Plus, Trash2, Edit2, ShieldAlert, Zap, Users, Wallet } from "lucide-react";
 
 const API_BASE = import.meta.env.VITE_API_URL;
@@ -98,11 +98,11 @@ export default function MasterList() {
                 }
             }
 
-            toast({  title: "Success", description: "Operation completed successfully" });
+            toast({ type: "success", title: "Success", message: "Operation completed successfully" });
             setIsModalOpen(false);
             fetchData();
         } catch (error) {
-            toast({ variant: "destructive", title: "Error", description: "Action failed" });
+            toast({ type: "error", title: "Error", message: "Action failed" });
         }
     };
 
@@ -113,10 +113,10 @@ export default function MasterList() {
             await axios.delete(`${API_BASE}/master-lists/${endpoint}/${id}`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
-            toast({  title: "Deleted", description: "Item removed successfully" });
+            toast({ type: "success", title: "Deleted", message: "Item removed successfully" });
             fetchData();
         } catch (error) {
-            toast({ variant: "destructive", title: "Error", description: "Delete failed" });
+            toast({ type: "error", title: "Error", message: "Delete failed" });
         }
     };
 
@@ -286,6 +286,3 @@ export default function MasterList() {
         </div>
     );
 }
-
-
-

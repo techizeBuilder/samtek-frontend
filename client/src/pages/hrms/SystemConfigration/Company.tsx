@@ -5,21 +5,21 @@ import axios from "axios";
 import { MoreVertical } from "lucide-react";
 import CompanyModal from "./CompanyModal";
 import DeleteCompanyModal from "./DeleteCompanyModel";
-import Loader from "@/pages/hrms/Loader";
-import { toast } from "../../../hooks/use-toast";
+import Loader from "../Loader";
+import { toast } from "../../Alert/Toast";
 
 const API_BASE = import.meta.env.VITE_API_URL;
 
 export interface Company {
   _id: string;
-  companyId: string; 
+  companyId: string;
   name: string;
   email: string;
   phone: string;
   website: string;
   industry: string;
   address: string;
-  city: string;     
+  city: string;
   state: string;
   logo?: string;
   status: "Active" | "Inactive";
@@ -49,7 +49,7 @@ export default function Company() {
       const res = await axios.get(`${API_BASE}/companies`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      setCompanies(res.data);
+      setCompanies(res.data?.companies || []);
     } finally {
       setLoading(false);
     }
@@ -60,46 +60,46 @@ export default function Company() {
   }, []);
 
   // ✅ ACTUAL DELETE API
-const handleDeleteCompany = async () => {
-  if (!companyToDelete) return;
+  const handleDeleteCompany = async () => {
+    if (!companyToDelete) return;
 
-  try {
-    await axios.delete(`${API_BASE}/companies/${companyToDelete._id}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    try {
+      await axios.delete(`${API_BASE}/companies/${companyToDelete._id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
 
-    toast({
-      
-      title: "Company Deleted",
-      description: `${companyToDelete.name} successfully removed`,
-    });
+      toast({
+        type: "success",
+        title: "Company Deleted",
+        message: `${companyToDelete.name} successfully removed`,
+      });
 
-    setOpenDeleteModal(false);
-    setCompanyToDelete(null);
-    fetchCompanies();
-  } catch (error) {
-    toast({
-      variant: "destructive",
-      title: "Delete Failed",
-      description: "Company deleted Sucessfully",
-    });
-  }
-};
-
-    if (loading) {
-      return (
-        <div className="relative min-h-screen">
-          <Loader />
-        </div>
-      );
+      setOpenDeleteModal(false);
+      setCompanyToDelete(null);
+      fetchCompanies();
+    } catch (error) {
+      toast({
+        type: "error",
+        title: "Delete Failed",
+        message: "Company deleted Sucessfully",
+      });
     }
-const sortedCompanies = [...companies].sort((a, b) => {
-  if (sortOrder === "asc") {
-    return a.name.localeCompare(b.name);
-  } else {
-    return b.name.localeCompare(a.name);
+  };
+
+  if (loading) {
+    return (
+      <div className="relative min-h-screen">
+        <Loader />
+      </div>
+    );
   }
-});
+  const sortedCompanies = [...companies].sort((a, b) => {
+    if (sortOrder === "asc") {
+      return a.name.localeCompare(b.name);
+    } else {
+      return b.name.localeCompare(a.name);
+    }
+  });
 
 
   return (
@@ -130,33 +130,33 @@ const sortedCompanies = [...companies].sort((a, b) => {
 
         <table className="w-full text-sm text-center">
           <thead className="bg-gray-100 sticky top-0 z-10">
-  <tr>
-    <th className="px-4 py-3">No.</th>
-    <th className="px-4 py-3 min-w-[130px] whitespace-nowrap text-center">
-  Company ID
-</th>   {/* NEW */}
-    <th
-  className="px-4 py-3 cursor-pointer select-none"
-  onClick={() =>
-    setSortOrder(sortOrder === "asc" ? "desc" : "asc")
-  }
->
-  Company Name
-  <span className="ml-1 inline-block">
-    {sortOrder === "asc" ? "▲" : "▼"}
-  </span>
-</th>
+            <tr>
+              <th className="px-4 py-3">No.</th>
+              <th className="px-4 py-3 min-w-[130px] whitespace-nowrap text-center">
+                Company ID
+              </th>   {/* NEW */}
+              <th
+                className="px-4 py-3 cursor-pointer select-none"
+                onClick={() =>
+                  setSortOrder(sortOrder === "asc" ? "desc" : "asc")
+                }
+              >
+                Company Name
+                <span className="ml-1 inline-block">
+                  {sortOrder === "asc" ? "▲" : "▼"}
+                </span>
+              </th>
 
-    <th className="px-4 py-3">Email</th>
-    <th className="px-4 py-3">Phone</th>
-    <th className="px-4 py-3">Industry</th>
-    <th className="px-4 py-3">City</th>         {/* NEW */}
-    <th className="px-4 py-3">State</th>        {/* NEW */}
-    <th className="px-4 py-3">Status</th>
-    <th className="px-4 py-3">Created On</th>
-    <th className="px-4 py-3 text-center">Action</th>
-  </tr>
-</thead>
+              <th className="px-4 py-3">Email</th>
+              <th className="px-4 py-3">Phone</th>
+              <th className="px-4 py-3">Industry</th>
+              <th className="px-4 py-3">City</th>         {/* NEW */}
+              <th className="px-4 py-3">State</th>        {/* NEW */}
+              <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3">Created On</th>
+              <th className="px-4 py-3 text-center">Action</th>
+            </tr>
+          </thead>
 
 
           <tbody>
@@ -164,12 +164,12 @@ const sortedCompanies = [...companies].sort((a, b) => {
               sortedCompanies.map((company, i) => (
                 <tr key={company._id} className="border-t">
                   <td className="px-4 py-3">{i + 1}</td>
-                   <td className="px-4 py-3 font-medium text-xs">
-          {company.companyId}
-        </td>
+                  <td className="px-4 py-3 font-medium text-xs">
+                    {company.companyId}
+                  </td>
                   <td className="px-4 py-3 font-medium min-w-[220px] whitespace-nowrap">
-  {company.name}
-</td>
+                    {company.name}
+                  </td>
                   <td className="px-4 py-3">{company.email}</td>
                   <td className="px-4 py-3">{company.phone}</td>
                   <td className="px-4 py-3">{company.industry}</td>
@@ -177,11 +177,10 @@ const sortedCompanies = [...companies].sort((a, b) => {
                   <td className="px-4 py-3">{company.state}</td>
                   <td className="px-4 py-3">
                     <span
-                      className={`px-2 py-1 rounded text-xs ${
-                        company.status === "Active"
-                          ? "bg-green-100 text-green-600"
-                          : "bg-red-100 text-red-600"
-                      }`}
+                      className={`px-2 py-1 rounded text-xs ${company.status === "Active"
+                        ? "bg-green-100 text-green-600"
+                        : "bg-red-100 text-red-600"
+                        }`}
                     >
                       {company.status}
                     </span>
@@ -272,6 +271,3 @@ const sortedCompanies = [...companies].sort((a, b) => {
     </div>
   );
 }
-
-
-

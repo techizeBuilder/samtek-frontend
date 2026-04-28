@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import axios from "axios";
-import { toast } from "../../../hooks/use-toast";
+import { toast } from "../../Alert/Toast";
 const API_BASE = import.meta.env.VITE_API_URL;
 
 export default function DesignationModal({
@@ -35,7 +35,7 @@ export default function DesignationModal({
       .get(`${API_BASE}/companies`, {
         headers: { Authorization: `Bearer ${token}` },
       })
-      .then((r) => setCompanies(r.data));
+      .then((r) => setCompanies(r.data?.companies || []));
   }, []);
 
   /* =========================
@@ -107,9 +107,9 @@ export default function DesignationModal({
         });
 
         toast({
-          
+          type: "success",
           title: "Designation Created",
-          description: res.data?.message || "Designation created successfully.",
+          message: res.data?.message || "Designation created successfully.",
         });
       }
 
@@ -123,18 +123,18 @@ export default function DesignationModal({
         );
 
         toast({
-          
+          type: "success",
           title: "Designation Updated",
-          description: res.data?.message || "Designation updated successfully.",
+          message: res.data?.message || "Designation updated successfully.",
         });
       }
 
       handleClose();
     } catch (error: any) {
       toast({
-        variant: "destructive",
+        type: "error",
         title: "Operation Failed",
-        description:
+        message:
           error?.response?.data?.message ||
           (mode === "add"
             ? "Unable to create designation. Please try again."
@@ -270,4 +270,3 @@ export default function DesignationModal({
     </div>
   );
 }
-

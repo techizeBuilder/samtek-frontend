@@ -511,6 +511,18 @@ const hrAdminMenuItems = [
     module: 'hrms'
   },
   {
+    label: 'System Configuration',
+    path: '/hrms/SuperAdmin/system-configuration',
+    icon: Settings,
+    module: 'hrms',
+    submodules: [
+      { label: 'Companies', path: '/hrms/SuperAdmin/companies', feature: 'companies' },
+      { label: 'Branches', path: '/hrms/SuperAdmin/branches', feature: 'branches' },
+      { label: 'Departments', path: '/hrms/SuperAdmin/departments', feature: 'departments' },
+      { label: 'Designations', path: '/hrms/SuperAdmin/designations', feature: 'designations' }
+    ]
+  },
+  {
     label: 'Employee Management',
     path: '/hrms/SuperAdmin/employees',
     icon: Users,

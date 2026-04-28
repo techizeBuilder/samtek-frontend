@@ -76,11 +76,16 @@ export default function SuperAdminLayout({ children }: HRMSAdminLayoutProps) {
           <SidebarToggle />
         </SidebarHeader>
         <SidebarContent className="space-y-4">
-          <SidebarGroup label="System Configuration">
+          <SidebarGroup label="Main Menu">
             <SidebarNav>
               <SidebarNavItem to="/hrms/SuperAdmin/dashboard" icon={Building2}>
                 Dashboard
               </SidebarNavItem>
+            </SidebarNav>
+          </SidebarGroup>
+
+          <SidebarGroup label="System Configuration">
+            <SidebarNav>
               <SidebarNavItem to="/hrms/SuperAdmin/companies" icon={Building2}>
                 Companies
               </SidebarNavItem>
@@ -96,6 +101,11 @@ export default function SuperAdminLayout({ children }: HRMSAdminLayoutProps) {
               <SidebarNavItem to="/hrms/SuperAdmin/designations" icon={Briefcase}>
                 Designations
               </SidebarNavItem>
+            </SidebarNav>
+          </SidebarGroup>
+
+          <SidebarGroup label="Master Data">
+            <SidebarNav>
               <SidebarNavItem to="/hrms/SuperAdmin/cost-centers" icon={Wallet}>
                 Cost Centers
               </SidebarNavItem>

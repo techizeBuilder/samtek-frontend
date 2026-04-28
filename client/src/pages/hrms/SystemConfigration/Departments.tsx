@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import axios from "axios";
 import { MoreVertical } from "lucide-react";
 import DepartmentModal from "./DepartmentModal";
-import Loader from "@/pages/hrms/Loader";
-import { toast } from "../../../hooks/use-toast";
+import Loader from "../Loader";
+import { toast } from "../../Alert/Toast";
 const API_BASE = import.meta.env.VITE_API_URL;
 
 export interface Department {
@@ -26,7 +26,7 @@ export default function DepartmentPage() {
   const [mode, setMode] = useState<"add" | "view" | "edit">("add");
   const [selected, setSelected] = useState<Department | null>(null);
   const [menu, setMenu] = useState<string | null>(null);
-  const [loading,setLoading]=useState(true);
+  const [loading, setLoading] = useState(true);
   const fetchDepartments = async () => {
     const res = await axios.get(`${API_BASE}/departments`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -44,20 +44,20 @@ export default function DepartmentPage() {
     await axios.delete(`${API_BASE}/departments/${id}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
-     toast({
-            
-            title: "Department Deleted",
-            description: "The branch has been deleted successfully.",
-          });
+    toast({
+      type: "success",
+      title: "Department Deleted",
+      message: "The branch has been deleted successfully.",
+    });
     fetchDepartments();
   };
-    if (loading) {
-      return (
-        <div className="relative min-h-screen">
-          <Loader />
-        </div>
-      );
-    }
+  if (loading) {
+    return (
+      <div className="relative min-h-screen">
+        <Loader />
+      </div>
+    );
+  }
 
   return (
     <div className="p-6">
@@ -100,17 +100,16 @@ export default function DepartmentPage() {
               <tr key={d._id} className="border-t">
                 <td className="px-4 py-3">{i + 1}</td>
                 <td className="px-4 py-3 font-medium">{d.name}</td>
-                <td className="px-4 py-3">{d.companyId.name}</td>
-                <td className="px-4 py-3">{d.branchId.name}</td>
+                <td className="px-4 py-3">{d.companyId?.name || "-"}</td>
+                <td className="px-4 py-3">{d.branchId?.name || "-"}</td>
                 <td className="px-4 py-3">{d.headEmployeeId?.name || "-"}</td>
                 <td className="px-4 py-3">
                   {" "}
                   <span
-                    className={`px-2 py-1 rounded text-xs ${
-                      d.status === "Active"
+                    className={`px-2 py-1 rounded text-xs ${d.status === "Active"
                         ? "bg-green-100 text-green-600"
                         : "bg-red-100 text-red-600"
-                    }`}
+                      }`}
                   >
                     {d.status}
                   </span>
@@ -174,6 +173,3 @@ export default function DepartmentPage() {
     </div>
   );
 }
-
-
-

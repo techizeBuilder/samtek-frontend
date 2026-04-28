@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import axios from "axios";
-import { toast } from "../../../hooks/use-toast";
+import { toast } from "../../Alert/Toast";
 
 const API_BASE = import.meta.env.VITE_API_URL;
 const BASE_URL = API_BASE?.replace("/api", "") || "";
@@ -90,12 +90,12 @@ export default function Policies() {
           },
         }
       );
-      toast({ title: "Uploaded", description: "Document uploaded successfully" });
+      toast({ type: "success", title: "Uploaded", message: "Document uploaded successfully" });
       setHrPolicies((prev) =>
         prev.map((p) => (p._id === policyId ? res.data.policy : p))
       );
     } catch (err) {
-      toast({ title: "Upload Failed", description: "Could not upload document", variant: "destructive" });
+      toast({ type: "error", title: "Upload Failed", message: "Could not upload document" });
     } finally {
       setUploadingId(null);
     }
@@ -107,12 +107,12 @@ export default function Policies() {
         `${API_BASE}/hr-policies/${policyId}/document`,
         { headers: { Authorization: `Bearer ${token()}` } }
       );
-      toast({ title: "Removed", description: "Document removed" });
+      toast({ type: "success", title: "Removed", message: "Document removed" });
       setHrPolicies((prev) =>
         prev.map((p) => (p._id === policyId ? res.data.policy : p))
       );
     } catch (err) {
-      toast({ title: "Error", description: "Could not remove document", variant: "destructive" });
+      toast({ type: "error", title: "Error", message: "Could not remove document" });
     }
   };
 

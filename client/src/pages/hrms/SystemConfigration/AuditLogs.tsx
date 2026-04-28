@@ -14,8 +14,8 @@ import {
     ChevronDown,
     RefreshCcw
 } from "lucide-react";
-import Loader from "@/pages/hrms/Loader";
-import { toast } from "../../../hooks/use-toast";
+import Loader from "../../Loader";
+import { toast } from "../../Alert/Toast";
 import ClearLogsConfirmationModal from "./ClearLogsConfirmationModal";
 
 const API_BASE = import.meta.env.VITE_API_URL;
@@ -81,9 +81,9 @@ export default function AuditLogs() {
             });
         } catch (error: any) {
             toast({
-                variant: "destructive",
+                type: "error",
                 title: "Fetch Failed",
-                description: "Unable to load audit logs.",
+                message: "Unable to load audit logs.",
             });
         } finally {
             setLoading(false);
@@ -123,17 +123,17 @@ export default function AuditLogs() {
                 headers: { Authorization: `Bearer ${token}` },
             });
             toast({
-                
+                type: "success",
                 title: "Logs Cleared",
-                description: "All audit logs have been successfully deleted.",
+                message: "All audit logs have been successfully deleted.",
             });
             setIsConfirmModalOpen(false);
             fetchLogs(1);
         } catch (error: any) {
             toast({
-                variant: "destructive",
+                type: "error",
                 title: "Action Failed",
-                description: error.response?.data?.message || "Could not clear logs.",
+                message: error.response?.data?.message || "Could not clear logs.",
             });
         } finally {
             setIsDeleting(false);
@@ -437,6 +437,3 @@ export default function AuditLogs() {
         </div>
     );
 }
-
-
-

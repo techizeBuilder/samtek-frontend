@@ -5,8 +5,8 @@ import axios from "axios";
 import { MoreVertical } from "lucide-react";
 import BranchModal from "./BranchModal";
 import DeleteBranchModal from "./DeleteBranchModal";
-import Loader from "@/pages/hrms/Loader";
-import { toast } from "../../../hooks/use-toast";
+import Loader from "../Loader";
+import { toast } from "../../Alert/Toast";
 
 const API_BASE = import.meta.env.VITE_API_URL;
 
@@ -51,7 +51,7 @@ export default function Branch() {
     const res = await axios.get(`${API_BASE}/companies`, {
       headers: { Authorization: `Bearer ${token}` },
     });
-    setCompanies(res.data);
+    setCompanies(res.data?.companies || []);
   };
 
   /* ================= FETCH BRANCHES ================= */
@@ -80,9 +80,9 @@ export default function Branch() {
       });
 
       toast({
-        
+        type: "success",
         title: "Branch Deleted",
-        description: `${branchToDelete.name} successfully removed.`,
+        message: `${branchToDelete.name} successfully removed.`,
       });
 
       setOpenDeleteModal(false);
@@ -90,9 +90,9 @@ export default function Branch() {
       fetchBranches();
     } catch (error: any) {
       toast({
-        variant: "destructive",
+        type: "error",
         title: "Delete Failed",
-        description: error?.response?.data?.message || "Something went wrong.",
+        message: error?.response?.data?.message || "Something went wrong.",
       });
     }
   };
@@ -281,6 +281,3 @@ export default function Branch() {
     </div>
   );
 }
-
-
-

@@ -3,7 +3,7 @@
 import axios from "axios";
 import { useEffect, useState } from "react";
 import type { CostCenter } from "./CostCenters";
-import { toast } from "../../../hooks/use-toast";
+import { toast } from "../../Alert/Toast";
 
 const API_BASE = import.meta.env.VITE_API_URL;
 
@@ -146,9 +146,9 @@ export default function CostCenterModal({
                 });
 
                 toast({
-                    
+                    type: "success",
                     title: "Cost Center Created",
-                    description: res.data?.message,
+                    message: res.data?.message,
                 });
             }
 
@@ -162,18 +162,18 @@ export default function CostCenterModal({
                 );
 
                 toast({
-                    
+                    type: "success",
                     title: "Cost Center Updated",
-                    description: res.data?.message,
+                    message: res.data?.message,
                 });
             }
 
             onClose();
         } catch (error: any) {
             toast({
-                variant: "destructive",
+                type: "error",
                 title: "Operation Failed",
-                description: error?.response?.data?.message || "Something went wrong.",
+                message: error?.response?.data?.message || "Something went wrong.",
             });
         }
     };
@@ -328,4 +328,3 @@ export default function CostCenterModal({
         </div>
     );
 }
-

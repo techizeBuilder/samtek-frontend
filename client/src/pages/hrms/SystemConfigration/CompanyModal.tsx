@@ -3,9 +3,10 @@
 import axios from "axios";
 import { useEffect, useState } from "react";
 import type { Company } from "./Company";
-import { toast } from "../../../hooks/use-toast";
+import { toast } from "../../Alert/Toast";
 
 const API_BASE = import.meta.env.VITE_API_URL;
+const IMAGE_BASE = API_BASE.replace("/api", "");
 
 interface Props {
   isOpen: boolean;
@@ -90,7 +91,7 @@ export default function CompanyModal({
         logo: company.logo || "",
       });
       if (company.logo) {
-        setLogoPreview(`${import.meta.env.VITE_API_URL}${company.logo}`);
+        setLogoPreview(`${IMAGE_BASE}${company.logo}`);
       } else {
         setLogoPreview("");
       }
@@ -156,9 +157,9 @@ export default function CompanyModal({
         });
 
         toast({
-          
+          type: "success",
           title: "Company Created",
-          description: "Company created successfully!",
+          message: "Company created successfully!",
         });
       }
 
@@ -171,18 +172,18 @@ export default function CompanyModal({
         });
 
         toast({
-          
+          type: "success",
           title: "Company Updated",
-          description: "Company updated successfully!",
+          message: "Company updated successfully!",
         });
       }
 
       onClose();
     } catch (error: any) {
       toast({
-        variant: "destructive",
+        type: "error",
         title: "Operation Failed",
-        description:
+        message:
           error?.response?.data?.message ||
           (mode === "add"
             ? "Unable to create the company. Please try again."
@@ -212,8 +213,8 @@ export default function CompanyModal({
             {mode === "add"
               ? "Add Company"
               : mode === "edit"
-              ? "Edit Company"
-              : "View Company"}
+                ? "Edit Company"
+                : "View Company"}
           </h2>
         </div>
 
@@ -237,9 +238,8 @@ export default function CompanyModal({
                   setFormData({ ...formData, [key]: e.target.value });
                   setErrors({ ...errors, [key]: "" });
                 }}
-                className={`mt-1 w-full border rounded px-3 py-2 ${
-                  errors[key] ? "border-red-500" : ""
-                }`}
+                className={`mt-1 w-full border rounded px-3 py-2 ${errors[key] ? "border-red-500" : ""
+                  }`}
               />
               {errors[key] && (
                 <p className="text-xs text-red-500 mt-1">{errors[key]}</p>
@@ -257,9 +257,8 @@ export default function CompanyModal({
                 setFormData({ ...formData, city: e.target.value });
                 setErrors({ ...errors, city: "" });
               }}
-              className={`mt-1 w-full border rounded px-3 py-2 ${
-                errors.city ? "border-red-500" : ""
-              }`}
+              className={`mt-1 w-full border rounded px-3 py-2 ${errors.city ? "border-red-500" : ""
+                }`}
             />
             {errors.city && (
               <p className="text-xs text-red-500 mt-1">{errors.city}</p>
@@ -277,9 +276,8 @@ export default function CompanyModal({
                 setFormData({ ...formData, state: e.target.value });
                 setErrors({ ...errors, state: "" });
               }}
-              className={`mt-1 w-full border rounded px-3 py-2 ${
-                errors.state ? "border-red-500" : ""
-              }`}
+              className={`mt-1 w-full border rounded px-3 py-2 ${errors.state ? "border-red-500" : ""
+                }`}
             />
             {errors.state && (
               <p className="text-xs text-red-500 mt-1">{errors.state}</p>
@@ -297,9 +295,8 @@ export default function CompanyModal({
                 setFormData({ ...formData, address: e.target.value });
                 setErrors({ ...errors, address: "" });
               }}
-              className={`mt-1 w-full border rounded px-3 py-2 ${
-                errors.address ? "border-red-500" : ""
-              }`}
+              className={`mt-1 w-full border rounded px-3 py-2 ${errors.address ? "border-red-500" : ""
+                }`}
               rows={3}
             />
             {errors.address && (
@@ -380,4 +377,3 @@ export default function CompanyModal({
     </div>
   );
 }
-

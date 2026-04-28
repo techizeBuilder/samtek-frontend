@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import axios from "axios";
 import { MoreVertical } from "lucide-react";
 import RoleModal from "./RoleModal";
-import Loader from "@/pages/hrms/Loader";
-import { toast } from "../../../hooks/use-toast";
+import Loader from "../../Loader";
+import { toast } from "../../Alert/Toast";
 
 const API_BASE = import.meta.env.VITE_API_URL;
 
@@ -53,9 +53,9 @@ export default function Role() {
     });
 
     toast({
-      
+      type: "success",
       title: "Role Deleted",
-      description: "Role deleted successfully.",
+      message: "Role deleted successfully.",
     });
 
     fetchRoles();
@@ -193,6 +193,3 @@ export default function Role() {
     </div>
   );
 }
-
-
-
