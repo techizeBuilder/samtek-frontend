@@ -64,7 +64,7 @@ async function testAllCustomerEndpoints() {
             const customerCompany = customer.companyId;
             companyCounts[customerCompany] = (companyCounts[customerCompany] || 0) + 1;
             
-            if (user.role !== 'Super Admin' && customerCompany !== userCompanyId) {
+            if (user.role !== 'Superadmin' && customerCompany !== userCompanyId) {
               validFiltering = false;
               console.log(`❌ SECURITY ISSUE: Customer "${customer.name}" belongs to different company: ${customerCompany}`);
             }

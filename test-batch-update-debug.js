@@ -86,7 +86,7 @@ async function main() {
   
   // Test Super Admin API  
   if (SUPER_ADMIN_TOKEN !== 'your_super_admin_token_here') {
-    await testBatchUpdate(SUPER_ADMIN_API, SUPER_ADMIN_TOKEN, 'Super Admin');
+    await testBatchUpdate(SUPER_ADMIN_API, SUPER_ADMIN_TOKEN, 'Superadmin');
   } else {
     console.log('⚠️ Please set SUPER_ADMIN_TOKEN');
   }

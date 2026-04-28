@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
-import { Factory, Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
 
 export default function Login() {
   const [, navigate] = useLocation();
@@ -77,11 +77,15 @@ export default function Login() {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <div className="mx-auto w-12 h-12 bg-primary rounded-lg flex items-center justify-center mb-4">
-            <Factory className="w-6 h-6 text-primary-foreground" />
+          <div className="mx-auto h-12 mb-2 flex items-center justify-center">
+            <img 
+              src="/logo Semtek.webp" 
+              alt="Samtek Logo" 
+              className="h-full object-contain"
+            />
           </div>
           <CardTitle className="text-2xl font-bold">
-            Welcome to ManuERP
+            Welcome to Samtek ERP
           </CardTitle>
           <p className="text-muted-foreground">
             Sign in to your manufacturing dashboard

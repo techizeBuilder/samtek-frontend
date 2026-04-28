@@ -36,7 +36,7 @@ const ProductSelector = React.memo(({
     if (!user) return '/api/items';
     
     switch (user.role) {
-      case 'Super Admin':
+      case 'Superadmin':
         return '/api/super-admin/inventory/items';
       case 'Unit Head':
         return '/api/unit-head/inventory/items';

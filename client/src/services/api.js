@@ -16,7 +16,8 @@ class APIService {
     try {
       const user = JSON.parse(userStr);
       switch (user.role) {
-        case 'Super Admin':
+        case 'Superadmin':
+        case 'Super Admin': // backend stores as 'Super Admin'
           return '/super-admin/inventory';
         case 'Unit Head':
           return '/unit-head/inventory';
@@ -266,7 +267,8 @@ class APIService {
       try {
         const user = JSON.parse(userStr);
         switch (user.role) {
-          case 'Super Admin':
+          case 'Superadmin':
+          case 'Super Admin': // backend stores as 'Super Admin'
             endpoint = '/super-admin/customers';
             break;
           case 'Unit Head':
@@ -471,7 +473,8 @@ class APIService {
     try {
       const user = JSON.parse(userStr);
       switch (user.role) {
-        case 'Super Admin':
+        case 'Superadmin':
+        case 'Super Admin': // backend stores as 'Super Admin'
           return '/super-admin/orders';
         case 'Unit Head':
           return '/unit-head/orders';
@@ -536,7 +539,7 @@ class APIService {
     try {
       const user = JSON.parse(userStr);
       switch (user.role) {
-        case 'Super Admin':
+        case 'Superadmin':
           return this.get('/api/super-admin/customers');
         case 'Unit Head':
           return this.get('/api/unit-head/customers');

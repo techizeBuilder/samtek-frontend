@@ -19,7 +19,7 @@ export function UnitManagerProtectedRoute({ children, requiredRole = null }) {
 
   // Check role restriction if specified - STRICT role checking
   // Exception: Super Admin can access all pages regardless of role restriction
-  if (requiredRole && user.role !== requiredRole && user.role !== 'Super Admin') {
+  if (requiredRole && user.role !== requiredRole && user.role !== 'Superadmin') {
     return (
       <UnitManagerLayout>
         <div className="flex items-center justify-center h-64">

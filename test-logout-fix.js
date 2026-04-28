@@ -11,7 +11,7 @@ function testLogoutFix() {
   localStorage.setItem('user', JSON.stringify({
     id: 1,
     username: 'testuser',
-    role: 'Super Admin',
+    role: 'Superadmin',
     permissions: { modules: [{ name: 'superAdmin' }] }
   }));
   localStorage.setItem('someOtherData', 'should-remain');

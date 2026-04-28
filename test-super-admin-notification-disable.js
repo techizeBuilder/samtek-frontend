@@ -95,7 +95,7 @@ const testSuperAdminNotificationDisable = async () => {
       body: JSON.stringify({
         title: 'Test Super Admin Notification',
         message: 'This should not be visible to Super Admin',
-        targetRole: 'Super Admin',
+        targetRole: 'Superadmin',
         type: 'general'
       })
     });

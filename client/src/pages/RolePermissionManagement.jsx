@@ -22,18 +22,18 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
-import { 
+import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { 
-  Shield, 
-  Users, 
-  Plus, 
-  Edit, 
+import {
+  Shield,
+  Users,
+  Plus,
+  Edit,
   Trash2,
   Eye,
   UserPlus,
@@ -47,7 +47,8 @@ import { showSuccessToast, showSmartToast } from '@/lib/toast-utils';
 
 // Role and Module Configuration
 const ROLES = [
-  { value: 'Super Admin', label: 'Super Admin' },
+  { value: 'Superadmin', label: 'Superadmin' },
+  { value: 'Hr Admin', label: 'Hr Admin' },
   { value: 'Unit Head', label: 'Unit Head' },
   { value: 'Unit Manager', label: 'Unit Manager' },
   { value: 'Production', label: 'Production' },
@@ -67,7 +68,7 @@ const UNITS = [
 const MODULES = [
   {
     name: 'superAdmin',
-    label: 'Super Admin',
+    label: 'Superadmin',
     features: [
       { key: 'dashboard', label: 'Dashboard' },
       { key: 'orders', label: 'Orders' },
@@ -233,7 +234,7 @@ export default function RolePermissionManagement() {
   });
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  
+
   // Pagination and filtering state
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -241,7 +242,7 @@ export default function RolePermissionManagement() {
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
-  
+
   const [formData, setFormData] = useState({
     username: '',
     email: '',
@@ -380,7 +381,7 @@ export default function RolePermissionManagement() {
     };
     setFormData(newFormData);
     setSelectedUser(null);
-  };  const handleCreateUser = () => {
+  }; const handleCreateUser = () => {
     // Validate required fields
     if (!formData.username || !formData.email || !formData.password || !formData.role) {
       showSmartToast({ message: 'Username, email, password, and role are required' }, 'Validation Error');
@@ -412,14 +413,14 @@ export default function RolePermissionManagement() {
       return;
     }
 
-    const updateData = { 
+    const updateData = {
       ...formData,
       companyId: formData.companyId || null // Include company assignment (optional)
     };
     if (!updateData.password) {
       delete updateData.password;
     }
-    
+
     updateUserMutation.mutate({ id: selectedUser._id, ...updateData });
   };
 
@@ -463,7 +464,7 @@ export default function RolePermissionManagement() {
   // Handle password form submission
   const handlePasswordSubmit = (e) => {
     e.preventDefault();
-    
+
     if (!passwordForm.newPassword || !passwordForm.confirmPassword) {
       showValidationToast([
         { path: ['newPassword'], message: 'New password is required' },
@@ -471,24 +472,24 @@ export default function RolePermissionManagement() {
       ], 'Password Update');
       return;
     }
-    
+
     if (passwordForm.newPassword !== passwordForm.confirmPassword) {
       showValidationToast([
         { path: ['confirmPassword'], message: 'Passwords do not match' }
       ], 'Password Update');
       return;
     }
-    
+
     if (passwordForm.newPassword.length < 6) {
       showValidationToast([
         { path: ['newPassword'], message: 'Password must be at least 6 characters long' }
       ], 'Password Update');
       return;
     }
-    
-    updatePasswordMutation.mutate({ 
-      userId: selectedUser._id, 
-      newPassword: passwordForm.newPassword 
+
+    updatePasswordMutation.mutate({
+      userId: selectedUser._id,
+      newPassword: passwordForm.newPassword
     });
   };
 
@@ -511,10 +512,10 @@ export default function RolePermissionManagement() {
     const rolePermissions = {
       role: role.toLowerCase().replace(' ', '_'),
       unit: formData.unit,
-      canAccessAllUnits: role === 'Super Admin',
+      canAccessAllUnits: role === 'Superadmin',
       modules: getDefaultModulesForRole(role)
     };
-    
+
     setFormData(prevData => ({
       ...prevData,
       role: role,
@@ -526,7 +527,7 @@ export default function RolePermissionManagement() {
   const getModuleFeatures = (moduleName) => {
     const permissionModule = formData.permissions?.modules?.find(m => m.name === moduleName);
     const moduleConfig = MODULES.find(m => m.name === moduleName);
-    
+
     if (permissionModule && permissionModule.features && permissionModule.features.length > 0) {
       // Enrich permission features with labels from MODULES configuration
       return permissionModule.features.map(permFeature => {
@@ -537,7 +538,7 @@ export default function RolePermissionManagement() {
         };
       });
     }
-    
+
     // Fallback to MODULES if no permission data
     return moduleConfig?.features || [];
   };
@@ -562,7 +563,7 @@ export default function RolePermissionManagement() {
 
     // Return default modules based on role
     switch (role) {
-      case 'Super Admin':
+      case 'Superadmin':
         return [
           {
             name: 'superAdmin',
@@ -696,9 +697,9 @@ export default function RolePermissionManagement() {
           delete: true
         })) || []
       };
-      
+
       const updatedModules = [...formData.permissions.modules.filter(m => m.name !== moduleName), newModule];
-      
+
       setFormData({
         ...formData,
         permissions: {
@@ -709,7 +710,7 @@ export default function RolePermissionManagement() {
     } else {
       // When disabling a module, remove it completely
       const updatedModules = formData.permissions.modules.filter(m => m.name !== moduleName);
-      
+
       setFormData({
         ...formData,
         permissions: {
@@ -759,17 +760,17 @@ export default function RolePermissionManagement() {
     if (checked) {
       // Enable all modules with full permissions
       const allModulesWithFullPermissions = MODULES.map(module => ({
-          name: module.name,
-          dashboard: true,
-          features: module.features.map(feature => ({
-            key: feature.key,
-            view: true,
-            add: true,
-            edit: true,
-            delete: true
-          }))
-        }));
-      
+        name: module.name,
+        dashboard: true,
+        features: module.features.map(feature => ({
+          key: feature.key,
+          view: true,
+          add: true,
+          edit: true,
+          delete: true
+        }))
+      }));
+
       setFormData({
         ...formData,
         permissions: {
@@ -794,16 +795,16 @@ export default function RolePermissionManagement() {
   const giveAllPermissions = () => {
     // Enable all modules with all permissions
     const allModulesWithFullPermissions = MODULES.map(module => ({
-        name: module.name,
-        dashboard: true,
-        features: module.features.map(feature => ({
-          key: feature.key,
-          view: true,
-          add: true,
-          edit: true,
-          delete: true
-        }))
-      }));
+      name: module.name,
+      dashboard: true,
+      features: module.features.map(feature => ({
+        key: feature.key,
+        view: true,
+        add: true,
+        edit: true,
+        delete: true
+      }))
+    }));
 
     setFormData({
       ...formData,
@@ -817,7 +818,7 @@ export default function RolePermissionManagement() {
 
   const getRoleBadgeVariant = (role) => {
     switch (role) {
-      case 'Super Admin': return 'default';
+      case 'Superadmin': return 'default';
       case 'Unit Head': return 'secondary';
       case 'Production': return 'outline';
       case 'Sales': return 'destructive';
@@ -856,7 +857,7 @@ export default function RolePermissionManagement() {
                 Configure user details and module-level permissions
               </DialogDescription>
             </DialogHeader>
-            
+
             <div className="space-y-6">
               {/* Basic Information */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -865,7 +866,7 @@ export default function RolePermissionManagement() {
                   <Input
                     id="username"
                     value={formData.username}
-                    onChange={(e) => setFormData({...formData, username: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, username: e.target.value })}
                     placeholder="test"
                   />
                 </div>
@@ -875,7 +876,7 @@ export default function RolePermissionManagement() {
                     id="email"
                     type="email"
                     value={formData.email}
-                    onChange={(e) => setFormData({...formData, email: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     placeholder="test@gmail.com"
                   />
                 </div>
@@ -884,7 +885,7 @@ export default function RolePermissionManagement() {
                   <Input
                     id="fullName"
                     value={formData.fullName}
-                    onChange={(e) => setFormData({...formData, fullName: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
                     placeholder="test"
                   />
                 </div>
@@ -899,15 +900,15 @@ export default function RolePermissionManagement() {
                     id="password"
                     type="password"
                     value={formData.password}
-                    onChange={(e) => setFormData({...formData, password: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                   />
                 </div>
                 <div>
                   <Label htmlFor="role">Role *</Label>
-                  <Select 
-                    value={formData.role} 
+                  <Select
+                    value={formData.role}
                     onValueChange={(value) => {
-                      setFormData({...formData, role: value});
+                      setFormData({ ...formData, role: value });
                       setRoleDefaultPermissions(value);
                     }}
                   >
@@ -931,13 +932,13 @@ export default function RolePermissionManagement() {
                 <p className="text-xs text-muted-foreground mb-2">
                   Select a company/location for users who need access to specific units
                 </p>
-                <select 
-                  value={formData.companyId || 'none'} 
+                <select
+                  value={formData.companyId || 'none'}
                   onChange={(e) => {
                     console.log('Select value changed:', e.target.value);
                     const newCompanyId = e.target.value === 'none' ? '' : e.target.value;
                     console.log('Setting companyId to:', newCompanyId);
-                    setFormData({...formData, companyId: newCompanyId});
+                    setFormData({ ...formData, companyId: newCompanyId });
                   }}
                   className="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
@@ -950,7 +951,7 @@ export default function RolePermissionManagement() {
                 </select>
               </div>
 
-           
+
 
               {/* Module Permissions */}
               <div>
@@ -972,93 +973,75 @@ export default function RolePermissionManagement() {
                     .filter(module => {
                       // Show Settings module only for Super Admin users
                       if (module.name === 'settings') {
-                        return formData.role === 'Super Admin';
+                        return formData.role === 'Superadmin';
                       }
                       return true;
                     })
                     .map((module) => {
-                    const moduleEnabled = isModuleEnabled(module.name);
-                    return (
-                      <Card key={module.name} className={moduleEnabled ? 'border-blue-200' : 'border-gray-200'}>
-                        <CardHeader className="pb-3">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center space-x-2">
-                              <Switch
-                                checked={moduleEnabled}
-                                onCheckedChange={(checked) => updateModulePermission(module.name, checked)}
-                              />
-                              <Label className="text-base font-medium capitalize">{module.label}</Label>
+                      const moduleEnabled = isModuleEnabled(module.name);
+                      return (
+                        <Card key={module.name} className={moduleEnabled ? 'border-blue-200' : 'border-gray-200'}>
+                          <CardHeader className="pb-3">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center space-x-2">
+                                <Switch
+                                  checked={moduleEnabled}
+                                  onCheckedChange={(checked) => updateModulePermission(module.name, checked)}
+                                />
+                                <Label className="text-base font-medium capitalize">{module.label}</Label>
+                              </div>
                             </div>
-                          </div>
-                        </CardHeader>
-                        
-                        {moduleEnabled && (
-                          <CardContent className="pt-0">
-                            <div className="space-y-3">
-                              {getModuleFeatures(module.name).length > 0 && (
-                                <>
-                                  <div className="hidden lg:grid grid-cols-5 gap-4 text-sm font-medium text-center border-b pb-2">
-                                    <div>Feature</div>
-                                    <div className="flex flex-col items-center">
-                                      <Eye className="h-4 w-4 mb-1" />
-                                      <span>View</span>
-                                    </div>
-                                    <div className="flex flex-col items-center">
-                                      <Plus className="h-4 w-4 mb-1" />
-                                      <span>Add</span>
-                                    </div>
-                                    <div className="flex flex-col items-center">
-                                      <Edit className="h-4 w-4 mb-1" />
-                                      <span>Edit</span>
-                                    </div>
-                                    <div className="flex flex-col items-center">
-                                      <Trash2 className="h-4 w-4 mb-1" />
-                                      <span>Delete</span>
-                                    </div>
-                                  </div>
-                                  
-                                  {/* Mobile Header */}
-                                  <div className="lg:hidden text-sm font-medium text-center border-b pb-2">
-                                    Module Permissions
-                                  </div>
-                                </>
-                              )}
-                              
-                              {getModuleFeatures(module.name).length === 0 && (
-                                <div className="text-center py-4 text-gray-500">
-                                  <p className="text-sm">Dashboard access only</p>
-                                  <p className="text-xs text-gray-400">No additional features configured</p>
-                                </div>
-                              )}
-                              
-                              {getModuleFeatures(module.name).map((feature) => (
-                                <div key={feature.key}>
-                                  {/* Desktop Layout */}
-                                  <div className="hidden lg:grid grid-cols-5 gap-4 items-center py-2">
-                                    <div className="text-sm font-medium">{feature.label}</div>
-                                    {PERMISSION_ACTIONS.map((action) => (
-                                      <div key={action} className="flex justify-center">
-                                        <Switch
-                                          checked={getFeaturePermission(module.name, feature.key, action)}
-                                          onCheckedChange={(checked) => 
-                                            updateFeaturePermission(module.name, feature.key, action, checked)
-                                          }
-                                          size="sm"
-                                        />
+                          </CardHeader>
+
+                          {moduleEnabled && (
+                            <CardContent className="pt-0">
+                              <div className="space-y-3">
+                                {getModuleFeatures(module.name).length > 0 && (
+                                  <>
+                                    <div className="hidden lg:grid grid-cols-5 gap-4 text-sm font-medium text-center border-b pb-2">
+                                      <div>Feature</div>
+                                      <div className="flex flex-col items-center">
+                                        <Eye className="h-4 w-4 mb-1" />
+                                        <span>View</span>
                                       </div>
-                                    ))}
+                                      <div className="flex flex-col items-center">
+                                        <Plus className="h-4 w-4 mb-1" />
+                                        <span>Add</span>
+                                      </div>
+                                      <div className="flex flex-col items-center">
+                                        <Edit className="h-4 w-4 mb-1" />
+                                        <span>Edit</span>
+                                      </div>
+                                      <div className="flex flex-col items-center">
+                                        <Trash2 className="h-4 w-4 mb-1" />
+                                        <span>Delete</span>
+                                      </div>
+                                    </div>
+
+                                    {/* Mobile Header */}
+                                    <div className="lg:hidden text-sm font-medium text-center border-b pb-2">
+                                      Module Permissions
+                                    </div>
+                                  </>
+                                )}
+
+                                {getModuleFeatures(module.name).length === 0 && (
+                                  <div className="text-center py-4 text-gray-500">
+                                    <p className="text-sm">Dashboard access only</p>
+                                    <p className="text-xs text-gray-400">No additional features configured</p>
                                   </div>
-                                  
-                                  {/* Mobile Layout */}
-                                  <div className="lg:hidden border border-gray-200 rounded-lg p-3 mb-3">
-                                    <div className="font-medium text-sm mb-2">{feature.label}</div>
-                                    <div className="grid grid-cols-2 gap-3">
+                                )}
+
+                                {getModuleFeatures(module.name).map((feature) => (
+                                  <div key={feature.key}>
+                                    {/* Desktop Layout */}
+                                    <div className="hidden lg:grid grid-cols-5 gap-4 items-center py-2">
+                                      <div className="text-sm font-medium">{feature.label}</div>
                                       {PERMISSION_ACTIONS.map((action) => (
-                                        <div key={action} className="flex items-center justify-between">
-                                          <span className="text-sm capitalize">{action}</span>
+                                        <div key={action} className="flex justify-center">
                                           <Switch
                                             checked={getFeaturePermission(module.name, feature.key, action)}
-                                            onCheckedChange={(checked) => 
+                                            onCheckedChange={(checked) =>
                                               updateFeaturePermission(module.name, feature.key, action, checked)
                                             }
                                             size="sm"
@@ -1066,15 +1049,33 @@ export default function RolePermissionManagement() {
                                         </div>
                                       ))}
                                     </div>
+
+                                    {/* Mobile Layout */}
+                                    <div className="lg:hidden border border-gray-200 rounded-lg p-3 mb-3">
+                                      <div className="font-medium text-sm mb-2">{feature.label}</div>
+                                      <div className="grid grid-cols-2 gap-3">
+                                        {PERMISSION_ACTIONS.map((action) => (
+                                          <div key={action} className="flex items-center justify-between">
+                                            <span className="text-sm capitalize">{action}</span>
+                                            <Switch
+                                              checked={getFeaturePermission(module.name, feature.key, action)}
+                                              onCheckedChange={(checked) =>
+                                                updateFeaturePermission(module.name, feature.key, action, checked)
+                                              }
+                                              size="sm"
+                                            />
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
                                   </div>
-                                </div>
-                              ))}
-                            </div>
-                          </CardContent>
-                        )}
-                      </Card>
-                    );
-                  })}
+                                ))}
+                              </div>
+                            </CardContent>
+                          )}
+                        </Card>
+                      );
+                    })}
                 </div>
               </div>
 
@@ -1082,15 +1083,15 @@ export default function RolePermissionManagement() {
                 <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)} className="w-full sm:w-auto">
                   Cancel
                 </Button>
-                <Button 
-                  onClick={handleCreateUser} 
+                <Button
+                  onClick={handleCreateUser}
                   disabled={createUserMutation.isPending || !formData.username || !formData.email || !formData.password || !formData.role}
                   className="w-full sm:w-auto"
                 >
                   {createUserMutation.isPending ? 'Creating...' : 'Create User'}
                 </Button>
               </div>
-              
+
 
             </div>
           </DialogContent>
@@ -1260,199 +1261,199 @@ export default function RolePermissionManagement() {
             <>
               {/* Desktop Table */}
               <div className="hidden sm:block overflow-x-auto">
-            <table className="w-full min-w-[800px]">
-              <thead>
-                <tr className="border-b">
-                  <th className="text-left py-3 px-2 sm:px-4 font-medium text-xs sm:text-sm min-w-[180px]">User</th>
-                  <th className="text-left py-3 px-2 sm:px-4 font-medium text-xs sm:text-sm min-w-[100px]">Role</th>
-                  <th className="text-left py-3 px-2 sm:px-4 font-medium text-xs sm:text-sm min-w-[150px]">Company/Location</th>
-                  <th className="text-left py-3 px-2 sm:px-4 font-medium text-xs sm:text-sm min-w-[80px]">Status</th>
-                  <th className="text-left py-3 px-2 sm:px-4 font-medium text-xs sm:text-sm min-w-[200px]">Module Permissions</th>
-                  <th className="text-center py-3 px-2 sm:px-4 font-medium text-xs sm:text-sm min-w-[120px]">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {users.map((user) => (
-                  <tr key={user._id} className="border-b hover:bg-gray-50:bg-gray-800/50">
-                    <td className="py-3 sm:py-4 px-2 sm:px-4">
-                      <div className="flex flex-col">
-                        <div className="font-medium text-xs sm:text-sm break-words">
-                          <span className="text-gray-500 text-xs mr-1">@</span>{user.username}
-                        </div>
-                        {user.fullName && user.fullName.trim() && !user.fullName.includes('No full name') && (
-                          <div className="text-xs text-gray-600 break-words">
-                            <span className="text-gray-400 mr-1">Name:</span>{user.fullName}
-                          </div>
-                        )}
-                        <div className="text-xs text-muted-foreground break-words">{user.email}</div>
-                      </div>
-                    </td>
-                    <td className="py-3 sm:py-4 px-2 sm:px-4">
-                      <Badge variant={getRoleBadgeVariant(user.role)} className="text-xs">
-                        {user.role}
-                      </Badge>
-                    </td>
-                    <td className="py-3 sm:py-4 px-2 sm:px-4">
-                      <div className="text-xs break-words">
-                        {user.companyId ? (
+                <table className="w-full min-w-[800px]">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="text-left py-3 px-2 sm:px-4 font-medium text-xs sm:text-sm min-w-[180px]">User</th>
+                      <th className="text-left py-3 px-2 sm:px-4 font-medium text-xs sm:text-sm min-w-[100px]">Role</th>
+                      <th className="text-left py-3 px-2 sm:px-4 font-medium text-xs sm:text-sm min-w-[150px]">Company/Location</th>
+                      <th className="text-left py-3 px-2 sm:px-4 font-medium text-xs sm:text-sm min-w-[80px]">Status</th>
+                      <th className="text-left py-3 px-2 sm:px-4 font-medium text-xs sm:text-sm min-w-[200px]">Module Permissions</th>
+                      <th className="text-center py-3 px-2 sm:px-4 font-medium text-xs sm:text-sm min-w-[120px]">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {users.map((user) => (
+                      <tr key={user._id} className="border-b hover:bg-gray-50:bg-gray-800/50">
+                        <td className="py-3 sm:py-4 px-2 sm:px-4">
                           <div className="flex flex-col">
-                            <span className="font-medium break-words">{user.companyId.name || user.companyId.unitName}</span>
-                            <span className="text-muted-foreground break-words">{user.companyId.city}, {user.companyId.state}</span>
+                            <div className="font-medium text-xs sm:text-sm break-words">
+                              <span className="text-gray-500 text-xs mr-1">@</span>{user.username}
+                            </div>
+                            {user.fullName && user.fullName.trim() && !user.fullName.includes('No full name') && (
+                              <div className="text-xs text-gray-600 break-words">
+                                <span className="text-gray-400 mr-1">Name:</span>{user.fullName}
+                              </div>
+                            )}
+                            <div className="text-xs text-muted-foreground break-words">{user.email}</div>
                           </div>
-                        ) : (
-                          <span className="text-muted-foreground italic">No specific location</span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="py-3 sm:py-4 px-2 sm:px-4">
-                      <Badge variant={user.isActive ? "default" : "secondary"} className="text-xs">
-                        {user.isActive ? 'Active' : 'Inactive'}
-                      </Badge>
-                    </td>
-                    <td className="py-3 sm:py-4 px-2 sm:px-4">
-                      <div className="flex flex-wrap gap-1 max-w-[150px] sm:max-w-[200px]">
-                        {user.permissions && user.permissions.modules ? (
-                          user.permissions.modules.slice(0, 2).map((module) => (
-                            <Badge key={module.name} variant="outline" className="text-xs">
-                              {module.name}
-                            </Badge>
-                          ))
-                        ) : (
-                          <span className="text-xs text-gray-500">Role-based permissions</span>
-                        )}
-                        {user.permissions?.modules?.length > 2 && (
-                          <Badge variant="outline" className="text-xs">
-                            +{user.permissions.modules.length - 2} more
+                        </td>
+                        <td className="py-3 sm:py-4 px-2 sm:px-4">
+                          <Badge variant={getRoleBadgeVariant(user.role)} className="text-xs">
+                            {user.role}
                           </Badge>
-                        )}
-                      </div>
-                    </td>
-                    <td className="py-3 sm:py-4 px-1 sm:px-4">
-                      <div className="flex items-center justify-center gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handlePasswordUpdate(user)}
-                          className="h-7 w-7 sm:h-8 sm:w-8 p-0 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                          title="Update Password"
-                        >
-                          <Lock className="h-3 w-3 sm:h-4 sm:w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleEditUser(user)}
-                          className="h-7 w-7 sm:h-8 sm:w-8 p-0 text-gray-600 hover:text-gray-700 hover:bg-gray-50"
-                          title="Edit User"
-                        >
-                          <Edit className="h-3 w-3 sm:h-4 sm:w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDeleteUser(user)}
-                          className="h-7 w-7 sm:h-8 sm:w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
-                          title="Delete User"
-                        >
-                          <Trash2 className="h-3 w-3 sm:h-4 sm:w-4" />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Mobile Cards */}
-          <div className="sm:hidden space-y-3">
-            {users.map((user) => (
-              <div key={user._id} className="border border-gray-200 rounded-lg p-3 bg-white">
-                <div className="space-y-3">
-                  {/* User Info */}
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1 min-w-0 pr-2">
-                      <div className="font-medium text-sm text-gray-900 break-words">
-                        <span className="text-gray-500 text-xs mr-1">@</span>{user.username}
-                      </div>
-                      {user.fullName && user.fullName.trim() && !user.fullName.includes('No full name') && (
-                        <div className="text-xs text-gray-600 break-words mt-1">
-                          <span className="text-gray-400 mr-1">Name:</span>{user.fullName}
-                        </div>
-                      )}
-                      <div className="text-xs text-gray-500 break-words mt-1">
-                        {user.email}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1 ml-2 flex-shrink-0">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handlePasswordUpdate(user)}
-                        className="h-7 w-7 p-0 text-blue-600 hover:bg-blue-50:bg-blue-900/20"
-                        title="Update Password"
-                      >
-                        <Lock className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleEditUser(user)}
-                        className="h-7 w-7 p-0 text-gray-600 hover:bg-gray-50:bg-gray-700"
-                        title="Edit User"
-                      >
-                        <Edit className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDeleteUser(user)}
-                        className="h-7 w-7 p-0 text-red-600 hover:bg-red-50:bg-red-900/20"
-                        title="Delete User"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  </div>
-                  
-                  {/* Role and Status */}
-                  <div className="flex gap-1 sm:gap-2 flex-wrap">
-                    <Badge variant={getRoleBadgeVariant(user.role)} className="text-xs">
-                      {user.role}
-                    </Badge>
-                    <Badge variant={user.isActive ? "default" : "secondary"} className="text-xs">
-                      {user.isActive ? 'Active' : 'Inactive'}
-                    </Badge>
-                  </div>
-                  
-                  {/* Module Permissions */}
-                  <div>
-                    <div className="text-xs font-medium text-gray-700 mb-2">
-                      Module Permissions
-                    </div>
-                    <div className="flex flex-wrap gap-1">
-                      {user.permissions && user.permissions.modules ? (
-                        user.permissions.modules.slice(0, 4).map((module) => (
-                          <Badge key={module.name} variant="outline" className="text-xs">
-                            {module.name}
+                        </td>
+                        <td className="py-3 sm:py-4 px-2 sm:px-4">
+                          <div className="text-xs break-words">
+                            {user.companyId ? (
+                              <div className="flex flex-col">
+                                <span className="font-medium break-words">{user.companyId.name || user.companyId.unitName}</span>
+                                <span className="text-muted-foreground break-words">{user.companyId.city}, {user.companyId.state}</span>
+                              </div>
+                            ) : (
+                              <span className="text-muted-foreground italic">No specific location</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-3 sm:py-4 px-2 sm:px-4">
+                          <Badge variant={user.isActive ? "default" : "secondary"} className="text-xs">
+                            {user.isActive ? 'Active' : 'Inactive'}
                           </Badge>
-                        ))
-                      ) : (
-                        <span className="text-xs text-gray-500">
-                          Role-based permissions
-                        </span>
-                      )}
-                      {user.permissions?.modules?.length > 4 && (
-                        <Badge variant="outline" className="text-xs">
-                          +{user.permissions.modules.length - 4} more
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                </div>
+                        </td>
+                        <td className="py-3 sm:py-4 px-2 sm:px-4">
+                          <div className="flex flex-wrap gap-1 max-w-[150px] sm:max-w-[200px]">
+                            {user.permissions && user.permissions.modules ? (
+                              user.permissions.modules.slice(0, 2).map((module) => (
+                                <Badge key={module.name} variant="outline" className="text-xs">
+                                  {module.name}
+                                </Badge>
+                              ))
+                            ) : (
+                              <span className="text-xs text-gray-500">Role-based permissions</span>
+                            )}
+                            {user.permissions?.modules?.length > 2 && (
+                              <Badge variant="outline" className="text-xs">
+                                +{user.permissions.modules.length - 2} more
+                              </Badge>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-3 sm:py-4 px-1 sm:px-4">
+                          <div className="flex items-center justify-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handlePasswordUpdate(user)}
+                              className="h-7 w-7 sm:h-8 sm:w-8 p-0 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                              title="Update Password"
+                            >
+                              <Lock className="h-3 w-3 sm:h-4 sm:w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleEditUser(user)}
+                              className="h-7 w-7 sm:h-8 sm:w-8 p-0 text-gray-600 hover:text-gray-700 hover:bg-gray-50"
+                              title="Edit User"
+                            >
+                              <Edit className="h-3 w-3 sm:h-4 sm:w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDeleteUser(user)}
+                              className="h-7 w-7 sm:h-8 sm:w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                              title="Delete User"
+                            >
+                              <Trash2 className="h-3 w-3 sm:h-4 sm:w-4" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-            ))}
-          </div>
+
+              {/* Mobile Cards */}
+              <div className="sm:hidden space-y-3">
+                {users.map((user) => (
+                  <div key={user._id} className="border border-gray-200 rounded-lg p-3 bg-white">
+                    <div className="space-y-3">
+                      {/* User Info */}
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1 min-w-0 pr-2">
+                          <div className="font-medium text-sm text-gray-900 break-words">
+                            <span className="text-gray-500 text-xs mr-1">@</span>{user.username}
+                          </div>
+                          {user.fullName && user.fullName.trim() && !user.fullName.includes('No full name') && (
+                            <div className="text-xs text-gray-600 break-words mt-1">
+                              <span className="text-gray-400 mr-1">Name:</span>{user.fullName}
+                            </div>
+                          )}
+                          <div className="text-xs text-gray-500 break-words mt-1">
+                            {user.email}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 ml-2 flex-shrink-0">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handlePasswordUpdate(user)}
+                            className="h-7 w-7 p-0 text-blue-600 hover:bg-blue-50:bg-blue-900/20"
+                            title="Update Password"
+                          >
+                            <Lock className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleEditUser(user)}
+                            className="h-7 w-7 p-0 text-gray-600 hover:bg-gray-50:bg-gray-700"
+                            title="Edit User"
+                          >
+                            <Edit className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDeleteUser(user)}
+                            className="h-7 w-7 p-0 text-red-600 hover:bg-red-50:bg-red-900/20"
+                            title="Delete User"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+
+                      {/* Role and Status */}
+                      <div className="flex gap-1 sm:gap-2 flex-wrap">
+                        <Badge variant={getRoleBadgeVariant(user.role)} className="text-xs">
+                          {user.role}
+                        </Badge>
+                        <Badge variant={user.isActive ? "default" : "secondary"} className="text-xs">
+                          {user.isActive ? 'Active' : 'Inactive'}
+                        </Badge>
+                      </div>
+
+                      {/* Module Permissions */}
+                      <div>
+                        <div className="text-xs font-medium text-gray-700 mb-2">
+                          Module Permissions
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {user.permissions && user.permissions.modules ? (
+                            user.permissions.modules.slice(0, 4).map((module) => (
+                              <Badge key={module.name} variant="outline" className="text-xs">
+                                {module.name}
+                              </Badge>
+                            ))
+                          ) : (
+                            <span className="text-xs text-gray-500">
+                              Role-based permissions
+                            </span>
+                          )}
+                          {user.permissions?.modules?.length > 4 && (
+                            <Badge variant="outline" className="text-xs">
+                              +{user.permissions.modules.length - 4} more
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </>
           )}
         </CardContent>
@@ -1485,7 +1486,7 @@ export default function RolePermissionManagement() {
                 } else {
                   pageNum = currentPage - 2 + i;
                 }
-                
+
                 return (
                   <Button
                     key={pageNum}
@@ -1523,7 +1524,7 @@ export default function RolePermissionManagement() {
               Update user details and module-level permissions
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="space-y-6">
             {/* Basic Information */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -1532,7 +1533,7 @@ export default function RolePermissionManagement() {
                 <Input
                   id="edit-username"
                   value={formData.username}
-                  onChange={(e) => setFormData({...formData, username: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, username: e.target.value })}
                 />
               </div>
               <div>
@@ -1541,7 +1542,7 @@ export default function RolePermissionManagement() {
                   id="edit-email"
                   type="email"
                   value={formData.email}
-                  onChange={(e) => setFormData({...formData, email: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                 />
               </div>
               <div>
@@ -1549,7 +1550,7 @@ export default function RolePermissionManagement() {
                 <Input
                   id="edit-fullName"
                   value={formData.fullName}
-                  onChange={(e) => setFormData({...formData, fullName: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
                 />
               </div>
             </div>
@@ -1561,13 +1562,13 @@ export default function RolePermissionManagement() {
                   id="edit-password"
                   type="password"
                   value={formData.password}
-                  onChange={(e) => setFormData({...formData, password: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                 />
               </div>
               <div>
                 <Label htmlFor="edit-role">Role</Label>
                 <Select value={formData.role} onValueChange={(value) => {
-                  setFormData({...formData, role: value});
+                  setFormData({ ...formData, role: value });
                 }}>
                   <SelectTrigger>
                     <SelectValue />
@@ -1589,13 +1590,13 @@ export default function RolePermissionManagement() {
               <p className="text-xs text-muted-foreground mb-2">
                 Select a company/location for users who need access to specific units
               </p>
-              <select 
-                value={formData.companyId || 'none'} 
+              <select
+                value={formData.companyId || 'none'}
                 onChange={(e) => {
                   console.log('Edit Select value changed:', e.target.value);
                   const newCompanyId = e.target.value === 'none' ? '' : e.target.value;
                   console.log('Setting edit companyId to:', newCompanyId);
-                  setFormData({...formData, companyId: newCompanyId});
+                  setFormData({ ...formData, companyId: newCompanyId });
                 }}
                 className="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
@@ -1613,7 +1614,7 @@ export default function RolePermissionManagement() {
                 <Switch
                   id="edit-active"
                   checked={formData.isActive}
-                  onCheckedChange={(checked) => setFormData({...formData, isActive: checked})}
+                  onCheckedChange={(checked) => setFormData({ ...formData, isActive: checked })}
                 />
                 <Label htmlFor="edit-active">Active</Label>
               </div>
@@ -1639,82 +1640,64 @@ export default function RolePermissionManagement() {
                   .filter(module => {
                     // Show Settings module only for Super Admin users
                     if (module.name === 'settings') {
-                      return formData.role === 'Super Admin';
+                      return formData.role === 'Superadmin';
                     }
                     return true;
                   })
                   .map((module) => {
-                  const moduleEnabled = isModuleEnabled(module.name);
-                  return (
-                    <Card key={module.name} className={moduleEnabled ? 'border-blue-200' : 'border-gray-200'}>
-                      <CardHeader className="pb-3">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center space-x-2">
-                            <Switch
-                              checked={moduleEnabled}
-                              onCheckedChange={(checked) => updateModulePermission(module.name, checked)}
-                            />
-                            <Label className="text-base font-medium capitalize">{module.label}</Label>
+                    const moduleEnabled = isModuleEnabled(module.name);
+                    return (
+                      <Card key={module.name} className={moduleEnabled ? 'border-blue-200' : 'border-gray-200'}>
+                        <CardHeader className="pb-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-2">
+                              <Switch
+                                checked={moduleEnabled}
+                                onCheckedChange={(checked) => updateModulePermission(module.name, checked)}
+                              />
+                              <Label className="text-base font-medium capitalize">{module.label}</Label>
+                            </div>
                           </div>
-                        </div>
-                      </CardHeader>
-                      
-                      {moduleEnabled && (
-                        <CardContent className="pt-0">
-                          <div className="space-y-3">
-                            <div className="hidden lg:grid grid-cols-5 gap-4 text-sm font-medium text-center border-b pb-2">
-                              <div>Feature</div>
-                              <div className="flex flex-col items-center">
-                                <Eye className="h-4 w-4 mb-1" />
-                                <span>View</span>
-                              </div>
-                              <div className="flex flex-col items-center">
-                                <Plus className="h-4 w-4 mb-1" />
-                                <span>Add</span>
-                              </div>
-                              <div className="flex flex-col items-center">
-                                <Edit className="h-4 w-4 mb-1" />
-                                <span>Edit</span>
-                              </div>
-                              <div className="flex flex-col items-center">
-                                <Trash2 className="h-4 w-4 mb-1" />
-                                <span>Delete</span>
-                              </div>
-                            </div>
-                            
-                            {/* Mobile Header */}
-                            <div className="lg:hidden text-sm font-medium text-center border-b pb-2">
-                              Module Permissions
-                            </div>
-                            
-                            {module.features.map((feature) => (
-                              <div key={feature.key}>
-                                {/* Desktop Layout */}
-                                <div className="hidden lg:grid grid-cols-5 gap-4 items-center py-2">
-                                  <div className="text-sm font-medium">{feature.label}</div>
-                                  {PERMISSION_ACTIONS.map((action) => (
-                                    <div key={action} className="flex justify-center">
-                                      <Switch
-                                        checked={getFeaturePermission(module.name, feature.key, action)}
-                                        onCheckedChange={(checked) => 
-                                          updateFeaturePermission(module.name, feature.key, action, checked)
-                                        }
-                                        size="sm"
-                                      />
-                                    </div>
-                                  ))}
+                        </CardHeader>
+
+                        {moduleEnabled && (
+                          <CardContent className="pt-0">
+                            <div className="space-y-3">
+                              <div className="hidden lg:grid grid-cols-5 gap-4 text-sm font-medium text-center border-b pb-2">
+                                <div>Feature</div>
+                                <div className="flex flex-col items-center">
+                                  <Eye className="h-4 w-4 mb-1" />
+                                  <span>View</span>
                                 </div>
-                                
-                                {/* Mobile Layout */}
-                                <div className="lg:hidden border border-gray-200 rounded-lg p-3 mb-3">
-                                  <div className="font-medium text-sm mb-2">{feature.label}</div>
-                                  <div className="grid grid-cols-2 gap-3">
+                                <div className="flex flex-col items-center">
+                                  <Plus className="h-4 w-4 mb-1" />
+                                  <span>Add</span>
+                                </div>
+                                <div className="flex flex-col items-center">
+                                  <Edit className="h-4 w-4 mb-1" />
+                                  <span>Edit</span>
+                                </div>
+                                <div className="flex flex-col items-center">
+                                  <Trash2 className="h-4 w-4 mb-1" />
+                                  <span>Delete</span>
+                                </div>
+                              </div>
+
+                              {/* Mobile Header */}
+                              <div className="lg:hidden text-sm font-medium text-center border-b pb-2">
+                                Module Permissions
+                              </div>
+
+                              {module.features.map((feature) => (
+                                <div key={feature.key}>
+                                  {/* Desktop Layout */}
+                                  <div className="hidden lg:grid grid-cols-5 gap-4 items-center py-2">
+                                    <div className="text-sm font-medium">{feature.label}</div>
                                     {PERMISSION_ACTIONS.map((action) => (
-                                      <div key={action} className="flex items-center justify-between">
-                                        <span className="text-sm capitalize">{action}</span>
+                                      <div key={action} className="flex justify-center">
                                         <Switch
                                           checked={getFeaturePermission(module.name, feature.key, action)}
-                                          onCheckedChange={(checked) => 
+                                          onCheckedChange={(checked) =>
                                             updateFeaturePermission(module.name, feature.key, action, checked)
                                           }
                                           size="sm"
@@ -1722,15 +1705,33 @@ export default function RolePermissionManagement() {
                                       </div>
                                     ))}
                                   </div>
+
+                                  {/* Mobile Layout */}
+                                  <div className="lg:hidden border border-gray-200 rounded-lg p-3 mb-3">
+                                    <div className="font-medium text-sm mb-2">{feature.label}</div>
+                                    <div className="grid grid-cols-2 gap-3">
+                                      {PERMISSION_ACTIONS.map((action) => (
+                                        <div key={action} className="flex items-center justify-between">
+                                          <span className="text-sm capitalize">{action}</span>
+                                          <Switch
+                                            checked={getFeaturePermission(module.name, feature.key, action)}
+                                            onCheckedChange={(checked) =>
+                                              updateFeaturePermission(module.name, feature.key, action, checked)
+                                            }
+                                            size="sm"
+                                          />
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
                                 </div>
-                              </div>
-                            ))}
-                          </div>
-                        </CardContent>
-                      )}
-                    </Card>
-                  );
-                })}
+                              ))}
+                            </div>
+                          </CardContent>
+                        )}
+                      </Card>
+                    );
+                  })}
               </div>
             </div>
 
@@ -1760,7 +1761,7 @@ export default function RolePermissionManagement() {
               <span className="text-sm text-gray-500">({selectedUser?.email})</span>
             </DialogDescription>
           </DialogHeader>
-          
+
           <form onSubmit={handlePasswordSubmit} className="space-y-4">
             <div>
               <Label htmlFor="newPassword">New Password</Label>
@@ -1791,7 +1792,7 @@ export default function RolePermissionManagement() {
                 </Button>
               </div>
             </div>
-            
+
             <div>
               <Label htmlFor="confirmPassword">Confirm Password</Label>
               <div className="relative">
@@ -1821,18 +1822,18 @@ export default function RolePermissionManagement() {
                 </Button>
               </div>
             </div>
-            
+
             <div className="flex flex-col sm:flex-row justify-end gap-2 sm:space-x-2 pt-4">
-              <Button 
-                type="button" 
-                variant="outline" 
+              <Button
+                type="button"
+                variant="outline"
                 onClick={() => setIsPasswordDialogOpen(false)}
                 className="w-full sm:w-auto"
               >
                 Cancel
               </Button>
-              <Button 
-                type="submit" 
+              <Button
+                type="submit"
                 disabled={updatePasswordMutation.isPending}
                 className="bg-blue-600 hover:bg-blue-700 w-full sm:w-auto"
               >

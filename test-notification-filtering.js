@@ -19,7 +19,7 @@ const testNotificationFiltering = async () => {
         targetRole: 'all',
         type: 'system'
       },
-      expectedUsers: ['Super Admin', 'Unit Head', 'Unit Manager', 'Sales', 'All others']
+      expectedUsers: ['Superadmin', 'Unit Head', 'Unit Manager', 'Sales', 'All others']
     },
     
     {
@@ -128,7 +128,7 @@ const testNotificationFiltering = async () => {
 
   // Test users (these should exist in your database)
   const testUsers = [
-    { username: 'admin', password: 'password123', role: 'Super Admin' },
+    { username: 'admin', password: 'password123', role: 'Superadmin' },
     { username: 'unit_head01', password: 'password123', role: 'Unit Head' },
     { username: 'unit_manager01', password: 'password123', role: 'Unit Manager' },
     { username: 'sales_user', password: 'password123', role: 'Sales' }

@@ -130,7 +130,7 @@ export default function SuperAdminDashboard() {
 
   const getRoleBadgeColor = (role) => {
     const colorMap = {
-      'Super Admin': 'bg-red-100 text-red-800',
+      'Superadmin': 'bg-red-100 text-red-800',
       'Super User': 'bg-purple-100 text-purple-800',
       'Unit Head': 'bg-blue-100 text-blue-800',
       'Unit Manager': 'bg-green-100 text-green-800',
@@ -427,7 +427,7 @@ export default function SuperAdminDashboard() {
                       <TableCell>
                         <div>
                           <div className="font-medium flex items-center">
-                            {user.role === 'Super Admin' && (
+                            {user.role === 'Superadmin' && (
                               <Crown className="h-4 w-4 text-yellow-500 mr-2" />
                             )}
                             {user.fullName || user.username}

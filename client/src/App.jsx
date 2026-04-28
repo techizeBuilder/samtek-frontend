@@ -1,4 +1,5 @@
 import { Switch, Route } from "wouter";
+import { BrowserRouter } from "react-router-dom";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "./lib/queryClient";
 import { Toaster } from "@/components/ui/toaster";
@@ -98,12 +99,282 @@ import UnitManagerLayout from "@/components/layout/UnitManagerLayout";
 import RoleBasedLayout from "@/components/layout/RoleBasedLayout";
 import SuperAdminAccounts from "@/pages/super-admin/Accounts";
 
+// HRMS Module Imports
+import HRMSDashboard from "@/pages/hrms/HRMSDashboard";
+import HRMSEmployees from "@/pages/hrms/Employee";
+import HRMSAttendance from "@/pages/hrms/AttendanceReport";
+import HRMSSalaryStructure from "@/pages/hrms/Payroll/SalaryStructure";
+import HRMSPayrollRun from "@/pages/hrms/Payroll/PayrollRun";
+import HRMSPayslips from "@/pages/hrms/Payroll/Payslips";
+import HRMSJobOpenings from "@/pages/hrms/Recruitment/JobOpenings";
+import HRMSCandidates from "@/pages/hrms/Recruitment/Candidates";
+import HRMSInterviewPipeline from "@/pages/hrms/Recruitment/InterviewPipeline";
+import HRMSHoliday from "@/pages/hrms/Holidays/Holiday";
+import HRMSPolicies from "@/pages/hrms/SystemConfigration/Policies";
+import HRMSAddUser from "@/pages/hrms/AddUser";
+import HRMSProfile from "@/pages/hrms/Profile";
+import HRMSStatutoryReport from "@/pages/hrms/Payroll/StatutoryReport";
+import ManagerDashboard from "@/pages/hrms/Manager/ManagerDashboard";
+import ManagerLeaveRequest from "@/pages/hrms/Manager/Approvals/LeaveRequest";
+import ManagerAttendanceRequest from "@/pages/hrms/Manager/Approvals/AttendanceRequest";
+import ManagerOverTimeRequest from "@/pages/hrms/Manager/Approvals/OverTimeRequest";
+import ManagerExpenseRequest from "@/pages/hrms/Manager/Approvals/ExpenseRequest";
+import ManagerTravelRequest from "@/pages/hrms/Manager/Approvals/TravelRequest";
+import ManagerProfileRequest from "@/pages/hrms/Manager/Approvals/ProfileRequest";
+import ManagerInterviews from "@/pages/hrms/Manager/Interviews/ManagerInterviews";
+import EmployeeDashboard from "@/pages/hrms/Employee/Dashboard/EmployeeDashboard";
+import EmployeePersonalInformation from "@/pages/hrms/Employee/Profile/PersonalInformation";
+import EmployeeDocumentUpload from "@/pages/hrms/Employee/Profile/DocumentUpload";
+import EmployeePolicies from "@/pages/hrms/Employee/Profile/EmployeePolicies";
+import EmployeeMarkAttendance from "@/pages/hrms/Employee/Attendance/MarkAttendance";
+import EmployeeAttendanceCalendar from "@/pages/hrms/Employee/Attendance/AttendanceCalender";
+import EmployeeAttendanceRequest from "@/pages/hrms/Employee/Attendance/AttendanceRequest";
+import EmployeeLeaveBalance from "@/pages/hrms/Employee/Leave/LeaveBalance";
+import EmployeeLeaves from "@/pages/hrms/Employee/Leave/Leaves";
+import EmployeePayslips from "@/pages/hrms/Payroll/Payslips";
+import EmployeeSalaryStructure from "@/pages/hrms/Payroll/SalaryStructure";
+import EmployeeExpenses from "@/pages/hrms/Employee/Expenses/Expenses";
+import EmployeeTravelRequests from "@/pages/hrms/Employee/Request/TravelRequests";
+import EmployeeResignRequest from "@/pages/hrms/Employee/Request/ResignRequest";
+import EmployeeOverTimeRequests from "@/pages/hrms/Employee/Request/OverTimeRequests";
+import EmployeeProfileUpdateRequest from "@/pages/hrms/Employee/Request/ProfileUpdateRequest";
+
 function Router() {
   return (
     <Switch>
       <Route path="/login">
         {() => <Login />}
       </Route>
+
+      {/* HRMS Module Routes - Moved to top to ensure priority and prevent overlap */}
+      <Route exact path="/hrms/SuperAdmin/dashboard">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HRMSDashboard />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/SuperAdmin/employees">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HRMSEmployees />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/SuperAdmin/employees/profile/:id">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HRMSProfile />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/SuperAdmin/addUser">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HRMSAddUser />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/SuperAdmin/attendance">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HRMSAttendance />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/SuperAdmin/payroll/salary-structure">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HRMSSalaryStructure />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/SuperAdmin/payroll/run">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HRMSPayrollRun />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/SuperAdmin/payroll/payslips">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HRMSPayslips />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/SuperAdmin/payroll/statutory-report">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HRMSStatutoryReport />
+        </ProtectedRoute>
+      </Route>
+
+      <Route exact path="/hrms/SuperAdmin/recruitment/job-openings">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HRMSJobOpenings />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/SuperAdmin/recruitment/candidates">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HRMSCandidates />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/SuperAdmin/recruitment/pipeline">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HRMSInterviewPipeline />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/SuperAdmin/holidays">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HRMSHoliday />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/SuperAdmin/hr-policy">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HRMSPolicies />
+        </ProtectedRoute>
+      </Route>
+
+      {/* HRMS Manager Routes */}
+      <Route exact path="/hrms/Manager/dashboard">
+        <ProtectedRoute requiredRole="Manager">
+          <ManagerDashboard />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Manager/employees">
+        <ProtectedRoute requiredRole={["Manager", "HR-Admin"]}>
+          <HRMSEmployees />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Manager/employees/profile/:id">
+        <ProtectedRoute requiredRole={["Manager", "HR-Admin"]}>
+          <HRMSProfile />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Manager/attendance">
+        <ProtectedRoute requiredRole={["Manager", "HR-Admin"]}>
+          <HRMSAttendance />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Manager/holidays">
+        <ProtectedRoute requiredRole={["Manager", "HR-Admin"]}>
+          <HRMSHoliday />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Manager/recruitment/job-openings">
+        <ProtectedRoute requiredRole={["Manager", "HR-Admin"]}>
+          <HRMSJobOpenings />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Manager/recruitment/candidates">
+        <ProtectedRoute requiredRole={["Manager", "HR-Admin"]}>
+          <HRMSCandidates />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Manager/recruitment/pipeline">
+        <ProtectedRoute requiredRole={["Manager", "HR-Admin"]}>
+          <ManagerInterviews />
+        </ProtectedRoute>
+      </Route>
+
+      {/* Manager Approvals Section */}
+      <Route exact path="/hrms/Manager/approvals/leaves">
+        <ProtectedRoute requiredRole="Manager">
+          <ManagerLeaveRequest />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Manager/approvals/attendance">
+        <ProtectedRoute requiredRole="Manager">
+          <ManagerAttendanceRequest />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Manager/approvals/overtime">
+        <ProtectedRoute requiredRole="Manager">
+          <ManagerOverTimeRequest />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Manager/approvals/expense">
+        <ProtectedRoute requiredRole="Manager">
+          <ManagerExpenseRequest />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Manager/approvals/travel">
+        <ProtectedRoute requiredRole="Manager">
+          <ManagerTravelRequest />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Manager/approvals/profile">
+        <ProtectedRoute requiredRole="Manager">
+          <ManagerProfileRequest />
+        </ProtectedRoute>
+      </Route>
+
+      {/* Employee Module Routes */}
+      <Route exact path="/hrms/Employee/dashboard">
+        <RoleBasedProtectedRoute requiredRole="Employee">
+          <EmployeeDashboard />
+        </RoleBasedProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Employee/profile/personal">
+        <RoleBasedProtectedRoute requiredRole="Employee">
+          <EmployeePersonalInformation />
+        </RoleBasedProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Employee/profile/documents">
+        <RoleBasedProtectedRoute requiredRole="Employee">
+          <EmployeeDocumentUpload />
+        </RoleBasedProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Employee/profile/org">
+        <RoleBasedProtectedRoute requiredRole="Employee">
+          <EmployeePolicies />
+        </RoleBasedProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Employee/attendance/mark">
+        <RoleBasedProtectedRoute requiredRole="Employee">
+          <EmployeeMarkAttendance />
+        </RoleBasedProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Employee/attendance/calendar">
+        <RoleBasedProtectedRoute requiredRole="Employee">
+          <EmployeeAttendanceCalendar />
+        </RoleBasedProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Employee/attendance/requests">
+        <RoleBasedProtectedRoute requiredRole="Employee">
+          <EmployeeAttendanceRequest />
+        </RoleBasedProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Employee/leave/balance">
+        <RoleBasedProtectedRoute requiredRole="Employee">
+          <EmployeeLeaveBalance />
+        </RoleBasedProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Employee/leave/apply">
+        <RoleBasedProtectedRoute requiredRole="Employee">
+          <EmployeeLeaves />
+        </RoleBasedProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Employee/payroll/payslips">
+        <RoleBasedProtectedRoute requiredRole="Employee">
+          <EmployeePayslips />
+        </RoleBasedProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Employee/payroll/structure">
+        <RoleBasedProtectedRoute requiredRole="Employee">
+          <EmployeeSalaryStructure />
+        </RoleBasedProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Employee/expenses/submit">
+        <RoleBasedProtectedRoute requiredRole="Employee">
+          <EmployeeExpenses />
+        </RoleBasedProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Employee/requests/travel">
+        <RoleBasedProtectedRoute requiredRole="Employee">
+          <EmployeeTravelRequests />
+        </RoleBasedProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Employee/requests/resign">
+        <RoleBasedProtectedRoute requiredRole="Employee">
+          <EmployeeResignRequest />
+        </RoleBasedProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Employee/requests/overtime">
+        <RoleBasedProtectedRoute requiredRole="Employee">
+          <EmployeeOverTimeRequests />
+        </RoleBasedProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Employee/requests/profile-update">
+        <RoleBasedProtectedRoute requiredRole="Employee">
+          <EmployeeProfileUpdateRequest />
+        </RoleBasedProtectedRoute>
+      </Route>
+
       <Route path="/">
         <ProtectedRoute>
           <RoleBasedDashboard />
@@ -551,7 +822,9 @@ function App() {
       <AuthProvider>
         <TooltipProvider>
           <Toaster />
-          <Router />
+          <BrowserRouter>
+            <Router />
+          </BrowserRouter>
         </TooltipProvider>
       </AuthProvider>
     </QueryClientProvider>

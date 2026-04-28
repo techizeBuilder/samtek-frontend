@@ -10,6 +10,9 @@ import ProductionModule from "@/components/production/ProductionModule";
 import PackingDashboard from "@/pages/PackingDashboard";
 import DispatchDashboard from "@/pages/DispatchDashboard";
 import AccountsDashboard from "@/pages/AccountsDashboard";
+import HRMSDashboard from "@/pages/hrms/HRMSDashboard";
+import ManagerDashboard from "@/pages/hrms/Manager/ManagerDashboard";
+import EmployeeDashboard from "@/pages/hrms/Employee/Dashboard/EmployeeDashboard";
 
 export default function RoleBasedDashboard() {
   const { user } = useAuth();
@@ -19,7 +22,8 @@ export default function RoleBasedDashboard() {
     // If user has specific role, redirect to their dashboard
     if (user && location === '/') {
       switch (user.role) {
-        case 'Super Admin':
+        case 'Superadmin':
+        case 'Super Admin': // backend stores as 'Super Admin'
           setLocation('/super-admin-dashboard');
           return;
         case 'Unit Head':
@@ -43,6 +47,16 @@ export default function RoleBasedDashboard() {
         case 'Accounts':
           setLocation('/accounts-dashboard');
           return;
+        case 'Hr Admin':
+        case 'HR-Admin': // backend stores as 'HR-Admin'
+          setLocation('/hrms/SuperAdmin/dashboard');
+          return;
+        case 'Manager': // HRMS Manager role
+          setLocation('/hrms/Manager/dashboard');
+          return;
+        case 'Employee': // HRMS Employee role
+          setLocation('/hrms/Employee/dashboard');
+          return;
         default:
           // Super User and others stay on main dashboard
           break;
@@ -52,7 +66,8 @@ export default function RoleBasedDashboard() {
 
   // For direct dashboard access, show appropriate dashboard based on role
   switch (user?.role) {
-    case 'Super Admin':
+    case 'Superadmin':
+    case 'Super Admin': // backend stores as 'Super Admin'
       return <SuperAdminDashboard />;
     case 'Unit Head':
       return <UnitHeadDashboard />;
@@ -68,6 +83,13 @@ export default function RoleBasedDashboard() {
       return <DispatchDashboard />;
     case 'Accounts':
       return <AccountsDashboard />;
+    case 'Hr Admin':
+    case 'HR-Admin': // backend stores as 'HR-Admin'
+      return <HRMSDashboard />;
+    case 'Manager': // HRMS Manager role → focused Manager dashboard
+      return <ManagerDashboard />;
+    case 'Employee': // HRMS Employee role → focused Employee dashboard
+      return <EmployeeDashboard />;
     default:
       // Default to main dashboard for Super User and others
       return <Dashboard />;
