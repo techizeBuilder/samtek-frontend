@@ -261,12 +261,12 @@ export default function AdminBillingView() {
                         <TableCell>
                           <div className="flex flex-col gap-1">
                             <div className="flex items-center gap-2">
-                               <Users size={14} className="text-[var(--primary)]" />
-                               <span className="font-bold text-sm text-slate-900 dark:text-white">{company.activeUserCount}</span>
-                               <span className="text-[10px] text-slate-400">Active</span>
+                              <Users size={14} className="text-[var(--primary)]" />
+                              <span className="font-bold text-sm text-slate-900 dark:text-white">{company.activeUserCount}</span>
+                              <span className="text-[10px] text-slate-400">Active</span>
                             </div>
                             <div className="text-[10px] text-slate-400 pl-5">
-                               Limit: {company.employeeLimit}
+                              Limit: {company.employeeLimit}
                             </div>
                           </div>
                         </TableCell>

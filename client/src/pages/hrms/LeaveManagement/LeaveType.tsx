@@ -5,7 +5,7 @@ import axios from "axios";
 import { MoreVertical } from "lucide-react";
 import AddLeaveTypeModal from "./AddLeaveType";
 import DeleteLeaveTypeModal from "./DeleteLeaveTypeModal";
-import Loader from "../../Loader";
+import Loader from "../Loader";
 import { toast } from "../../Alert/Toast";
 
 interface LeaveType {
@@ -94,7 +94,7 @@ const LeaveType = () => {
     <div className="p-6">
       {/* Heading */}
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-semibold">Leave Types & Rules</h1>
+        <h1 className="text-2xl font-semibold text-black">Leave Types & Rules</h1>
 
         <button
           onClick={() => {
@@ -146,7 +146,7 @@ const LeaveType = () => {
                   className="border-t text-sm hover:bg-gray-50"
                 >
                   <td className="px-4 py-3">{index + 1}</td>
-                  <td className="px-4 py-3 font-medium text-orange-500">
+                  <td className="px-4 py-3 font-medium text-black">
                     {leave.name}
                   </td>
                   <td className="px-4 py-3">{leave.code}</td>

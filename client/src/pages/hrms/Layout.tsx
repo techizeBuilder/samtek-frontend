@@ -11,6 +11,7 @@ import {
   SidebarGroup,
   useSidebar,
   SidebarFooter,
+  SidebarProvider,
 } from "@/components/ui/collapsible-sidebar";
 import {
   Users,
@@ -48,7 +49,7 @@ import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 import { LogoutButton } from "@/components/ui/logout-button";
 import { cn } from "@/lib/utils";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/hooks/useAuth";
 import { CRMHeaderUserInfo } from "@/components/crm/CRMHeaderUserInfo";
 
 interface HRMSAdminLayoutProps {
@@ -56,6 +57,14 @@ interface HRMSAdminLayoutProps {
 }
 
 export default function SuperAdminLayout({ children }: HRMSAdminLayoutProps) {
+  return (
+    <SidebarProvider>
+      <SuperAdminLayoutContent>{children}</SuperAdminLayoutContent>
+    </SidebarProvider>
+  );
+}
+
+function SuperAdminLayoutContent({ children }: HRMSAdminLayoutProps) {
   const { isCollapsed } = useSidebar();
   const { user } = useAuth();
 
@@ -91,7 +100,7 @@ export default function SuperAdminLayout({ children }: HRMSAdminLayoutProps) {
               </SidebarNavItem>
 
               <SidebarNavItem to="/hrms/SuperAdmin/branches" icon={MapPin}>
-                Branches
+                Units
               </SidebarNavItem>
 
               <SidebarNavItem to="/hrms/SuperAdmin/departments" icon={Users}>

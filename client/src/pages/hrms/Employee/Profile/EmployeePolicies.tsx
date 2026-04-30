@@ -110,11 +110,10 @@ export default function EmployeePolicies() {
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
-            className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 flex items-center gap-2 text-sm ${
-              activeTab === tab.key
-                ? "bg-white text-orange-600 shadow-sm border border-orange-100"
-                : "text-gray-600 hover:text-gray-900"
-            }`}
+            className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 flex items-center gap-2 text-sm ${activeTab === tab.key
+                ? "bg-white text-[#49A7F5] shadow-md border border-[#49A7F5]/20 scale-[1.02]"
+                : "text-gray-600 hover:text-[#49A7F5] hover:bg-[#49A7F5]/5"
+              }`}
           >
             {tab.icon}
             {tab.label}
@@ -128,7 +127,7 @@ export default function EmployeePolicies() {
           {leaves.map((leave) => (
             <div key={leave._id} className="bg-white border rounded-xl shadow-sm p-5 space-y-3 hover:shadow-md transition-all">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center">
+                <div className="w-10 h-10 rounded-xl bg-[#49A7F5]/10 text-[#49A7F5] flex items-center justify-center group-hover:bg-[#49A7F5] group-hover:text-white transition-all duration-300">
                   <Calendar size={20} />
                 </div>
                 <div>
@@ -137,7 +136,7 @@ export default function EmployeePolicies() {
                 </div>
               </div>
 
-              <div className="text-3xl font-bold text-orange-600">
+              <div className="text-3xl font-bold text-[#49A7F5]">
                 {leave.maxDays}
                 <span className="text-xs font-normal text-gray-400 ml-1">Days / Year</span>
               </div>
@@ -186,7 +185,7 @@ export default function EmployeePolicies() {
 
           {/* Late Threshold */}
           <div className="bg-white border rounded-xl shadow-sm p-5 hover:shadow-md transition-all">
-            <div className="w-10 h-10 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center mb-3">
+            <div className="w-10 h-10 rounded-xl bg-[#49A7F5]/10 text-[#49A7F5] flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
               <LogIn size={20} />
             </div>
             <h3 className="font-semibold text-gray-800 mb-1">Late Threshold</h3>
@@ -198,7 +197,7 @@ export default function EmployeePolicies() {
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-500">Penalty Rule</span>
-                <span className="font-semibold text-orange-600">{attendance.lateCountHalfDay} Lates = 0.5 Day</span>
+                <span className="font-semibold text-[#49A7F5]">{attendance.lateCountHalfDay} Lates = 0.5 Day</span>
               </div>
             </div>
           </div>
@@ -216,22 +215,22 @@ export default function EmployeePolicies() {
           </div>
 
           {/* Overtime */}
-          <div className="md:col-span-2 lg:col-span-3 bg-gradient-to-r from-orange-500 to-amber-400 rounded-xl p-6 text-white shadow-lg">
+          <div className="md:col-span-2 lg:col-span-3 bg-gradient-to-br from-[#49A7F5] via-[#2D8BD8] to-[#1A73C0] rounded-2xl p-8 text-white shadow-xl relative overflow-hidden group">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
                 <div className="flex items-center gap-2 mb-1">
                   <Infinity size={20} />
                   <h3 className="text-xl font-bold">Overtime Policy</h3>
                 </div>
-                <p className="text-orange-50 text-sm">Additional hours beyond the standard shift are compensated.</p>
+                <p className="text-white/80 text-sm">Additional hours beyond the standard shift are compensated.</p>
               </div>
               <div className="flex gap-3">
                 <div className="bg-white/20 backdrop-blur-sm border border-white/30 rounded-xl px-5 py-3 text-center">
-                  <p className="text-[10px] text-orange-50 uppercase tracking-wider mb-1">Threshold</p>
+                  <p className="text-[10px] text-white/70 uppercase tracking-widest mb-1 font-bold">Threshold</p>
                   <p className="text-xl font-bold">{attendance.overtimeAfter}+ <span className="text-xs opacity-75">Hrs</span></p>
                 </div>
                 <div className="bg-white/20 backdrop-blur-sm border border-white/30 rounded-xl px-5 py-3 text-center">
-                  <p className="text-[10px] text-orange-50 uppercase tracking-wider mb-1">Type</p>
+                  <p className="text-[10px] text-white/70 uppercase tracking-widest mb-1 font-bold">Type</p>
                   <p className="text-xl font-bold">{attendance.overtimeType}</p>
                 </div>
               </div>
@@ -262,7 +261,7 @@ export default function EmployeePolicies() {
                 {hrPolicies.map((policy) => (
                   <tr key={policy._id} className="hover:bg-gray-50/50 transition-colors">
                     <td className="px-4 py-4 text-center">
-                      <span className="w-7 h-7 rounded-full bg-orange-100 text-orange-700 text-xs font-bold flex items-center justify-center mx-auto">
+                      <span className="w-8 h-8 rounded-full bg-[#49A7F5]/10 text-[#49A7F5] text-xs font-bold flex items-center justify-center mx-auto group-hover:bg-[#49A7F5] group-hover:text-white transition-colors">
                         {policy.no}
                       </span>
                     </td>

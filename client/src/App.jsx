@@ -114,6 +114,9 @@ import HRMSPolicies from "@/pages/hrms/SystemConfigration/Policies";
 import HRMSAddUser from "@/pages/hrms/AddUser";
 import HRMSProfile from "@/pages/hrms/Profile";
 import HRMSStatutoryReport from "@/pages/hrms/Payroll/StatutoryReport";
+import HRMSLeaveTypes from "@/pages/hrms/LeaveManagement/LeaveType";
+import HRMSLeaveRequests from "@/pages/hrms/LeaveManagement/HRAdminLeaveRequest";
+import HRMSAttendanceRequests from "@/pages/hrms/Attendance/HRAdminAttendanceRequest";
 
 // System Configuration Imports
 import HRMSCompany from "@/pages/hrms/SystemConfigration/Company";
@@ -145,6 +148,8 @@ import EmployeeTravelRequests from "@/pages/hrms/Employee/Request/TravelRequests
 import EmployeeResignRequest from "@/pages/hrms/Employee/Request/ResignRequest";
 import EmployeeOverTimeRequests from "@/pages/hrms/Employee/Request/OverTimeRequests";
 import EmployeeProfileUpdateRequest from "@/pages/hrms/Employee/Request/ProfileUpdateRequest";
+import CompanyAdminDashboard from "@/pages/hrms/CompanyAdmin/CompanyAdminDashboard";
+import CompanyAdminLayout from "@/pages/hrms/CompanyAdmin/CompanyAdminLayout";
 
 function Router() {
   return (
@@ -165,7 +170,7 @@ function Router() {
         </ProtectedRoute>
       </Route>
       <Route exact path="/hrms/SuperAdmin/employees/profile/:id">
-        <ProtectedRoute requiredRole="HR-Admin">
+        <ProtectedRoute requiredRole={["HR-Admin", "Company Admin", "Manager"]}>
           <HRMSProfile />
         </ProtectedRoute>
       </Route>
@@ -174,9 +179,24 @@ function Router() {
           <HRMSAddUser />
         </ProtectedRoute>
       </Route>
-      <Route exact path="/hrms/SuperAdmin/attendance">
+      <Route exact path="/hrms/SuperAdmin/attendance-record">
         <ProtectedRoute requiredRole="HR-Admin">
           <HRMSAttendance />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/SuperAdmin/attendance-requests">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HRMSAttendanceRequests />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/SuperAdmin/leave-requests">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HRMSLeaveRequests />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/SuperAdmin/leave-types">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HRMSLeaveTypes />
         </ProtectedRoute>
       </Route>
       <Route exact path="/hrms/SuperAdmin/payroll/salary-structure">
@@ -402,6 +422,21 @@ function Router() {
         <RoleBasedProtectedRoute requiredRole="Employee">
           <EmployeeProfileUpdateRequest />
         </RoleBasedProtectedRoute>
+      </Route>
+
+      <Route path="/hrms/CompanyAdmin/:rest*">
+        <ProtectedRoute requiredRole="Company Admin">
+          <Switch>
+            <Route exact path="/hrms/CompanyAdmin/dashboard" component={CompanyAdminDashboard} />
+            <Route exact path="/hrms/CompanyAdmin/employees" component={HRMSEmployees} />
+            <Route exact path="/hrms/CompanyAdmin/companies" component={HRMSCompany} />
+            <Route exact path="/hrms/CompanyAdmin/branches" component={HRMSBranches} />
+            <Route exact path="/hrms/CompanyAdmin/departments" component={HRMSDepartments} />
+            <Route exact path="/hrms/CompanyAdmin/designations" component={HRMSDesignation} />
+            <Route exact path="/hrms/CompanyAdmin/user-management" component={RolePermissionManagement} />
+            <Route component={NotFound} />
+          </Switch>
+        </ProtectedRoute>
       </Route>
 
       <Route path="/">

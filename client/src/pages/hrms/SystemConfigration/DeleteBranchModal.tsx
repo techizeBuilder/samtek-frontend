@@ -19,12 +19,12 @@ const DeleteBranchModal = ({
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
             <div className="bg-white w-full max-w-sm rounded-lg p-6 shadow-xl">
                 <h2 className="text-lg font-semibold mb-3 text-red-600">
-                    Delete Branch
+                    Delete Unit
                 </h2>
 
                 <p className="text-sm text-gray-600 mb-6 leading-relaxed">
                     Are you sure you want to delete{" "}
-                    <span className="font-semibold">{branchName || "this branch"}</span>
+                    <span className="font-semibold">{branchName || "this unit"}</span>
                     ? <br />
                     This action cannot be undone.
                 </p>

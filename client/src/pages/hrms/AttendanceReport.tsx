@@ -190,7 +190,7 @@ const AttendanceReport = () => {
       <Card>
         <CardHeader className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-semibold">Attendance Report</h1>
+            <h1 className="text-2xl font-semibold text-black">Attendance Record</h1>
             <p className="text-sm text-gray-500">
               Monthly employee attendance overview
             </p>
@@ -226,10 +226,10 @@ const AttendanceReport = () => {
           <table className="min-w-max border-collapse border text-sm">
             <thead>
               <tr>
-                <th className="border px-3 py-2 sticky left-0 bg-white">
+                <th className="border px-3 py-2 sticky left-0 bg-white z-20 w-[160px] min-w-[160px]">
                   Employee
                 </th>
-                <th className="border px-3 py-2 sticky left-[140px] bg-white">
+                <th className="border px-3 py-2 sticky left-[160px] bg-white z-20 w-[100px] min-w-[100px]">
                   Role
                 </th>
 
@@ -241,8 +241,8 @@ const AttendanceReport = () => {
                     <th
                       key={day}
                       className={`border px-2 py-2 text-xs text-center
-                        ${sunday ? "bg-orange-100 text-orange-700" : ""}
-                        ${holiday ? "bg-blue-100 text-blue-700" : ""}`}
+                        ${sunday ? "bg-orange-100 text-black" : ""}
+                        ${holiday ? "bg-blue-100 text-black" : ""}`}
                     >
                       {holiday ? holiday.title : sunday ? "Off" : day}
                     </th>
@@ -254,10 +254,10 @@ const AttendanceReport = () => {
             <tbody>
               {users.map((user) => (
                 <tr key={user._id}>
-                  <td className="border px-3 py-2 sticky left-0 bg-white font-medium">
+                  <td className="border px-3 py-2 sticky left-0 bg-white font-medium z-10">
                     {user.name}
                   </td>
-                  <td className="border px-3 py-2 sticky left-[140px] bg-white">
+                  <td className="border px-3 py-2 sticky left-[160px] bg-white z-10">
                     {user.role}
                   </td>
 

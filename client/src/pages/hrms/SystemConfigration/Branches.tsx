@@ -42,6 +42,7 @@ export default function Branch() {
   const [mode, setMode] = useState<"add" | "view" | "edit">("add");
   const [selectedBranch, setSelectedBranch] = useState<Branch | null>(null);
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string>("all");
 
   // ✅ DELETE MODAL STATES
   const [openDeleteModal, setOpenDeleteModal] = useState(false);
@@ -54,13 +55,28 @@ export default function Branch() {
     setCompanies(res.data?.companies || []);
   };
 
-  /* ================= FETCH BRANCHES ================= */
+  /* ================= FETCH UNITS FROM COMPANIES ================= */
   const fetchBranches = async () => {
     try {
-      const res = await axios.get(`${API_BASE}/branches`, {
+      const res = await axios.get(`${API_BASE}/companies`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      setBranches(res.data);
+      const companiesData = res.data?.companies || [];
+      const mappedUnits = companiesData.map((comp: any) => ({
+        _id: comp._id,
+        companyId: comp._id,
+        companyName: comp.name,
+        name: comp.unitName || "Unnamed Unit",
+        code: comp.locationPin || "-",
+        city: comp.city || "-",
+        state: comp.state || "-",
+        country: "India",
+        address: comp.address || "-",
+        pincode: comp.locationPin || "-",
+        status: comp.isActive ? "Active" : "Inactive",
+        createdAt: comp.createdAt,
+      }));
+      setBranches(mappedUnits);
     } finally {
       setLoading(false);
     }
@@ -81,7 +97,7 @@ export default function Branch() {
 
       toast({
         type: "success",
-        title: "Branch Deleted",
+        title: "Unit Deleted",
         message: `${branchToDelete.name} successfully removed.`,
       });
 
@@ -113,6 +129,12 @@ export default function Branch() {
     }
   });
 
+  const filteredBranches = sortedBranches.filter((branch) => {
+    if (selectedCompanyId === "all") return true;
+    const id = typeof branch.companyId === "string" ? branch.companyId : (branch.companyId as any)?._id;
+    return id === selectedCompanyId;
+  });
+
   if (loading) {
     return (
       <div className="relative min-h-screen">
@@ -126,20 +148,26 @@ export default function Branch() {
       {/* HEADER */}
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-2xl font-semibold">Branches</h1>
-          <p className="text-sm text-gray-500">System Configuration / Branch</p>
+          <h1 className="text-2xl font-semibold">Units</h1>
+          <p className="text-sm text-gray-500">System Configuration / Unit</p>
         </div>
 
-        <button
-          onClick={() => {
-            setMode("add");
-            setSelectedBranch(null);
-            setOpenModal(true);
-          }}
-          className="bg-orange-500 text-white px-4 py-2 rounded-md font-medium hover:bg-orange-600"
-        >
-          + Add Branch
-        </button>
+        <div className="flex items-center gap-4">
+          <select
+            value={selectedCompanyId}
+            onChange={(e) => setSelectedCompanyId(e.target.value)}
+            className="border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#49A7F5]"
+          >
+            <option value="all">All Companies</option>
+            {companies.map((c) => (
+              <option key={c._id} value={c._id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+
+
+        </div>
       </div>
 
       {/* TABLE */}
@@ -159,7 +187,7 @@ export default function Branch() {
                   {sortOrder === "asc" ? "▲" : "▼"}
                 </span>
               </th>
-              <th className="px-4 py-3">Branch Name</th>
+              <th className="px-4 py-3">Unit Name</th>
               <th className="px-4 py-3">Code</th>
               <th className="px-4 py-3">City</th>
               <th className="px-4 py-3">State</th>
@@ -179,11 +207,11 @@ export default function Branch() {
             )}
 
             {!loading &&
-              sortedBranches.map((branch, i) => (
+              filteredBranches.map((branch, i) => (
                 <tr key={branch._id} className="border-t">
                   <td className="px-4 py-3">{i + 1}</td>
                   <td className="px-4 py-3 font-medium">
-                    {getCompanyName(branch.companyId)}
+                    {branch.companyName || getCompanyName(branch.companyId)}
                   </td>
                   <td className="px-4 py-3">{branch.name}</td>
                   <td className="px-4 py-3">{branch.code}</td>
@@ -226,29 +254,6 @@ export default function Branch() {
                           }}
                         >
                           View
-                        </button>
-
-                        <button
-                          className="w-full px-4 py-2 text-left hover:bg-gray-100"
-                          onClick={() => {
-                            setMode("edit");
-                            setSelectedBranch(branch);
-                            setOpenModal(true);
-                            setOpenMenu(null);
-                          }}
-                        >
-                          Edit
-                        </button>
-
-                        <button
-                          className="w-full px-4 py-2 text-left text-red-500 hover:bg-red-50"
-                          onClick={() => {
-                            setBranchToDelete(branch);
-                            setOpenDeleteModal(true);
-                            setOpenMenu(null);
-                          }}
-                        >
-                          Delete
                         </button>
                       </div>
                     )}

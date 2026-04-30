@@ -259,6 +259,18 @@ const productionMenuItems = [
     module: 'production'
   },
   {
+    label: 'Task Management',
+    path: '/production/task-management',
+    icon: CheckSquare,
+    module: 'production'
+  },
+  {
+    label: 'My Task',
+    path: '/production/my-task',
+    icon: CheckSquare,
+    module: 'production'
+  },
+  {
     label: 'Production Sheet',
     path: '/production/production-sheet',
     icon: Clock,
@@ -281,6 +293,18 @@ const packingMenuItems = [
     icon: LayoutDashboard,
     module: 'packing',
     feature: 'dashboard'
+  },
+  {
+    label: 'Task Management',
+    path: '/packing/task-management',
+    icon: CheckSquare,
+    module: 'packing'
+  },
+  {
+    label: 'My Task',
+    path: '/packing/my-task',
+    icon: CheckSquare,
+    module: 'packing'
   },
   {
     label: 'Packing Sheet',
@@ -307,6 +331,18 @@ const dispatchMenuItems = [
     feature: 'dashboard'
   },
   {
+    label: 'Task Management',
+    path: '/dispatch/task-management',
+    icon: CheckSquare,
+    module: 'dispatches'
+  },
+  {
+    label: 'My Task',
+    path: '/dispatch/my-task',
+    icon: CheckSquare,
+    module: 'dispatches'
+  },
+  {
     label: 'Delivery Challan',
     path: '/dispatch/delivery-challan',
     icon: FileText,
@@ -327,7 +363,20 @@ const salesMenuItems = [
     label: 'Dashboard',
     path: '/sales-dashboard',
     icon: LayoutDashboard,
-    module: 'dashboard'
+    module: 'sales',
+    feature: 'dashboard'
+  },
+  {
+    label: 'Task Management',
+    path: '/sales/task-management',
+    icon: CheckSquare,
+    module: 'sales'
+  },
+  {
+    label: 'My Task',
+    path: '/sales/my-task',
+    icon: CheckSquare,
+    module: 'sales'
   },
   {
     label: 'My Orders',
@@ -386,6 +435,18 @@ const accountsMenuItems = [
     icon: LayoutDashboard,
     module: 'accounts',
     feature: 'dashboard'
+  },
+  {
+    label: 'Task Management',
+    path: '/accounts/task-management',
+    icon: CheckSquare,
+    module: 'accounts'
+  },
+  {
+    label: 'My Task',
+    path: '/accounts/my-task',
+    icon: CheckSquare,
+    module: 'accounts'
   },
   // {
   //   label: 'Chart of Accounts',
@@ -529,10 +590,24 @@ const hrAdminMenuItems = [
     module: 'hrms'
   },
   {
+    label: 'Leave Management',
+    path: '/hrms/SuperAdmin/leave-management',
+    icon: CalendarCheck,
+    module: 'hrms',
+    submodules: [
+      { label: 'Leave Requests', path: '/hrms/SuperAdmin/leave-requests', feature: 'leaveRequests' },
+      { label: 'Leave Types & Rules', path: '/hrms/SuperAdmin/leave-types', feature: 'leaveTypes' }
+    ]
+  },
+  {
     label: 'Attendance',
-    path: '/hrms/SuperAdmin/attendance',
+    path: '/hrms/SuperAdmin/attendance-module',
     icon: Clock,
-    module: 'hrms'
+    module: 'hrms',
+    submodules: [
+      { label: 'Attendance Record', path: '/hrms/SuperAdmin/attendance-record', feature: 'attendanceRecord' },
+      { label: 'Attendance Requests', path: '/hrms/SuperAdmin/attendance-requests', feature: 'attendanceRequests' }
+    ]
   },
   {
     label: 'Payroll',
@@ -572,7 +647,7 @@ const hrAdminMenuItems = [
   {
     label: 'Task Management',
     path: '/hrms/SuperAdmin/task-management',
-    icon: Shield,
+    icon: CheckSquare,
     module: 'hrms'
   }
 ];
@@ -585,6 +660,18 @@ const managerMenuItems = [
     label: 'Dashboard',
     path: '/hrms/Manager/dashboard',
     icon: LayoutDashboard,
+    module: 'hrms'
+  },
+  {
+    label: 'Task Management',
+    path: '/hrms/Manager/task-management',
+    icon: CheckSquare,
+    module: 'hrms'
+  },
+  {
+    label: 'My Task',
+    path: '/hrms/Manager/my-task',
+    icon: CheckSquare,
     module: 'hrms'
   },
   {
@@ -660,6 +747,12 @@ const employeeMenuItems = [
     module: 'hrms'
   },
   {
+    label: 'My Task',
+    path: '/hrms/Employee/my-task',
+    icon: CheckSquare,
+    module: 'hrms'
+  },
+  {
     label: 'My Profile',
     path: '/hrms/Employee/profile',
     icon: UserCircle,
@@ -724,6 +817,60 @@ const employeeMenuItems = [
   }
 ];
 
+// ============================================================
+// COMPANY ADMIN MENU ITEMS
+// ============================================================
+const companyAdminMenuItems = [
+  {
+    label: 'Dashboard',
+    path: '/hrms/CompanyAdmin/dashboard',
+    icon: LayoutDashboard,
+    module: 'hrms'
+  },
+  {
+    label: 'Employee Management',
+    path: '/hrms/CompanyAdmin/employees',
+    icon: Users,
+    module: 'hrms'
+  },
+  {
+    label: 'My Company',
+    path: '/hrms/CompanyAdmin/companies',
+    icon: Building2,
+    module: 'hrms'
+  },
+  {
+    label: 'Operating Units',
+    path: '/hrms/CompanyAdmin/branches',
+    icon: Building,
+    module: 'hrms'
+  },
+  {
+    label: 'Departments',
+    path: '/hrms/CompanyAdmin/departments',
+    icon: Users,
+    module: 'hrms'
+  },
+  {
+    label: 'Designations',
+    path: '/hrms/CompanyAdmin/designations',
+    icon: Briefcase,
+    module: 'hrms'
+  },
+  {
+    label: 'Roles & Permissions',
+    path: '/hrms/CompanyAdmin/user-management',
+    icon: Shield,
+    module: 'hrms'
+  },
+  {
+    label: 'Task Management',
+    path: '/hrms/CompanyAdmin/task-management',
+    icon: CheckSquare,
+    module: 'hrms'
+  }
+];
+
 // Function to get menu items based on role
 const getMenuItemsByRole = (role) => {
   switch (role) {
@@ -735,14 +882,24 @@ const getMenuItemsByRole = (role) => {
     case 'Unit Manager':
       return unitManagerMenuItems;
     case 'Production':
+    case 'Production Employee':
+    case 'Production Head':
       return productionMenuItems;
     case 'Packing':
+    case 'Packing Employee':
+    case 'Packing Head':
       return packingMenuItems;
     case 'Dispatch':
+    case 'Dispatch Employee':
+    case 'Dispatch Head':
       return dispatchMenuItems;
     case 'Sales':
+    case 'Sales Employee':
+    case 'Sales Head':
       return salesMenuItems;
     case 'Accounts':
+    case 'Account Employee':
+    case 'Accounts Head':
       return accountsMenuItems;
     case 'Hr Admin':
     case 'HR-Admin': // backend uses 'HR-Admin'
@@ -751,6 +908,8 @@ const getMenuItemsByRole = (role) => {
       return managerMenuItems;
     case 'Employee': // HRMS Employee role
       return employeeMenuItems;
+    case 'Company Admin':
+      return companyAdminMenuItems;
     default:
       return [];
   }
@@ -802,11 +961,21 @@ export default function Sidebar({ isOpen, onClose }) {
 
   // For Production role users, apply strict filtering to only show production items
   let filteredMenuItems;
+  
+  // Pre-filter to handle 'Task Management' and 'My Task' visibility based on role type
+  const isHeadRole = normalizedRole?.includes('Head') || normalizedRole === 'Manager' || normalizedRole === 'Superadmin' || normalizedRole === 'Hr Admin' || normalizedRole === 'Company Admin';
+  roleMenuItems = roleMenuItems.filter(item => {
+    // Only Head-level roles can see Task Management
+    if (item.label === 'Task Management' && !isHeadRole) return false;
+    // My Task is visible to everyone if it's in their array
+    return true;
+  });
+
   if (normalizedRole === 'Superadmin') {
     // Super Admin gets ALL menu items - no permission filtering needed
     // Backend filters permissions to only 'superAdmin' module, so we bypass hasModuleAccess
     filteredMenuItems = roleMenuItems;
-  } else if (normalizedRole === 'Production') {
+  } else if (normalizedRole === 'Production' || normalizedRole === 'Production Employee' || normalizedRole === 'Production Head') {
     // For Production users, only show production-related items and profile
     filteredMenuItems = roleMenuItems.filter(item => {
       // Always show items without module restriction (like profile)
@@ -824,7 +993,7 @@ export default function Sidebar({ isOpen, onClose }) {
 
       return false; // Hide all non-production items for Production users
     });
-  } else if (normalizedRole === 'Packing') {
+  } else if (normalizedRole === 'Packing' || normalizedRole === 'Packing Employee' || normalizedRole === 'Packing Head') {
     // For Packing users, only show packing-related items and profile
     filteredMenuItems = roleMenuItems.filter(item => {
       // Always show items without module restriction (like profile)
@@ -842,7 +1011,7 @@ export default function Sidebar({ isOpen, onClose }) {
 
       return false; // Hide all non-packing items for Packing users
     });
-  } else if (normalizedRole === 'Dispatch') {
+  } else if (normalizedRole === 'Dispatch' || normalizedRole === 'Dispatch Employee' || normalizedRole === 'Dispatch Head') {
     // For Dispatch users, only show dispatch-related items and profile
     filteredMenuItems = roleMenuItems.filter(item => {
       // Always show items without module restriction (like profile)
@@ -862,7 +1031,7 @@ export default function Sidebar({ isOpen, onClose }) {
 
       return false; // Hide all non-dispatch items for Dispatch users
     });
-  } else if (normalizedRole === 'Accounts') {
+  } else if (normalizedRole === 'Accounts' || normalizedRole === 'Account Employee' || normalizedRole === 'Accounts Head') {
     // For Accounts users, only show accounts-related items and profile
     filteredMenuItems = roleMenuItems.filter(item => {
       // Always show items without module restriction (like profile)
@@ -879,6 +1048,18 @@ export default function Sidebar({ isOpen, onClose }) {
       }
 
       return false; // Hide all non-accounts items for Accounts users
+    });
+  } else if (normalizedRole === 'Sales' || normalizedRole === 'Sales Employee' || normalizedRole === 'Sales Head') {
+    // For Sales users, only show sales-related items and profile
+    filteredMenuItems = roleMenuItems.filter(item => {
+      if (!item.module) return true;
+      if (item.module === 'sales' || item.module === 'customers') {
+        if (item.feature && item.module !== 'customers') {
+          return hasFeatureAccess('sales', item.feature, 'view');
+        }
+        return true;
+      }
+      return false;
     });
   } else if (normalizedRole === 'Hr Admin' || normalizedRole === 'Manager' || normalizedRole === 'Employee') {
     // For HR-Admin, Manager and Employee users, show all hrms-related items directly

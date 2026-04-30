@@ -74,7 +74,7 @@ const AddHolidayModal = ({
       setLoading(true);
 
       const companyId = typeof currentUser?.companyId === 'string' ? currentUser.companyId : currentUser?.companyId?._id;
-      
+
       const payload = {
         ...form,
         companyId
@@ -138,9 +138,8 @@ const AddHolidayModal = ({
               value={form.title}
               onChange={(e) => setForm({ ...form, title: e.target.value })}
               placeholder="Enter holiday title"
-              className={`rounded-md border-gray-200 focus:border-orange-500 ${
-                errors.title ? "border-red-500" : ""
-              }`}
+              className={`rounded-md border-gray-200 focus:border-orange-500 ${errors.title ? "border-red-500" : ""
+                }`}
             />
             {errors.title && (
               <p className="text-xs text-red-500">{errors.title}</p>
@@ -155,9 +154,8 @@ const AddHolidayModal = ({
               type="date"
               value={form.date}
               onChange={(e) => setForm({ ...form, date: e.target.value })}
-              className={`rounded-md border-gray-200 focus:border-orange-500 ${
-                errors.date ? "border-red-500" : ""
-              }`}
+              className={`rounded-md border-gray-200 focus:border-orange-500 ${errors.date ? "border-red-500" : ""
+                }`}
             />
             {errors.date && (
               <p className="text-xs text-red-500">{errors.date}</p>

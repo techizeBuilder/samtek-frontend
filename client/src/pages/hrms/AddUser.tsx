@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { toast } from "../Alert/Toast";
-import { Eye, EyeOff, Upload, Download, X, FileText, AlertCircle, CheckCircle2, Camera, User } from "lucide-react";
+import { Eye, EyeOff, Upload, Download, X, FileText, AlertCircle, CheckCircle2, Camera, User, Shield } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 const API_BASE = import.meta.env.VITE_API_URL;
@@ -24,11 +24,68 @@ export default function AddUser() {
   const HRMS_ROLES = [
     'Manager',
     'Employee',
-    'Finance Manager',
+    'Sales Employee',
+    'Production Employee',
+    'Packing Employee',
+    'Dispatch Employee',
+    'Account Employee',
     'Auditor',
-    'Admin',
-    'IT Admin',
   ];
+
+  const ROLE_MODULES_CONFIG: Record<string, { moduleName: string; features: { key: string; label: string }[] }> = {
+    "Sales Employee": {
+      moduleName: "sales",
+      features: [
+        { key: "dashboard", label: "Dashboard" },
+        { key: "orders", label: "My Orders" },
+        { key: "myCustomers", label: "My Customers" },
+        { key: "myDeliveries", label: "My Dispatches" },
+        { key: "myInvoices", label: "My Payments" },
+        { key: "returns", label: "Returns" },
+        { key: "damages", label: "Damages" }
+      ]
+    },
+    "Dispatch Employee": {
+      moduleName: "dispatches",
+      features: [
+        { key: "dashboard", label: "Dashboard" },
+        { key: "deliveryChallan", label: "Delivery Challan" },
+        { key: "dispatchHistory", label: "History" }
+      ]
+    },
+    "Production Employee": {
+      moduleName: "production",
+      features: [
+        { key: "dashboard", label: "Dashboard" },
+        { key: "productionSheet", label: "Production Sheet" },
+        { key: "productionReports", label: "Production Reports" }
+      ]
+    },
+    "Packing Employee": {
+      moduleName: "packing",
+      features: [
+        { key: "dashboard", label: "Dashboard" },
+        { key: "packingSheet", label: "Packing Sheet" },
+        { key: "packingHistory", label: "Packing History" }
+      ]
+    },
+    "Account Employee": {
+      moduleName: "accounts",
+      features: [
+        { key: "dashboard", label: "Dashboard" },
+        { key: "sales", label: "Sales" },
+        { key: "purchases", label: "Purchases" },
+        { key: "gstAndTds", label: "GST & TDS" },
+        { key: "expenses", label: "Expenses" },
+        { key: "salesmanSettlement", label: "Salesman Settlement" },
+        { key: "bankAndCash", label: "Bank & Cash" },
+        { key: "reports", label: "Reports" },
+        { key: "settings", label: "Settings" }
+      ]
+    }
+  };
+
+  const [selectedFeatures, setSelectedFeatures] = useState<Record<string, boolean>>({});
 
   const [showPassword, setShowPassword] = useState(false);
 
@@ -50,6 +107,9 @@ export default function AddUser() {
     joiningDate: "",
     password: "",
     role: "",
+    companyId: "",
+    branchId: "",
+    designationId: "",
   });
 
   /* ================= COMPANY & JOB ================= */
@@ -59,6 +119,9 @@ export default function AddUser() {
   });
 
   /* ================= DROPDOWNS ================= */
+  const [companies, setCompanies] = useState<any[]>([]);
+  const [branches, setBranches] = useState<any[]>([]);
+  const [designations, setDesignations] = useState<any[]>([]);
   const [managers, setManagers] = useState<any[]>([]);
   const [employeeIdPreview, setEmployeeIdPreview] = useState<string>("");
 
@@ -66,33 +129,78 @@ export default function AddUser() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    // Managers
     axios
       .get(`${API_BASE}/users?role=manager`, {
         headers: { Authorization: `Bearer ${token}` },
       })
       .then((res) => setManagers(res.data?.data?.users || res.data?.users || []))
       .catch(() => setManagers([]));
+
+    // Companies
+    axios
+      .get(`${API_BASE}/companies`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      .then((res) => {
+        const comps = res.data?.companies || [];
+        setCompanies(comps);
+      })
+      .catch(() => setCompanies([]));
   }, []);
 
-
-  /* ================= FETCH EMPLOYEE ID PREVIEW ================= */
+  /* ================= CASCADING FETCHES ================= */
+  // Fetch Units from selected Company
   useEffect(() => {
-    // We can fetch preview based on current user's company context if available
-    const userJson = localStorage.getItem("user");
-    const currentUser = userJson ? JSON.parse(userJson) : null;
-    const companyId = currentUser?.companyId;
+    if (formData.companyId) {
+      const selectedComp = companies.find(c => c._id === formData.companyId);
+      if (selectedComp) {
+        setBranches([{ _id: selectedComp._id, name: selectedComp.unitName || "Unnamed Unit" }]);
+        setFormData(prev => ({ ...prev, branchId: selectedComp._id }));
+      }
 
-    if (companyId) {
+      // Also fetch employee ID preview
       axios
-        .get(`${API_BASE}/users/generate-employee-id?companyId=${companyId}`, {
+        .get(`${API_BASE}/users/generate-employee-id?companyId=${formData.companyId}`, {
           headers: { Authorization: `Bearer ${token}` },
         })
         .then((res) => setEmployeeIdPreview(res.data.employeeId))
         .catch(() => setEmployeeIdPreview(""));
     } else {
+      setBranches([]);
       setEmployeeIdPreview("");
     }
-  }, []);
+    // Reset lower levels
+    setFormData(prev => ({ ...prev, branchId: "", designationId: "" }));
+  }, [formData.companyId, companies]);
+
+  // Fetch Designations when Unit/Company changes
+  useEffect(() => {
+    if (formData.companyId) {
+      axios
+        .get(`${API_BASE}/designations?companyId=${formData.companyId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        .then((res) => setDesignations(res.data || []))
+        .catch(() => setDesignations([]));
+    } else {
+      setDesignations([]);
+    }
+    // Reset lower levels
+    setFormData(prev => ({ ...prev, designationId: "" }));
+  }, [formData.companyId]);
+
+  useEffect(() => {
+    if (ROLE_MODULES_CONFIG[formData.role]) {
+      const initial: Record<string, boolean> = {};
+      ROLE_MODULES_CONFIG[formData.role].features.forEach(f => {
+        initial[f.key] = true;
+      });
+      setSelectedFeatures(initial);
+    } else {
+      setSelectedFeatures({});
+    }
+  }, [formData.role]);
 
   /* ================= PROFILE PICTURE HANDLER ================= */
   const handleProfilePicChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -116,6 +224,10 @@ export default function AddUser() {
     Object.entries(formData).forEach(([k, v]) => {
       if (!v && k !== "mobile" && k !== "dob" && k !== "joiningDate") e[k] = "Required";
     });
+
+    if (!formData.companyId) e.companyId = "Required";
+    if (!formData.branchId) e.branchId = "Required";
+    if (!formData.designationId) e.designationId = "Required";
 
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -142,9 +254,44 @@ export default function AddUser() {
       data.append("password", formData.password);
       data.append("role", formData.role);
 
+      // HIERARCHY
+      if (formData.companyId) data.append("companyId", formData.companyId);
+      if (formData.branchId) data.append("branchId", formData.branchId);
+      if (formData.designationId) data.append("designationId", formData.designationId);
+
       // JOB
       if (job.managerId) data.append("managerId", job.managerId);
       if (job.employmentType) data.append("employmentType", job.employmentType);
+
+      // PERMISSIONS
+      if (ROLE_MODULES_CONFIG[formData.role]) {
+        const config = ROLE_MODULES_CONFIG[formData.role];
+        const hasDashboard = selectedFeatures["dashboard"] || false;
+
+        const featuresArray = config.features
+          .filter(f => f.key !== "dashboard" && selectedFeatures[f.key])
+          .map(f => ({
+            key: f.key,
+            view: true,
+            add: true,
+            edit: true,
+            delete: false,
+            alter: false
+          }));
+
+        const permissions = {
+          role: formData.role,
+          canAccessAllUnits: false,
+          modules: [
+            {
+              name: config.moduleName,
+              dashboard: hasDashboard,
+              features: featuresArray
+            }
+          ]
+        };
+        data.append("permissions", JSON.stringify(permissions));
+      }
 
       // PROFILE PICTURE
       if (profilePicFile) {
@@ -177,6 +324,9 @@ export default function AddUser() {
         joiningDate: "",
         password: "",
         role: "",
+        companyId: "",
+        branchId: "",
+        designationId: "",
       });
 
       setJob({
@@ -221,7 +371,7 @@ export default function AddUser() {
         <h1 className="text-2xl font-semibold">Add User</h1>
         <Button
           variant="outline"
-          className="flex items-center gap-2 border-orange-500 text-orange-600 hover:bg-orange-50"
+          className="flex items-center gap-2 border-[#49A7F5] text-[#49A7F5] hover:bg-[#49A7F5]/5 transition-all shadow-sm active:scale-95"
           onClick={() => setShowBulkModal(true)}
         >
           <Upload size={18} />
@@ -240,7 +390,7 @@ export default function AddUser() {
           {/* ===== PROFILE PICTURE ===== */}
           <div className="flex flex-col items-center gap-3 pb-4 border-b">
             <div
-              className="relative w-28 h-28 rounded-full border-4 border-orange-200 cursor-pointer group overflow-hidden bg-gray-100 flex items-center justify-center"
+              className="relative w-28 h-28 rounded-full border-4 border-[#49A7F5]/30 cursor-pointer group overflow-hidden bg-gray-100 flex items-center justify-center shadow-inner"
               onClick={() => profilePicRef.current?.click()}
             >
               {profilePicPreview ? (
@@ -432,13 +582,60 @@ export default function AddUser() {
         <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-5">
           {/* Next Employee ID Preview */}
           {employeeIdPreview && (
-            <div className="col-span-2 p-2 bg-orange-50 border border-orange-200 rounded-md flex items-center gap-2">
-              <AlertCircle size={14} className="text-orange-500" />
-              <p className="text-xs font-medium text-orange-700">
+            <div className="col-span-2 p-3 bg-[#49A7F5]/5 border border-[#49A7F5]/20 rounded-xl flex items-center gap-2 mb-2">
+              <AlertCircle size={14} className="text-[#49A7F5]" />
+              <p className="text-xs font-medium text-[#49A7F5]">
                 Next Employee ID: <span className="font-bold">{employeeIdPreview}</span>
               </p>
             </div>
           )}
+
+          {/* Company */}
+          <div>
+            <Label>Company <span className="text-red-500">*</span></Label>
+            <select
+              value={formData.companyId}
+              onChange={(e) => setFormData({ ...formData, companyId: e.target.value })}
+              className={`w-full h-10 border rounded-md px-3 ${errors.companyId ? "border-red-500" : ""}`}
+            >
+              <option value="">Select Company</option>
+              {companies.map((c) => (
+                <option key={c._id} value={c._id}>{c.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Unit */}
+          <div>
+            <Label>Unit <span className="text-red-500">*</span></Label>
+            <select
+              value={formData.branchId}
+              onChange={(e) => setFormData({ ...formData, branchId: e.target.value })}
+              className={`w-full h-10 border rounded-md px-3 ${errors.branchId ? "border-red-500" : ""}`}
+              disabled={!formData.companyId}
+            >
+              <option value="">Select Unit</option>
+              {branches.map((b) => (
+                <option key={b._id} value={b._id}>{b.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Designation */}
+          <div>
+            <Label>Designation <span className="text-red-500">*</span></Label>
+            <select
+              value={formData.designationId}
+              onChange={(e) => setFormData({ ...formData, designationId: e.target.value })}
+              className={`w-full h-10 border rounded-md px-3 ${errors.designationId ? "border-red-500" : ""}`}
+              disabled={!formData.companyId}
+            >
+              <option value="">Select Designation</option>
+              {designations.map((d) => (
+                <option key={d._id} value={d._id}>{d.name}</option>
+              ))}
+            </select>
+          </div>
 
           {/* Role */}
           <div>
@@ -500,9 +697,33 @@ export default function AddUser() {
         </CardContent>
       </Card>
 
+      {/* ================= MODULE PERMISSIONS (CONDITIONAL) ================= */}
+      {ROLE_MODULES_CONFIG[formData.role] && (
+        <Card className="max-w-4xl border border-[#49A7F5]/30">
+          <CardHeader className="bg-[#49A7F5]/5 border-b border-[#49A7F5]/10 rounded-t-xl">
+            <CardTitle className="text-lg font-medium text-[#49A7F5] flex items-center gap-2">
+              <Shield size={18} />
+              Module Permissions ({ROLE_MODULES_CONFIG[formData.role].moduleName})
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-6">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              {ROLE_MODULES_CONFIG[formData.role].features.map((feature) => (
+                <div key={feature.key} className="flex items-center space-x-3 p-3 rounded-lg border border-gray-100 hover:border-[#49A7F5]/30 hover:bg-[#49A7F5]/5 transition-colors cursor-pointer" onClick={() => setSelectedFeatures(prev => ({ ...prev, [feature.key]: !prev[feature.key] }))}>
+                  <div className={`w-5 h-5 rounded flex items-center justify-center border transition-colors ${selectedFeatures[feature.key] ? 'bg-[#49A7F5] border-[#49A7F5]' : 'border-gray-300 bg-white'}`}>
+                    {selectedFeatures[feature.key] && <CheckCircle2 size={14} className="text-white" />}
+                  </div>
+                  <span className="text-sm font-medium text-gray-700">{feature.label}</span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Tumhara existing Upload Documents section exactly yahin rahega */}
       <div className="flex justify-center pt-6">
-        <Button onClick={handleSubmit} disabled={loading}>
+        <Button onClick={handleSubmit} disabled={loading} className="bg-[#49A7F5] hover:bg-[#3D96E1] text-white px-10 py-6 text-lg font-bold shadow-lg transition-all active:scale-95">
           Add User
         </Button>
       </div>
@@ -535,7 +756,7 @@ function BulkImportModal({ onClose, onSuccess }: { onClose: () => void; onSucces
   const downloadTemplate = () => {
     const headers = [
       "Employee ID", "Name", "Email", "Mobile", "Gender", "DOB",
-      "Joining Date", "Role", "Company", "Branch", "Department",
+      "Joining Date", "Role", "Company", "Unit", "Department",
       "Designation", "Cost Center", "Reporting Manager", "Employment Type"
     ];
     const sampleData = [
@@ -637,7 +858,7 @@ function BulkImportModal({ onClose, onSuccess }: { onClose: () => void; onSucces
                   <ul className="list-disc list-inside space-y-1 opacity-90">
                     <li>Download the sample template below.</li>
                     <li>Fill in employee details exactly as per headers.</li>
-                    <li>Ensure <strong>Company, Branch, Department, Cost Center</strong> etc. match exactly.</li>
+                    <li>Ensure <strong>Company, Unit, Department, Cost Center</strong> etc. match exactly.</li>
                     <li><strong>Reporting Manager</strong> column accepts manager's email address.</li>
                     <li>Save as CSV/Excel and upload here.</li>
                   </ul>
@@ -645,7 +866,7 @@ function BulkImportModal({ onClose, onSuccess }: { onClose: () => void; onSucces
               </div>
 
               {/* Upload Area */}
-              <div className="border-2 border-dashed border-gray-200 rounded-2xl p-8 hover:border-orange-400 hover:bg-orange-50/30 transition-all cursor-pointer group text-center relative">
+              <div className="border-2 border-dashed border-gray-200 rounded-2xl p-8 hover:border-[#49A7F5] hover:bg-[#49A7F5]/5 transition-all cursor-pointer group text-center relative">
                 <input
                   type="file"
                   accept=".csv, .xlsx, .xls"
@@ -653,12 +874,12 @@ function BulkImportModal({ onClose, onSuccess }: { onClose: () => void; onSucces
                   className="absolute inset-0 opacity-0 cursor-pointer"
                 />
                 <div className="flex flex-col items-center">
-                  <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center text-orange-600 mb-4 group-hover:scale-110 transition-transform">
+                  <div className="w-12 h-12 bg-[#49A7F5]/10 rounded-full flex items-center justify-center text-[#49A7F5] mb-4 group-hover:scale-110 transition-transform">
                     <Upload size={24} />
                   </div>
                   {file ? (
                     <div className="flex items-center gap-2 text-gray-900 font-medium">
-                      <FileText size={18} className="text-orange-500" />
+                      <FileText size={18} className="text-[#49A7F5]" />
                       {file.name}
                     </div>
                   ) : (

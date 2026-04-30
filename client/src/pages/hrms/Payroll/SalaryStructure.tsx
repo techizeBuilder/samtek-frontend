@@ -71,7 +71,7 @@ const SalaryStructure = () => {
       const res = await axios.get(`${API_BASE}/companies`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      setCompanies(res.data);
+      setCompanies(res.data.companies);
     } catch (err) {
       console.error("Failed to fetch companies");
     }
@@ -150,7 +150,7 @@ const SalaryStructure = () => {
             onChange={(e) => setCompanyFilter(e.target.value)}
           >
             <option value="">All Companies</option>
-            {companies.map((c) => (
+            {Array.isArray(companies) && companies.map((c) => (
               <option key={c._id} value={c._id}>
                 {c.name}
               </option>
@@ -312,14 +312,14 @@ const SalaryStructure = () => {
                 <td className="px-2 py-3 border-r text-center">₹{salaryList.reduce((acc, s) => acc + (s.hra || 0), 0).toLocaleString()}</td>
                 <td className="px-2 py-3 border-r text-center">₹{salaryList.reduce((acc, s) => acc + (s.otherAllowance || 0), 0).toLocaleString()}</td>
                 <td className="px-2 py-3 border-r text-center bg-green-100/50">₹{salaryList.reduce((acc, s) => acc + calcTotalEarnings(s), 0).toLocaleString()}</td>
-                
+
                 <td className="px-2 py-3 border-r text-center">₹{salaryList.reduce((acc, s) => acc + (s.pf || 0), 0).toLocaleString()}</td>
                 <td className="px-2 py-3 border-r text-center">₹{salaryList.reduce((acc, s) => acc + (s.professionalTax || 0), 0).toLocaleString()}</td>
                 <td className="px-2 py-3 border-r text-center">₹{salaryList.reduce((acc, s) => acc + (s.tds || 0), 0).toLocaleString()}</td>
                 <td className="px-2 py-3 border-r text-center">₹{salaryList.reduce((acc, s) => acc + (s.advance || 0), 0).toLocaleString()}</td>
                 <td className="px-2 py-3 border-r text-center">₹{salaryList.reduce((acc, s) => acc + (s.others || 0), 0).toLocaleString()}</td>
                 <td className="px-2 py-3 border-r text-center bg-red-100/50">₹{salaryList.reduce((acc, s) => acc + calcTotalDeductions(s), 0).toLocaleString()}</td>
-                
+
                 <td className="px-4 py-3 border-r text-center bg-blue-100/50 text-blue-800 font-black">₹{salaryList.reduce((acc, s) => acc + calcNetSalary(s), 0).toLocaleString()}</td>
                 <td></td>
               </tr>

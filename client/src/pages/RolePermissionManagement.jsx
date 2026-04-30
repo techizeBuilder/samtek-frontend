@@ -44,18 +44,17 @@ import {
   X
 } from 'lucide-react';
 import { showSuccessToast, showSmartToast } from '@/lib/toast-utils';
-
+import { useAuth } from '@/hooks/useAuth';
 // Role and Module Configuration
 const ROLES = [
   { value: 'Superadmin', label: 'Superadmin' },
-  { value: 'Hr Admin', label: 'Hr Admin' },
-  { value: 'Unit Head', label: 'Unit Head' },
-  { value: 'Unit Manager', label: 'Unit Manager' },
-  { value: 'Production', label: 'Production' },
-  { value: 'Packing', label: 'Packing' },
-  { value: 'Dispatch', label: 'Dispatch' },
-  { value: 'Sales', label: 'Sales' },
-  { value: 'Accounts', label: 'Accounts' }
+  { value: 'HR-Admin', label: 'HR Admin' },
+  { value: 'Company Admin', label: 'Company Admin' },
+  { value: 'Production Head', label: 'Production Head' },
+  { value: 'Packing Head', label: 'Packing Head' },
+  { value: 'Dispatch Head', label: 'Dispatch Head' },
+  { value: 'Sales Head', label: 'Sales Head' },
+  { value: 'Accounts Head', label: 'Accounts Head' }
 ];
 
 const UNITS = [
@@ -303,7 +302,21 @@ export default function RolePermissionManagement() {
   const users = usersResponse?.users || [];
   const totalUsers = usersResponse?.pagination?.total || 0;
   const totalPages = usersResponse?.pagination?.pages || 1;
-  const companies = companiesResponse?.companies || [];
+  const rawCompanies = companiesResponse?.companies || [];
+
+  // Filter companies based on user role
+  const { user: currentUser } = useAuth();
+  const isSuperAdmin = currentUser?.role === 'Superadmin' || currentUser?.role === 'Super Admin';
+  const isCompanyAdmin = currentUser?.role === 'Company Admin';
+
+  const companies = isSuperAdmin ? rawCompanies : rawCompanies.filter(c => c.value === currentUser?.companyId);
+
+  // Auto-set companyId for non-SuperAdmins when opening create dialog
+  useEffect(() => {
+    if (isCreateDialogOpen && !isSuperAdmin && currentUser?.companyId) {
+      setFormData(prev => ({ ...prev, companyId: currentUser.companyId }));
+    }
+  }, [isCreateDialogOpen, isSuperAdmin, currentUser]);
 
   // Debounce search term
   useEffect(() => {
@@ -614,7 +627,7 @@ export default function RolePermissionManagement() {
             ]
           }
         ];
-      case 'Production':
+      case 'Production Head':
         return [
           {
             name: 'production',
@@ -627,7 +640,7 @@ export default function RolePermissionManagement() {
             ]
           }
         ];
-      case 'Sales':
+      case 'Sales Head':
         return [
           {
             name: 'sales',
@@ -641,7 +654,7 @@ export default function RolePermissionManagement() {
             ]
           }
         ];
-      case 'Packing':
+      case 'Packing Head':
         return [
           {
             name: 'packing',
@@ -652,7 +665,7 @@ export default function RolePermissionManagement() {
             ]
           }
         ];
-      case 'Dispatch':
+      case 'Dispatch Head':
         return [
           {
             name: 'dispatches',
@@ -664,7 +677,7 @@ export default function RolePermissionManagement() {
             ]
           }
         ];
-      case 'Accounts':
+      case 'Accounts Head':
         return [
           {
             name: 'accounts',
@@ -927,28 +940,29 @@ export default function RolePermissionManagement() {
               </div>
 
               {/* Company/Location Selection - Optional */}
-              <div>
-                <Label htmlFor="company" className="text-sm font-medium">Company/Location (Optional)</Label>
-                <p className="text-xs text-muted-foreground mb-2">
-                  Select a company/location for users who need access to specific units
-                </p>
-                <select
-                  value={formData.companyId || 'none'}
-                  onChange={(e) => {
-                    console.log('Select value changed:', e.target.value);
-                    const newCompanyId = e.target.value === 'none' ? '' : e.target.value;
-                    console.log('Setting companyId to:', newCompanyId);
-                    setFormData({ ...formData, companyId: newCompanyId });
-                  }}
-                  className="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              <div className="space-y-2">
+                <Label htmlFor="company">Company Assignment</Label>
+                <Select
+                  disabled={!isSuperAdmin}
+                  value={formData.companyId}
+                  onValueChange={(value) => setFormData({ ...formData, companyId: value })}
                 >
-                  <option value="none">No specific company</option>
-                  {companies.map((company) => (
-                    <option key={company.value} value={company.value}>
-                      {company.label || `${company.name} - ${company.city}`}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger id="company">
+                    <SelectValue placeholder="Select Company" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {companies.map((company) => (
+                      <SelectItem key={company.value} value={company.value}>
+                        {company.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {isCompanyAdmin && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Restricted to your assigned company
+                  </p>
+                )}
               </div>
 
 

@@ -46,13 +46,17 @@ export default function DepartmentModal({
       .get(`${API_BASE}/companies`, {
         headers: { Authorization: `Bearer ${token}` },
       })
-      .then((r) => setCompanies(r.data?.companies || []));
-
-    axios
-      .get(`${API_BASE}/branches`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      .then((r) => setAllBranches(r.data));
+      .then((r) => {
+          const comps = r.data?.companies || [];
+          setCompanies(comps);
+          // Pre-populate branches (units) based on companies
+          const mapped = comps.map((c: any) => ({
+              _id: c._id,
+              name: c.unitName || "Unnamed Unit",
+              companyId: c._id
+          }));
+          setAllBranches(mapped);
+      });
 
     axios
       .get(`${API_BASE}/users`, {
@@ -78,7 +82,7 @@ export default function DepartmentModal({
   }, [mode, isOpen]);
 
   /* =========================
-     FILTER BRANCHES
+     FILTER UNITS
   ==========================*/
   useEffect(() => {
     if (!form.companyId) {
@@ -93,6 +97,10 @@ export default function DepartmentModal({
     );
 
     setBranches(filtered);
+    // If there's only one unit, auto-select it
+    if (filtered.length === 1 && !form.branchId) {
+        setForm(prev => ({ ...prev, branchId: filtered[0]._id }));
+    }
   }, [form.companyId, allBranches]);
 
   /* =========================
@@ -118,7 +126,7 @@ export default function DepartmentModal({
     const newErrors: any = {};
 
     if (!form.companyId) newErrors.companyId = "Company is required";
-    if (!form.branchId) newErrors.branchId = "Branch is required";
+    if (!form.branchId) newErrors.branchId = "Unit is required";
     if (!form.name.trim()) newErrors.name = "Department name is required";
     // if (!form.headEmployeeId)
     //   newErrors.headEmployeeId = "Department head is required";
@@ -130,54 +138,54 @@ export default function DepartmentModal({
   /* =========================
      SAVE
   ==========================*/
-const save = async () => {
-  if (!validate()) return;
-const payload = {
-  ...form,
-  headEmployeeId: form.headEmployeeId || null,
-};
-  try {
-    if (mode === "add") {
-     const res = await axios.post(`${API_BASE}/departments`, payload, {
-  headers: { Authorization: `Bearer ${token}` },
-});
+  const save = async () => {
+    if (!validate()) return;
+    const payload = {
+      ...form,
+      headEmployeeId: form.headEmployeeId || null,
+    };
+    try {
+      if (mode === "add") {
+        const res = await axios.post(`${API_BASE}/departments`, payload, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
 
+        toast({
+          type: "success",
+          title: "Department Created",
+          message: res.data?.message || "Department created successfully.",
+        });
+      }
+
+      if (mode === "edit" && department) {
+        const res = await axios.put(
+          `${API_BASE}/departments/${department._id}`,
+          payload,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+
+        toast({
+          type: "success",
+          title: "Department Updated",
+          message: res.data?.message || "Department updated successfully.",
+        });
+      }
+
+      handleClose();
+    } catch (error: any) {
       toast({
-        type: "success",
-        title: "Department Created",
-        message: res.data?.message || "Department created successfully.",
+        type: "error",
+        title: "Operation Failed",
+        message:
+          error?.response?.data?.message ||
+          (mode === "add"
+            ? "Unable to create department. Please try again."
+            : "Unable to update department. Please try again."),
       });
     }
-
-    if (mode === "edit" && department) {
-      const res = await axios.put(
-  `${API_BASE}/departments/${department._id}`,
-  payload,
-  {
-    headers: { Authorization: `Bearer ${token}` },
-  }
-);
-
-      toast({
-        type: "success",
-        title: "Department Updated",
-        message: res.data?.message || "Department updated successfully.",
-      });
-    }
-
-    handleClose();
-  } catch (error: any) {
-    toast({
-      type: "error",
-      title: "Operation Failed",
-      message:
-        error?.response?.data?.message ||
-        (mode === "add"
-          ? "Unable to create department. Please try again."
-          : "Unable to update department. Please try again."),
-    });
-  }
-};
+  };
 
 
   const handleClose = () => {
@@ -217,9 +225,8 @@ const payload = {
                   branchId: "",
                 })
               }
-              className={`w-full border px-3 py-2 rounded ${
-                errors.companyId ? "border-red-500" : ""
-              }`}
+              className={`w-full border px-3 py-2 rounded ${errors.companyId ? "border-red-500" : ""
+                }`}
             >
               <option value="">Select</option>
               {companies.map((c) => (
@@ -233,18 +240,17 @@ const payload = {
             )}
           </div>
 
-          {/* Branch */}
+          {/* Unit */}
           <div>
             <label className="block mb-1">
-              Branch <span className="text-red-500">*</span>
+              Unit <span className="text-red-500">*</span>
             </label>
             <select
               disabled={disabled || !form.companyId}
               value={form.branchId}
               onChange={(e) => setForm({ ...form, branchId: e.target.value })}
-              className={`w-full border px-3 py-2 rounded ${
-                errors.branchId ? "border-red-500" : ""
-              }`}
+              className={`w-full border px-3 py-2 rounded ${errors.branchId ? "border-red-500" : ""
+                }`}
             >
               <option value="">Select</option>
               {branches.map((b) => (
@@ -267,9 +273,8 @@ const payload = {
               disabled={disabled}
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
-              className={`w-full border px-3 py-2 rounded ${
-                errors.name ? "border-red-500" : ""
-              }`}
+              className={`w-full border px-3 py-2 rounded ${errors.name ? "border-red-500" : ""
+                }`}
             />
             {errors.name && (
               <p className="text-red-500 text-xs mt-1">{errors.name}</p>
@@ -279,7 +284,7 @@ const payload = {
           {/* Department Head */}
           <div className="col-span-2">
             <label className="block mb-1">
-              Department Head 
+              Department Head
             </label>
             <select
               disabled={disabled}
@@ -287,9 +292,8 @@ const payload = {
               onChange={(e) =>
                 setForm({ ...form, headEmployeeId: e.target.value })
               }
-              className={`w-full border px-3 py-2 rounded ${
-                errors.headEmployeeId ? "border-red-500" : ""
-              }`}
+              className={`w-full border px-3 py-2 rounded ${errors.headEmployeeId ? "border-red-500" : ""
+                }`}
             >
               <option value="">Select Manager</option>
               {managers.map((m) => (

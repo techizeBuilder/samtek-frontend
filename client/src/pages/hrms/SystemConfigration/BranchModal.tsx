@@ -88,9 +88,9 @@ export default function BranchModal({ isOpen, mode, branch, onClose }: Props) {
     if ((mode === "edit" || mode === "view") && branch) {
       setForm({
         companyId:
-  typeof branch.companyId === "string"
-    ? branch.companyId
-    : branch.companyId?._id || "",
+          typeof branch.companyId === "string"
+            ? branch.companyId
+            : branch.companyId?._id || "",
         name: branch.name,
         code: branch.code || "",
         city: branch.city,
@@ -102,7 +102,7 @@ export default function BranchModal({ isOpen, mode, branch, onClose }: Props) {
       });
       setErrors({});
     }
-  }, [isOpen, mode, branch,companies]);
+  }, [isOpen, mode, branch, companies]);
 
   /* ================= VALIDATION ================= */
   const validateForm = () => {
@@ -110,9 +110,9 @@ export default function BranchModal({ isOpen, mode, branch, onClose }: Props) {
 
     if (!form.companyId) newErrors.companyId = "Company is required";
 
-    if (!form.name.trim()) newErrors.name = "Branch name is required";
+    if (!form.name.trim()) newErrors.name = "Unit name is required";
 
-    if (!form.code.trim()) newErrors.code = "Branch code is required";
+    if (!form.code.trim()) newErrors.code = "Unit code is required";
 
     if (!form.city.trim()) newErrors.city = "City is required";
 
@@ -128,48 +128,48 @@ export default function BranchModal({ isOpen, mode, branch, onClose }: Props) {
     return Object.keys(newErrors).length === 0;
   };
 
-const handleSubmit = async () => {
-  if (mode === "view") return;
-  if (!validateForm()) return;
+  const handleSubmit = async () => {
+    if (mode === "view") return;
+    if (!validateForm()) return;
 
-  try {
-    if (mode === "add") {
-      const res = await axios.post(`${API_BASE}/branches`, form, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+    try {
+      if (mode === "add") {
+        const res = await axios.post(`${API_BASE}/branches`, form, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
 
+        toast({
+          type: "success",
+          title: "Unit Created",
+          message: res.data?.message || "Unit created successfully",
+        });
+      }
+
+      if (mode === "edit" && branch) {
+        const res = await axios.put(`${API_BASE}/branches/${branch._id}`, form, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        toast({
+          type: "success",
+          title: "Unit Updated",
+          message: res.data?.message || "Unit updated successfully",
+        });
+      }
+
+      onClose();
+    } catch (error: any) {
       toast({
-        type: "success",
-        title: "Branch Created",
-        message: res.data?.message || "Branch created successfully",
+        type: "error",
+        title: "Operation Failed",
+        message:
+          error?.response?.data?.message ||
+          (mode === "add"
+            ? "Unable to create unit. Please try again."
+            : "Unable to update unit. Please try again."),
       });
     }
-
-    if (mode === "edit" && branch) {
-      const res = await axios.put(`${API_BASE}/branches/${branch._id}`, form, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      toast({
-        type: "success",
-        title: "Branch Updated",
-        message: res.data?.message || "Branch updated successfully",
-      });
-    }
-
-    onClose();
-  } catch (error: any) {
-    toast({
-      type: "error",
-      title: "Operation Failed",
-      message:
-        error?.response?.data?.message ||
-        (mode === "add"
-          ? "Unable to create branch. Please try again."
-          : "Unable to update branch. Please try again."),
-    });
-  }
-};
+  };
 
 
   if (!isOpen) return null;
@@ -187,7 +187,7 @@ const handleSubmit = async () => {
       >
         {/* HEADER */}
         <div className="px-6 py-4 border-b shrink-0">
-          <h2 className="text-lg font-semibold capitalize">{mode} Branch</h2>
+          <h2 className="text-lg font-semibold capitalize">{mode} Unit</h2>
         </div>
 
         {/* BODY */}
@@ -204,9 +204,8 @@ const handleSubmit = async () => {
                 setForm({ ...form, companyId: e.target.value });
                 setErrors({ ...errors, companyId: "" });
               }}
-              className={`w-full border rounded px-3 py-2 ${
-                errors.companyId ? "border-red-500" : ""
-              }`}
+              className={`w-full border rounded px-3 py-2 ${errors.companyId ? "border-red-500" : ""
+                }`}
             >
               <option value="">Select Company</option>
               {companies.map((c) => (
@@ -221,8 +220,8 @@ const handleSubmit = async () => {
           </div>
 
           {[
-            ["Branch Name", "name"],
-            ["Branch Code", "code"],
+            ["Unit Name", "name"],
+            ["Unit Code", "code"],
             ["City", "city"],
             ["State", "state"],
             ["Country", "country"],
@@ -239,9 +238,8 @@ const handleSubmit = async () => {
                   setForm({ ...form, [key]: e.target.value });
                   setErrors({ ...errors, [key]: "" });
                 }}
-                className={`w-full border rounded px-3 py-2 ${
-                  errors[key] ? "border-red-500" : ""
-                }`}
+                className={`w-full border rounded px-3 py-2 ${errors[key] ? "border-red-500" : ""
+                  }`}
               />
               {errors[key] && (
                 <p className="text-xs text-red-500 mt-1">{errors[key]}</p>
@@ -260,9 +258,8 @@ const handleSubmit = async () => {
                 setForm({ ...form, address: e.target.value });
                 setErrors({ ...errors, address: "" });
               }}
-              className={`w-full border rounded px-3 py-2 ${
-                errors.address ? "border-red-500" : ""
-              }`}
+              className={`w-full border rounded px-3 py-2 ${errors.address ? "border-red-500" : ""
+                }`}
               rows={3}
             />
             {errors.address && (

@@ -58,7 +58,61 @@ interface UserType {
   terminationDate?: string;
   terminationReason?: string;
   confirmationDate?: string;
+  permissions?: any;
 }
+
+const ROLE_MODULES_CONFIG: Record<string, { moduleName: string; features: { key: string; label: string }[] }> = {
+  "Sales Employee": {
+    moduleName: "sales",
+    features: [
+      { key: "dashboard", label: "Dashboard" },
+      { key: "orders", label: "My Orders" },
+      { key: "myCustomers", label: "My Customers" },
+      { key: "myDeliveries", label: "My Dispatches" },
+      { key: "myInvoices", label: "My Payments" },
+      { key: "returns", label: "Returns" },
+      { key: "damages", label: "Damages" }
+    ]
+  },
+  "Dispatch Employee": {
+    moduleName: "dispatches",
+    features: [
+      { key: "dashboard", label: "Dashboard" },
+      { key: "deliveryChallan", label: "Delivery Challan" },
+      { key: "dispatchHistory", label: "History" }
+    ]
+  },
+  "Production Employee": {
+    moduleName: "production",
+    features: [
+      { key: "dashboard", label: "Dashboard" },
+      { key: "productionSheet", label: "Production Sheet" },
+      { key: "productionReports", label: "Production Reports" }
+    ]
+  },
+  "Packing Employee": {
+    moduleName: "packing",
+    features: [
+      { key: "dashboard", label: "Dashboard" },
+      { key: "packingSheet", label: "Packing Sheet" },
+      { key: "packingHistory", label: "Packing History" }
+    ]
+  },
+  "Account Employee": {
+    moduleName: "accounts",
+    features: [
+      { key: "dashboard", label: "Dashboard" },
+      { key: "sales", label: "Sales" },
+      { key: "purchases", label: "Purchases" },
+      { key: "gstAndTds", label: "GST & TDS" },
+      { key: "expenses", label: "Expenses" },
+      { key: "salesmanSettlement", label: "Salesman Settlement" },
+      { key: "bankAndCash", label: "Bank & Cash" },
+      { key: "reports", label: "Reports" },
+      { key: "settings", label: "Settings" }
+    ]
+  }
+};
 
 type DocStatus = "UPLOADED" | "VERIFIED" | "REJECTED";
 type DocumentType = "AADHAAR" | "PAN" | "MARKSHEET_12" | "PASSBOOK";
@@ -89,8 +143,10 @@ export default function Profile() {
   const [openPersonal, setOpenPersonal] = useState(false);
   const [openContact, setOpenContact] = useState(false);
   const [openJobInfo, setOpenJobInfo] = useState(false);
+  const [openPermissions, setOpenPermissions] = useState(false);
   const [openChangePassword, setOpenChangePassword] = useState(false);
   const [managers, setManagers] = useState<any[]>([]);
+  const [selectedFeatures, setSelectedFeatures] = useState<Record<string, boolean>>({});
 
   const [form, setForm] = useState({
     name: "",
@@ -159,6 +215,22 @@ export default function Profile() {
           terminationDate: userData.terminationDate?.slice(0, 10) || "",
           terminationReason: userData.terminationReason || "",
         });
+
+        if (userData.permissions && userData.permissions.modules && userData.permissions.modules.length > 0) {
+          const mod = userData.permissions.modules[0];
+          const initialFeatures: Record<string, boolean> = {};
+          if (mod.dashboard) initialFeatures["dashboard"] = true;
+          if (mod.features) {
+            mod.features.forEach((f: any) => {
+              if (f.view) initialFeatures[f.key] = true;
+            });
+          }
+          setSelectedFeatures(initialFeatures);
+        } else if (ROLE_MODULES_CONFIG[userData.role]) {
+           const initialFeatures: Record<string, boolean> = {};
+           ROLE_MODULES_CONFIG[userData.role].features.forEach(f => initialFeatures[f.key] = true);
+           setSelectedFeatures(initialFeatures);
+        }
       }
     } catch (err: any) {
       console.error("Failed to fetch user", err);
@@ -429,6 +501,27 @@ export default function Profile() {
             />
           </Section>
 
+          {/* ================= MODULE PERMISSIONS ================= */}
+          {ROLE_MODULES_CONFIG[user.role] && (
+            <Section title={`Module Permissions (${ROLE_MODULES_CONFIG[user.role].moduleName})`} onEdit={() => setOpenPermissions(true)}>
+              <div className="col-span-1 md:col-span-2 flex flex-wrap gap-2">
+                {ROLE_MODULES_CONFIG[user.role].features.map(f => {
+                  if (selectedFeatures[f.key]) {
+                    return (
+                      <span key={f.key} className="px-3 py-1 bg-[#49A7F5]/10 text-[#49A7F5] border border-[#49A7F5]/20 rounded-full text-xs font-semibold">
+                        {f.label}
+                      </span>
+                    );
+                  }
+                  return null;
+                })}
+                {Object.keys(selectedFeatures).filter(k => selectedFeatures[k]).length === 0 && (
+                  <span className="text-gray-400 text-xs italic">No permissions assigned</span>
+                )}
+              </div>
+            </Section>
+          )}
+
 
           {/* ================= PROBATION CONFIRMATION SECTION ================= */}
           <div className="bg-white border rounded-xl shadow-sm p-6 space-y-4">
@@ -440,7 +533,7 @@ export default function Profile() {
                     type="checkbox"
                     checked={flowState.isConfirmed}
                     onChange={(e) => setFlowState({ ...flowState, isConfirmed: e.target.checked })}
-                    className="w-5 h-5 rounded border-gray-300 text-orange-500 focus:ring-orange-400"
+                    className="w-5 h-5 rounded border-gray-300 text-[#49A7F5] focus:ring-[#49A7F5]"
                   />
                 </label>
                 <div className="flex items-center gap-2">
@@ -505,7 +598,7 @@ export default function Profile() {
                   type="date"
                   value={flowState.terminationDate}
                   onChange={(e) => setFlowState({ ...flowState, terminationDate: e.target.value })}
-                  className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-orange-400"
+                  className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-[#49A7F5]"
                 />
               </div>
               <div className="flex-1 flex justify-end">
@@ -532,7 +625,7 @@ export default function Profile() {
                 value={flowState.terminationReason}
                 onChange={(e) => setFlowState({ ...flowState, terminationReason: e.target.value })}
                 placeholder="Manager enter the reasons based on which a resource has resigned or is terminated..."
-                className="w-full border rounded-xl p-4 text-sm h-32 focus:outline-none focus:ring-2 focus:ring-orange-400 bg-gray-50/30"
+                className="w-full border rounded-xl p-4 text-sm h-32 focus:outline-none focus:ring-2 focus:ring-[#49A7F5] bg-gray-50/30 transition-all"
               />
             </div>
           </div>
@@ -671,6 +764,61 @@ export default function Profile() {
           />
         </Modal>
       )}
+
+      {/* ================= PERMISSIONS MODAL ================= */}
+      {openPermissions && ROLE_MODULES_CONFIG[user.role] && (
+        <Modal
+          title="Edit Module Permissions"
+          onClose={() => setOpenPermissions(false)}
+        >
+          <div className="space-y-3">
+            {ROLE_MODULES_CONFIG[user.role].features.map((feature) => (
+              <label key={feature.key} className="flex items-center space-x-3 p-3 rounded-lg border border-gray-100 hover:border-[#49A7F5]/30 hover:bg-[#49A7F5]/5 transition-colors cursor-pointer">
+                <input 
+                  type="checkbox"
+                  checked={selectedFeatures[feature.key] || false}
+                  onChange={(e) => setSelectedFeatures(prev => ({ ...prev, [feature.key]: e.target.checked }))}
+                  className="w-4 h-4 rounded border-gray-300 text-[#49A7F5] focus:ring-[#49A7F5]"
+                />
+                <span className="text-sm font-medium text-gray-700">{feature.label}</span>
+              </label>
+            ))}
+          </div>
+
+          <ModalActions
+            onSave={() => {
+              const config = ROLE_MODULES_CONFIG[user.role];
+              const hasDashboard = selectedFeatures["dashboard"] || false;
+              const featuresArray = config.features
+                .filter(f => f.key !== "dashboard" && selectedFeatures[f.key])
+                .map(f => ({
+                  key: f.key,
+                  view: true,
+                  add: true,
+                  edit: true,
+                  delete: false,
+                  alter: false
+                }));
+
+              const newPermissions = {
+                role: user.role,
+                canAccessAllUnits: false,
+                modules: [
+                  {
+                    name: config.moduleName,
+                    dashboard: hasDashboard,
+                    features: featuresArray
+                  }
+                ]
+              };
+
+              updateUser({ permissions: newPermissions });
+              setOpenPermissions(false);
+            }}
+            onCancel={() => setOpenPermissions(false)}
+          />
+        </Modal>
+      )}
       {/* ================= CHANGE PASSWORD MODAL ================= */}
       <ChangePasswordModal
         isOpen={openChangePassword}
@@ -742,7 +890,7 @@ const Input = ({ label, ...props }: any) => (
     <label className="text-xs font-bold text-gray-500 uppercase">{label}</label>
     <input
       {...props}
-      className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all"
+      className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#49A7F5]/50 focus:border-transparent transition-all"
     />
   </div>
 );
@@ -754,7 +902,7 @@ const ModalActions = ({ onSave, onCancel }: any) => (
     </button>
     <button
       onClick={onSave}
-      className="px-5 py-2 text-sm font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-md active:scale-95"
+      className="px-5 py-2 text-sm font-semibold bg-[#49A7F5] text-white rounded-lg hover:bg-[#3D96E1] transition-colors shadow-md active:scale-95"
     >
       Save Changes
     </button>
@@ -766,7 +914,7 @@ const Select = ({ label, children, ...props }: any) => (
     <label className="text-xs font-bold text-gray-500 uppercase">{label}</label>
     <select
       {...props}
-      className="w-full border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all cursor-pointer"
+      className="w-full border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#49A7F5]/50 transition-all cursor-pointer"
     >
       {children}
     </select>

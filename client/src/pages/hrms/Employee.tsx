@@ -305,7 +305,7 @@ export default function Employee() {
         <div className="flex items-center gap-4">
           <button
             onClick={() => navigate("/hrms/SuperAdmin/addUser")}
-            className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg transition-colors font-medium shadow-sm mr-2"
+            className="flex items-center gap-2 bg-[#49A7F5] hover:bg-[#3D96E1] text-white px-4 py-2 rounded-lg transition-all font-medium shadow-sm mr-2 active:scale-95"
           >
             <Users size={18} />
             Add User
@@ -316,7 +316,7 @@ export default function Employee() {
             <select
               value={companyFilter}
               onChange={(e) => setSearchParams({ ...Object.fromEntries(searchParams), companyId: e.target.value, page: "1" })}
-              className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-400 appearance-none bg-white cursor-pointer"
+              className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#49A7F5] appearance-none bg-white cursor-pointer"
             >
               <option value="">All Companies</option>
               {companies.map(comp => (
@@ -331,7 +331,7 @@ export default function Employee() {
             <select
               value={unitFilter}
               onChange={(e) => setSearchParams({ ...Object.fromEntries(searchParams), unit: e.target.value, page: "1" })}
-              className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-400 appearance-none bg-white cursor-pointer"
+              className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#49A7F5] appearance-none bg-white cursor-pointer"
             >
               <option value="">All Units/Branches</option>
               {Array.from(new Set(companies.map(c => c.unitName).filter(Boolean))).map(unit => (
@@ -346,15 +346,15 @@ export default function Employee() {
               onClick={() => setShowFilters((v) => !v)}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-all font-medium text-sm shadow-sm
                 ${showFilters || hasActiveFilters
-                  ? "bg-orange-500 text-white border-orange-500"
-                  : "bg-white text-gray-600 border-gray-200 hover:border-orange-400 hover:text-orange-500"
+                  ? "bg-[#49A7F5] text-white shadow-md border-[#49A7F5]"
+                  : "bg-white text-gray-500 border-gray-200 hover:border-[#49A7F5]/50 hover:text-[#49A7F5]"
                 }`}
               title="Toggle Filters"
             >
               <SlidersHorizontal size={16} />
               Filters
               {hasActiveFilters && (
-                <span className="ml-1 bg-white text-orange-500 rounded-full text-[10px] font-bold px-1.5 py-0.5 leading-none">
+                <span className="ml-1 bg-white text-blue-500 rounded-full text-[10px] font-bold px-1.5 py-0.5 leading-none">
                   {Object.values(filters).filter(Boolean).length}
                 </span>
               )}
@@ -364,14 +364,14 @@ export default function Employee() {
           <div className="flex items-center bg-gray-100 p-1 rounded-lg">
             <button
               onClick={() => setViewMode("grid")}
-              className={`p-2 rounded-md transition-all ${viewMode === "grid" ? "bg-white shadow-sm text-orange-500" : "text-gray-400 hover:text-gray-600"}`}
+              className={`p-2 rounded-md transition-all ${viewMode === "grid" ? "bg-white shadow-sm text-blue-500" : "text-gray-400 hover:text-gray-600"}`}
               title="Grid View"
             >
               <LayoutGrid size={20} />
             </button>
             <button
               onClick={() => setViewMode("list")}
-              className={`p-2 rounded-md transition-all ${viewMode === "list" ? "bg-white shadow-sm text-orange-500" : "text-gray-400 hover:text-gray-600"}`}
+              className={`p-2 rounded-md transition-all ${viewMode === "list" ? "bg-white shadow-sm text-blue-500" : "text-gray-400 hover:text-gray-600"}`}
               title="List View"
             >
               <List size={20} />
@@ -392,7 +392,7 @@ export default function Employee() {
                 value={filters.name}
                 onChange={(e) => setFilters(prev => ({ ...prev, name: e.target.value }))}
                 placeholder="Name or ID"
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-orange-400"
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
               />
             </div>
             <div>
@@ -402,7 +402,7 @@ export default function Employee() {
                 value={filters.designation}
                 onChange={(e) => setFilters(prev => ({ ...prev, designation: e.target.value }))}
                 placeholder="Designation"
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-orange-400"
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
               />
             </div>
             <div>
@@ -412,17 +412,17 @@ export default function Employee() {
                 value={filters.company}
                 onChange={(e) => setFilters(prev => ({ ...prev, company: e.target.value }))}
                 placeholder="Company"
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-orange-400"
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
               />
             </div>
             <div>
-              <p className="text-xs font-semibold text-gray-700 mb-1">Branch</p>
+              <p className="text-xs font-semibold text-gray-700 mb-1">Unit</p>
               <input
                 type="text"
                 value={filters.branch}
                 onChange={(e) => setFilters(prev => ({ ...prev, branch: e.target.value }))}
-                placeholder="Branch"
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-orange-400"
+                placeholder="Unit"
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
               />
             </div>
             <div>
@@ -432,7 +432,7 @@ export default function Employee() {
                 value={filters.department}
                 onChange={(e) => setFilters(prev => ({ ...prev, department: e.target.value }))}
                 placeholder="Department"
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-orange-400"
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
               />
             </div>
           </div>
@@ -446,7 +446,7 @@ export default function Employee() {
                 value={filters.costCenter}
                 onChange={(e) => setFilters(prev => ({ ...prev, costCenter: e.target.value }))}
                 placeholder="Cost Center"
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-orange-400"
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
               />
             </div>
             <div>
@@ -456,7 +456,7 @@ export default function Employee() {
                 value={filters.manager}
                 onChange={(e) => setFilters(prev => ({ ...prev, manager: e.target.value }))}
                 placeholder="Manager"
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-orange-400"
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
               />
             </div>
             <div>
@@ -466,7 +466,7 @@ export default function Employee() {
                 value={filters.doj}
                 onChange={(e) => setFilters(prev => ({ ...prev, doj: e.target.value }))}
                 placeholder="e.g. 01/2024"
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-orange-400"
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
               />
             </div>
             <div>
@@ -476,7 +476,7 @@ export default function Employee() {
                 value={filters.probation}
                 onChange={(e) => setFilters(prev => ({ ...prev, probation: e.target.value }))}
                 placeholder="e.g. 06/2024"
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-orange-400"
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
               />
             </div>
             <div>
@@ -486,7 +486,7 @@ export default function Employee() {
                 value={filters.confirmation}
                 onChange={(e) => setFilters(prev => ({ ...prev, confirmation: e.target.value }))}
                 placeholder="e.g. 09/2024"
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-orange-400"
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
               />
             </div>
           </div>
@@ -500,7 +500,7 @@ export default function Employee() {
                 value={filters.termination}
                 onChange={(e) => setFilters(prev => ({ ...prev, termination: e.target.value }))}
                 placeholder="e.g. 12/2024"
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-orange-400"
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
               />
             </div>
             <div>
@@ -510,7 +510,7 @@ export default function Employee() {
                 value={filters.empType}
                 onChange={(e) => setFilters(prev => ({ ...prev, empType: e.target.value }))}
                 placeholder="e.g. Full Time"
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-orange-400"
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
               />
             </div>
             <div>
@@ -520,7 +520,7 @@ export default function Employee() {
                 value={filters.contact}
                 onChange={(e) => setFilters(prev => ({ ...prev, contact: e.target.value }))}
                 placeholder="Email or Phone"
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-orange-400"
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
               />
             </div>
             <div>
@@ -528,7 +528,7 @@ export default function Employee() {
               <select
                 value={filters.gender}
                 onChange={(e) => setFilters(prev => ({ ...prev, gender: e.target.value }))}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-orange-400 bg-white"
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white"
               >
                 <option value="">All</option>
                 <option value="male">Male</option>
@@ -541,7 +541,7 @@ export default function Employee() {
               <select
                 value={filters.status}
                 onChange={(e) => setFilters(prev => ({ ...prev, status: e.target.value }))}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-orange-400 bg-white"
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white"
               >
                 <option value="">All Status</option>
                 <option value="CONFIRMED">Confirmed</option>
@@ -628,7 +628,7 @@ export default function Employee() {
                       : emp.avatar
                     }
                     alt={emp.name}
-                    className="w-20 h-20 rounded-full object-cover border-4 border-orange-100"
+                    className="w-20 h-20 rounded-full object-cover border-4 border-blue-100"
                   />
                 ) : (
                   <div className="w-20 h-20 rounded-full border-4 border-gray-200 flex items-center justify-center">
@@ -641,7 +641,7 @@ export default function Employee() {
                 />
               </div>
 
-              <h3 className="text-center text-orange-500 font-semibold text-lg">{emp.name}</h3>
+              <h3 className="text-center text-blue-500 font-semibold text-lg">{emp.name}</h3>
               <p className="text-center text-gray-500 text-sm mt-1">{emp.role}</p>
             </div>
           ))}
@@ -650,11 +650,11 @@ export default function Employee() {
         <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
           {/* Active Filter Tags */}
           {hasActiveFilters && (
-            <div className="flex flex-wrap gap-2 px-4 py-3 bg-orange-50 border-b">
+            <div className="flex flex-wrap gap-2 px-4 py-3 bg-blue-50 border-b">
               {filters.name && <FilterTag label="Name/ID" value={filters.name} onClear={() => setFilters(prev => ({ ...prev, name: "" }))} />}
               {filters.designation && <FilterTag label="Designation" value={filters.designation} onClear={() => setFilters(prev => ({ ...prev, designation: "" }))} />}
               {filters.company && <FilterTag label="Company" value={filters.company} onClear={() => setFilters(prev => ({ ...prev, company: "" }))} />}
-              {filters.branch && <FilterTag label="Branch" value={filters.branch} onClear={() => setFilters(prev => ({ ...prev, branch: "" }))} />}
+              {filters.branch && <FilterTag label="Unit" value={filters.branch} onClear={() => setFilters(prev => ({ ...prev, branch: "" }))} />}
               {filters.department && <FilterTag label="Department" value={filters.department} onClear={() => setFilters(prev => ({ ...prev, department: "" }))} />}
               {filters.costCenter && <FilterTag label="Cost Center" value={filters.costCenter} onClear={() => setFilters(prev => ({ ...prev, costCenter: "" }))} />}
               {filters.manager && <FilterTag label="Manager" value={filters.manager} onClear={() => setFilters(prev => ({ ...prev, manager: "" }))} />}
@@ -682,7 +682,7 @@ export default function Employee() {
                   <th className="p-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Employee Name</th>
                   <th className="p-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Designation</th>
                   <th className="p-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Company</th>
-                  <th className="p-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Branch</th>
+                  <th className="p-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Unit</th>
                   <th className="p-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Department</th>
                   <th className="p-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Cost Center</th>
                   <th className="p-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Reporting Manager</th>
@@ -773,7 +773,7 @@ export default function Employee() {
                       <td className="p-4">
                         <span className={`px-2 py-1 rounded-full text-[10px] font-bold border uppercase tracking-wide ${emp.employmentStatus === "CONFIRMED" ? "bg-green-50 text-green-600 border-green-100" :
                           emp.employmentStatus === "TERMINATED" ? "bg-red-50 text-red-600 border-red-100" :
-                            "bg-orange-50 text-orange-600 border-orange-100"
+                            "bg-blue-50 text-blue-600 border-blue-100"
                           }`}>
                           {emp.employmentStatus || "PROBATION"}
                         </span>
@@ -781,7 +781,7 @@ export default function Employee() {
                       <td className="p-4">
                         <div className="flex flex-col gap-1">
                           <div className="text-[10px] text-gray-400 uppercase font-bold text-nowrap">Uploaded: {docs.uploaded}/4</div>
-                          <div className={`text-[10px] uppercase font-bold text-nowrap ${docs.approved === 4 ? "text-green-500" : "text-orange-500"}`}>
+                          <div className={`text-[10px] uppercase font-bold text-nowrap ${docs.approved === 4 ? "text-green-500" : "text-blue-500"}`}>
                             Approved: {docs.approved}/4
                           </div>
                         </div>
@@ -790,7 +790,7 @@ export default function Employee() {
                         <div className="flex justify-center">
                           <button
                             onClick={() => navigate(`/hrms/SuperAdmin/employees/profile/${emp._id}`)}
-                            className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
+                            className="flex-1 bg-[#49A7F5] hover:bg-[#3D96E1] text-white py-2 rounded-lg text-sm font-semibold transition-all shadow-sm active:scale-95"
                             title="View Profile"
                           >
                             <User size={18} />
@@ -825,10 +825,9 @@ export default function Employee() {
                 <button
                   key={p}
                   onClick={() => handlePageChange(p as number)}
-                  className={`min-w-[40px] h-10 rounded-lg text-sm font-medium transition-all duration-200
-                  ${page === p
-                      ? "bg-orange-500 text-white shadow-lg scale-105"
-                      : "bg-orange-50 text-orange-600 hover:bg-orange-100"
+                  className={`px-3 py-1 rounded-md transition-all text-xs font-semibold ${page === p
+                      ? "bg-[#49A7F5] text-white shadow-sm"
+                      : "text-gray-500 hover:bg-[#49A7F5]/5 hover:text-[#49A7F5]"
                     }`}
                 >
                   {p}

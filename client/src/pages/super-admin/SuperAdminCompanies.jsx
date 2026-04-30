@@ -92,17 +92,32 @@ const SuperAdminCompanies = () => {
     queryFn: () => api.getCompanyStats(),
   });
 
+  // Track admin creation error to show inside modal
+  const [adminCreateError, setAdminCreateError] = useState('');
+
   // Create company mutation
   const createCompanyMutation = useMutation({
     mutationFn: (data) => api.createCompany(data),
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries(['companies']);
       queryClient.invalidateQueries(['company-stats']);
-      setIsCreateModalOpen(false);
-      toast({
-        title: "Success",
-        description: "Company created successfully",
-      });
+
+      if (result.adminError) {
+        // Keep modal open so user can fix the admin fields
+        setAdminCreateError(`⚠️ Company saved! But admin creation failed: ${result.adminError}`);
+        toast({
+          title: "Company Created — Admin Failed",
+          description: result.adminError,
+          variant: "destructive",
+        });
+      } else {
+        setIsCreateModalOpen(false);
+        setAdminCreateError('');
+        toast({
+          title: "✅ Success",
+          description: "Company and Company Admin created successfully!",
+        });
+      }
     },
     onError: (error) => {
       toast({
@@ -295,7 +310,8 @@ const SuperAdminCompanies = () => {
             <CompanyForm
               onSubmit={(data) => createCompanyMutation.mutate(data)}
               isLoading={createCompanyMutation.isPending}
-              onCancel={() => setIsCreateModalOpen(false)}
+              onCancel={() => { setIsCreateModalOpen(false); setAdminCreateError(''); }}
+              serverError={adminCreateError}
             />
           </DialogContent>
         </Dialog>
@@ -634,7 +650,7 @@ const SuperAdminCompanies = () => {
 };
 
 // Company Form Component
-const CompanyForm = ({ company, onSubmit, isLoading, onCancel }) => {
+const CompanyForm = ({ company, onSubmit, isLoading, onCancel, serverError }) => {
   const [formData, setFormData] = useState({
     unitName: company?.unitName || '',
     name: company?.name || '',
@@ -648,7 +664,12 @@ const CompanyForm = ({ company, onSubmit, isLoading, onCancel }) => {
     state: company?.state || '',
     pan: company?.pan || '',
     gst: company?.gst || '',
-    isActive: true // Always active, not editable
+    isActive: true,
+    createAdmin: true, // Always create admin for new company
+    adminName: '',
+    adminEmail: '',
+    adminPassword: '',
+    adminPhone: ''
   });
 
   const [errors, setErrors] = useState({});
@@ -684,6 +705,16 @@ const CompanyForm = ({ company, onSubmit, isLoading, onCancel }) => {
     // PIN code validation
     if (formData.locationPin && !/^[1-9][0-9]{5}$/.test(formData.locationPin)) {
       newErrors.locationPin = 'Please enter a valid 6-digit PIN code';
+    }
+
+    // Company Admin validation — always required when creating a new company
+    if (!company) {
+      if (!formData.adminName?.trim()) newErrors.adminName = "Admin name is required";
+      if (!formData.adminEmail?.trim()) newErrors.adminEmail = "Admin email is required";
+      else if (!/^\S+@\S+\.\S+$/.test(formData.adminEmail)) newErrors.adminEmail = "Invalid admin email";
+      if (!formData.adminPassword?.trim()) newErrors.adminPassword = "Admin password is required";
+      else if (formData.adminPassword.length < 6) newErrors.adminPassword = "Password must be at least 6 characters";
+      if (!formData.adminPhone?.trim()) newErrors.adminPhone = "Admin phone is required";
     }
 
     if (Object.keys(newErrors).length > 0) {
@@ -886,7 +917,75 @@ const CompanyForm = ({ company, onSubmit, isLoading, onCancel }) => {
             </div>
           </div>
         </div>
+
+        {/* Company Admin Section — always shown for new company */}
+        {!company && (
+          <div className="space-y-4 pt-4 border-t">
+            <div>
+              <h4 className="text-sm font-semibold text-gray-900">Company Admin Account</h4>
+              <p className="text-xs text-muted-foreground mt-0.5">This admin account will be used to manage this company's HRMS data.</p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-blue-50/50 border border-blue-100 p-4 rounded-lg">
+              <div className="space-y-2">
+                <Label htmlFor="adminName">Admin Full Name *</Label>
+                <Input
+                  id="adminName"
+                  value={formData.adminName}
+                  onChange={(e) => handleChange('adminName', e.target.value)}
+                  placeholder="e.g. Rajesh Kumar"
+                  className={errors.adminName ? 'border-red-500' : ''}
+                />
+                {errors.adminName && <p className="text-sm text-red-500">{errors.adminName}</p>}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="adminEmail">Admin Email (Login ID) *</Label>
+                <Input
+                  id="adminEmail"
+                  type="email"
+                  value={formData.adminEmail}
+                  onChange={(e) => handleChange('adminEmail', e.target.value)}
+                  placeholder="admin@company.com"
+                  className={errors.adminEmail ? 'border-red-500' : ''}
+                />
+                {errors.adminEmail && <p className="text-sm text-red-500">{errors.adminEmail}</p>}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="adminPhone">Admin Phone *</Label>
+                <Input
+                  id="adminPhone"
+                  value={formData.adminPhone}
+                  onChange={(e) => handleChange('adminPhone', e.target.value)}
+                  placeholder="+91-9876543210"
+                  className={errors.adminPhone ? 'border-red-500' : ''}
+                />
+                {errors.adminPhone && <p className="text-sm text-red-500">{errors.adminPhone}</p>}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="adminPassword">Admin Password *</Label>
+                <Input
+                  id="adminPassword"
+                  type="password"
+                  value={formData.adminPassword}
+                  onChange={(e) => handleChange('adminPassword', e.target.value)}
+                  placeholder="Min 6 characters"
+                  className={errors.adminPassword ? 'border-red-500' : ''}
+                />
+                {errors.adminPassword && <p className="text-sm text-red-500">{errors.adminPassword}</p>}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* Server-side error banner */}
+      {serverError && (
+        <div className="mx-0 mb-2 p-3 bg-red-50 border border-red-300 rounded-md text-sm text-red-700 font-medium">
+          {serverError}
+        </div>
+      )}
 
       <DialogFooter>
         <Button type="button" variant="outline" onClick={onCancel}>

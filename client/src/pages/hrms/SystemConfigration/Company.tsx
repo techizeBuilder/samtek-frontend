@@ -113,16 +113,16 @@ export default function Company() {
           </p>
         </div>
 
-        <button
+        {/* <button
           onClick={() => {
             setMode("add");
             setSelectedCompany(null);
             setOpenModal(true);
           }}
-          className="bg-orange-500 text-white px-4 py-2 rounded-md font-medium hover:bg-orange-600"
+          className="bg-[#49A7F5] text-white px-4 py-2 rounded-md font-medium hover:bg-[#3D96E1] shadow-sm transition-all active:scale-95"
         >
           + Add Company
-        </button>
+        </button> */}
       </div>
 
       {/* TABLE */}

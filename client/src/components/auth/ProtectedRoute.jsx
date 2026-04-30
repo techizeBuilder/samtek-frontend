@@ -28,7 +28,11 @@ export function ProtectedRoute({ children, requiredRole = null }) {
     isSuperAdmin || 
     (Array.isArray(requiredRole) ? requiredRole.includes(user.role) : user.role === requiredRole) ||
     (requiredRole === 'HR-Admin' && (isHrAdmin || isManager)) ||
-    (requiredRole === 'Accounts' && user.role === 'Unit Head');
+    (requiredRole === 'Accounts' && (user.role === 'Unit Head' || user.role === 'Account Employee' || user.role === 'Accounts Head')) ||
+    (requiredRole === 'Sales' && (user.role === 'Sales Employee' || user.role === 'Sales Head')) ||
+    (requiredRole === 'Dispatch' && (user.role === 'Dispatch Employee' || user.role === 'Dispatch Head')) ||
+    (requiredRole === 'Production' && (user.role === 'Production Employee' || user.role === 'Production Head')) ||
+    (requiredRole === 'Packing' && (user.role === 'Packing Employee' || user.role === 'Packing Head'));
 
   if (!isAuthorized) {
     return (

@@ -13,6 +13,7 @@ import AccountsDashboard from "@/pages/AccountsDashboard";
 import HRMSDashboard from "@/pages/hrms/HRMSDashboard";
 import ManagerDashboard from "@/pages/hrms/Manager/ManagerDashboard";
 import EmployeeDashboard from "@/pages/hrms/Employee/Dashboard/EmployeeDashboard";
+import CompanyAdminDashboard from "@/pages/hrms/CompanyAdmin/CompanyAdminDashboard";
 
 export default function RoleBasedDashboard() {
   const { user } = useAuth();
@@ -33,18 +34,28 @@ export default function RoleBasedDashboard() {
           setLocation('/unit-manager/dashboard');
           return;
         case 'Sales':
+        case 'Sales Employee':
+        case 'Sales Head':
           setLocation('/sales-dashboard');
           return;
         case 'Production':
+        case 'Production Employee':
+        case 'Production Head':
           setLocation('/production/dashboard');
           return;
         case 'Packing':
+        case 'Packing Employee':
+        case 'Packing Head':
           setLocation('/packing-dashboard');
           return;
         case 'Dispatch':
+        case 'Dispatch Employee':
+        case 'Dispatch Head':
           setLocation('/dispatch-dashboard');
           return;
         case 'Accounts':
+        case 'Account Employee':
+        case 'Accounts Head':
           setLocation('/accounts-dashboard');
           return;
         case 'Hr Admin':
@@ -56,6 +67,9 @@ export default function RoleBasedDashboard() {
           return;
         case 'Employee': // HRMS Employee role
           setLocation('/hrms/Employee/dashboard');
+          return;
+        case 'Company Admin':
+          setLocation('/hrms/CompanyAdmin/dashboard');
           return;
         default:
           // Super User and others stay on main dashboard
@@ -74,14 +88,24 @@ export default function RoleBasedDashboard() {
     case 'Unit Manager':
       return <UnitManagerDashboard />;
     case 'Sales':
+    case 'Sales Employee':
+    case 'Sales Head':
       return <SalesDashboard />;
     case 'Production':
+    case 'Production Employee':
+    case 'Production Head':
       return <ProductionModule />;
     case 'Packing':
+    case 'Packing Employee':
+    case 'Packing Head':
       return <PackingDashboard />;
     case 'Dispatch':
+    case 'Dispatch Employee':
+    case 'Dispatch Head':
       return <DispatchDashboard />;
     case 'Accounts':
+    case 'Account Employee':
+    case 'Accounts Head':
       return <AccountsDashboard />;
     case 'Hr Admin':
     case 'HR-Admin': // backend stores as 'HR-Admin'
@@ -90,6 +114,8 @@ export default function RoleBasedDashboard() {
       return <ManagerDashboard />;
     case 'Employee': // HRMS Employee role → focused Employee dashboard
       return <EmployeeDashboard />;
+    case 'Company Admin':
+      return <CompanyAdminDashboard />;
     default:
       // Default to main dashboard for Super User and others
       return <Dashboard />;

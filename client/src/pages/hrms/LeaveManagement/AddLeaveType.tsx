@@ -166,7 +166,7 @@ return (
 
         <button
           onClick={handleSubmit}
-          className="px-4 py-2 bg-orange-500 text-white rounded"
+          className="px-4 py-2 bg-[#49A7F5] text-white rounded hover:bg-[#3D96E1] transition-colors shadow-sm"
         >
           {editData ? "Update" : "Save"}
         </button>

@@ -154,8 +154,8 @@ export default function MasterList() {
                         key={tab.id}
                         onClick={() => setActiveTab(tab.id as any)}
                         className={`flex items-center gap-2 px-4 py-2 text-sm font-medium transition-all border-b-2 ${activeTab === tab.id
-                                ? "border-orange-500 text-orange-600 bg-orange-50/50"
-                                : "border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+                            ? "border-orange-500 text-orange-600 bg-orange-50/50"
+                            : "border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50"
                             }`}
                     >
                         <tab.icon size={16} />

@@ -104,6 +104,10 @@ export const usePermissions = () => {
       
       if (!userModule) return false;
       
+      if (featureKey === 'dashboard') {
+        return userModule.dashboard === true;
+      }
+      
       const feature = userModule.features?.find(f => f.key === featureKey);
       if (!feature) return false;
       
@@ -124,6 +128,10 @@ export const usePermissions = () => {
     }
     
     if (!userModule) return false;
+    
+    if (featureKey === 'dashboard') {
+      return userModule.dashboard === true;
+    }
     
     const feature = userModule.features?.find(f => f.key === featureKey);
     if (!feature) return false;

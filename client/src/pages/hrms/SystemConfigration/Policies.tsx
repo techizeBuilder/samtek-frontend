@@ -154,11 +154,10 @@ export default function Policies() {
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
-            className={`px-5 py-2.5 rounded-lg font-medium transition-all duration-200 flex items-center gap-2 text-sm ${
-              activeTab === tab.key
-                ? "bg-white text-orange-600 shadow-sm border border-orange-100"
-                : "text-gray-600 hover:text-gray-900"
-            }`}
+            className={`px-5 py-2.5 rounded-lg font-medium transition-all duration-200 flex items-center gap-2 text-sm ${activeTab === tab.key
+                ? "bg-white text-[#49A7F5] shadow-md border border-[#49A7F5]/20 scale-[1.02]"
+                : "text-gray-600 hover:text-[#49A7F5] hover:bg-[#49A7F5]/5"
+              }`}
           >
             {tab.icon}
             {tab.label}
@@ -179,19 +178,19 @@ export default function Policies() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {leaves.map((leave) => (
               <div
-                key={leave.id}
+                key={leave._id}
                 className="group relative border border-gray-100 rounded-2xl bg-white p-6 shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden"
               >
-                <div className="absolute top-0 right-0 w-24 h-24 bg-orange-50 rounded-bl-full -mr-10 -mt-10 opacity-40 group-hover:scale-110 transition-transform duration-500"></div>
+                <div className="absolute top-0 right-0 w-24 h-24 bg-[#49A7F5]/10 rounded-bl-full -mr-10 -mt-10 opacity-40 group-hover:scale-110 transition-transform duration-500"></div>
                 <div className="relative z-10">
-                  <div className="w-12 h-12 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center mb-4 group-hover:bg-orange-600 group-hover:text-white transition-colors duration-300">
+                  <div className="w-12 h-12 rounded-xl bg-[#49A7F5]/10 text-[#49A7F5] flex items-center justify-center mb-4 group-hover:bg-[#49A7F5] group-hover:text-white transition-all duration-300">
                     {leave.name.includes("Casual") && <Umbrella size={24} />}
                     {leave.name.includes("Sick") && <ShieldCheck size={24} />}
                     {leave.name.includes("Earned") && <Briefcase size={24} />}
                     {leave.name.includes("Unpaid") && <UserMinus size={24} />}
                   </div>
                   <h3 className="text-lg font-bold text-gray-900 mb-1">{leave.name}</h3>
-                  <p className="text-orange-600 font-semibold text-2xl mb-4">
+                  <p className="text-[#49A7F5] font-bold text-3xl mb-4">
                     {leave.maxDays} <span className="text-sm font-normal text-gray-400">Days / Year</span>
                   </p>
                   <div className="space-y-3 pt-4 border-t border-gray-50">
@@ -249,7 +248,7 @@ export default function Policies() {
             </div>
 
             <div className="border border-gray-100 rounded-2xl bg-white p-6 shadow-sm hover:shadow-md transition-all duration-300">
-              <div className="w-12 h-12 rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center mb-4">
+              <div className="w-12 h-12 rounded-xl bg-[#49A7F5]/10 text-[#49A7F5] flex items-center justify-center mb-4 group-hover:bg-[#49A7F5] group-hover:text-white transition-all duration-300">
                 <LogIn size={24} />
               </div>
               <h3 className="text-lg font-bold text-gray-900 mb-2">Late Threshold</h3>
@@ -261,7 +260,7 @@ export default function Policies() {
                 </div>
                 <div className="flex justify-between text-xs py-1">
                   <span className="text-gray-500">Penalty Rule</span>
-                  <span className="font-semibold text-orange-600">{attendance.lateCountHalfDay} Lates = 0.5 Day</span>
+                   <span className="font-bold text-[#49A7F5]">{attendance.lateCountHalfDay} Lates = 0.5 Day</span>
                 </div>
               </div>
             </div>
@@ -277,7 +276,7 @@ export default function Policies() {
               </div>
             </div>
 
-            <div className="border border-orange-100 lg:col-span-3 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-400 p-8 shadow-lg text-white relative overflow-hidden group">
+            <div className="border border-[#49A7F5]/20 lg:col-span-3 rounded-2xl bg-gradient-to-br from-[#49A7F5] via-[#3D96E1] to-[#2D8BD8] p-8 shadow-xl text-white relative overflow-hidden group">
               <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:scale-125 transition-transform duration-700">
                 <Clock size={160} />
               </div>
@@ -376,9 +375,9 @@ export default function Policies() {
                         </div>
                       ) : (
                         <div className="flex flex-col items-center gap-1.5">
-                          <label className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-50 text-orange-600 rounded-lg text-xs font-bold hover:bg-orange-100 transition-colors cursor-pointer w-full justify-center">
+                          <label className="flex items-center gap-1.5 px-3 py-1.5 bg-[#49A7F5]/10 text-[#49A7F5] rounded-lg text-xs font-bold hover:bg-[#49A7F5] hover:text-white transition-all cursor-pointer w-full justify-center shadow-sm">
                             {uploadingId === policy._id ? (
-                              <span className="w-3 h-3 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" />
+                              <span className="w-3 h-3 border-2 border-[#49A7F5]/50 border-t-transparent rounded-full animate-spin" />
                             ) : (
                               <Upload size={13} />
                             )}
