@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
+import { Bell } from 'lucide-react';
 import {
   LayoutDashboard,
   Cog,
@@ -47,7 +48,9 @@ import {
   CalendarCheck,
   CheckSquare,
   UserCircle,
-  Award
+  Award,
+  Beaker,
+  ShieldAlert
 } from 'lucide-react';
 
 // Separate menu items for each role
@@ -111,143 +114,6 @@ const superAdminMenuItems = [
     path: '/super-admin/settings',
     icon: Settings,
     module: 'settings'
-  }
-];
-
-const unitHeadMenuItems = [
-  {
-    label: 'Dashboard',
-    path: '/unit-head-dashboard',
-    icon: LayoutDashboard,
-    module: 'dashboard'
-  },
-  {
-    label: 'Orders',
-    path: '/unit-head/orders',
-    icon: Receipt,
-    module: 'orders'
-  },
-  {
-    label: 'Sales',
-    path: '/unit-head/sales',
-    icon: TrendingUp,
-    module: 'sales'
-  },
-  {
-    label: 'Dispatches',
-    path: '/unit-head/dispatches',
-    icon: Truck,
-    module: 'dispatches'
-  },
-  {
-    label: 'Accounts',
-    path: '/accounts-dashboard',
-    icon: Calculator,
-    module: 'accounts'
-  },
-  {
-    label: 'Inventory',
-    path: '/unit-head/inventory',
-    icon: Package,
-    module: 'inventory'
-  },
-  {
-    label: 'Customers',
-    path: '/unit-head/customers',
-    icon: Users,
-    module: 'customers'
-  },
-  {
-    label: 'Indent Summary',
-    path: '/unit-head/indent-summary',
-    icon: FileText,
-    module: null
-  },
-  {
-    label: 'Dispatch Summary',
-    path: '/unit-head/dispatch-summary',
-    icon: Truck,
-    module: 'dispatches'
-  },
-  {
-    label: 'Production Reports',
-    path: '/unit-head/production-reports',
-    icon: BarChart,
-    module: null
-  },
-  {
-    label: 'Production Group',
-    path: '/unit-head/production-group',
-    icon: Users,
-    module: 'unitManager',
-    feature: 'productionGroup'
-  },
-  {
-    label: 'User Management',
-    path: '/unit-head/role-permission-management',
-    icon: Shield,
-    module: 'userManagement'
-  },
-  {
-    label: 'Settings',
-    path: '/unit-head/settings',
-    icon: Settings,
-    module: 'settings'
-  }
-];
-
-const unitManagerMenuItems = [
-  {
-    label: 'Dashboard',
-    path: '/unit-manager/dashboard',
-    icon: LayoutDashboard,
-    module: 'dashboard'
-  },
-  {
-    label: 'Sales Order List',
-    path: '/unit-manager/sales-order-list',
-    icon: TrendingUp,
-    module: 'unitManager',
-    feature: 'salesOrderList'
-  },
-  {
-    label: 'Indent Summary ',
-    path: '/unit-manager/indent-summary',
-    icon: Shield,
-    module: 'unitManager',
-    feature: 'salesApproval'
-  },
-  {
-    label: 'Production Group',
-    path: '/unit-manager/production-group',
-    icon: Users,
-    module: 'unitManager',
-    feature: 'productionGroup'
-  },
-  {
-    label: 'Orders',
-    path: '/orders',
-    icon: Receipt,
-    module: 'orders'
-  },
-  {
-    label: 'Inventory',
-    path: '/inventory',
-    icon: Package,
-    module: 'inventory'
-  },
-  {
-    label: 'Customers',
-    path: '/customers',
-    icon: Users,
-    module: 'customers'
-  },
-  {
-    label: 'Returns & Damage',
-    path: '/unit-manager/returns',
-    icon: RotateCcw,
-    module: 'unitManager',
-    feature: 'returns'
   }
 ];
 
@@ -367,15 +233,9 @@ const salesMenuItems = [
     feature: 'dashboard'
   },
   {
-    label: 'Task Management',
-    path: '/sales/task-management',
-    icon: CheckSquare,
-    module: 'sales'
-  },
-  {
-    label: 'My Task',
-    path: '/sales/my-task',
-    icon: CheckSquare,
+    label: 'Leads',
+    path: '/sales/leads',
+    icon: Target,
     module: 'sales'
   },
   {
@@ -425,7 +285,19 @@ const salesMenuItems = [
     path: '/customers',
     icon: Users,
     module: 'customers'
-  }
+  },
+  {
+    label: 'Task Management',
+    path: '/sales/task-management',
+    icon: CheckSquare,
+    module: 'sales'
+  },
+  {
+    label: 'My Task',
+    path: '/sales/my-task',
+    icon: CheckSquare,
+    module: 'sales'
+  },
 ];
 
 const accountsMenuItems = [
@@ -462,6 +334,7 @@ const accountsMenuItems = [
     module: 'accounts',
     feature: 'sales',
     submodules: [
+      { label: 'Sales Order', path: '/accounts/sales/orders', feature: 'sales' },
       { label: 'Customer Master', path: '/accounts/sales/customers', feature: 'sales' },
       { label: 'Sales Invoice', path: '/accounts/sales/invoices', feature: 'sales' },
       { label: 'Sales Return', path: '/accounts/sales/returns', feature: 'sales' },
@@ -555,6 +428,13 @@ const accountsMenuItems = [
       module: 'accounts',
       feature: 'reports'
     }, */
+  {
+    label: 'Payment Reminders',
+    path: '/accounts/payment-reminders',
+    icon: Bell,
+    module: 'accounts',
+    feature: 'bankAndCash'
+  },
   {
     label: 'Settings',
     path: '/accounts/settings',
@@ -871,16 +751,34 @@ const companyAdminMenuItems = [
   }
 ];
 
+// ============================================================
+// R&D MENU ITEMS - Shared for both R&D Head and R&D Employee
+// HR Admin assigns access per user at creation time
+// ============================================================
+const rdMenuItems = [
+  {
+    label: 'Dashboard',
+    path: '/r&d-dashboard',
+    icon: LayoutDashboard,
+    module: 'rnd'
+  }
+];
+
+const complaintMenuItems = [
+  {
+    label: 'Dashboard',
+    path: '/complaints',
+    icon: LayoutDashboard,
+    module: 'complaints'
+  }
+];
+
 // Function to get menu items based on role
 const getMenuItemsByRole = (role) => {
   switch (role) {
     case 'Superadmin':
     case 'Super Admin': // backend uses 'Super Admin'
       return superAdminMenuItems;
-    case 'Unit Head':
-      return unitHeadMenuItems;
-    case 'Unit Manager':
-      return unitManagerMenuItems;
     case 'Production':
     case 'Production Employee':
     case 'Production Head':
@@ -910,6 +808,12 @@ const getMenuItemsByRole = (role) => {
       return employeeMenuItems;
     case 'Company Admin':
       return companyAdminMenuItems;
+    case 'Research & Development Head':
+    case 'Research Development Employee': // same sidebar, permissions control access
+      return rdMenuItems;
+    case 'Complaint Management Head':
+    case 'Complaint Management Employee':
+      return complaintMenuItems;
     default:
       return [];
   }
@@ -926,7 +830,7 @@ const profileMenuItem = {
 export default function Sidebar({ isOpen, onClose }) {
   const [location] = useLocation();
   const { user, logout } = useAuth();
-  const { companyLogo, companyName, settings } = useSettings();
+  const { settings } = useSettings();
   const { hasModuleAccess, hasFeatureAccess } = usePermissions();
   const [expandedModules, setExpandedModules] = useState({});
 
@@ -945,11 +849,6 @@ export default function Sidebar({ isOpen, onClose }) {
   // Get menu items based on user role - much simpler and cleaner
   let roleMenuItems = getMenuItemsByRole(user?.role);
 
-  // If Unit Head is in the Accounts section, show Accounts menu items
-  if (user?.role === 'Unit Head' && (location.startsWith('/accounts') || location === '/accounts-dashboard')) {
-    roleMenuItems = getMenuItemsByRole('Accounts');
-  }
-
   // Normalize role for filtering logic below
   const normalizedRole = user?.role === 'Super Admin' ? 'Superadmin'
     : user?.role === 'HR-Admin' ? 'Hr Admin'
@@ -961,7 +860,7 @@ export default function Sidebar({ isOpen, onClose }) {
 
   // For Production role users, apply strict filtering to only show production items
   let filteredMenuItems;
-  
+
   // Pre-filter to handle 'Task Management' and 'My Task' visibility based on role type
   const isHeadRole = normalizedRole?.includes('Head') || normalizedRole === 'Manager' || normalizedRole === 'Superadmin' || normalizedRole === 'Hr Admin' || normalizedRole === 'Company Admin';
   roleMenuItems = roleMenuItems.filter(item => {
@@ -1068,22 +967,18 @@ export default function Sidebar({ isOpen, onClose }) {
       if (item.module === 'hrms') return true;
       return false;
     });
+  } else if (normalizedRole === 'Research & Development Head' || normalizedRole === 'Research Development Employee') {
+    // Both R&D roles share the same sidebar — no separate filtering
+    filteredMenuItems = roleMenuItems;
+  } else if (normalizedRole === 'Complaint Management Head' || normalizedRole === 'Complaint Management Employee') {
+    // Complaint Management roles - show all complaint module items directly
+    filteredMenuItems = roleMenuItems;
+  } else if (normalizedRole === 'Company Admin') {
+    // Company Admin - show all hrms items directly
+    filteredMenuItems = roleMenuItems;
   } else {
     // For other roles, use the existing filtering logic
     filteredMenuItems = roleMenuItems.filter(item => {
-      // Always show dashboard
-      if (item.module === 'dashboard') return true;
-
-      // Always show items without module restriction
-      if (!item.module) return true;
-
-      // Special handling for Unit Head role with unitManager module features
-      if (user?.role === 'Unit Head' && item.module === 'unitManager' && item.feature) {
-        // For Unit Head, check feature access directly without module access check
-        const hasFeature = hasFeatureAccess(item.module, item.feature, 'view');
-        return hasFeature;
-      }
-
       // Check if user has access to the module
       const hasAccess = hasModuleAccess(item.module);
       if (!hasAccess) return false;
@@ -1119,49 +1014,19 @@ export default function Sidebar({ isOpen, onClose }) {
         isOpen ? "translate-x-0" : "-translate-x-full"
       )}>
         <div className="flex flex-col h-full">
-          {/* Logo and Company Name */}
-          <div className="flex items-center justify-between h-16 px-4 sm:px-6 border-b border-slate-200">
-            <div className="flex items-center space-x-2 sm:space-x-3 min-w-0">
-              <div className="relative flex-shrink-0">
-                {companyLogo ? (
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl overflow-hidden shadow-lg transform hover:scale-110 transition-transform duration-200 border border-slate-200">
-                    <img
-                      src={companyLogo}
-                      alt="Company Logo"
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        console.log('Sidebar logo load error:', e);
-                        e.target.style.display = 'none';
-                        e.target.parentElement.innerHTML = `
-                          <div class="w-full h-full bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
-                            <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
-                              <path d="M12 2L2 7L12 12L22 7L12 2Z"></path>
-                              <path d="M2 17L12 22L22 17"></path>
-                              <path d="M2 12L12 17L22 12"></path>
-                            </svg>
-                          </div>
-                        `;
-                      }}
-                    />
-                  </div>
-                ) : (
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl flex items-center justify-center shadow-lg transform hover:scale-110 transition-transform duration-200">
-                    <Factory className="w-4 h-4 sm:w-6 sm:h-6 text-white" />
-                  </div>
-                )}
-                <div className="absolute -top-1 -right-1 w-2 h-2 sm:w-3 sm:h-3 bg-green-500 rounded-full animate-pulse"></div>
-              </div>
-              <div className="min-w-0">
-                <span className="text-lg sm:text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent truncate block">
-                  {companyName}
-                </span>
-                <p className="text-xs text-slate-500 hidden sm:block">Enterprise Suite</p>
-              </div>
+          {/* Logo */}
+          <div className="flex items-center justify-between h-16 px-3 border-b border-slate-200 bg-white">
+            <div className="flex-1 flex items-center justify-center h-full py-2">
+              <img
+                src="/logo Semtek.webp"
+                alt="Samtek Logo"
+                className="h-full w-auto object-contain"
+              />
             </div>
             <Button
               variant="ghost"
               size="sm"
-              className="md:hidden text-slate-600 hover:bg-slate-100:bg-slate-800 rounded-full w-8 h-8"
+              className="md:hidden text-slate-500 hover:bg-slate-100 rounded-full w-8 h-8 flex-shrink-0"
               onClick={onClose}
             >
               ×
@@ -1177,7 +1042,9 @@ export default function Sidebar({ isOpen, onClose }) {
                 const Icon = item.icon;
                 const isActive = location === item.path ||
                   (item.module === 'dashboard' && location === '/') ||
-                  (item.module === 'dashboard' && location === '/super-admin-dashboard');
+                  (item.module === 'dashboard' && location === '/super-admin-dashboard') ||
+                  (item.module === 'rnd' && location === '/r&d-dashboard') ||
+                  (item.module === 'complaints' && location === '/complaints');
                 const hasSubmodules = item.submodules && item.submodules.length > 0;
                 const isExpanded = expandedModules[item.path];
                 // Manager/HR Admin always sees all submodules; other roles need feature permission

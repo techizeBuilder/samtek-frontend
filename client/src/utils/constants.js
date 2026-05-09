@@ -1,10 +1,13 @@
 export const USER_ROLES = {
   SUPER_USER: 'Super User',
-  UNIT_HEAD: 'Unit Head',
   PRODUCTION: 'Production',
   PACKING: 'Packing',
   DISPATCH: 'Dispatch',
-  ACCOUNTS: 'Accounts'
+  ACCOUNTS: 'Accounts',
+  RESEARCH_DEVELOPMENT_HEAD: 'Research & Development Head',
+  RESEARCH_DEVELOPMENT_EMPLOYEE: 'Research Development Employee',
+  COMPLAINT_MANAGEMENT_HEAD: 'Complaint Management Head',
+  COMPLAINT_MANAGEMENT_EMPLOYEE: 'Complaint Management Employee'
 };
 
 export const MODULES = {

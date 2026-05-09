@@ -6,7 +6,6 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
-import { UnitManagerProtectedRoute } from "@/components/auth/UnitManagerProtectedRoute";
 import { RoleBasedProtectedRoute } from "@/components/auth/RoleBasedProtectedRoute";
 import NotFound from "@/pages/not-found";
 import Login from "@/pages/Login";
@@ -17,13 +16,11 @@ import DispatchDashboard from "@/pages/DispatchDashboard";
 import Sales from "@/pages/Sales";
 import Accounts from "@/pages/Accounts";
 import ModernInventoryUI from "@/components/inventory/ModernInventoryUI";
-import UnitHeadInventoryManagement from "@/components/inventory/UnitHeadInventoryManagement";
 import Customers from "@/pages/Customers";
 import Suppliers from "@/pages/Suppliers";
 import Purchases from "@/pages/Purchases";
 import Settings from "@/pages/Settings";
 import RolePermissionManagement from "@/pages/RolePermissionManagement";
-import UnitHeadRolePermissionManagement from "@/pages/UnitHeadRolePermissionManagement";
 import MainLayout from "@/components/layout/MainLayout";
 import Profile from "@/pages/Profile";
 import Companies from "@/pages/Companies";
@@ -31,6 +28,8 @@ import MyOrders from "@/pages/sales/MyIndent";
 import MyCustomers from "@/pages/sales/MyCustomers";
 import MyDeliveries from "@/pages/sales/MyDeliveries";
 import MyInvoices from "@/pages/sales/MyInvoices";
+import Leads from "@/pages/sales/Leads";
+import Quotation from "@/pages/sales/Quotation";
 
 import Returns from "@/pages/sales/Returns";
 import Damages from "@/pages/sales/Damages";
@@ -38,12 +37,6 @@ import SalesDashboard from "@/pages/SalesDashboard";
 import ProductionHistoryPage from "@/pages/ProductionHistoryPage";
 import RoleBasedDashboard from "@/components/layout/RoleBasedDashboard";
 import NotificationsPage from "@/pages/NotificationsPage";
-import UnitHeadDashboard from "@/pages/UnitHeadDashboard";
-import UnitHeadOrdersManagement from "@/components/orders/UnitHeadOrdersManagement";
-import UnitHeadSales from "@/pages/UnitHeadSales";
-import UnitHeadCustomers from "@/pages/UnitHeadCustomers";
-import UnitHeadCutoffTime from "@/pages/UnitHeadCutoffTime";
-import UnitManagerDashboard from "@/pages/UnitManagerDashboard";
 import SuperAdminDashboard from "@/pages/SuperAdminDashboard";
 import SuperAdminOrders from "@/pages/super-admin/SuperAdminOrders";
 import SuperAdminSales from "@/pages/super-admin/SuperAdminSales";
@@ -77,6 +70,7 @@ import AccountsSettings from "@/pages/accounts/Settings";
 
 // Sales Account Module (New)
 import CustomerMaster from "@/pages/accounts/CustomerMaster";
+import SalesOrders from "@/pages/accounts/SalesOrders";
 import SalesInvoices from "@/pages/accounts/SalesInvoices";
 import SalesReturns from "@/pages/accounts/SalesReturns";
 import CustomerPayments from "@/pages/accounts/CustomerPayments";
@@ -85,17 +79,11 @@ import SalesReports from "@/pages/accounts/SalesReports";
 import Expenses from "@/pages/accounts/Expenses";
 import FinancialSummary from "@/pages/accounts/FinancialSummary";
 import LedgerRecord from "@/pages/accounts/LedgerRecord";
+import PaymentReminders from "@/pages/accounts/PaymentReminders";
 import DeliveryChallan from "@/pages/dispatch/DeliveryChallan";
 import DispatchHistory from "@/pages/dispatch/DispatchHistory";
 import SalesApproval from "@/pages/SalesApproval";
 import SalesOrderList from "@/pages/SalesOrderList";
-import UnitHeadProductionGroup from "@/components/unit-head/UnitHeadProductionGroup";
-import UnitHeadIndentSummary from "@/pages/unit-head/UnitHeadIndentSummary";
-import UnitHeadDispatchSummary from "@/pages/unit-head/UnitHeadDispatchSummary";
-import UnitHeadProductionReports from "@/pages/unit-head/UnitHeadProductionReports";
-import UnitManagerProductionGroup from "@/pages/unit-manager/UnitManagerProductionGroup";
-import UnitManagerReturns from "@/pages/unit-manager/UnitManagerReturns";
-import UnitManagerLayout from "@/components/layout/UnitManagerLayout";
 import RoleBasedLayout from "@/components/layout/RoleBasedLayout";
 import SuperAdminAccounts from "@/pages/super-admin/Accounts";
 
@@ -150,6 +138,7 @@ import EmployeeOverTimeRequests from "@/pages/hrms/Employee/Request/OverTimeRequ
 import EmployeeProfileUpdateRequest from "@/pages/hrms/Employee/Request/ProfileUpdateRequest";
 import CompanyAdminDashboard from "@/pages/hrms/CompanyAdmin/CompanyAdminDashboard";
 import CompanyAdminLayout from "@/pages/hrms/CompanyAdmin/CompanyAdminLayout";
+import RDDashboard from "@/pages/ResearchDevelopment/Dashboard";
 
 function Router() {
   return (
@@ -439,6 +428,12 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/r&d-dashboard">
+        <ProtectedRoute requiredRole={["Research & Development Head", "Research Development Employee"]}>
+          <RDDashboard />
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/">
         <ProtectedRoute>
           <RoleBasedDashboard />
@@ -467,11 +462,6 @@ function Router() {
           <ProductionModule />
         </ProtectedRoute>
       </Route>
-      <Route path="/unit-head/production/:rest*">
-        <ProtectedRoute requiredRole="Unit Head">
-          <ProductionModule />
-        </ProtectedRoute>
-      </Route>
 
       <Route path="/production/history">
         <ProtectedRoute requiredRole="Production">
@@ -482,6 +472,16 @@ function Router() {
       <Route path="/sales/orders">
         <ProtectedRoute>
           <MyOrders />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/sales/leads">
+        <ProtectedRoute>
+          <Leads />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/sales/quotation">
+        <ProtectedRoute>
+          <Quotation />
         </ProtectedRoute>
       </Route>
       <Route path="/sales/my-customers">
@@ -624,93 +624,6 @@ function Router() {
       </Route>
 
       {/* Role-specific Dashboard routes */}
-      <Route path="/unit-head-dashboard">
-        <ProtectedRoute requiredRole="Unit Head">
-          <UnitHeadDashboard />
-        </ProtectedRoute>
-      </Route>
-
-      {/* Unit Head specific routes */}
-      <Route path="/unit-head/orders">
-        <ProtectedRoute requiredRole="Unit Head">
-          <UnitHeadOrdersManagement />
-        </ProtectedRoute>
-      </Route>
-      <Route path="/unit-head/sales">
-        <ProtectedRoute requiredRole="Unit Head">
-          <UnitHeadSales />
-        </ProtectedRoute>
-      </Route>
-      <Route path="/unit-head/customers">
-        <ProtectedRoute requiredRole="Unit Head">
-          <UnitHeadCustomers />
-        </ProtectedRoute>
-      </Route>
-      <Route path="/unit-head/inventory">
-        <ProtectedRoute requiredRole="Unit Head">
-          <UnitHeadInventoryManagement />
-        </ProtectedRoute>
-      </Route>
-      <Route path="/unit-head/role-permission-management">
-        <ProtectedRoute requiredRole="Unit Head">
-          <UnitHeadRolePermissionManagement />
-        </ProtectedRoute>
-      </Route>
-      <Route path="/unit-head/production-group">
-        <ProtectedRoute requiredRole="Unit Head">
-          <UnitHeadProductionGroup />
-        </ProtectedRoute>
-      </Route>
-      <Route path="/unit-head/cutoff-time">
-        <ProtectedRoute requiredRole="Unit Head">
-          <UnitHeadCutoffTime />
-        </ProtectedRoute>
-      </Route>
-      <Route path="/unit-head/indent-summary">
-        <ProtectedRoute requiredRole="Unit Head">
-          <UnitHeadIndentSummary />
-        </ProtectedRoute>
-      </Route>
-      <Route path="/unit-head/dispatch-summary">
-        <ProtectedRoute requiredRole="Unit Head">
-          <UnitHeadDispatchSummary />
-        </ProtectedRoute>
-      </Route>
-      <Route path="/unit-head/production-reports">
-        <ProtectedRoute requiredRole="Unit Head">
-          <UnitHeadProductionReports />
-        </ProtectedRoute>
-      </Route>
-
-      {/* Unit Manager specific routes with dedicated layout */}
-      <Route path="/unit-manager/dashboard">
-        <UnitManagerProtectedRoute requiredRole="Unit Manager">
-          <UnitManagerDashboard />
-        </UnitManagerProtectedRoute>
-      </Route>
-
-      <Route path="/unit-manager/indent-summary">
-        <UnitManagerProtectedRoute requiredRole="Unit Manager">
-          <SalesApproval />
-        </UnitManagerProtectedRoute>
-      </Route>
-
-      <Route path="/unit-manager/sales-order-list">
-        <UnitManagerProtectedRoute requiredRole="Unit Manager">
-          <SalesOrderList />
-        </UnitManagerProtectedRoute>
-      </Route>
-      <Route path="/unit-manager/production-group">
-        <UnitManagerProtectedRoute requiredRole="Unit Manager">
-          <UnitManagerProductionGroup />
-        </UnitManagerProtectedRoute>
-      </Route>
-
-      <Route path="/unit-manager/returns">
-        <UnitManagerProtectedRoute requiredRole="Unit Manager">
-          <UnitManagerReturns />
-        </UnitManagerProtectedRoute>
-      </Route>
 
       <Route path="/packing-dashboard">
         <ProtectedRoute requiredRole="Packing">
@@ -752,13 +665,12 @@ function Router() {
           <ChartOfAccounts />
         </ProtectedRoute>
       </Route>
-      <Route path="/accounts/sales">
+      {/* Sales Account Module (New Routes) */}
+      <Route path="/accounts/sales/orders">
         <ProtectedRoute requiredRole="Accounts">
-          <AccountsSales />
+          <SalesOrders />
         </ProtectedRoute>
       </Route>
-
-      {/* Sales Account Module (New Routes) */}
       <Route path="/accounts/sales/customers">
         <ProtectedRoute requiredRole="Accounts">
           <CustomerMaster />
@@ -767,6 +679,12 @@ function Router() {
       <Route path="/accounts/sales/invoices">
         <ProtectedRoute requiredRole="Accounts">
           <SalesInvoices />
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/accounts/sales">
+        <ProtectedRoute requiredRole="Accounts">
+          <AccountsSales />
         </ProtectedRoute>
       </Route>
       <Route path="/accounts/sales/returns">
@@ -872,6 +790,11 @@ function Router() {
       <Route path="/accounts/settings">
         <ProtectedRoute requiredRole="Accounts">
           <AccountsSettings />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/accounts/payment-reminders">
+        <ProtectedRoute requiredRole="Accounts">
+          <PaymentReminders />
         </ProtectedRoute>
       </Route>
 

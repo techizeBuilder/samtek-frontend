@@ -3,8 +3,6 @@ import { useEffect } from "react";
 import { useLocation } from "wouter";
 import Dashboard from "@/pages/Dashboard";
 import SalesDashboard from "@/pages/SalesDashboard";
-import UnitHeadDashboard from "@/pages/UnitHeadDashboard";
-import UnitManagerDashboard from "@/pages/UnitManagerDashboard";
 import SuperAdminDashboard from "@/pages/SuperAdminDashboard";
 import ProductionModule from "@/components/production/ProductionModule";
 import PackingDashboard from "@/pages/PackingDashboard";
@@ -14,6 +12,7 @@ import HRMSDashboard from "@/pages/hrms/HRMSDashboard";
 import ManagerDashboard from "@/pages/hrms/Manager/ManagerDashboard";
 import EmployeeDashboard from "@/pages/hrms/Employee/Dashboard/EmployeeDashboard";
 import CompanyAdminDashboard from "@/pages/hrms/CompanyAdmin/CompanyAdminDashboard";
+import RDDashboard from "@/pages/ResearchDevelopment/Dashboard";
 
 export default function RoleBasedDashboard() {
   const { user } = useAuth();
@@ -26,12 +25,6 @@ export default function RoleBasedDashboard() {
         case 'Superadmin':
         case 'Super Admin': // backend stores as 'Super Admin'
           setLocation('/super-admin-dashboard');
-          return;
-        case 'Unit Head':
-          setLocation('/unit-head-dashboard');
-          return;
-        case 'Unit Manager':
-          setLocation('/unit-manager/dashboard');
           return;
         case 'Sales':
         case 'Sales Employee':
@@ -71,6 +64,10 @@ export default function RoleBasedDashboard() {
         case 'Company Admin':
           setLocation('/hrms/CompanyAdmin/dashboard');
           return;
+        case 'Research & Development Head':
+        case 'Research Development Employee':
+          setLocation('/r&d-dashboard');
+          return;
         default:
           // Super User and others stay on main dashboard
           break;
@@ -83,10 +80,6 @@ export default function RoleBasedDashboard() {
     case 'Superadmin':
     case 'Super Admin': // backend stores as 'Super Admin'
       return <SuperAdminDashboard />;
-    case 'Unit Head':
-      return <UnitHeadDashboard />;
-    case 'Unit Manager':
-      return <UnitManagerDashboard />;
     case 'Sales':
     case 'Sales Employee':
     case 'Sales Head':
@@ -116,6 +109,9 @@ export default function RoleBasedDashboard() {
       return <EmployeeDashboard />;
     case 'Company Admin':
       return <CompanyAdminDashboard />;
+    case 'Research & Development Head':
+    case 'Research Development Employee':
+      return <RDDashboard />;
     default:
       // Default to main dashboard for Super User and others
       return <Dashboard />;

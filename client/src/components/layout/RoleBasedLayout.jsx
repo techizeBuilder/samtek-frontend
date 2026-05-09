@@ -1,7 +1,6 @@
 import React from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import MainLayout from './MainLayout';
-import UnitManagerLayout from './UnitManagerLayout';
 
 const RoleBasedLayout = ({ children, requiredRole = null }) => {
   const { user, loading } = useAuth();
@@ -31,7 +30,7 @@ const RoleBasedLayout = ({ children, requiredRole = null }) => {
     (requiredRole === 'Employee' && (user.role.endsWith('Employee') || user.role === 'Employee'));
 
   if (!isAuthorized) {
-    const Layout = user.role === 'Unit Manager' ? UnitManagerLayout : MainLayout;
+    const Layout = MainLayout;
     return (
       <Layout>
         <div className="flex items-center justify-center h-64">
@@ -46,8 +45,8 @@ const RoleBasedLayout = ({ children, requiredRole = null }) => {
     );
   }
 
-  // Use UnitManagerLayout for Unit Manager, MainLayout for others
-  const Layout = user.role === 'Unit Manager' ? UnitManagerLayout : MainLayout;
+  // Use MainLayout for all roles
+  const Layout = MainLayout;
   return <Layout>{children}</Layout>;
 };
 

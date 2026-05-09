@@ -54,7 +54,9 @@ const ROLES = [
   { value: 'Packing Head', label: 'Packing Head' },
   { value: 'Dispatch Head', label: 'Dispatch Head' },
   { value: 'Sales Head', label: 'Sales Head' },
-  { value: 'Accounts Head', label: 'Accounts Head' }
+  { value: 'Accounts Head', label: 'Accounts Head' },
+  { value: 'Research & Development Head', label: 'Research & Development Head' },
+  { value: 'Complaint Management Head', label: 'Complaint Management Head' },
 ];
 
 const UNITS = [
@@ -81,31 +83,6 @@ const MODULES = [
       { key: 'rolePermissions', label: 'Role Permissions' },
       { key: 'userManagement', label: 'User Management' },
       { key: 'setting', label: 'Settings' }
-    ]
-  },
-  {
-    name: 'unitManager',
-    label: 'Unit Manager',
-    features: [
-      { key: 'salesApproval', label: 'Sales Approval' },
-      { key: 'salesOrderList', label: 'Sales Order List' },
-      { key: 'productionGroup', label: 'Production Group' },
-      { key: 'returns', label: 'Returns & Damage' }
-    ]
-  },
-  {
-    name: 'unitHead',
-    label: 'Unit Head',
-    features: [
-      { key: 'dashboard', label: 'Dashboard' },
-      { key: 'orders', label: 'Orders' },
-      { key: 'sales', label: 'Sales' },
-      { key: 'dispatches', label: 'Dispatches' },
-      { key: 'accounts', label: 'Accounts' },
-      { key: 'inventory', label: 'Inventory' },
-      { key: 'customers', label: 'Customers' },
-      { key: 'productionGroup', label: 'Production Group' },
-      { key: 'userManagement', label: 'User Management' }
     ]
   },
   // {
@@ -254,9 +231,6 @@ export default function RolePermissionManagement() {
     permissions: { ...DEFAULT_PERMISSIONS }
   });
 
-  // Add state for Unit Head company info
-  const [unitHeadCompanyInfo, setUnitHeadCompanyInfo] = useState(null);
-
   const queryClient = useQueryClient();
 
   // Fetch users with pagination and filtering
@@ -283,21 +257,6 @@ export default function RolePermissionManagement() {
     enabled: true,
     retry: 1
   });
-
-  // Fetch Unit Head company info - Only needed in Unit Head context, not Super Admin context
-  const { data: unitHeadCompanyResponse } = useQuery({
-    queryKey: ['/api/unit-head/company-info'],
-    queryFn: () => apiRequest('GET', '/api/unit-head/company-info'),
-    enabled: false, // Disabled in Super Admin context - Unit Head uses separate component
-    retry: false
-  });
-
-  // Update unitHeadCompanyInfo when data is fetched
-  useEffect(() => {
-    if (unitHeadCompanyResponse?.data) {
-      setUnitHeadCompanyInfo(unitHeadCompanyResponse.data);
-    }
-  }, [unitHeadCompanyResponse]);
 
   const users = usersResponse?.users || [];
   const totalUsers = usersResponse?.pagination?.total || 0;
@@ -400,9 +359,6 @@ export default function RolePermissionManagement() {
       showSmartToast({ message: 'Username, email, password, and role are required' }, 'Validation Error');
       return;
     }
-
-    // Note: Unit Head company validation is only needed when Unit Head creates Unit Managers
-    // This is handled in the Unit Head specific component, not here in Super Admin interface
 
     // Ensure permissions structure is properly formatted
     const userData = {
@@ -594,36 +550,6 @@ export default function RolePermissionManagement() {
               { key: 'rolePermissions', view: true, add: true, edit: true, delete: true },
               { key: 'userManagement', view: true, add: true, edit: true, delete: true },
               { key: 'setting', view: true, add: true, edit: true, delete: true }
-            ]
-          }
-        ];
-      case 'Unit Head':
-        return [
-          {
-            name: 'unitHead',
-            dashboard: true,
-            features: [
-              { key: 'dashboard', view: true, add: true, edit: true, delete: true, alter: true },
-              { key: 'orders', view: true, add: true, edit: true, delete: true, alter: true },
-              { key: 'sales', view: true, add: true, edit: true, delete: true, alter: true },
-              { key: 'dispatches', view: true, add: true, edit: true, delete: true, alter: true },
-              { key: 'accounts', view: true, add: true, edit: true, delete: true, alter: true },
-              { key: 'inventory', view: true, add: true, edit: true, delete: true, alter: true },
-              { key: 'customers', view: true, add: true, edit: true, delete: true, alter: true },
-              { key: 'userManagement', view: true, add: true, edit: true, delete: true, alter: true },
-              { key: 'productionGroup', view: true, add: true, edit: true, delete: true, alter: true }
-            ]
-          }
-        ];
-      case 'Unit Manager':
-        return [
-          {
-            name: 'unitManager',
-            dashboard: true,
-            features: [
-              { key: 'salesApproval', view: true, add: true, edit: true, delete: true, alter: false },
-              { key: 'salesOrderList', view: true, add: true, edit: true, delete: true, alter: false },
-              { key: 'productionGroup', view: true, add: true, edit: true, delete: true, alter: false }
             ]
           }
         ];

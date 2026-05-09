@@ -683,6 +683,14 @@ class APIService {
     return this.get(`/expenses/stats?${queryParams.toString()}`);
   }
 
+  async getAllExpenseRequests() {
+    return this.get('/expense-requests/all');
+  }
+
+  async payExpenseRequest(id, data) {
+    return this.post(`/expense-requests/${id}/pay`, data);
+  }
+
   async getFinanceSummary(params = {}) {
     const queryParams = new URLSearchParams();
     Object.keys(params).forEach(key => {
@@ -742,6 +750,23 @@ class APIService {
       }
     });
     return this.get(`/accounts/ledger?${queryParams.toString()}`);
+  }
+
+  // ============ PARTNER MANAGEMENT APIs ============
+  async getPartners() {
+    return this.get('/accounts/partners');
+  }
+
+  async createPartner(data) {
+    return this.post('/accounts/partners', data);
+  }
+
+  async updatePartner(id, data) {
+    return this.put(`/accounts/partners/${id}`, data);
+  }
+
+  async deletePartner(id) {
+    return this.delete(`/accounts/partners/${id}`);
   }
 }
 

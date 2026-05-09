@@ -30,8 +30,6 @@ export default function NavBar({ onSidebarToggle }) {
   const { companyLogo, companyName } = useSettings();
   const [location] = useLocation();
 
-  const isUnitHeadInAccounts = user?.role === 'Unit Head' && (location.startsWith('/accounts') || location === '/accounts-dashboard');
-
   const getProfileImageUrl = (profilePicture) => {
     if (!profilePicture) return null;
     if (profilePicture.startsWith('http')) return profilePicture;
@@ -80,26 +78,13 @@ export default function NavBar({ onSidebarToggle }) {
               </div>
             )}
             <h1 className="text-lg font-medium text-slate-900">
-              {companyName}
+              Samtek Machinery
             </h1>
           </div>
         </div>
 
         {/* Right Section */}
         <div className="flex items-center space-x-3">
-          {/* Go Back Button for Unit Head in Accounts */}
-          {isUnitHeadInAccounts && (
-            <Link href="/unit-head-dashboard">
-              <Button
-                variant="outline"
-                size="sm"
-                className="flex items-center gap-2 border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100 transition-all shadow-sm h-9"
-              >
-                <ArrowLeft className="h-4 w-4" />
-                <span className="font-medium hidden md:inline">Go Back to Unit Head</span>
-              </Button>
-            </Link>
-          )}
           {/* Notifications */}
           <NotificationBell />
 

@@ -19,8 +19,7 @@ export function ProtectedRoute({ children, requiredRole = null }) {
 
   // Check role restriction if specified - STRICT role checking
   // Exception 1: Super Admin can access all pages regardless of role restriction
-  // Exception 2: Unit Head can access Accounts role pages
-  // Exception 3: Manager can access HR-Admin (HRMS) pages
+  // Exception 2: Manager can access HR-Admin (HRMS) pages
   const isSuperAdmin = user.role === 'Superadmin' || user.role === 'Super Admin';
   const isHrAdmin = user.role === 'HR-Admin' || user.role === 'Hr Admin';
   const isManager = user.role === 'Manager';
@@ -28,7 +27,7 @@ export function ProtectedRoute({ children, requiredRole = null }) {
     isSuperAdmin || 
     (Array.isArray(requiredRole) ? requiredRole.includes(user.role) : user.role === requiredRole) ||
     (requiredRole === 'HR-Admin' && (isHrAdmin || isManager)) ||
-    (requiredRole === 'Accounts' && (user.role === 'Unit Head' || user.role === 'Account Employee' || user.role === 'Accounts Head')) ||
+    (requiredRole === 'Accounts' && (user.role === 'Account Employee' || user.role === 'Accounts Head')) ||
     (requiredRole === 'Sales' && (user.role === 'Sales Employee' || user.role === 'Sales Head')) ||
     (requiredRole === 'Dispatch' && (user.role === 'Dispatch Employee' || user.role === 'Dispatch Head')) ||
     (requiredRole === 'Production' && (user.role === 'Production Employee' || user.role === 'Production Head')) ||

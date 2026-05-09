@@ -39,7 +39,7 @@ import {
   DialogDescription
 } from "@/components/ui/dialog";
 import axiosInstance from "@/api/axiosInstance";
-import { toast } from "sonner";
+import { toast } from "@/pages/Alert/Toast";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 

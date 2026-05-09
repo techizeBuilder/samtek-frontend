@@ -14,7 +14,7 @@ interface SalaryStructure {
   _id: string;
   employee: {
     _id: string;
-    name: string;
+    fullName: string;
     employeeId: string;
     joiningDate: string;
     designationId?: { name: string };
@@ -221,7 +221,7 @@ const SalaryStructure = () => {
                     {s.employee?.employeeId || "-"}
                   </td>
                   <td className="px-2 py-3 border-r text-center font-medium text-orange-600">
-                    {s.employee?.name || "Unknown"}
+                    {s.employee?.fullName || "Unknown"}
                   </td>
                   <td className="px-2 py-3 border-r text-center">
                     {typeof s.employee?.designationId === "object" ? (s.employee.designationId as any)?.name : (s.employee?.designationId || "-")}

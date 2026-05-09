@@ -58,25 +58,22 @@ const PayrollRun = () => {
         leaveTypeRes,
         leaveRes,
         attendanceRes,
-        encashmentRes,
       ] = await Promise.all([
         axios.get(`${API_BASE}/users`, { headers }),
         axios.get(`${API_BASE}/salary-structures`, { headers }),
         axios.get(`${API_BASE}/leave-types`, { headers }),
-        axios.get(`${API_BASE}/employee/leaves/all`, { headers }),
+        axios.get(`${API_BASE}/leaves/all`, { headers }),
         axios.get(
           `${API_BASE}/attendance/all?month=${monthNumber - 1}&year=${year}`,
           { headers }
         ),
-        axios.get(`${API_BASE}/leave-encashment`, { headers }),
       ]);
 
-      const users = usersRes.data;
-      const salaries = salaryRes.data;
-      const leaveTypes = leaveTypeRes.data;
-      const leaves = leaveRes.data;
-      const attendance = attendanceRes.data.attendance || [];
-      const encashments = encashmentRes.data || [];
+      const users = Array.isArray(usersRes.data) ? usersRes.data : (usersRes.data.users || []);
+      const salaries = Array.isArray(salaryRes.data) ? salaryRes.data : (salaryRes.data.salaryList || []);
+      const leaveTypes = Array.isArray(leaveTypeRes.data) ? leaveTypeRes.data : [];
+      const leaves = Array.isArray(leaveRes.data) ? leaveRes.data : [];
+      const attendance = attendanceRes.data?.attendance || [];
 
 
       /* ================= CALCULATION ================= */
@@ -131,7 +128,7 @@ const PayrollRun = () => {
         }
 
         const payDays = presentDays + paidLeaveDays;
-        const fullMonthlyGross = salary.basic + salary.hra + salary.allowance;
+        const fullMonthlyGross = (salary.basic || 0) + (salary.hra || 0) + (salary.otherAllowance || 0);
         const perDaySalary = fullMonthlyGross / daysInMonth;
 
         // Future days: days strictly after today
@@ -146,20 +143,11 @@ const PayrollRun = () => {
 
         const lopDeduction = Math.round(perDaySalary * lopDays);
 
-        /* ===== LEAVE ENCASHMENT BONUS ===== */
-        const userEncashments = encashments.filter(
-          (e: any) =>
-            getUserId(e.employee) === user._id &&
-            e.status === "APPROVED" &&
-            e.payrollMonth === month
-        );
-        const encashmentBonus = userEncashments.reduce(
-          (sum: number, e: any) => sum + e.totalAmount,
-          0
-        );
+        /* ===== LEAVE ENCASHMENT BONUS REMOVED ===== */
+        const encashmentBonus = 0;
 
         const totalGross = fullMonthlyGross + encashmentBonus;
-        const fixedDeduction = salary.pf + salary.tax;
+        const fixedDeduction = (salary.pf || 0) + (salary.professionalTax || 0) + (salary.tds || 0) + (salary.advance || 0) + (salary.others || 0);
 
         // Total Deduction = Fixed + LOP + Future + Today (if not present)
         const totalDeduction = fixedDeduction + lopDeduction + unearnedSalary + todayPendingDeduction;
@@ -169,7 +157,7 @@ const PayrollRun = () => {
 
         return {
           userId: user._id,
-          name: user.name,
+          name: user.fullName,
           gross: totalGross,
           deduction: totalDeduction,
           net: netSalry,
@@ -182,7 +170,7 @@ const PayrollRun = () => {
 
       setPayroll(rows.filter(Boolean));
       toast({
-        
+
         title: "Payroll Generated",
         description: "Payroll has been generated successfully.",
       });
@@ -190,6 +178,8 @@ const PayrollRun = () => {
       setIsPayrollRun(false);
     } catch (error) {
       console.error("Payroll generation failed", error);
+      setLoading(false);
+      setIsPayrollRun(false);
       toast({
         variant: "destructive",
         title: "Payroll Failed",
@@ -305,7 +295,7 @@ const PayrollRun = () => {
         headers: { Authorization: `Bearer ${token}` },
       });
       toast({
-        
+
         title: "Payroll Reset",
         description: "Payroll has been reset. You can now re-run it.",
       });

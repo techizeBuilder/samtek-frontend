@@ -30,6 +30,8 @@ export default function AddUser() {
     'Dispatch Employee',
     'Account Employee',
     'Auditor',
+    'Research Development Employee',
+    'Complaint Management Employee',
   ];
 
   const ROLE_MODULES_CONFIG: Record<string, { moduleName: string; features: { key: string; label: string }[] }> = {
@@ -81,6 +83,18 @@ export default function AddUser() {
         { key: "bankAndCash", label: "Bank & Cash" },
         { key: "reports", label: "Reports" },
         { key: "settings", label: "Settings" }
+      ]
+    },
+    "Research Development Employee": {
+      moduleName: "dashboard",
+      features: [
+        { key: "dashboard", label: "Dashboard" }
+      ]
+    },
+    "Complaint Management Employee": {
+      moduleName: "dashboard",
+      features: [
+        { key: "dashboard", label: "Complaints" }
       ]
     }
   };
