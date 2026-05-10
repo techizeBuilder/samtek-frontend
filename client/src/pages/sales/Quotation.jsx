@@ -228,28 +228,39 @@ const Quotation = () => {
       const pageHeightPx = (width * 297) / 210; // A4 Ratio
       
       // 2. Identify sections and prevent splitting
-      const sections = element.querySelectorAll('.pdf-section');
+      const sections = Array.from(element.querySelectorAll('.pdf-section'));
       const addedSpacers = [];
       
       // We need to re-calculate offsets after each spacer is added
-      // So we use a simple loop and check positions
-      sections.forEach((section) => {
-        const rect = section.getBoundingClientRect();
-        const elementTop = section.offsetTop;
-        const elementBottom = elementTop + section.offsetHeight;
+      // So we use a simple loop and check positions relative to the container
+      for (const section of sections) {
+        const pdfRect = element.getBoundingClientRect();
+        const sectionRect = section.getBoundingClientRect();
+        
+        const elementTop = sectionRect.top - pdfRect.top;
+        const elementBottom = elementTop + sectionRect.height;
         
         const pageOfTop = Math.floor(elementTop / pageHeightPx);
         const pageOfBottom = Math.floor((elementBottom - 1) / pageHeightPx); // -1 to handle exact boundaries
         
         if (pageOfTop !== pageOfBottom) {
           const spacerHeight = (pageOfTop + 1) * pageHeightPx - elementTop;
-          const spacer = document.createElement('div');
-          spacer.style.height = `${spacerHeight}px`;
+          let spacer;
+          if (section.tagName.toLowerCase() === 'tr') {
+            spacer = document.createElement('tr');
+            const td = document.createElement('td');
+            td.colSpan = section.children.length || 10;
+            td.style.height = `${spacerHeight}px`;
+            spacer.appendChild(td);
+          } else {
+            spacer = document.createElement('div');
+            spacer.style.height = `${spacerHeight}px`;
+          }
           spacer.className = 'pdf-paging-spacer';
           section.parentNode.insertBefore(spacer, section);
           addedSpacers.push(spacer);
         }
-      });
+      }
 
       // 3. Capture high-quality canvas
       const canvas = await html2canvas(element, { 
@@ -311,24 +322,37 @@ const Quotation = () => {
       // Intelligent Paging Logic
       const width = element.offsetWidth;
       const pageHeightPx = (width * 297) / 210;
-      const sections = element.querySelectorAll('.pdf-section');
+      const sections = Array.from(element.querySelectorAll('.pdf-section'));
       const addedSpacers = [];
       
-      sections.forEach((section) => {
-        const elementTop = section.offsetTop;
-        const elementBottom = elementTop + section.offsetHeight;
+      for (const section of sections) {
+        const pdfRect = element.getBoundingClientRect();
+        const sectionRect = section.getBoundingClientRect();
+        
+        const elementTop = sectionRect.top - pdfRect.top;
+        const elementBottom = elementTop + sectionRect.height;
+        
         const pageOfTop = Math.floor(elementTop / pageHeightPx);
         const pageOfBottom = Math.floor((elementBottom - 1) / pageHeightPx);
         
         if (pageOfTop !== pageOfBottom) {
           const spacerHeight = (pageOfTop + 1) * pageHeightPx - elementTop;
-          const spacer = document.createElement('div');
-          spacer.style.height = `${spacerHeight}px`;
+          let spacer;
+          if (section.tagName.toLowerCase() === 'tr') {
+            spacer = document.createElement('tr');
+            const td = document.createElement('td');
+            td.colSpan = section.children.length || 10;
+            td.style.height = `${spacerHeight}px`;
+            spacer.appendChild(td);
+          } else {
+            spacer = document.createElement('div');
+            spacer.style.height = `${spacerHeight}px`;
+          }
           spacer.className = 'pdf-paging-spacer';
           section.parentNode.insertBefore(spacer, section);
           addedSpacers.push(spacer);
         }
-      });
+      }
 
       const canvas = await html2canvas(element, { 
         scale: 2.0, 
@@ -888,7 +912,7 @@ const Quotation = () => {
               </div>
 
               {/* Totals Section */}
-              <div className="flex justify-end">
+              <div className="flex justify-end pdf-section">
                 <div className="w-1/2">
                   <table className="w-full text-[10px] font-bold">
                     <tr>
