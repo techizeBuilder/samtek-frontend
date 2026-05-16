@@ -7,7 +7,8 @@ export const USER_ROLES = {
   RESEARCH_DEVELOPMENT_HEAD: 'Research & Development Head',
   RESEARCH_DEVELOPMENT_EMPLOYEE: 'Research Development Employee',
   COMPLAINT_MANAGEMENT_HEAD: 'Complaint Management Head',
-  COMPLAINT_MANAGEMENT_EMPLOYEE: 'Complaint Management Employee'
+  COMPLAINT_MANAGEMENT_EMPLOYEE: 'Complaint Management Employee',
+  MARKETING_HEAD: 'Marketing Head'
 };
 
 export const MODULES = {
@@ -21,7 +22,8 @@ export const MODULES = {
   CUSTOMERS: 'Customers',
   SUPPLIERS: 'Suppliers',
   PURCHASES: 'Purchases',
-  SETTINGS: 'Settings'
+  SETTINGS: 'Settings',
+  MARKETING: 'Marketing'
 };
 
 export const PERMISSIONS = {

@@ -7,12 +7,16 @@ import SuperAdminDashboard from "@/pages/SuperAdminDashboard";
 import ProductionModule from "@/components/production/ProductionModule";
 import PackingDashboard from "@/pages/PackingDashboard";
 import DispatchDashboard from "@/pages/DispatchDashboard";
+import { PackagingDispatchProvider } from "@/contexts/PackagingDispatchContext";
+import PkgDispatchDashboard from "@/pages/packaging-dispatch/Dashboard";
 import AccountsDashboard from "@/pages/AccountsDashboard";
 import HRMSDashboard from "@/pages/hrms/HRMSDashboard";
 import ManagerDashboard from "@/pages/hrms/Manager/ManagerDashboard";
 import EmployeeDashboard from "@/pages/hrms/Employee/Dashboard/EmployeeDashboard";
 import CompanyAdminDashboard from "@/pages/hrms/CompanyAdmin/CompanyAdminDashboard";
 import RDDashboard from "@/pages/ResearchDevelopment/Dashboard";
+import { QCProvider } from "@/contexts/QCContext";
+import QCDashboard from "@/pages/quality-control/Dashboard";
 
 export default function RoleBasedDashboard() {
   const { user } = useAuth();
@@ -44,7 +48,7 @@ export default function RoleBasedDashboard() {
         case 'Dispatch':
         case 'Dispatch Employee':
         case 'Dispatch Head':
-          setLocation('/dispatch-dashboard');
+          setLocation('/packaging-dispatch/dashboard');
           return;
         case 'Accounts':
         case 'Account Employee':
@@ -66,7 +70,14 @@ export default function RoleBasedDashboard() {
           return;
         case 'Research & Development Head':
         case 'Research Development Employee':
-          setLocation('/r&d-dashboard');
+          setLocation('/r&d/dashboard');
+          return;
+        case 'QC Head':
+        case 'QC Employee':
+          setLocation('/qc/dashboard');
+          return;
+        case 'Marketing Head':
+          setLocation('/sales-dashboard');
           return;
         default:
           // Super User and others stay on main dashboard
@@ -95,7 +106,7 @@ export default function RoleBasedDashboard() {
     case 'Dispatch':
     case 'Dispatch Employee':
     case 'Dispatch Head':
-      return <DispatchDashboard />;
+      return <PackagingDispatchProvider><PkgDispatchDashboard /></PackagingDispatchProvider>;
     case 'Accounts':
     case 'Account Employee':
     case 'Accounts Head':
@@ -112,6 +123,11 @@ export default function RoleBasedDashboard() {
     case 'Research & Development Head':
     case 'Research Development Employee':
       return <RDDashboard />;
+    case 'QC Head':
+    case 'QC Employee':
+      return <QCProvider><QCDashboard /></QCProvider>;
+    case 'Marketing Head':
+      return <SalesDashboard />;
     default:
       // Default to main dashboard for Super User and others
       return <Dashboard />;

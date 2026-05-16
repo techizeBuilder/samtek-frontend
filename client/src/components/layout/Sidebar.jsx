@@ -50,7 +50,11 @@ import {
   UserCircle,
   Award,
   Beaker,
-  ShieldAlert
+  ShieldAlert,
+  FolderOpen,
+  Upload,
+  Folder,
+  Share2
 } from 'lucide-react';
 
 // Separate menu items for each role
@@ -125,15 +129,33 @@ const productionMenuItems = [
     module: 'production'
   },
   {
-    label: 'Task Management',
-    path: '/production/task-management',
-    icon: CheckSquare,
+    label: 'Orders',
+    path: '/production/orders',
+    icon: ClipboardList,
     module: 'production'
   },
   {
-    label: 'My Task',
-    path: '/production/my-task',
-    icon: CheckSquare,
+    label: 'Work Planning',
+    path: '/production/work-planning',
+    icon: Calendar,
+    module: 'production'
+  },
+  {
+    label: 'Process & QC',
+    path: '/production/process-execution',
+    icon: Cog,
+    module: 'production'
+  },
+  {
+    label: 'Job Cards',
+    path: '/production/job-cards',
+    icon: FileText,
+    module: 'production'
+  },
+  {
+    label: 'Manpower',
+    path: '/production/manpower',
+    icon: Users,
     module: 'production'
   },
   {
@@ -191,37 +213,40 @@ const packingMenuItems = [
 const dispatchMenuItems = [
   {
     label: 'Dashboard',
-    path: '/dispatch-dashboard',
+    path: '/packaging-dispatch/dashboard',
     icon: LayoutDashboard,
     module: 'dispatches',
-    feature: 'dashboard'
   },
   {
-    label: 'Task Management',
-    path: '/dispatch/task-management',
-    icon: CheckSquare,
-    module: 'dispatches'
-  },
-  {
-    label: 'My Task',
-    path: '/dispatch/my-task',
-    icon: CheckSquare,
-    module: 'dispatches'
-  },
-  {
-    label: 'Delivery Challan',
-    path: '/dispatch/delivery-challan',
-    icon: FileText,
+    label: 'Packaging Queue',
+    path: '/packaging/queue',
+    icon: Package,
     module: 'dispatches',
-    feature: 'deliveryChallan'
   },
   {
-    label: 'History',
-    path: '/dispatch/history',
+    label: 'Packaging Jobs',
+    path: '/packaging/jobs',
+    icon: ClipboardList,
+    module: 'dispatches',
+  },
+  {
+    label: 'Dispatch Planning',
+    path: '/dispatch/planning',
+    icon: Truck,
+    module: 'dispatches',
+  },
+  {
+    label: 'Active Dispatches',
+    path: '/dispatch/active',
+    icon: CheckSquare,
+    module: 'dispatches',
+  },
+  {
+    label: 'Dispatch History',
+    path: '/dispatch/completed',
     icon: BarChart,
     module: 'dispatches',
-    feature: 'dispatchHistory'
-  }
+  },
 ];
 
 const salesMenuItems = [
@@ -285,6 +310,12 @@ const salesMenuItems = [
     path: '/customers',
     icon: Users,
     module: 'customers'
+  },
+  {
+    label: 'Marketing Library',
+    path: '/marketing/library',
+    icon: Share2,
+    module: 'marketing'
   },
   {
     label: 'Task Management',
@@ -756,12 +787,26 @@ const companyAdminMenuItems = [
 // HR Admin assigns access per user at creation time
 // ============================================================
 const rdMenuItems = [
-  {
-    label: 'Dashboard',
-    path: '/r&d-dashboard',
-    icon: LayoutDashboard,
-    module: 'rnd'
-  }
+  { label: 'Dashboard', path: '/r&d/dashboard', icon: LayoutDashboard, module: 'rnd' },
+  { label: 'Product Master', path: '/r&d/product-master', icon: Package, module: 'rnd' },
+  { label: 'Design Approval', path: '/r&d/design-approval', icon: CheckCircle, module: 'rnd' },
+  { label: 'BOM Management', path: '/r&d/bom-management', icon: ClipboardList, module: 'rnd' },
+  { label: 'Tool & Process', path: '/r&d/tool-process', icon: Cog, module: 'rnd' },
+  { label: 'Prototype', path: '/r&d/prototype', icon: Beaker, module: 'rnd' },
+  { label: 'Change Management', path: '/r&d/change-management', icon: AlertTriangle, module: 'rnd' },
+  { label: 'Quality Parameters', path: '/r&d/quality-parameters', icon: ShieldAlert, module: 'rnd' },
+  { label: 'Documentation', path: '/r&d/documentation', icon: FolderOpen, module: 'rnd' },
+];
+
+// Marketing Head — full access: upload, edit, delete, categories, reports, audit
+const marketingMenuItems = [
+  { label: 'Dashboard', path: '/marketing/dashboard', icon: LayoutDashboard, module: 'marketing' },
+  { label: 'Marketing Library', path: '/marketing/library', icon: FolderOpen, module: 'marketing' },
+  { label: 'Upload Content', path: '/marketing/upload', icon: Upload, module: 'marketing' },
+  { label: 'Category Management', path: '/marketing/categories', icon: Folder, module: 'marketing' },
+  { label: 'Reports', path: '/marketing/reports', icon: BarChart, module: 'marketing' },
+  { label: 'Audit Logs', path: '/marketing/audit-logs', icon: History, module: 'marketing' },
+  { label: 'Notifications', path: '/marketing/notifications', icon: Bell, module: 'marketing' },
 ];
 
 const complaintMenuItems = [
@@ -771,6 +816,14 @@ const complaintMenuItems = [
     icon: LayoutDashboard,
     module: 'complaints'
   }
+];
+
+const qcMenuItems = [
+  { label: 'Dashboard', path: '/qc/dashboard', icon: LayoutDashboard, module: 'quality-control' },
+  { label: 'QC Inward Entry', path: '/qc/inward', icon: ClipboardList, module: 'quality-control' },
+  { label: 'All QC Jobs', path: '/qc/jobs', icon: ShieldAlert, module: 'quality-control' },
+  { label: 'Pending Inspection', path: '/qc/jobs?status=Pending', icon: Clock, module: 'quality-control' },
+  { label: 'In Progress', path: '/qc/jobs?status=In Progress', icon: AlertTriangle, module: 'quality-control' },
 ];
 
 // Function to get menu items based on role
@@ -814,6 +867,11 @@ const getMenuItemsByRole = (role) => {
     case 'Complaint Management Head':
     case 'Complaint Management Employee':
       return complaintMenuItems;
+    case 'QC Head':
+    case 'QC Employee':
+      return qcMenuItems;
+    case 'Marketing Head':
+      return marketingMenuItems;
     default:
       return [];
   }
@@ -973,6 +1031,9 @@ export default function Sidebar({ isOpen, onClose }) {
   } else if (normalizedRole === 'Complaint Management Head' || normalizedRole === 'Complaint Management Employee') {
     // Complaint Management roles - show all complaint module items directly
     filteredMenuItems = roleMenuItems;
+  } else if (normalizedRole === 'QC Head' || normalizedRole === 'QC Employee') {
+    // QC roles - show all quality-control module items directly
+    filteredMenuItems = roleMenuItems;
   } else if (normalizedRole === 'Company Admin') {
     // Company Admin - show all hrms items directly
     filteredMenuItems = roleMenuItems;
@@ -1043,7 +1104,6 @@ export default function Sidebar({ isOpen, onClose }) {
                 const isActive = location === item.path ||
                   (item.module === 'dashboard' && location === '/') ||
                   (item.module === 'dashboard' && location === '/super-admin-dashboard') ||
-                  (item.module === 'rnd' && location === '/r&d-dashboard') ||
                   (item.module === 'complaints' && location === '/complaints');
                 const hasSubmodules = item.submodules && item.submodules.length > 0;
                 const isExpanded = expandedModules[item.path];

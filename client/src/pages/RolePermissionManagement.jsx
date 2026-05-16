@@ -57,6 +57,7 @@ const ROLES = [
   { value: 'Accounts Head', label: 'Accounts Head' },
   { value: 'Research & Development Head', label: 'Research & Development Head' },
   { value: 'Complaint Management Head', label: 'Complaint Management Head' },
+  { value: 'Marketing Head', label: 'Marketing Head' },
 ];
 
 const UNITS = [
@@ -185,6 +186,18 @@ const MODULES = [
       { key: 'general', label: 'General Settings' },
       { key: 'users', label: 'User Management' },
       { key: 'system', label: 'System Configuration' }
+    ]
+  },
+  {
+    name: 'marketing',
+    label: 'Marketing',
+    features: [
+      { key: 'library', label: 'Marketing Library' },
+      { key: 'upload', label: 'Upload Content' },
+      { key: 'categories', label: 'Category Management' },
+      { key: 'reports', label: 'Reports' },
+      { key: 'auditLogs', label: 'Audit Logs' },
+      { key: 'notifications', label: 'Notifications' }
     ]
   }
 ];
@@ -612,6 +625,28 @@ export default function RolePermissionManagement() {
               { key: 'transactions', view: true, add: true, edit: true, delete: true },
               { key: 'balanceSheet', view: true, add: true, edit: true, delete: true },
               { key: 'reports', view: true, add: true, edit: true, delete: true }
+            ]
+          }
+        ];
+      case 'Marketing Head':
+        return [
+          {
+            name: 'marketing',
+            dashboard: true,
+            features: [
+              { key: 'library', view: true, add: true, edit: true, delete: true, alter: true },
+              { key: 'upload', view: true, add: true, edit: true, delete: true, alter: true },
+              { key: 'categories', view: true, add: true, edit: true, delete: true, alter: true },
+              { key: 'reports', view: true, add: false, edit: false, delete: false, alter: false },
+              { key: 'auditLogs', view: true, add: false, edit: false, delete: false, alter: false },
+              { key: 'notifications', view: true, add: false, edit: false, delete: false, alter: false }
+            ]
+          },
+          {
+            name: 'customers',
+            dashboard: false,
+            features: [
+              { key: 'addEditView', view: true, add: false, edit: false, delete: false, alter: false }
             ]
           }
         ];
