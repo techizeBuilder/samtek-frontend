@@ -88,6 +88,7 @@ import RoleBasedLayout from "@/components/layout/RoleBasedLayout";
 import SuperAdminAccounts from "@/pages/super-admin/Accounts";
 
 // HRMS Module Imports
+import SalesOrderTracking from "@/pages/accounts/SalesOrderTracking";
 import HRMSDashboard from "@/pages/hrms/HRMSDashboard";
 import HRMSEmployees from "@/pages/hrms/Employee";
 import HRMSAttendance from "@/pages/hrms/AttendanceReport";
@@ -129,8 +130,8 @@ import EmployeeAttendanceCalendar from "@/pages/hrms/Employee/Attendance/Attenda
 import EmployeeAttendanceRequest from "@/pages/hrms/Employee/Attendance/AttendanceRequest";
 import EmployeeLeaveBalance from "@/pages/hrms/Employee/Leave/LeaveBalance";
 import EmployeeLeaves from "@/pages/hrms/Employee/Leave/Leaves";
-import EmployeePayslips from "@/pages/hrms/Payroll/Payslips";
-import EmployeeSalaryStructure from "@/pages/hrms/Payroll/SalaryStructure";
+import EmployeePayslips from "@/pages/hrms/Employee/Payroll/EmployeePayslips";
+import EmployeeSalaryStructure from "@/pages/hrms/Employee/Payroll/EmployeeSalaryStructure";
 import EmployeeExpenses from "@/pages/hrms/Employee/Expenses/Expenses";
 import EmployeeTravelRequests from "@/pages/hrms/Employee/Request/TravelRequests";
 import EmployeeResignRequest from "@/pages/hrms/Employee/Request/ResignRequest";
@@ -138,7 +139,11 @@ import EmployeeOverTimeRequests from "@/pages/hrms/Employee/Request/OverTimeRequ
 import EmployeeProfileUpdateRequest from "@/pages/hrms/Employee/Request/ProfileUpdateRequest";
 import CompanyAdminDashboard from "@/pages/hrms/CompanyAdmin/CompanyAdminDashboard";
 import CompanyAdminLayout from "@/pages/hrms/CompanyAdmin/CompanyAdminLayout";
+import ManagerLeaves from "@/pages/hrms/Manager/LeavesEmployee";
+import PerformanceMetrics from "@/pages/hrms/Manager/PerformanceMetrics";
 import RDDashboard from "@/pages/ResearchDevelopment/Dashboard";
+import StoreDashboard from "@/pages/store/StoreDashboard";
+import StoreOrders from "@/pages/store/StoreOrders";
 
 function Router() {
   return (
@@ -296,6 +301,16 @@ function Router() {
       <Route exact path="/hrms/Manager/recruitment/pipeline">
         <ProtectedRoute requiredRole={["Manager", "HR-Admin"]}>
           <ManagerInterviews />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Manager/leaves">
+        <ProtectedRoute requiredRole="Manager">
+          <ManagerLeaves />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Manager/performance-metrics">
+        <ProtectedRoute requiredRole="Manager">
+          <PerformanceMetrics />
         </ProtectedRoute>
       </Route>
 
@@ -671,6 +686,11 @@ function Router() {
           <SalesOrders />
         </ProtectedRoute>
       </Route>
+      <Route path="/accounts/sales/order-tracking">
+        <ProtectedRoute requiredRole="Accounts">
+          <SalesOrderTracking />
+        </ProtectedRoute>
+      </Route>
       <Route path="/accounts/sales/customers">
         <ProtectedRoute requiredRole="Accounts">
           <CustomerMaster />
@@ -780,6 +800,18 @@ function Router() {
       <Route path="/accounts/financial-summary">
         <ProtectedRoute requiredRole="Accounts">
           <FinancialSummary />
+        </ProtectedRoute>
+      </Route>
+
+      {/* Store Module Routes */}
+      <Route path="/store-dashboard">
+        <ProtectedRoute requiredRole={["Store Head", "Store Employee"]}>
+          <StoreDashboard />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/store/orders">
+        <ProtectedRoute requiredRole={["Store Head", "Store Employee"]}>
+          <StoreOrders />
         </ProtectedRoute>
       </Route>
       <Route path="/accounts/reports">

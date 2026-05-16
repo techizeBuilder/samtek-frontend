@@ -143,7 +143,9 @@ const Candidates = () => {
                   <td className="px-4 py-3 text-center text-gray-500">{c.mobile || "-"}</td>
                   <td className="px-4 py-3 text-center text-gray-500">{c.email}</td>
                   <td className="px-4 py-3 text-center text-orange-500 font-medium">{c.jobTitle}</td>
-                  <td className="px-4 py-3 text-center">{c.recruitingManager || "-"}</td>
+                  <td className="px-4 py-3 text-center">
+                    {(c as any).jobId?.recruitingManager?.name || c.recruitingManager || "-"}
+                  </td>
 
                   <td className="px-4 py-3 text-center">
                     <a

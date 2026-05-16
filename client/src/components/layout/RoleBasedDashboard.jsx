@@ -13,6 +13,7 @@ import ManagerDashboard from "@/pages/hrms/Manager/ManagerDashboard";
 import EmployeeDashboard from "@/pages/hrms/Employee/Dashboard/EmployeeDashboard";
 import CompanyAdminDashboard from "@/pages/hrms/CompanyAdmin/CompanyAdminDashboard";
 import RDDashboard from "@/pages/ResearchDevelopment/Dashboard";
+import StoreDashboard from "@/pages/store/StoreDashboard";
 
 export default function RoleBasedDashboard() {
   const { user } = useAuth();
@@ -68,6 +69,10 @@ export default function RoleBasedDashboard() {
         case 'Research Development Employee':
           setLocation('/r&d-dashboard');
           return;
+        case 'Store Head':
+        case 'Store Employee':
+          setLocation('/store-dashboard');
+          return;
         default:
           // Super User and others stay on main dashboard
           break;
@@ -112,6 +117,9 @@ export default function RoleBasedDashboard() {
     case 'Research & Development Head':
     case 'Research Development Employee':
       return <RDDashboard />;
+    case 'Store Head':
+    case 'Store Employee':
+      return <StoreDashboard />;
     default:
       // Default to main dashboard for Super User and others
       return <Dashboard />;

@@ -239,19 +239,20 @@ const salesMenuItems = [
     module: 'sales'
   },
   {
-    label: 'My Orders',
-    path: '/sales/orders',
-    icon: ShoppingCart,
-    module: 'sales',
-    feature: 'orders'
-  },
-  {
     label: 'My Customers',
     path: '/sales/my-customers',
     icon: Users,
     module: 'sales',
     feature: 'myCustomers'
   },
+  {
+    label: 'My Orders',
+    path: '/sales/orders',
+    icon: ShoppingCart,
+    module: 'sales',
+    feature: 'orders'
+  },
+
   {
     label: 'My Dispatches',
     path: '/sales/my-deliveries',
@@ -339,6 +340,7 @@ const accountsMenuItems = [
       { label: 'Sales Invoice', path: '/accounts/sales/invoices', feature: 'sales' },
       { label: 'Sales Return', path: '/accounts/sales/returns', feature: 'sales' },
       { label: 'Customer Payment', path: '/accounts/sales/payments', feature: 'sales' },
+      { label: 'Sales Order Tracking', path: '/accounts/sales/order-tracking', feature: 'sales' },
       { label: 'Receivable Ageing', path: '/accounts/sales/ageing', feature: 'sales' },
       { label: 'Sales Reports', path: '/accounts/sales/reports', feature: 'sales' }
     ]
@@ -773,6 +775,21 @@ const complaintMenuItems = [
   }
 ];
 
+const storeMenuItems = [
+  {
+    label: 'Dashboard',
+    path: '/store-dashboard',
+    icon: LayoutDashboard,
+    module: 'Store'
+  },
+  {
+    label: 'Orders',
+    path: '/store/orders',
+    icon: Receipt,
+    module: 'Store'
+  }
+];
+
 // Function to get menu items based on role
 const getMenuItemsByRole = (role) => {
   switch (role) {
@@ -811,6 +828,9 @@ const getMenuItemsByRole = (role) => {
     case 'Research & Development Head':
     case 'Research Development Employee': // same sidebar, permissions control access
       return rdMenuItems;
+    case 'Store Head':
+    case 'Store Employee':
+      return storeMenuItems;
     case 'Complaint Management Head':
     case 'Complaint Management Employee':
       return complaintMenuItems;

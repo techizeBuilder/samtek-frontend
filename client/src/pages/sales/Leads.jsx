@@ -58,7 +58,8 @@ import {
   Users,
   Mic,
   Volume2,
-  FileDown
+  FileDown,
+  Pencil
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -160,11 +161,52 @@ const Leads = () => {
   const [isEditReqModalOpen, setIsEditReqModalOpen] = useState(false);
   const [editingLeadId, setEditingLeadId] = useState(null);
   const [existingLead, setExistingLead] = useState(null);
+
+  // Closure Date / Deal Value Modal
+  const [isClosureDealModalOpen, setIsClosureDealModalOpen] = useState(false);
+  const [closureDealFormData, setClosureDealFormData] = useState({
+    closureDate: '',
+    dealValue: '',
+    currency: 'INR'
+  });
   
   const [reqFormData, setReqFormData] = useState({
     productRequired: '',
     describeRequirements: ''
   });
+
+  const handleOpenClosureDealModal = (lead) => {
+    setEditingLeadId(lead._id);
+    setClosureDealFormData({
+      closureDate: lead.closureDate
+        ? new Date(lead.closureDate).toISOString().split('T')[0]
+        : '',
+      dealValue: lead.dealValue || '',
+      currency: 'INR'
+    });
+    setIsClosureDealModalOpen(true);
+  };
+
+  const handleSaveClosureDeal = () => {
+    if (!editingLeadId) return;
+    updateLeadMutation.mutate(
+      {
+        id: editingLeadId,
+        data: {
+          closureDate: closureDealFormData.closureDate || null,
+          dealValue: closureDealFormData.dealValue
+            ? Number(closureDealFormData.dealValue)
+            : 0
+        }
+      },
+      {
+        onSuccess: () => {
+          toast({ title: 'Success', description: 'Closure date & deal value updated' });
+          setIsClosureDealModalOpen(false);
+        }
+      }
+    );
+  };
 
   // Tabs for status filtering
   const tabs = [
@@ -238,6 +280,21 @@ const Leads = () => {
       toast({
         title: "Error",
         description: error?.message || "Failed to update details",
+        variant: "destructive"
+      });
+    }
+  });
+
+  const markAsWonMutation = useMutation({
+    mutationFn: (id) => leadApi.markAsWon(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+      toast({ title: "Success", description: "Lead converted to Customer and Order created successfully!" });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to mark lead as won",
         variant: "destructive"
       });
     }
@@ -521,20 +578,53 @@ const Leads = () => {
                         <span className="text-gray-700">{new Date(lead.leadDate).toLocaleString()}</span>
                       </div>
                       <div className="flex flex-col">
-                        <span className="text-gray-500 text-xs flex items-center">
-                          Closure Date <Edit className="h-3 w-3 ml-1 cursor-pointer" />
+                        <span className="text-gray-500 text-xs flex items-center gap-1">
+                          Closure Date
+                          <Pencil
+                            className="h-3 w-3 cursor-pointer text-blue-500 hover:text-blue-700 transition-colors"
+                            onClick={() => handleOpenClosureDealModal(lead)}
+                          />
                         </span>
                         <span className="text-gray-700">{lead.closureDate ? new Date(lead.closureDate).toLocaleDateString() : 'N/A'}</span>
                       </div>
                       <div className="flex flex-col">
-                        <span className="text-gray-500 text-xs flex items-center">
-                          Deal Value <Edit className="h-3 w-3 ml-1 cursor-pointer" />
+                        <span className="text-gray-500 text-xs flex items-center gap-1">
+                          Deal Value
+                          <Pencil
+                            className="h-3 w-3 cursor-pointer text-blue-500 hover:text-blue-700 transition-colors"
+                            onClick={() => handleOpenClosureDealModal(lead)}
+                          />
                         </span>
                         <span className="text-gray-700">{lead.dealValue ? `₹${lead.dealValue}` : 'N/A'}</span>
                       </div>
                       <div className="flex flex-col">
                         <span className="text-gray-500 text-xs">Quotation</span>
-                        <span className="text-blue-600 cursor-pointer">{lead.quotation || 'N/A'}</span>
+                        <div className="flex items-center h-5">
+                          {lead.quotation ? (
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              className="h-6 px-2 text-blue-600 hover:bg-blue-50 text-[10px] -ml-2"
+                              onClick={() => {
+                                const base64String = lead.quotation;
+                                if (base64String.startsWith('data:application/pdf')) {
+                                  const win = window.open();
+                                  win.document.write('<iframe src="' + base64String + '" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>');
+                                } else {
+                                  // Fallback for direct download if iframe method fails
+                                  const link = document.createElement('a');
+                                  link.href = lead.quotation;
+                                  link.download = `Quotation_${lead.leadCode}.pdf`;
+                                  link.click();
+                                }
+                              }}
+                            >
+                              <Eye className="w-3 h-3 mr-1" /> View
+                            </Button>
+                          ) : (
+                            <span className="text-gray-400 text-xs font-medium">N/A</span>
+                          )}
+                        </div>
                       </div>
                     </div>
 
@@ -654,9 +744,40 @@ const Leads = () => {
                       className="h-8 text-xs rounded-full bg-blue-600"
                       onClick={() => setLocation(`/sales/quotation?lead_id=${lead._id}`)}
                     >
-                      Send Quotation
+                      {lead.quotation ? 'Update Quotation' : 'Send Quotation'}
                     </Button>
-                    <Button variant="outline" size="sm" className="h-8 text-xs rounded-full bg-green-50 text-green-700 border-green-200">Deal Won</Button>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className={cn(
+                        "h-8 text-xs rounded-full",
+                        lead.status === 'Won' 
+                          ? "bg-green-600 text-white border-green-600 hover:bg-green-700" 
+                          : "bg-green-50 text-green-700 border-green-200 hover:bg-green-100"
+                      )}
+                      onClick={() => {
+                        if (lead.status !== 'Won') {
+                          if (!lead.quotation) {
+                            toast({
+                              title: "Quotation Required",
+                              description: "Please send a quotation before marking the deal as Won.",
+                              variant: "destructive"
+                            });
+                            return;
+                          }
+                          markAsWonMutation.mutate(lead._id);
+                        }
+                      }}
+                      disabled={(markAsWonMutation.isPending && markAsWonMutation.variables === lead._id) || lead.status === 'Won'}
+                    >
+                      {lead.status === 'Won' ? (
+                        <span className="flex items-center gap-1">
+                          <CheckCircle2 className="h-3 w-3" /> Deal Won
+                        </span>
+                      ) : (
+                        (markAsWonMutation.isPending && markAsWonMutation.variables === lead._id) ? 'Processing...' : 'Deal Won'
+                      )}
+                    </Button>
                   </div>
                 </div>
 
@@ -1237,6 +1358,25 @@ const Leads = () => {
                   <div className="space-y-1.5">
                     <Label className="text-xs font-semibold text-gray-600 uppercase">Email ID</Label>
                     <Input name="email" value={formData.email} onChange={handleInputChange} className="h-9" />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold text-gray-600 uppercase">Assign To</Label>
+                    <Select
+                      value={formData.assignedTo}
+                      onValueChange={(val) => setFormData(p => ({ ...p, assignedTo: val }))}
+                    >
+                      <SelectTrigger className="h-9">
+                        <SelectValue placeholder="Select User" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {assignableUsers.map(u => (
+                          <SelectItem key={u._id} value={u._id}>
+                            {u.fullName} ({u.role})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
               </div>
@@ -1841,6 +1981,76 @@ const Leads = () => {
           </div>
           <div className="flex justify-end mt-4">
             <Button onClick={() => setIsRecordingModalOpen(false)}>Close</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Expected Closure Date / Deal Value Modal */}
+      <Dialog open={isClosureDealModalOpen} onOpenChange={setIsClosureDealModalOpen}>
+        <DialogContent className="max-w-md p-0 overflow-hidden rounded-xl">
+          {/* Modal Header */}
+          <div className="px-6 py-4 border-b">
+            <DialogTitle className="text-lg font-bold text-gray-800">
+              Expected Closure Date / Deal Value
+            </DialogTitle>
+          </div>
+
+          {/* Modal Body */}
+          <div className="px-6 py-5 space-y-5">
+            {/* Closure Date */}
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold text-gray-700">Closure Date</Label>
+              <input
+                type="date"
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-700"
+                value={closureDealFormData.closureDate}
+                onChange={(e) =>
+                  setClosureDealFormData((prev) => ({ ...prev, closureDate: e.target.value }))
+                }
+              />
+            </div>
+
+            {/* Deal Value */}
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold text-gray-700">Deal Value</Label>
+              <div className="flex gap-2">
+                <Input
+                  type="number"
+                  placeholder="Enter Deal Value"
+                  className="flex-1"
+                  value={closureDealFormData.dealValue}
+                  onChange={(e) =>
+                    setClosureDealFormData((prev) => ({ ...prev, dealValue: e.target.value }))
+                  }
+                />
+                <Select
+                  value={closureDealFormData.currency}
+                  onValueChange={(val) =>
+                    setClosureDealFormData((prev) => ({ ...prev, currency: val }))
+                  }
+                >
+                  <SelectTrigger className="w-24">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="INR">INR</SelectItem>
+                    <SelectItem value="USD">USD</SelectItem>
+                    <SelectItem value="EUR">EUR</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+
+          {/* Modal Footer */}
+          <div className="px-6 pb-5">
+            <Button
+              className="w-full bg-blue-600 hover:bg-blue-700 py-2.5 text-sm font-semibold"
+              onClick={handleSaveClosureDeal}
+              disabled={updateLeadMutation.isPending}
+            >
+              {updateLeadMutation.isPending ? 'Saving...' : 'Save'}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

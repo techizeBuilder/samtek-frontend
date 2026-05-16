@@ -104,6 +104,13 @@ class APIService {
     return this.request(endpoint, { method: 'DELETE' });
   }
 
+  async patch(endpoint, data) {
+    return this.request(endpoint, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
   // Auth specific methods
   async login(credentials) {
     const response = await this.post('/auth/login', credentials);

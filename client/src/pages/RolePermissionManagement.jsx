@@ -57,6 +57,7 @@ const ROLES = [
   { value: 'Accounts Head', label: 'Accounts Head' },
   { value: 'Research & Development Head', label: 'Research & Development Head' },
   { value: 'Complaint Management Head', label: 'Complaint Management Head' },
+  { value: 'Store Head', label: 'Store Head' },
 ];
 
 const UNITS = [
@@ -186,6 +187,14 @@ const MODULES = [
       { key: 'users', label: 'User Management' },
       { key: 'system', label: 'System Configuration' }
     ]
+  },
+  {
+    name: 'Store',
+    label: 'Store',
+    features: [
+      { key: 'dashboard', label: 'Dashboard' },
+      { key: 'orders', label: 'Orders' }
+    ]
   }
 ];
 
@@ -269,6 +278,25 @@ export default function RolePermissionManagement() {
   const isCompanyAdmin = currentUser?.role === 'Company Admin';
 
   const companies = isSuperAdmin ? rawCompanies : rawCompanies.filter(c => c.value === currentUser?.companyId);
+
+  const filteredRoles = ROLES.filter(role => {
+    if (isSuperAdmin) return true;
+
+    // Hide Superadmin role from others
+    if (role.value === 'Superadmin' || role.value === 'Super Admin') return false;
+
+    // If Company Admin, they should see everything they are allowed to manage
+    // including Store Head as requested
+    if (isCompanyAdmin) {
+      return true; // Showing all for now as requested
+    }
+
+    if (currentUser?.role === 'HR-Admin') {
+      return true; // Showing all for now as requested
+    }
+
+    return true;
+  });
 
   // Auto-set companyId for non-SuperAdmins when opening create dialog
   useEffect(() => {
@@ -855,7 +883,7 @@ export default function RolePermissionManagement() {
                       <SelectValue placeholder="Select a role" />
                     </SelectTrigger>
                     <SelectContent>
-                      {ROLES.map((role) => (
+                      {filteredRoles.map((role) => (
                         <SelectItem key={role.value} value={role.value}>
                           {role.label}
                         </SelectItem>
@@ -1064,7 +1092,7 @@ export default function RolePermissionManagement() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All roles</SelectItem>
-                    {ROLES.map((role) => (
+                    {filteredRoles.map((role) => (
                       <SelectItem key={role.value} value={role.value}>
                         {role.label}
                       </SelectItem>
@@ -1514,7 +1542,7 @@ export default function RolePermissionManagement() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {ROLES.map((role) => (
+                    {filteredRoles.map((role) => (
                       <SelectItem key={role.value} value={role.value}>
                         {role.label}
                       </SelectItem>

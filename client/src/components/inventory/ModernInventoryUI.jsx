@@ -92,7 +92,7 @@ function getInventoryApiPath(user) {
   if (!user) return '/api';
 
   switch (user.role) {
-    case 'Superadmin':
+    case 'Super Admin':
       return '/api/super-admin/inventory';
     case 'Unit Head':
       return '/api/unit-head/inventory';

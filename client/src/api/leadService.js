@@ -86,5 +86,15 @@ export const leadApi = {
         'Authorization': `Bearer ${token}`
       }
     });
+  },
+
+  markAsWon: (id) => {
+    const token = localStorage.getItem('token');
+    return apiRequest(`/leads/${id}/won`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
   }
 };
