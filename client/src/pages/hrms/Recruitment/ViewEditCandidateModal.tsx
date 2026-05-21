@@ -96,12 +96,12 @@ const ViewEditCandidateModal = ({ isOpen, onClose, onSuccess, candidate, mode }:
   const handleJobChange = (jobId: string) => {
     const selectedJob = jobs.find((j) => j._id === jobId);
     if (selectedJob) {
-      const manager = selectedJob.recruitingManager;
+      const managerId = selectedJob.recruitingManager?._id || selectedJob.recruitingManager;
       setForm({
         ...form,
         jobId: selectedJob._id,
         jobTitle: selectedJob.jobTitle,
-        recruitingManager: typeof manager === "object" ? manager._id : manager || "",
+        recruitingManager: managerId || "",
       });
     } else {
       setForm({
@@ -282,7 +282,8 @@ const ViewEditCandidateModal = ({ isOpen, onClose, onSuccess, candidate, mode }:
             readOnly
             value={
               jobs.find(j => j._id === form.jobId)?.recruitingManager?.name || 
-              (typeof form.recruitingManager === 'object' ? (form.recruitingManager as any).name : form.recruitingManager) || 
+              (candidate?.jobId?._id === form.jobId ? candidate?.jobId?.recruitingManager?.name : "") ||
+              (typeof form.recruitingManager === 'object' ? (form.recruitingManager as any).name : "") || 
               ""
             }
             className="w-full border px-3 py-2 rounded mt-1 text-sm bg-gray-50 text-gray-500 border-gray-100"

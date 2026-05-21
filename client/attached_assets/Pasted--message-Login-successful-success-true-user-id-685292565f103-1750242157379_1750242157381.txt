@@ -1,0 +1,94 @@
+{
+    "message": "Login successful",
+    "success": true,
+    "user": {
+        "id": "685292565f1032c75212a89d",
+        "username": "jeet",
+        "email": "jeet@gmail.com",
+        "role": "Unit Head",
+        "permissions": {
+            "Dashboard": {
+                "view": true,
+                "add": true,
+                "edit": true,
+                "delete": false
+            },
+            "Orders": {
+                "view": false,
+                "add": false,
+                "edit": false,
+                "delete": false
+            },
+            "Manufacturing": {
+                "view": true,
+                "add": true,
+                "edit": true,
+                "delete": false
+            },
+            "Dispatches": {
+                "view": true,
+                "add": true,
+                "edit": true,
+                "delete": false
+            },
+            "Sales": {
+                "view": true,
+                "add": true,
+                "edit": true,
+                "delete": false
+            },
+            "Accounts": {
+                "view": false,
+                "add": false,
+                "edit": false,
+                "delete": false
+            },
+            "Inventory": {
+                "view": false,
+                "add": false,
+                "edit": false,
+                "delete": false
+            },
+            "Customers": {
+                "view": false,
+                "add": false,
+                "edit": false,
+                "delete": false
+            },
+            "Suppliers": {
+                "view": false,
+                "add": false,
+                "edit": false,
+                "delete": false
+            },
+            "Purchases": {
+                "view": false,
+                "add": false,
+                "edit": false,
+                "delete": false
+            },
+            "Settings": {
+                "view": false,
+                "add": false,
+                "edit": false,
+                "delete": false
+            }
+        },
+        "unit": "Unit A - Assembly",
+        "profile": {
+            "modules": [
+                "Dashboard",
+                "Orders",
+                "Manufacturing",
+                "Dispatches",
+                "Sales",
+                "Accounts",
+                "Inventory",
+                "Customers",
+                "Suppliers",
+                "Purchases"
+            ]
+        }
+    },
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOnsidXNlcklkIjoiNjg1MjkyNTY1ZjEwMzJjNzUyMTJhODlkIiwidXNlcm5hbWUiOiJqZWV0Iiwicm9sZSI6IlVuaXQgSGVhZCIsInBlcm1pc3Npb25zIjp7IkRhc2hib2FyZCI6eyJ2aWV3Ijp0cnVlLCJhZGQiOnRydWUsImVkaXQiOnRydWUsImRlbGV0ZSI6ZmFsc2V9LCJPcmRlcnMiOnsidmlldyI6ZmFsc2UsImFkZCI6ZmFsc2UsImVkaXQiOmZhbHNlLCJkZWxldGUiOmZhbHNlfSwiTWFudWZhY3R1cmluZyI6eyJ2aWV3Ijp0cnVlLCJhZGQiOnRydWUsImVkaXQiOnRydWUsImRlbGV0ZSI6ZmFsc2V9LCJEaXNwYXRjaGVzIjp7InZpZXciOnRydWUsImFkZCI6dHJ1ZSwiZWRpdCI6dHJ1ZSwiZGVsZXRlIjpmYWxzZX0sIlNhbGVzIjp7InZpZXciOnRydWUsImFkZCI6dHJ1ZSwiZWRpdCI6dHJ1ZSwiZGVsZXRlIjpmYWxzZX0sIkFjY291bnRzIjp7InZpZXciOmZhbHNlLCJhZGQiOmZhbHNlLCJlZGl0IjpmYWxzZSwiZGVsZXRlIjpmYWxzZX0sIkludmVudG9yeSI6eyJ2aWV3IjpmYWxzZSwiYWRkIjpmYWxzZSwiZWRpdCI6ZmFsc2UsImRlbGV0ZSI6ZmFsc2V9LCJDdXN0b21lcnMiOnsidmlldyI6ZmFsc2UsImFkZCI6ZmFsc2UsImVkaXQiOmZhbHNlLCJkZWxldGUiOmZhbHNlfSwiU3VwcGxpZXJzIjp7InZpZXciOmZhbHNlLCJhZGQiOmZhbHNlLCJlZGl0IjpmYWxzZSwiZGVsZXRlIjpmYWxzZX0sIlB1cmNoYXNlcyI6eyJ2aWV3IjpmYWxzZSwiYWRkIjpmYWxzZSwiZWRpdCI6ZmFsc2UsImRlbGV0ZSI6ZmFsc2V9LCJTZXR0aW5ncyI6eyJ2aWV3IjpmYWxzZSwiYWRkIjpmYWxzZSwiZWRpdCI6ZmFsc2UsImRlbGV0ZSI6ZmFsc2V9fX0sImlhdCI6MTc1MDI0MTkwNCwiZXhwIjoxNzUwMzI4MzA0fQ.MOMzu_-MmK_zMZtC9g4aDXVcHmAUv9Ym6gOt_Q75qxg"
+}

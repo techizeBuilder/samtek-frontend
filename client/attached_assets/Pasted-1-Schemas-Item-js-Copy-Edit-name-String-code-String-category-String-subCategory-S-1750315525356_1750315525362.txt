@@ -1,0 +1,140 @@
+1. Schemas
+Item
+
+js
+Copy
+Edit
+{
+  name: String,
+  code: String,
+  category: String,
+  subCategory: String,
+  batch: String,
+  qty: Number,
+  unit: String,
+  store: String,
+  importance: String,
+  type: String, // 'Product', 'Material', 'Spares', 'Assemblies'
+  stdCost: Number,
+  purchaseCost: Number,
+  salePrice: Number,
+  hsn: String,
+  gst: Number,
+  mrp: Number,
+  internalManufacturing: Boolean,
+  purchase: Boolean,
+  description: String,
+  internalNotes: String,
+  minStock: Number,
+  leadTime: Number,
+  tags: [String],
+  customerPrices: [
+    { category: String, price: Number }
+  ],
+  createdAt: Date,
+  updatedAt: Date
+}
+Category
+
+js
+Copy
+Edit
+{
+  name: String,
+  subCategories: [String]
+}
+CustomerCategory
+
+js
+Copy
+Edit
+{
+  name: String,
+  description: String
+}
+User
+
+js
+Copy
+Edit
+{
+  username: String,
+  email: String,
+  password: String,
+  role: String, // SuperUser, UnitHead, InventoryManager, etc.
+  unit: String,
+  permissions: {
+    Inventory: {
+      view: Boolean,
+      add: Boolean,
+      edit: Boolean,
+      delete: Boolean
+    }
+  }
+}
+2. APIs
+✅ Item Routes
+bash
+Copy
+Edit
+GET    /api/items
+POST   /api/items
+GET    /api/items/:id
+PUT    /api/items/:id
+DELETE /api/items/:id
+✅ Category Routes
+bash
+Copy
+Edit
+GET    /api/categories
+POST   /api/categories
+PUT    /api/categories/:id
+DELETE /api/categories/:id
+✅ Subcategory (within Category)
+ruby
+Copy
+Edit
+PUT    /api/categories/:id/add-subcategory
+PUT    /api/categories/:id/edit-subcategory
+DELETE /api/categories/:id/remove-subcategory
+✅ Customer Category
+bash
+Copy
+Edit
+GET    /api/customer-categories
+POST   /api/customer-categories
+PUT    /api/customer-categories/:id
+DELETE /api/customer-categories/:id
+💻 Frontend (React + Vite + Tailwind + JWT Auth)
+🧱 Pages & Features
+Inventory List Page
+
+Filter by type, category, subcategory, stock
+
+Search bar
+
+Table: Item | Code | Qty | Category | Rate | Value
+
+Pagination
+
+Add/Edit Item Modal
+
+All fields shown in screenshot
+
+Tag types (Products, Materials, Spares, Assemblies)
+
+Checkbox for internal manufacturing / purchase
+
+Add multiple prices for different customer categories (dropdown + input)
+
+Category/Subcategory CRUD Modal
+
+Add, edit, delete
+
+Show subcategories nested inside categories
+
+Customer Category Pricing Modal
+
+Dynamically generate pricing input per category
+
+Save with item

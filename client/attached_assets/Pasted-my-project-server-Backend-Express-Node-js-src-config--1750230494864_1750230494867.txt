@@ -1,0 +1,290 @@
+my-project/
+│
+├── server/  # ✅ Backend - Express + Node.js
+│ ├── src/
+│ │ ├── config/            # ✅ DB, environment configs
+│ │ │ └── db.jsx
+│ │ │
+│ │ ├── controllers/       # ✅ Handle business logic
+│ │ │ ├── admin/
+│ │ │ │ └── adminController.jsx
+│ │ │ └── user/
+│ │ │    └── userController.jsx
+│ │ │
+│ │ ├── middlewares/       # ✅ Auth, error handling, etc.
+│ │ │ ├── authMiddleware.jsx
+│ │ │ └── errorHandler.jsx
+│ │ │
+│ │ ├── models/            # ✅ Mongoose or DB schemas
+│ │ │ ├── adminModel.jsx
+│ │ │ └── userModel.jsx
+│ │ │
+│ │ ├── routes/            # ✅ Route definitions
+│ │ │ ├── admin/
+│ │ │ │ └── adminRoutes.jsx
+│ │ │ └── user/
+│ │ │    └── userRoutes.jsx
+│ │ │
+│ │ ├── utils/             # ✅ JWT, email, helpers
+│ │ │ └── jwt.jsx
+│ │ │
+│ │ ├── app.js             # ✅ Express app setup
+│ │ └── server.js          # ✅ Entry point (connect DB, start server)
+│ │
+│ ├── .env
+│ ├── .gitignore
+│ ├── package.json
+│ └── README.md
+│
+├── client/  # ✅ Frontend - Vite + React
+│ ├── public/
+│ │ └── index.html
+│ │
+│ ├── src/
+│ │ ├── assets/
+│ │ │ ├── admin/
+│ │ │ └── user/
+│ │ │
+│ │ ├── components/        # ✅ Reusable UI components
+│ │ │ ├── admin/
+│ │ │ │ └── Sidebar.jsx, Header.jsx, ...
+│ │ │ └── user/
+│ │ │    └── Navbar.jsx, ProfileCard.jsx, ...
+│ │ │
+│ │ ├── pages/             # ✅ Route-level views
+│ │ │ ├── admin/
+│ │ │ │ └── Dashboard.jsx, Users.jsx, ...
+│ │ │ └── user/
+│ │ │    └── Home.jsx, Profile.jsx, ...
+│ │ │
+│ │ ├── services/          # ✅ API service logic
+│ │ │ ├── adminService.jsx
+│ │ │ └── userService.jsx
+│ │ │
+│ │ ├── utils/             # ✅ Common utilities (formatting, auth, etc.)
+│ │ │ └── common.jsx
+│ │ │ └── contact.jsx    # ✅ Contact config (backend base URLs)
+│ │ ├── routes/            # ✅ React Router setup
+│ │ │ ├── AdminRoutes.jsx
+│ │ │ └── UserRoutes.jsx
+│ │ │
+│ │ ├── App.jsx            # ✅ Main layout + route switch
+│ │ └── main.jsx           # ✅ ReactDOM.render point
+│ │
+│ ├── .env
+│ ├── .gitignore
+│ ├── package.json
+│ └── vite.config.jsx
+│
+├── .gitignore             # ✅ Root-level ignore
+└── README.md
+
+this is my project strcture react js (jsx) and nodejs and express and mongo db
+
+MONGODB_URI=mongodb+srv://jeeturadicalloop:Mjvesqnj8gY3t0zP@cluster0.by2xy6x.mongodb.net/ (project name)?
+
+This will give you the exact folder layout you described, with the backend and frontend fully separated but ready to integrate.
+setup this project
+
+
+
+Build a Full-Stack Admin Panel  modern intractive responsive and dark light mode for a manufacturing/ERP system with the following specifications:
+
+🎯 Features:
+👤 User Roles:
+Super User
+Unit Head
+Production
+Packing
+Dispatch
+Accounts
+
+Each role has specific access permissions (View / Edit / Alter) per module.
+
+📦 Modules:
+Dashboard
+Orders
+Manufacturing
+Dispatches
+Sales
+Accounts
+Inventory
+Customers
+Suppliers
+Purchases
+Settings (Admin-only)
+
+🧩 Permissions:
+Super User: Full access to all modules and unit data
+
+Unit Head: Full access but only to their own unit
+
+Other Roles: Access only specific modules and their own unit's data
+
+🧑‍💻 Admin Panel Features:
+
+1. Dashboard
+Purpose:
+
+Overview panel showing key metrics (orders, production status, inventory, dispatch progress, financials).
+Visible To: All roles (customized view)
+
+Features:
+
+Total orders (pending, completed)
+Production summary
+Dispatch status
+Financial overview (Accounts Receivable/Payable)
+Notifications or alerts
+Charts and graphs
+
+Sidebar with modules (show/hide based on role)
+
+2.User Management:
+
+Create new user (username, email, password)
+Assign role (SuperUser, UnitHead, etc.)
+Assign to specific or module unit(s)
+Enable/Disable user
+Assign unit
+Assign Role	Dropdown: SuperUser, UnitHead, Production, Packing, Dispatch, Accounts
+Assign Unit(s)	Dropdown / Multi-select for unit (if UnitHead or other unit-bound roles)
+Enable/Disable User	Toggle user active/inactive
+Reset Password	Admin can reset any user's password
+Assign Modules	(Optional Advanced) Give specific module access beyond default role permissions
+
+Role Permission Management (optional advanced)
+Role-based route protection
+Settings module (only visible to Super User)
+Responsive UI
+
+3. Orders
+Purpose:
+Manage customer orders from entry to production planning.
+Visible To: Super User, Unit Head, Accounts, Dispatch
+
+Features:
+
+Create, view, update orders
+Link orders to customers and items
+Assign to production
+Track order status (New → In Progress → Completed → Dispatched)
+
+
+3. Manufacturing
+Purpose:
+Track production workflows, progress, raw material usage.
+Visible To: Super User, Unit Head, Production
+
+Features:
+
+Production schedule & plan
+Assign tasks to production staff
+Track job status
+Raw material consumption
+Machine/line management
+
+4. Dispatches
+Purpose:
+Manage shipping and logistics of finished goods.
+Visible To: Super User, Unit Head, Dispatch, Packing
+
+Features:
+
+Generate dispatch slips
+Assign vehicle or transporter
+Track dispatch status
+Mark items as dispatched
+Print labels/invoices
+
+5. Sales
+Purpose:
+Track revenue and customer billing.
+Visible To: Super User, Accounts
+
+Features:
+
+Sales reports
+Invoice generation
+Payment status
+Link sales to dispatch
+
+6. Accounts
+Purpose:
+Handle billing, vendor payments, customer dues.
+Visible To: Super User, Unit Head, Accounts
+
+Features:
+
+Invoice management
+Vendor payments
+Ledger tracking
+Reports: receivables/payables
+Link to purchases & sales
+
+7. Inventory
+Purpose:
+Track raw material, in-process, and finished goods stock.
+Visible To: Super User, Unit Head, Production
+
+Features:
+
+Stock in/out
+Low stock alerts
+Batch/lot tracking
+Link to purchases & manufacturing
+Stock valuation
+
+8. Customers
+Purpose:
+Manage customer information & order history.
+Visible To: Super User, Unit Head, Sales, Accounts
+
+Features:
+
+Add/edit customer profiles
+Link to orders and sales
+Contact info & credit terms
+
+9. Suppliers
+Purpose:
+Manage vendor details and purchase history.
+Visible To: Super User, Unit Head, Accounts
+
+Features:
+
+Add/edit supplier profiles
+Link to purchases and payments
+Track open orders/deliveries
+
+10. Purchases
+Purpose:
+Manage procurement of materials, supplies, equipment.
+Visible To: Super User, Unit Head, Accounts
+
+Features:
+
+Create and approve purchase orders (PO)
+Track delivery status
+Link to inventory and accounts
+Vendor-wise purchase summary
+
+11. Site Settings
+
+Configure global site-level settings.
+Stored in the database (site_settings collection/table).
+Features:
+Company name, logo, contact info
+Default unit/branch
+System email & SMTP configuration
+Currency & time zone
+Enable/disable certain modules
+Theme (light/dark)
+Language preferences
+change password 
+Current password verification
+New password strength check
+Confirm password match
+Optional: 2FA (Two-factor authentication)
+Log this action to audit logs
+

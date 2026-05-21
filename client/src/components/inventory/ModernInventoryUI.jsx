@@ -92,7 +92,7 @@ function getInventoryApiPath(user) {
   if (!user) return '/api';
 
   switch (user.role) {
-    case 'Superadmin':
+    case 'Super Admin':
       return '/api/super-admin/inventory';
     case 'Unit Head':
       return '/api/unit-head/inventory';
@@ -695,9 +695,19 @@ export default function ModernInventoryUI() {
     }
   };
 
+  // Resolve stats with robust fallback from itemsData
+  const resolvedStats = {
+    stats: {
+      totalItems: stats?.stats?.totalItems ?? itemsData?.stats?.totalItems ?? 0,
+      totalValue: stats?.stats?.totalValue ?? itemsData?.stats?.totalValue ?? 0,
+      lowStockCount: stats?.stats?.lowStockCount ?? itemsData?.stats?.lowStockCount ?? 0,
+      totalCategories: stats?.stats?.totalCategories ?? categories.length ?? 0
+    }
+  };
+
   return (
     <div className="space-y-6">
-      <ModernStats stats={stats} isLoading={statsLoading} />
+      <ModernStats stats={resolvedStats} isLoading={statsLoading || itemsLoading} />
 
       {/* Modern Action Bar */}
       <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">

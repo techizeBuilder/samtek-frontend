@@ -15,6 +15,7 @@ import ManagerDashboard from "@/pages/hrms/Manager/ManagerDashboard";
 import EmployeeDashboard from "@/pages/hrms/Employee/Dashboard/EmployeeDashboard";
 import CompanyAdminDashboard from "@/pages/hrms/CompanyAdmin/CompanyAdminDashboard";
 import RDDashboard from "@/pages/ResearchDevelopment/Dashboard";
+import StoreDashboard from "@/pages/store/StoreDashboard";
 import { QCProvider } from "@/contexts/QCContext";
 import QCDashboard from "@/pages/quality-control/Dashboard";
 
@@ -79,6 +80,10 @@ export default function RoleBasedDashboard() {
         case 'Marketing Head':
           setLocation('/sales-dashboard');
           return;
+        case 'Store Head':
+        case 'Store Employee':
+          setLocation('/store-dashboard');
+          return;
         default:
           // Super User and others stay on main dashboard
           break;
@@ -123,6 +128,9 @@ export default function RoleBasedDashboard() {
     case 'Research & Development Head':
     case 'Research Development Employee':
       return <RDDashboard />;
+    case 'Store Head':
+    case 'Store Employee':
+      return <StoreDashboard />;
     case 'QC Head':
     case 'QC Employee':
       return <QCProvider><QCDashboard /></QCProvider>;

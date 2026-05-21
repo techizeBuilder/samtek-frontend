@@ -21,6 +21,7 @@ import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
 import { api } from '@/services/api';
 import { USER_ROLES, MODULES } from '@/utils/constants';
+import { useAuthContext } from '@/contexts/AuthContext';
 
 export default function UserModal({ isOpen, onClose, user = null }) {
   const { toast } = useToast();
@@ -36,6 +37,23 @@ export default function UserModal({ isOpen, onClose, user = null }) {
     unit: '',
     isActive: true,
     permissions: []
+  });
+
+  const { user: currentUser } = useAuthContext();
+
+  const filteredRoles = Object.values(USER_ROLES).filter(role => {
+    // Super Admin / Super User can see all
+    if (currentUser?.role === 'Super User' || currentUser?.role === 'Super Admin') {
+      return true;
+    }
+
+    // Hide Super User role from others
+    if (role === 'Super User' || role === 'Super Admin') {
+      return false;
+    }
+
+    // Company Admin and HR-Admin see all other roles
+    return true;
   });
 
   useEffect(() => {
@@ -215,7 +233,7 @@ export default function UserModal({ isOpen, onClose, user = null }) {
                   <SelectValue placeholder="Select Role" />
                 </SelectTrigger>
                 <SelectContent>
-                  {Object.values(USER_ROLES).map(role => (
+                  {filteredRoles.map(role => (
                     <SelectItem key={role} value={role}>
                       {role}
                     </SelectItem>

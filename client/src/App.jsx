@@ -58,6 +58,7 @@ import VendorMaster from "@/pages/accounts/VendorMaster";
 import PurchaseInvoices from "@/pages/accounts/PurchaseInvoices";
 import PurchaseReturns from "@/pages/accounts/PurchaseReturns";
 import PurchaseReports from "@/pages/accounts/PurchaseReports";
+import PurchaseRequest from "@/pages/accounts/PurchaseRequest";
 import VendorPayments from "@/pages/accounts/VendorPayments";
 import PayableAgeing from "@/pages/accounts/PayableAgeing";
 import GSTAndTDS from "@/pages/accounts/GSTAndTDS";
@@ -88,6 +89,8 @@ import RoleBasedLayout from "@/components/layout/RoleBasedLayout";
 import SuperAdminAccounts from "@/pages/super-admin/Accounts";
 
 // HRMS Module Imports
+import SalesOrderTracking from "@/pages/accounts/SalesOrderTracking";
+import NocRequest from "@/pages/accounts/NocRequest";
 import HRMSDashboard from "@/pages/hrms/HRMSDashboard";
 import HRMSEmployees from "@/pages/hrms/Employee";
 import HRMSAttendance from "@/pages/hrms/AttendanceReport";
@@ -129,8 +132,8 @@ import EmployeeAttendanceCalendar from "@/pages/hrms/Employee/Attendance/Attenda
 import EmployeeAttendanceRequest from "@/pages/hrms/Employee/Attendance/AttendanceRequest";
 import EmployeeLeaveBalance from "@/pages/hrms/Employee/Leave/LeaveBalance";
 import EmployeeLeaves from "@/pages/hrms/Employee/Leave/Leaves";
-import EmployeePayslips from "@/pages/hrms/Payroll/Payslips";
-import EmployeeSalaryStructure from "@/pages/hrms/Payroll/SalaryStructure";
+import EmployeePayslips from "@/pages/hrms/Employee/Payroll/EmployeePayslips";
+import EmployeeSalaryStructure from "@/pages/hrms/Employee/Payroll/EmployeeSalaryStructure";
 import EmployeeExpenses from "@/pages/hrms/Employee/Expenses/Expenses";
 import EmployeeTravelRequests from "@/pages/hrms/Employee/Request/TravelRequests";
 import EmployeeResignRequest from "@/pages/hrms/Employee/Request/ResignRequest";
@@ -138,8 +141,12 @@ import EmployeeOverTimeRequests from "@/pages/hrms/Employee/Request/OverTimeRequ
 import EmployeeProfileUpdateRequest from "@/pages/hrms/Employee/Request/ProfileUpdateRequest";
 import CompanyAdminDashboard from "@/pages/hrms/CompanyAdmin/CompanyAdminDashboard";
 import CompanyAdminLayout from "@/pages/hrms/CompanyAdmin/CompanyAdminLayout";
-import { RDProvider } from "@/contexts/RDContext";
+import ManagerLeaves from "@/pages/hrms/Manager/LeavesEmployee";
+import PerformanceMetrics from "@/pages/hrms/Manager/PerformanceMetrics";
 import RDDashboard from "@/pages/ResearchDevelopment/Dashboard";
+import StoreDashboard from "@/pages/store/StoreDashboard";
+import StoreOrders from "@/pages/store/StoreOrders";
+import { RDProvider } from "@/contexts/RDContext";
 import ProductMaster from "@/pages/ResearchDevelopment/ProductMaster";
 import DesignApproval from "@/pages/ResearchDevelopment/DesignApproval";
 import BOMManagement from "@/pages/ResearchDevelopment/BOMManagement";
@@ -329,6 +336,16 @@ function Router() {
       <Route exact path="/hrms/Manager/recruitment/pipeline">
         <ProtectedRoute requiredRole={["Manager", "HR-Admin"]}>
           <ManagerInterviews />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Manager/leaves">
+        <ProtectedRoute requiredRole="Manager">
+          <ManagerLeaves />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Manager/performance-metrics">
+        <ProtectedRoute requiredRole="Manager">
+          <PerformanceMetrics />
         </ProtectedRoute>
       </Route>
 
@@ -732,57 +749,58 @@ function Router() {
 
       {/* Packaging & Dispatch Module Routes */}
       <Route path="/packaging-dispatch/dashboard">
-        <ProtectedRoute requiredRole="Dispatch">
+        <ProtectedRoute requiredRole={["Dispatch", "Dispatch Head", "Dispatch Employee"]}>
           <PackagingDispatchProvider><PkgDispatchDashboard /></PackagingDispatchProvider>
         </ProtectedRoute>
       </Route>
       <Route path="/packaging/queue">
-        <ProtectedRoute requiredRole="Dispatch">
+        <ProtectedRoute requiredRole={["Dispatch", "Dispatch Head", "Dispatch Employee"]}>
           <PackagingDispatchProvider><PackagingQueue /></PackagingDispatchProvider>
         </ProtectedRoute>
       </Route>
       <Route path="/packaging/jobs">
-        <ProtectedRoute requiredRole="Dispatch">
+        <ProtectedRoute requiredRole={["Dispatch", "Dispatch Head", "Dispatch Employee"]}>
           <PackagingDispatchProvider><PackagingJobs /></PackagingDispatchProvider>
         </ProtectedRoute>
       </Route>
       <Route path="/dispatch/planning">
-        <ProtectedRoute requiredRole="Dispatch">
+        <ProtectedRoute requiredRole={["Dispatch", "Dispatch Head", "Dispatch Employee"]}>
           <PackagingDispatchProvider><PkgDispatchPlanning /></PackagingDispatchProvider>
         </ProtectedRoute>
       </Route>
       <Route path="/dispatch/active">
-        <ProtectedRoute requiredRole="Dispatch">
+        <ProtectedRoute requiredRole={["Dispatch", "Dispatch Head", "Dispatch Employee"]}>
           <PackagingDispatchProvider><PkgDispatchExecution /></PackagingDispatchProvider>
         </ProtectedRoute>
       </Route>
       <Route path="/dispatch/completed">
-        <ProtectedRoute requiredRole="Dispatch">
+        <ProtectedRoute requiredRole={["Dispatch", "Dispatch Head", "Dispatch Employee"]}>
           <PackagingDispatchProvider><PkgDispatchHistory /></PackagingDispatchProvider>
         </ProtectedRoute>
       </Route>
 
       {/* Quality Control Routes */}
       <Route path="/qc/dashboard">
-        <ProtectedRoute requiredRole="QC Head">
+        <ProtectedRoute requiredRole={["QC Head", "QC Employee"]}>
           <QCProvider><QCDashboard /></QCProvider>
         </ProtectedRoute>
       </Route>
       <Route path="/qc/inward">
-        <ProtectedRoute requiredRole="QC Head">
+        <ProtectedRoute requiredRole={["QC Head", "QC Employee"]}>
           <QCProvider><QCInward /></QCProvider>
         </ProtectedRoute>
       </Route>
       <Route path="/qc/jobs/:id">
-        <ProtectedRoute requiredRole="QC Head">
+        <ProtectedRoute requiredRole={["QC Head", "QC Employee"]}>
           <QCProvider><QCInspection /></QCProvider>
         </ProtectedRoute>
       </Route>
       <Route path="/qc/jobs">
-        <ProtectedRoute requiredRole="QC Head">
+        <ProtectedRoute requiredRole={["QC Head", "QC Employee"]}>
           <QCProvider><QCJobs /></QCProvider>
         </ProtectedRoute>
       </Route>
+
 
       <Route path="/accounts-dashboard">
         <ProtectedRoute requiredRole="Accounts">
@@ -799,6 +817,16 @@ function Router() {
         <ProtectedRoute requiredRole="Accounts">
           <SalesOrders />
         </ProtectedRoute>
+      </Route>
+      <Route path="/accounts/sales/order-tracking">
+        <RoleBasedProtectedRoute allowedRoles={['Superadmin', 'Accounts']}>
+          <SalesOrderTracking />
+        </RoleBasedProtectedRoute>
+      </Route>
+      <Route path="/accounts/sales/noc-request">
+        <RoleBasedProtectedRoute allowedRoles={['Superadmin', 'Accounts']}>
+          <NocRequest />
+        </RoleBasedProtectedRoute>
       </Route>
       <Route path="/accounts/sales/customers">
         <ProtectedRoute requiredRole="Accounts">
@@ -844,6 +872,11 @@ function Router() {
       <Route path="/accounts/purchases/vendors">
         <ProtectedRoute requiredRole="Accounts">
           <VendorMaster />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/accounts/purchases/requests">
+        <ProtectedRoute requiredRole="Accounts">
+          <PurchaseRequest />
         </ProtectedRoute>
       </Route>
       <Route path="/accounts/purchases/invoices">
@@ -909,6 +942,28 @@ function Router() {
       <Route path="/accounts/financial-summary">
         <ProtectedRoute requiredRole="Accounts">
           <FinancialSummary />
+        </ProtectedRoute>
+      </Route>
+
+      {/* Store Module Routes */}
+      <Route path="/store-dashboard">
+        <ProtectedRoute requiredRole={["Store Head", "Store Employee"]}>
+          <StoreDashboard />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/store/inventory">
+        <ProtectedRoute requiredRole={["Store Head", "Store Employee"]}>
+          <ModernInventoryUI />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/store/orders">
+        <ProtectedRoute requiredRole={["Store Head", "Store Employee"]}>
+          <StoreOrders />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/store/purchases/requests">
+        <ProtectedRoute requiredRole={["Store Head", "Store Employee"]}>
+          <PurchaseRequest />
         </ProtectedRoute>
       </Route>
       <Route path="/accounts/reports">

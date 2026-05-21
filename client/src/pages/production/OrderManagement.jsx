@@ -43,6 +43,7 @@ export default function OrderManagement() {
 
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('All');
+  const [filterSource, setFilterSource] = useState('All');
   const [addOpen, setAddOpen] = useState(false);
   const [detailOrder, setDetailOrder] = useState(null);
   const [demandOpen, setDemandOpen] = useState(false);
@@ -50,11 +51,15 @@ export default function OrderManagement() {
   const [demandForm, setDemandForm] = useState(emptyDemand);
 
   const statuses = ['All', 'Pending', 'BOM Pending', 'In Progress', 'Completed'];
+  const sources = ['All', 'Store Orders', 'Rejected Items'];
 
   const filtered = orders.filter(o => {
     const matchSearch = !search || (o.orderId || o.id || '').toLowerCase().includes(search.toLowerCase()) || o.machineName.toLowerCase().includes(search.toLowerCase());
     const matchStatus = filterStatus === 'All' || o.status === filterStatus;
-    return matchSearch && matchStatus;
+    const matchSource = filterSource === 'All' || 
+      (filterSource === 'Store Orders' && (!o.source || o.source === 'Store')) ||
+      (filterSource === 'Rejected Items' && o.source === 'QC_Rejected');
+    return matchSearch && matchStatus && matchSource;
   });
 
   const stats = {
@@ -64,6 +69,8 @@ export default function OrderManagement() {
     bomPending: orders.filter(o => o.status === 'BOM Pending').length,
     completed: orders.filter(o => o.status === 'Completed').length,
     urgent: orders.filter(o => o.priority === 'Urgent').length,
+    storeOrders: orders.filter(o => !o.source || o.source === 'Store').length,
+    rejectedOrders: orders.filter(o => o.source === 'QC_Rejected').length,
   };
 
   const handleAddOrder = () => {
@@ -98,9 +105,11 @@ export default function OrderManagement() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-7 gap-3">
         {[
           { label: 'Total Orders', value: stats.total, color: 'text-slate-800', bg: 'bg-white' },
+          { label: 'Store Orders', value: stats.storeOrders, color: 'text-blue-600', bg: 'bg-blue-50' },
+          { label: 'Rejected Orders', value: stats.rejectedOrders, color: 'text-red-600', bg: 'bg-red-50' },
           { label: 'Pending', value: stats.pending, color: 'text-slate-600', bg: 'bg-white' },
           { label: 'BOM Pending', value: stats.bomPending, color: 'text-amber-600', bg: 'bg-amber-50' },
           { label: 'In Progress', value: stats.inProgress, color: 'text-blue-600', bg: 'bg-blue-50' },
@@ -117,19 +126,37 @@ export default function OrderManagement() {
 
       {/* Filters */}
       <Card className="border-none shadow-sm">
-        <CardContent className="p-4 flex flex-col sm:flex-row gap-3">
+        <CardContent className="p-4 space-y-3">
+          {/* Search */}
           <div className="relative flex-1 max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
             <Input placeholder="Search by Order ID or Machine..." className="pl-9" value={search} onChange={e => setSearch(e.target.value)} />
           </div>
-          <div className="flex gap-2 flex-wrap">
-            {statuses.map(s => (
-              <button
-                key={s}
-                onClick={() => setFilterStatus(s)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${filterStatus === s ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300'}`}
-              >{s}</button>
-            ))}
+          
+          {/* Source Filter */}
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="flex gap-2 flex-wrap">
+              <span className="text-xs font-semibold text-slate-500 flex items-center">Source:</span>
+              {sources.map(s => (
+                <button
+                  key={s}
+                  onClick={() => setFilterSource(s)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${filterSource === s ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-slate-600 border-slate-200 hover:border-purple-300'}`}
+                >{s}</button>
+              ))}
+            </div>
+            
+            {/* Status Filter */}
+            <div className="flex gap-2 flex-wrap">
+              <span className="text-xs font-semibold text-slate-500 flex items-center">Status:</span>
+              {statuses.map(s => (
+                <button
+                  key={s}
+                  onClick={() => setFilterStatus(s)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${filterStatus === s ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300'}`}
+                >{s}</button>
+              ))}
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -142,6 +169,7 @@ export default function OrderManagement() {
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-100">
                   <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Order ID</th>
+                  <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Source</th>
                   <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Machine</th>
                   <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Priority</th>
                   <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
@@ -153,17 +181,34 @@ export default function OrderManagement() {
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
-                  <tr><td colSpan={8} className="text-center py-12 text-slate-400">No orders found.</td></tr>
+                  <tr><td colSpan={9} className="text-center py-12 text-slate-400">No orders found.</td></tr>
                 ) : filtered.map(order => {
                   const oid = order._id || order.id;
                   const progress = getOrderProgress(oid);
                   const isOverdue = order.deliveryDate && order.status !== 'Completed' && new Date(order.deliveryDate) < new Date();
+                  const isRejected = order.source === 'QC_Rejected';
+                  
                   return (
-                    <tr key={oid} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
-                      <td className="px-5 py-3.5 font-mono text-xs font-bold text-blue-700">{order.orderId || order.id}</td>
+                    <tr key={oid} className={`border-b border-slate-50 hover:bg-slate-50 transition-colors ${isRejected ? 'bg-red-50/30' : ''}`}>
+                      <td className="px-5 py-3.5 font-mono text-xs font-bold text-blue-700">
+                        {order.orderId || order.id}
+                        {isRejected && <span className="block text-red-600 text-xs">REJECTED</span>}
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${
+                          isRejected 
+                            ? 'bg-red-100 text-red-700 border-red-200' 
+                            : 'bg-blue-100 text-blue-700 border-blue-200'
+                        }`}>
+                          {isRejected ? 'QC Rejected' : 'Store Order'}
+                        </span>
+                      </td>
                       <td className="px-5 py-3.5">
                         <div className="font-medium text-slate-900">{order.machineName}</div>
                         <div className="text-xs text-slate-400">{order.machineCode}</div>
+                        {isRejected && order.rejectionDetails?.rejectionReason && (
+                          <div className="text-xs text-red-600 mt-1">Reason: {order.rejectionDetails.rejectionReason}</div>
+                        )}
                       </td>
                       <td className="px-5 py-3.5">
                         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${priorityColor[order.priority]}`}>
@@ -221,10 +266,44 @@ export default function OrderManagement() {
                 <DialogTitle className="flex items-center gap-2 text-slate-900">
                   <ClipboardList className="h-5 w-5 text-blue-600" />
                   {detailOrderLive.orderId || detailOrderLive.id} — {detailOrderLive.machineName}
+                  {detailOrderLive.source === 'QC_Rejected' && (
+                    <span className="ml-2 px-2 py-0.5 bg-red-100 text-red-700 text-xs font-semibold rounded-full border border-red-200">
+                      QC REJECTED
+                    </span>
+                  )}
                 </DialogTitle>
               </DialogHeader>
 
               <div className="space-y-5 py-2">
+                {/* Rejection Details (if applicable) */}
+                {detailOrderLive.source === 'QC_Rejected' && detailOrderLive.rejectionDetails && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <h3 className="text-sm font-bold text-red-800 mb-2 flex items-center gap-1.5">
+                      <AlertTriangle className="h-4 w-4" /> QC Rejection Details
+                    </h3>
+                    <div className="grid grid-cols-2 gap-3 text-sm">
+                      <div>
+                        <p className="text-xs text-red-600 mb-1">Original Order ID</p>
+                        <p className="font-semibold text-red-800">{detailOrderLive.rejectionDetails.originalOrderId || 'N/A'}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-red-600 mb-1">Rejected Date</p>
+                        <p className="font-semibold text-red-800">{detailOrderLive.rejectionDetails.rejectedDate || 'N/A'}</p>
+                      </div>
+                      <div className="col-span-2">
+                        <p className="text-xs text-red-600 mb-1">Rejection Reason</p>
+                        <p className="font-semibold text-red-800">{detailOrderLive.rejectionDetails.rejectionReason || 'No reason provided'}</p>
+                      </div>
+                      {detailOrderLive.rejectionDetails.qcJobId && (
+                        <div className="col-span-2">
+                          <p className="text-xs text-red-600 mb-1">QC Job ID</p>
+                          <p className="font-mono text-red-800 text-xs">{detailOrderLive.rejectionDetails.qcJobId}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {/* Order Info */}
                 <div className="grid grid-cols-3 gap-3 text-sm">
                   <div className="bg-slate-50 rounded-lg p-3">

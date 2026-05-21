@@ -1,0 +1,213 @@
+
+Unexpected token '<', "<!DOCTYPE "... is not valid JSON
+ManuERP
+Enterprise Suite
+
+
+Dashboard
+
+Orders
+
+Manufacturing
+
+Dispatches
+
+Sales
+
+Accounts
+
+Inventory
+
+Customers
+
+Suppliers
+
+Companies
+
+Purchases
+
+Profile
+
+User Management
+
+Settings
+
+Logout
+Manufacturing ERP
+
+3
+Toggle theme
+
+AD
+admin
+
+Total Items
+8
++12%
+Total Value
+₹504,000
++8%
+Low Stock
+0
+-3%
+Categories
+0
++2%
+Quick Actions
+Manage your inventory efficiently with these actions
+
+Add Item
+Categories
+Customer Category
+Export Excel
+Template
+Import Excel
+Refresh
+Inventory Management
+Search items by name, code, or description...
+
+All Categories
+
+Name A-Z
+Name/Code	Category	Stock	Price	Status	Actions
+Control Cabinet Assembly
+ASS0002
+Electronics
+Assemblies
+8 units
+Min: 3 units
+₹12,000	In Stock	
+Control Panel Fuse 10A
+SPA0002
+Electronics
+Components
+500 pieces
+Min: 200 pieces
+₹25	In Stock	
+Engineering Plastic Sheets
+MAT0002
+Raw Materials
+Plastics
+200 sheets
+Min: 50 sheets
+₹180	In Stock	
+Industrial Motor Controller
+PRO0001
+Electronics
+Controllers
+25 pieces
+Min: 10 pieces
+₹2,000	In Stock	
+Motor Bearing SKF 6203
+SPA0001
+Mechanical
+Bearings
+100 pieces
+Min: 30 pieces
+₹350	In Stock	
+Precision Gear Assembly
+PRO0002
+Mechanical
+Gears
+50 pieces
+Min: 20 pieces
+₹1,200	In Stock	
+Pump Assembly Unit
+ASS0001
+Mechanical
+Assemblies
+15 units
+Min: 5 units
+₹7,000	In Stock	
+Stainless Steel Rod 316L
+MAT0001
+Raw Materials
+Metals
+500 kg
+Min: 100 kg
+₹500	In Stock	
+Add New Item
+Enter item information to add to inventory
+
+Item Information
+Basic item details and identification
+Item Name *
+Enter item name
+Item name must be at least 2 characters
+
+Item Code
+Auto-generated if empty
+Description
+Enter item description
+Item Type *
+Product
+
+Importance *
+Normal
+
+Category Information
+Categorize and classify your item
+Product Category *
+
+Select category
+
+Category is required
+
+Sub-Category
+Select sub-category
+
+Customer Category *
+
+Select customer category
+
+Pricing Information
+Set costs and pricing details
+Standard Cost
+0
+Purchase Cost
+0
+Sale Price
+0
+MRP
+0
+GST (%)
+0
+HSN Code
+HSN code
+Stock Information
+Manage inventory levels and storage
+Current Quantity
+0
+Unit *
+pieces
+
+Minimum Stock
+0
+Lead Time (days)
+0
+Storage Location
+Storage location
+Batch Number
+Batch number
+
+Internal Manufacturing
+
+
+Allow Purchase
+Internal Notes
+Internal notes and comments
+Please fix the highlighted errors
+Cancel
+Create Item
+Close
+Add New Category
+Name *
+jeetu jection
+Description
+fsdfsfsd
+Subcategories
+fsdfsfs
+Add Subcategory
+Cancel
+Create
+CloseToastDescriptionToast
