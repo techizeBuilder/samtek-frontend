@@ -5,7 +5,7 @@ import { Building2, Users, Briefcase, MapPin, ShieldCheck, UserCog } from "lucid
 import { Link } from "react-router-dom";
 
 export default function CompanyAdminDashboard() {
-  const { user } = useAuth();
+  const { user } = useAuth() as any;
 
   const stats = [
     { 

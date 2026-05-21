@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Profile Image Debug Test</title>
+</head>
+<body>
+    <h1>Profile Image Debug Test</h1>
+    
+    <h2>1. Login and Check User Object</h2>
+    <button onclick="testLogin()">Test Login</button>
+    <pre id="loginResult"></pre>
+    
+    <h2>2. Check Current User Endpoint</h2>
+    <button onclick="testCurrentUser()">Test /auth/me</button>
+    <pre id="currentUserResult"></pre>
+    
+    <h2>3. Test Profile Picture URL</h2>
+    <input type="text" id="profileUrl" placeholder="Enter profile picture URL" style="width: 400px;">
+    <button onclick="testProfileImage()">Test Image Load</button>
+    <br><br>
+    <img id="testImage" style="max-width: 200px; border: 1px solid #ccc;" alt="Test image will appear here">
+    
+    <script>
+        const API_BASE = 'http://localhost:5000/api';
+        let token = null;
+        
+        async function testLogin() {
+            try {
+                const response = await fetch(`${API_BASE}/auth/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        username: 'unit_manager',
+                        password: 'unitmanager123'
+                    })
+                });
+                
+                const data = await response.json();
+                token = data.token;
+                
+                document.getElementById('loginResult').textContent = JSON.stringify(data, null, 2);
+                
+                if (data.user?.profilePicture) {
+                    document.getElementById('profileUrl').value = `http://localhost:5000${data.user.profilePicture}`;
+                }
+            } catch (error) {
+                document.getElementById('loginResult').textContent = 'Error: ' + error.message;
+            }
+        }
+        
+        async function testCurrentUser() {
+            if (!token) {
+                alert('Please login first');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/auth/me`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                
+                const data = await response.json();
+                document.getElementById('currentUserResult').textContent = JSON.stringify(data, null, 2);
+                
+                if (data.profilePicture) {
+                    document.getElementById('profileUrl').value = `http://localhost:5000${data.profilePicture}`;
+                }
+            } catch (error) {
+                document.getElementById('currentUserResult').textContent = 'Error: ' + error.message;
+            }
+        }
+        
+        function testProfileImage() {
+            const url = document.getElementById('profileUrl').value;
+            const img = document.getElementById('testImage');
+            
+            img.onload = () => {
+                console.log('✅ Image loaded successfully!');
+            };
+            
+            img.onerror = () => {
+                console.log('❌ Image failed to load');
+                img.alt = 'Failed to load image: ' + url;
+            };
+            
+            img.src = url;
+        }
+    </script>
+</body>
+</html>

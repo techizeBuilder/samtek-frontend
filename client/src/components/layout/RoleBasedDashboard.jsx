@@ -14,6 +14,8 @@ import EmployeeDashboard from "@/pages/hrms/Employee/Dashboard/EmployeeDashboard
 import CompanyAdminDashboard from "@/pages/hrms/CompanyAdmin/CompanyAdminDashboard";
 import RDDashboard from "@/pages/ResearchDevelopment/Dashboard";
 import StoreDashboard from "@/pages/store/StoreDashboard";
+import { QCProvider } from "@/contexts/QCContext";
+import QCDashboard from "@/pages/quality-control/Dashboard";
 
 export default function RoleBasedDashboard() {
   const { user } = useAuth();
@@ -73,6 +75,10 @@ export default function RoleBasedDashboard() {
         case 'Store Employee':
           setLocation('/store-dashboard');
           return;
+        case 'Store Head':
+        case 'Store Employee':
+          setLocation('/store-dashboard');
+          return;
         default:
           // Super User and others stay on main dashboard
           break;
@@ -120,6 +126,11 @@ export default function RoleBasedDashboard() {
     case 'Store Head':
     case 'Store Employee':
       return <StoreDashboard />;
+    case 'QC Head':
+    case 'QC Employee':
+      return <QCProvider><QCDashboard /></QCProvider>;
+    case 'Marketing Head':
+      return <SalesDashboard />;
     default:
       // Default to main dashboard for Super User and others
       return <Dashboard />;

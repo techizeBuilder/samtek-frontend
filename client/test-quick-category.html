@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quick Category Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .container { max-width: 600px; margin: 0 auto; }
+        .field { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input, textarea, select { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
+        .flex { display: flex; gap: 10px; align-items: end; }
+        .btn { padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        .btn:hover { background: #0056b3; }
+        .btn-outline { background: white; color: #007bff; border: 1px solid #007bff; }
+        .btn-outline:hover { background: #f8f9fa; }
+        .plus-btn { padding: 8px; min-width: 40px; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); }
+        .modal-content { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 8px; width: 400px; }
+        .modal.show { display: block; }
+        .success { color: green; padding: 10px; background: #d4edda; border: 1px solid #c3e6cb; border-radius: 4px; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Quick Category Creation Test</h1>
+        <p>This page simulates the Add Item form with quick category creation functionality.</p>
+        
+        <div class="field">
+            <label>Item Name *</label>
+            <input type="text" id="itemName" placeholder="Enter item name">
+        </div>
+        
+        <div class="field">
+            <label>Category *</label>
+            <div class="flex">
+                <select id="categorySelect">
+                    <option value="">Select category</option>
+                    <option value="Electronics">Electronics</option>
+                    <option value="Tools">Tools</option>
+                    <option value="Materials">Materials</option>
+                </select>
+                <button class="btn btn-outline plus-btn" onclick="openQuickCategoryModal()" title="Add new category">+</button>
+            </div>
+        </div>
+        
+        <div class="field">
+            <label>Description</label>
+            <textarea id="description" rows="3" placeholder="Enter item description"></textarea>
+        </div>
+        
+        <div class="flex">
+            <button class="btn">Create Item</button>
+        </div>
+        
+        <div id="successMessage" class="success" style="display: none;"></div>
+    </div>
+    
+    <!-- Quick Category Modal -->
+    <div id="quickCategoryModal" class="modal">
+        <div class="modal-content">
+            <h3>Create New Category</h3>
+            <p>Add a new category to your inventory system</p>
+            
+            <div class="field">
+                <label>Category Name *</label>
+                <input type="text" id="quickCategoryName" placeholder="Enter category name">
+            </div>
+            
+            <div class="field">
+                <label>Description</label>
+                <textarea id="quickCategoryDescription" rows="3" placeholder="Enter category description (optional)"></textarea>
+            </div>
+            
+            <div class="flex">
+                <button class="btn btn-outline" onclick="closeQuickCategoryModal()">Cancel</button>
+                <button class="btn" onclick="createQuickCategory()">Create Category</button>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        function openQuickCategoryModal() {
+            document.getElementById('quickCategoryModal').classList.add('show');
+            document.getElementById('quickCategoryName').focus();
+        }
+        
+        function closeQuickCategoryModal() {
+            document.getElementById('quickCategoryModal').classList.remove('show');
+            document.getElementById('quickCategoryName').value = '';
+            document.getElementById('quickCategoryDescription').value = '';
+        }
+        
+        function createQuickCategory() {
+            const categoryName = document.getElementById('quickCategoryName').value.trim();
+            const categoryDescription = document.getElementById('quickCategoryDescription').value.trim();
+            
+            if (!categoryName) {
+                alert('Category name is required');
+                return;
+            }
+            
+            // Simulate API call success
+            setTimeout(() => {
+                // Add to dropdown
+                const select = document.getElementById('categorySelect');
+                const option = new Option(categoryName, categoryName);
+                select.add(option);
+                select.value = categoryName;
+                
+                // Show success message
+                const successDiv = document.getElementById('successMessage');
+                successDiv.textContent = `Category "${categoryName}" created successfully and selected!`;
+                successDiv.style.display = 'block';
+                
+                // Close modal
+                closeQuickCategoryModal();
+                
+                // Hide success message after 3 seconds
+                setTimeout(() => {
+                    successDiv.style.display = 'none';
+                }, 3000);
+            }, 500);
+        }
+        
+        // Close modal when clicking outside
+        document.getElementById('quickCategoryModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeQuickCategoryModal();
+            }
+        });
+        
+        // Handle Enter key in modal
+        document.getElementById('quickCategoryName').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                createQuickCategory();
+            }
+        });
+    </script>
+</body>
+</html>

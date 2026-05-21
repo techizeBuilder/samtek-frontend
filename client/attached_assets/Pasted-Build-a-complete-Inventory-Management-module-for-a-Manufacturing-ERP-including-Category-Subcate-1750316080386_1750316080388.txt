@@ -1,0 +1,149 @@
+Build a complete Inventory Management module for a Manufacturing ERP, including:
+
+Category/Subcategory management
+Add/Edit/Delete/View inventory items
+Type tags: Product, Material, Spares, Assemblies
+Customer Category-wise Pricing
+Filter/search/sort
+Role-based permission control (Add/Edit/Delete/View per module)
+
+1. Schemas
+Item
+{
+  name: String,
+  code: String,
+  category: String,
+  subCategory: String,
+  batch: String,
+  qty: Number,
+  unit: String,
+  store: String,
+  importance: String,
+  type: String, // 'Product', 'Material', 'Spares', 'Assemblies'
+  stdCost: Number,
+  purchaseCost: Number,
+  salePrice: Number,
+  hsn: String,
+  gst: Number,
+  mrp: Number,
+  internalManufacturing: Boolean,
+  purchase: Boolean,
+  description: String,
+  internalNotes: String,
+  minStock: Number,
+  leadTime: Number,
+  tags: [String],
+  customerPrices: [
+    { category: String, price: Number }
+  ],
+  createdAt: Date,
+  updatedAt: Date
+}
+Category
+{
+  name: String,
+  subCategories: [String]
+}
+CustomerCategory
+
+{
+  name: String,
+  description: String
+}
+User
+{
+  username: String,
+  email: String,
+  password: String,
+  role: String, // SuperUser, UnitHead, InventoryManager, etc.
+  unit: String,
+  permissions: {
+    Inventory: {
+      view: Boolean,
+      add: Boolean,
+      edit: Boolean,
+      delete: Boolean
+    }
+  }
+}
+2. APIs
+
+✅ Item Routes
+
+GET    /api/items
+POST   /api/items
+GET    /api/items/:id
+PUT    /api/items/:id
+DELETE /api/items/:id
+
+✅ Category Routes
+
+GET    /api/categories
+POST   /api/categories
+PUT    /api/categories/:id
+DELETE /api/categories/:id
+
+✅ Subcategory (within Category)
+
+PUT    /api/categories/:id/add-subcategory
+PUT    /api/categories/:id/edit-subcategory
+DELETE /api/categories/:id/remove-subcategory
+
+✅ Customer Category
+
+GET    /api/customer-categories
+POST   /api/customer-categories
+PUT    /api/customer-categories/:id
+DELETE /api/customer-categories/:id
+
+💻 Frontend (React + Vite + Tailwind + JWT Auth)
+🧱 Pages & Features
+Inventory List Page
+
+Filter by type, category, subcategory, stock
+Search bar
+Table: Item | Code | Qty | Category | Rate | Value
+
+Pagination
+
+Add/Edit Item Modal
+All fields shown in screenshot
+Tag types (Products, Materials, Spares, Assemblies)
+Checkbox for internal manufacturing / purchase
+Add multiple prices for different customer categories (dropdown + input)
+Category/Subcategory CRUD Modal
+Add, edit, delete
+Show subcategories nested inside categories
+Customer Category Pricing Modal
+Dynamically generate pricing input per category
+Save with item
+
+
+🔐 Role-Based Permission Integration
+
+Check permissions before rendering actions:
+if (user.permissions.Inventory.view) {
+  // show list
+}
+if (user.permissions.Inventory.add) {
+  // show +Add button
+}
+if (user.permissions.Inventory.edit) {
+  // show edit button
+}
+
+Seed Dummy Data
+
+Use MongoDB seeder to create:
+5 dummy inventory items of each type
+3 customer categories (Retail, Wholesale, Export)
+Example categories/subcategories
+
+🚀 Bonus Features
+
+Import/Export inventory via CSV
+Print Barcode / QR for each item
+Notification on low stock
+Auto-code generation
+Multi-unit filtering for Super Users
+

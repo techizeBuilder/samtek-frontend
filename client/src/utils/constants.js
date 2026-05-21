@@ -11,7 +11,8 @@ export const USER_ROLES = {
   STORE_HEAD: 'Store Head',
   STORE_EMPLOYEE: 'Store Employee',
   COMPANY_ADMIN: 'Company Admin',
-  HR_ADMIN: 'HR-Admin'
+  HR_ADMIN: 'HR-Admin',
+  MARKETING_HEAD: 'Marketing Head'
 };
 
 export const MODULES = {
@@ -26,7 +27,8 @@ export const MODULES = {
   SUPPLIERS: 'Suppliers',
   PURCHASES: 'Purchases',
   SETTINGS: 'Settings',
-  STORE: 'Store'
+  STORE: 'Store',
+  MARKETING: 'Marketing'
 };
 
 export const PERMISSIONS = {

@@ -341,6 +341,7 @@ const accountsMenuItems = [
       { label: 'Sales Return', path: '/accounts/sales/returns', feature: 'sales' },
       { label: 'Customer Payment', path: '/accounts/sales/payments', feature: 'sales' },
       { label: 'Sales Order Tracking', path: '/accounts/sales/order-tracking', feature: 'sales' },
+      { label: 'NOC Requests', path: '/accounts/sales/noc-request', feature: 'sales' },
       { label: 'Receivable Ageing', path: '/accounts/sales/ageing', feature: 'sales' },
       { label: 'Sales Reports', path: '/accounts/sales/reports', feature: 'sales' }
     ]
@@ -353,6 +354,7 @@ const accountsMenuItems = [
     feature: 'purchases',
     submodules: [
       { label: 'Vendor Master', path: '/accounts/purchases/vendors', feature: 'purchases' },
+      { label: 'Purchase Request', path: '/accounts/purchases/requests', feature: 'purchases' },
       { label: 'Purchase Invoice', path: '/accounts/purchases/invoices', feature: 'purchases' },
       { label: 'Purchase Return', path: '/accounts/purchases/returns', feature: 'purchases' },
       { label: 'Vendor Payment', path: '/accounts/purchases/payments', feature: 'purchases' },
@@ -783,11 +785,30 @@ const storeMenuItems = [
     module: 'Store'
   },
   {
+    label: 'Inventory',
+    path: '/store/inventory',
+    icon: Package,
+    module: 'Store'
+  },
+  {
     label: 'Orders',
     path: '/store/orders',
     icon: Receipt,
     module: 'Store'
+  },
+  {
+    label: 'Purchase Orders',
+    path: '/store/purchases/requests',
+    icon: ShoppingCart,
+    module: 'Store'
   }
+];
+const qcMenuItems = [
+  { label: 'Dashboard', path: '/qc/dashboard', icon: LayoutDashboard, module: 'quality-control' },
+  { label: 'QC Inward Entry', path: '/qc/inward', icon: ClipboardList, module: 'quality-control' },
+  { label: 'All QC Jobs', path: '/qc/jobs', icon: ShieldAlert, module: 'quality-control' },
+  { label: 'Pending Inspection', path: '/qc/jobs?status=Pending', icon: Clock, module: 'quality-control' },
+  { label: 'In Progress', path: '/qc/jobs?status=In Progress', icon: AlertTriangle, module: 'quality-control' },
 ];
 
 // Function to get menu items based on role
@@ -995,6 +1016,9 @@ export default function Sidebar({ isOpen, onClose }) {
     filteredMenuItems = roleMenuItems;
   } else if (normalizedRole === 'Company Admin') {
     // Company Admin - show all hrms items directly
+    filteredMenuItems = roleMenuItems;
+  } else if (normalizedRole === 'Store Head' || normalizedRole === 'Store Employee') {
+    // Store roles - show all store module items directly
     filteredMenuItems = roleMenuItems;
   } else {
     // For other roles, use the existing filtering logic

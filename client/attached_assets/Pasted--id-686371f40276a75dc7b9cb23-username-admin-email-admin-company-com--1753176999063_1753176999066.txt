@@ -1,0 +1,119 @@
+{
+    "id": "686371f40276a75dc7b9cb23",
+    "username": "admin",
+    "email": "admin@company.com",
+    "fullName": "Admin User",
+    "profilePicture": null,
+    "role": "Super User",
+    "permissions": {
+        "role": "super_user",
+        "canAccessAllUnits": true,
+        "modules": [
+            {
+                "name": "dashboard",
+                "dashboard": true,
+                "features": [
+                    {
+                        "key": "overview",
+                        "view": true,
+                        "add": false,
+                        "edit": false,
+                        "delete": false,
+                        "alter": false,
+                        "_id": "686371f40276a75dc7b9cb25"
+                    },
+                    {
+                        "key": "analytics",
+                        "view": true,
+                        "add": false,
+                        "edit": false,
+                        "delete": false,
+                        "alter": true,
+                        "_id": "686371f40276a75dc7b9cb26"
+                    }
+                ],
+                "_id": "686371f40276a75dc7b9cb24"
+            },
+            {
+                "name": "orders",
+                "dashboard": true,
+                "features": [
+                    {
+                        "key": "allOrders",
+                        "view": true,
+                        "add": true,
+                        "edit": true,
+                        "delete": true,
+                        "alter": true,
+                        "_id": "686371f40276a75dc7b9cb28"
+                    },
+                    {
+                        "key": "orderReport",
+                        "view": true,
+                        "add": false,
+                        "edit": false,
+                        "delete": false,
+                        "alter": true,
+                        "_id": "686371f40276a75dc7b9cb29"
+                    }
+                ],
+                "_id": "686371f40276a75dc7b9cb27"
+            },
+            {
+                "name": "sales",
+                "dashboard": true,
+                "features": [
+                    {
+                        "key": "allIndents",
+                        "view": true,
+                        "add": true,
+                        "edit": true,
+                        "delete": true,
+                        "alter": false,
+                        "_id": "686371f40276a75dc7b9cb2b"
+                    },
+                    {
+                        "key": "allCustomers",
+                        "view": true,
+                        "add": true,
+                        "edit": true,
+                        "delete": true,
+                        "alter": false,
+                        "_id": "686371f40276a75dc7b9cb2c"
+                    },
+                    {
+                        "key": "allDeliveries",
+                        "view": true,
+                        "add": true,
+                        "edit": true,
+                        "delete": true,
+                        "alter": false,
+                        "_id": "686371f40276a75dc7b9cb2d"
+                    },
+                    {
+                        "key": "allInvoices",
+                        "view": true,
+                        "add": true,
+                        "edit": true,
+                        "delete": true,
+                        "alter": false,
+                        "_id": "686371f40276a75dc7b9cb2e"
+                    },
+                    {
+                        "key": "allLedger",
+                        "view": true,
+                        "add": true,
+                        "edit": true,
+                        "delete": true,
+                        "alter": false,
+                        "_id": "686371f40276a75dc7b9cb2f"
+                    }
+                ],
+                "_id": "686371f40276a75dc7b9cb2a"
+            },
+        
+         
+        ]
+    },
+    "profile": {}
+}

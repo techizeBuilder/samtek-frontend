@@ -58,6 +58,7 @@ const ROLES = [
   { value: 'Research & Development Head', label: 'Research & Development Head' },
   { value: 'Complaint Management Head', label: 'Complaint Management Head' },
   { value: 'Store Head', label: 'Store Head' },
+  { value: 'Marketing Head', label: 'Marketing Head' },
 ];
 
 const UNITS = [
@@ -83,7 +84,8 @@ const MODULES = [
       { key: 'companies', label: 'Companies' },
       { key: 'rolePermissions', label: 'Role Permissions' },
       { key: 'userManagement', label: 'User Management' },
-      { key: 'setting', label: 'Settings' }
+      { key: 'setting', label: 'Settings' },
+      { key: 'lms', label: 'LMS' }
     ]
   },
   // {
@@ -113,7 +115,8 @@ const MODULES = [
       { key: 'myDeliveries', label: 'My Dispatches' },
       { key: 'myInvoices', label: 'My Payments' },
       { key: 'returns', label: 'Returns' },
-      { key: 'damages', label: 'Damages' }
+      { key: 'damages', label: 'Damages' },
+      { key: 'lms', label: 'LMS' }
     ]
   },
   {
@@ -122,7 +125,8 @@ const MODULES = [
     features: [
       { key: 'dashboard', label: 'Dashboard' },
       { key: 'deliveryChallan', label: 'Delivery Challan' },
-      { key: 'dispatchHistory', label: 'History' }
+      { key: 'dispatchHistory', label: 'History' },
+      { key: 'lms', label: 'LMS' }
     ]
   },
   {
@@ -131,7 +135,8 @@ const MODULES = [
     features: [
       { key: 'productionDashboard', label: 'Production Dashboard' },
       { key: 'productionReports', label: 'Production Reports' },
-      { key: 'productionSheet', label: 'Production Sheet' }
+      { key: 'productionSheet', label: 'Production Sheet' },
+      { key: 'lms', label: 'LMS' }
     ]
   },
   {
@@ -140,7 +145,8 @@ const MODULES = [
     features: [
       { key: 'dashboard', label: 'Dashboard' },
       { key: 'packingSheet', label: 'Packing Sheet' },
-      { key: 'packingHistory', label: 'History' }
+      { key: 'packingHistory', label: 'History' },
+      { key: 'lms', label: 'LMS' }
     ]
   },
   {
@@ -157,7 +163,8 @@ const MODULES = [
       { key: 'bankAndCash', label: 'Bank & Cash' },
       { key: 'interUnit', label: 'Inter-Unit' },
       { key: 'reports', label: 'Reports' },
-      { key: 'settings', label: 'Settings' }
+      { key: 'settings', label: 'Settings' },
+      { key: 'lms', label: 'LMS' }
     ]
   },
   // {
@@ -185,7 +192,17 @@ const MODULES = [
     features: [
       { key: 'general', label: 'General Settings' },
       { key: 'users', label: 'User Management' },
-      { key: 'system', label: 'System Configuration' }
+      { key: 'system', label: 'System Configuration' },
+      { key: 'lms', label: 'LMS' }
+    ]
+  },
+  {
+    name: 'Store',
+    label: 'Store',
+    features: [
+      { key: 'dashboard', label: 'Dashboard' },
+      { key: 'orders', label: 'Orders' },
+      { key: 'lms', label: 'LMS' }
     ]
   },
   {
@@ -194,6 +211,13 @@ const MODULES = [
     features: [
       { key: 'dashboard', label: 'Dashboard' },
       { key: 'orders', label: 'Orders' }
+      { key: 'library', label: 'Marketing Library' },
+      { key: 'upload', label: 'Upload Content' },
+      { key: 'categories', label: 'Category Management' },
+      { key: 'reports', label: 'Reports' },
+      { key: 'auditLogs', label: 'Audit Logs' },
+      { key: 'notifications', label: 'Notifications' },
+      { key: 'lms', label: 'LMS' }
     ]
   }
 ];
@@ -577,7 +601,8 @@ export default function RolePermissionManagement() {
               { key: 'companies', view: true, add: true, edit: true, delete: true },
               { key: 'rolePermissions', view: true, add: true, edit: true, delete: true },
               { key: 'userManagement', view: true, add: true, edit: true, delete: true },
-              { key: 'setting', view: true, add: true, edit: true, delete: true }
+              { key: 'setting', view: true, add: true, edit: true, delete: true },
+              { key: 'lms', view: true, add: true, edit: true, delete: true }
             ]
           }
         ];
@@ -590,7 +615,8 @@ export default function RolePermissionManagement() {
               createFeaturePermissions('production', 'productionDashboard', { view: true, add: true, edit: true, delete: true, alter: true }),
               createFeaturePermissions('production', 'productionReports', { view: true, add: true, edit: true, delete: true, alter: true }),
               createFeaturePermissions('production', 'productionGroup', { view: true, add: true, edit: true, delete: true, alter: true }),
-              createFeaturePermissions('production', 'productionSheet', { view: true, add: true, edit: true, delete: true, alter: true })
+              createFeaturePermissions('production', 'productionSheet', { view: true, add: true, edit: true, delete: true, alter: true }),
+              { key: 'lms', label: 'LMS', view: true, add: false, edit: false, delete: false, alter: false }
             ]
           }
         ];
@@ -604,7 +630,8 @@ export default function RolePermissionManagement() {
               { key: 'myCustomers', view: true, add: true, edit: true, delete: true, alter: true },
               { key: 'myDeliveries', view: true, add: false, edit: false, delete: false, alter: false },
               { key: 'myInvoices', view: true, add: false, edit: false, delete: false, alter: false },
-              { key: 'refundReturn', view: true, add: true, edit: true, delete: true, alter: true }
+              { key: 'refundReturn', view: true, add: true, edit: true, delete: true, alter: true },
+              { key: 'lms', label: 'LMS', view: true, add: false, edit: false, delete: false, alter: false }
             ]
           }
         ];
@@ -615,7 +642,8 @@ export default function RolePermissionManagement() {
             dashboard: true,
             features: [
               { key: 'dashboard', view: true, add: true, edit: true, delete: true },
-              { key: 'packingSheet', view: true, add: true, edit: true, delete: true }
+              { key: 'packingSheet', view: true, add: true, edit: true, delete: true },
+              { key: 'lms', label: 'LMS', view: true, add: false, edit: false, delete: false }
             ]
           }
         ];
@@ -627,7 +655,8 @@ export default function RolePermissionManagement() {
             features: [
               { key: 'dashboard', view: true, add: true, edit: true, delete: true },
               { key: 'deliveryChallan', view: true, add: true, edit: true, delete: true },
-              { key: 'dispatchHistory', view: true, add: true, edit: true, delete: true }
+              { key: 'dispatchHistory', view: true, add: true, edit: true, delete: true },
+              { key: 'lms', label: 'LMS', view: true, add: false, edit: false, delete: false }
             ]
           }
         ];
@@ -639,7 +668,31 @@ export default function RolePermissionManagement() {
             features: [
               { key: 'transactions', view: true, add: true, edit: true, delete: true },
               { key: 'balanceSheet', view: true, add: true, edit: true, delete: true },
-              { key: 'reports', view: true, add: true, edit: true, delete: true }
+              { key: 'reports', view: true, add: true, edit: true, delete: true },
+              { key: 'lms', label: 'LMS', view: true, add: false, edit: false, delete: false }
+            ]
+          }
+        ];
+      case 'Marketing Head':
+        return [
+          {
+            name: 'marketing',
+            dashboard: true,
+            features: [
+              { key: 'library', view: true, add: true, edit: true, delete: true, alter: true },
+              { key: 'upload', view: true, add: true, edit: true, delete: true, alter: true },
+              { key: 'categories', view: true, add: true, edit: true, delete: true, alter: true },
+              { key: 'reports', view: true, add: false, edit: false, delete: false, alter: false },
+              { key: 'auditLogs', view: true, add: false, edit: false, delete: false, alter: false },
+              { key: 'notifications', view: true, add: false, edit: false, delete: false, alter: false },
+              { key: 'lms', label: 'LMS', view: true, add: false, edit: false, delete: false, alter: false }
+            ]
+          },
+          {
+            name: 'customers',
+            dashboard: false,
+            features: [
+              { key: 'addEditView', view: true, add: false, edit: false, delete: false, alter: false }
             ]
           }
         ];

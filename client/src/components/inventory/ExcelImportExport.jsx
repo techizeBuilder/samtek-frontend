@@ -13,7 +13,7 @@ import { ClientExcelExporter } from '@/utils/excelExport';
 // Helper function to get role-based API path
 function getInventoryApiPath(user) {
   if (!user) return '/api';
-  
+
   switch (user.role) {
     case 'Superadmin':
       return '/api/super-admin/inventory';
@@ -79,10 +79,10 @@ export default function ExcelImportExport({ type = 'items' }) {
         title: "Preparing Export",
         description: "Fetching data and generating Excel file...",
       });
-      
+
       let data = [];
       let exportResult;
-      
+
       // Get fresh data for export
       switch (type) {
         case 'categories':
@@ -111,7 +111,7 @@ export default function ExcelImportExport({ type = 'items' }) {
           exportResult = ClientExcelExporter.exportInventoryItems(data);
           break;
       }
-      
+
       if (exportResult.success) {
         toast({
           title: "Export Successful",
@@ -162,10 +162,10 @@ export default function ExcelImportExport({ type = 'items' }) {
       }, 200);
 
       const result = await config.importFn(file);
-      
+
       clearInterval(progressInterval);
       setUploadProgress(100);
-      
+
       console.log('Import result:', result);
       setImportResult(result);
 
@@ -226,7 +226,7 @@ export default function ExcelImportExport({ type = 'items' }) {
     try {
       // Create template data with sample/empty rows
       let templateData = [];
-      
+
       switch (type) {
         case 'categories':
           templateData = [{
@@ -347,7 +347,7 @@ export default function ExcelImportExport({ type = 'items' }) {
           ClientExcelExporter.exportInventoryItems(templateData);
           break;
       }
-      
+
       toast({
         title: "Template Downloaded",
         description: `${config.title} template downloaded successfully`,
@@ -355,7 +355,7 @@ export default function ExcelImportExport({ type = 'items' }) {
     } catch (error) {
       console.error('Template download error:', error);
       toast({
-        title: "Template Download Failed", 
+        title: "Template Download Failed",
         description: error.message || "Failed to download template",
         variant: "destructive",
       });
@@ -365,7 +365,7 @@ export default function ExcelImportExport({ type = 'items' }) {
   const oldDownloadTemplate = () => {
     // Create a sample template based on type
     let templateData = [];
-    
+
     if (type === 'items') {
       templateData = [{
         'Item Code': 'SAMPLE-001',
@@ -440,7 +440,7 @@ export default function ExcelImportExport({ type = 'items' }) {
     a.click();
     window.URL.revokeObjectURL(url);
     document.body.removeChild(a);
-    
+
     toast({
       title: "Template Downloaded",
       description: `${config.title} template downloaded successfully`,
@@ -504,8 +504,8 @@ export default function ExcelImportExport({ type = 'items' }) {
                   <Alert>
                     <AlertCircle className="h-4 w-4" />
                     <AlertDescription>
-                      Upload an Excel file (.xlsx or .xls) containing {config.title.toLowerCase()} data. 
-                      📝 <strong>Important:</strong> Type field must be one of: Product, Material, Spares, Assemblies (case sensitive). 
+                      Upload an Excel file (.xlsx or .xls) containing {config.title.toLowerCase()} data.
+                      📝 <strong>Important:</strong> Type field must be one of: Product, Material, Spares, Assemblies (case sensitive).
                       Store Location ID must be a valid company ID. Download the template to see the required format.
                     </AlertDescription>
                   </Alert>
@@ -576,7 +576,7 @@ export default function ExcelImportExport({ type = 'items' }) {
                           <div className="text-red-600">Failed: {importResult.results.failed}</div>
                         )}
                       </div>
-                      
+
                       {importResult.results.errors && importResult.results.errors.length > 0 && (
                         <div className="mt-3">
                           <div className="text-sm font-medium text-red-600 mb-2 flex items-center gap-2">
@@ -589,7 +589,7 @@ export default function ExcelImportExport({ type = 'items' }) {
                               const cleanError = error.replace(/^Row \d+:\s*/, '').replace(/Row \d+:\s*/, '');
                               const rowMatch = error.match(/Row (\d+):/);
                               const rowNumber = rowMatch ? rowMatch[1] : index + 2;
-                              
+
                               return (
                                 <div key={index} className="flex gap-3 p-2 bg-white rounded border border-red-100">
                                   <span className="text-red-800 font-mono text-sm bg-red-200 px-2 py-1 rounded flex-shrink-0">
