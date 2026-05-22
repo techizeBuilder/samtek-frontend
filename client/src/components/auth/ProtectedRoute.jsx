@@ -32,9 +32,7 @@ export function ProtectedRoute({ children, requiredRole = null }) {
     (requiredRole === 'Sales' && (user.role === 'Sales Employee' || user.role === 'Sales Head')) ||
     (requiredRole === 'Dispatch' && (user.role === 'Dispatch Employee' || user.role === 'Dispatch Head')) ||
     (requiredRole === 'Production' && (user.role === 'Production Employee' || user.role === 'Production Head')) ||
-    (requiredRole === 'Packing' && (user.role === 'Packing Employee' || user.role === 'Packing Head')) ||
-    // 🔥 NEW: Wildcard check for any Trainee (e.g., "Account Trainee", "Sales Trainee")
-    (requiredRole === 'Trainee' && user.role?.toLowerCase().includes('trainee'));
+    (requiredRole === 'Packing' && (user.role === 'Packing Employee' || user.role === 'Packing Head'));
 
   if (!isAuthorized) {
     return (

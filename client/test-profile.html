@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Profile API</title>
+</head>
+<body>
+    <h1>Test Profile API</h1>
+    
+    <h2>Login</h2>
+    <input type="text" id="username" value="admin" placeholder="Username">
+    <input type="password" id="password" value="admin123" placeholder="Password">
+    <button onclick="login()">Login</button>
+    
+    <h2>Profile</h2>
+    <button onclick="getProfile()">Get Profile</button>
+    <button onclick="updateProfile()">Update Profile</button>
+    <button onclick="changePassword()">Change Password</button>
+    
+    <h2>Upload Picture</h2>
+    <input type="file" id="profilePicture" accept="image/*">
+    <button onclick="uploadPicture()">Upload Picture</button>
+    
+    <div id="result"></div>
+
+    <script>
+        let token = '';
+
+        async function login() {
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        username: document.getElementById('username').value,
+                        password: document.getElementById('password').value
+                    })
+                });
+                const data = await response.json();
+                token = data.token;
+                document.getElementById('result').innerHTML = 'Login successful. Token: ' + token.substring(0, 20) + '...';
+            } catch (error) {
+                document.getElementById('result').innerHTML = 'Login error: ' + error.message;
+            }
+        }
+
+        async function getProfile() {
+            try {
+                const response = await fetch('/api/users/profile', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await response.json();
+                document.getElementById('result').innerHTML = 'Profile: ' + JSON.stringify(data, null, 2);
+            } catch (error) {
+                document.getElementById('result').innerHTML = 'Profile error: ' + error.message;
+            }
+        }
+
+        async function updateProfile() {
+            try {
+                const response = await fetch('/api/users/profile', {
+                    method: 'PUT',
+                    headers: { 
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        fullName: 'Test User Updated',
+                        email: 'admin@company.com'
+                    })
+                });
+                const data = await response.json();
+                document.getElementById('result').innerHTML = 'Update result: ' + JSON.stringify(data, null, 2);
+            } catch (error) {
+                document.getElementById('result').innerHTML = 'Update error: ' + error.message;
+            }
+        }
+
+        async function changePassword() {
+            try {
+                const response = await fetch('/api/users/profile/password', {
+                    method: 'PUT',
+                    headers: { 
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        oldPassword: 'admin123',
+                        newPassword: 'newpassword123'
+                    })
+                });
+                const data = await response.json();
+                document.getElementById('result').innerHTML = 'Password change result: ' + JSON.stringify(data, null, 2);
+            } catch (error) {
+                document.getElementById('result').innerHTML = 'Password change error: ' + error.message;
+            }
+        }
+
+        async function uploadPicture() {
+            try {
+                const fileInput = document.getElementById('profilePicture');
+                const formData = new FormData();
+                formData.append('picture', fileInput.files[0]);
+
+                const response = await fetch('/api/users/profile/picture', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` },
+                    body: formData
+                });
+                const data = await response.json();
+                document.getElementById('result').innerHTML = 'Upload result: ' + JSON.stringify(data, null, 2);
+            } catch (error) {
+                document.getElementById('result').innerHTML = 'Upload error: ' + error.message;
+            }
+        }
+    </script>
+</body>
+</html>

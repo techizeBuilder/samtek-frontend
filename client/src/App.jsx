@@ -1,4 +1,3 @@
-import { Switch, Route } from "wouter";
 import { BrowserRouter } from "react-router-dom";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "./lib/queryClient";
@@ -58,6 +57,7 @@ import VendorMaster from "@/pages/accounts/VendorMaster";
 import PurchaseInvoices from "@/pages/accounts/PurchaseInvoices";
 import PurchaseReturns from "@/pages/accounts/PurchaseReturns";
 import PurchaseReports from "@/pages/accounts/PurchaseReports";
+import PurchaseRequest from "@/pages/accounts/PurchaseRequest";
 import VendorPayments from "@/pages/accounts/VendorPayments";
 import PayableAgeing from "@/pages/accounts/PayableAgeing";
 import GSTAndTDS from "@/pages/accounts/GSTAndTDS";
@@ -88,6 +88,8 @@ import RoleBasedLayout from "@/components/layout/RoleBasedLayout";
 import SuperAdminAccounts from "@/pages/super-admin/Accounts";
 
 // HRMS Module Imports
+import SalesOrderTracking from "@/pages/accounts/SalesOrderTracking";
+import NocRequest from "@/pages/accounts/NocRequest";
 import HRMSDashboard from "@/pages/hrms/HRMSDashboard";
 import HRMSEmployees from "@/pages/hrms/Employee";
 import HRMSAttendance from "@/pages/hrms/AttendanceReport";
@@ -129,8 +131,8 @@ import EmployeeAttendanceCalendar from "@/pages/hrms/Employee/Attendance/Attenda
 import EmployeeAttendanceRequest from "@/pages/hrms/Employee/Attendance/AttendanceRequest";
 import EmployeeLeaveBalance from "@/pages/hrms/Employee/Leave/LeaveBalance";
 import EmployeeLeaves from "@/pages/hrms/Employee/Leave/Leaves";
-import EmployeePayslips from "@/pages/hrms/Payroll/Payslips";
-import EmployeeSalaryStructure from "@/pages/hrms/Payroll/SalaryStructure";
+import EmployeePayslips from "@/pages/hrms/Employee/Payroll/EmployeePayslips";
+import EmployeeSalaryStructure from "@/pages/hrms/Employee/Payroll/EmployeeSalaryStructure";
 import EmployeeExpenses from "@/pages/hrms/Employee/Expenses/Expenses";
 import EmployeeTravelRequests from "@/pages/hrms/Employee/Request/TravelRequests";
 import EmployeeResignRequest from "@/pages/hrms/Employee/Request/ResignRequest";
@@ -138,9 +140,6 @@ import EmployeeOverTimeRequests from "@/pages/hrms/Employee/Request/OverTimeRequ
 import EmployeeProfileUpdateRequest from "@/pages/hrms/Employee/Request/ProfileUpdateRequest";
 import HRMSTaskManagement from "@/pages/hrms/TaskManagement/TaskManagement";
 import EmployeeTasks from "@/pages/hrms/TaskManagement/EmployeeTasks";
-import CompanyAdminDashboard from "@/pages/hrms/CompanyAdmin/CompanyAdminDashboard";
-import CompanyAdminLayout from "@/pages/hrms/CompanyAdmin/CompanyAdminLayout";
-import RDDashboard from "@/pages/ResearchDevelopment/Dashboard";
 
 // complaints and services imports
 import SupportDashboard from "@/pages/complaintsAndServices/SupportDashboard";
@@ -157,6 +156,47 @@ import ModulePlayer from "@/pages/lms/ModulePlayer";
 import QuizRunner from "@/pages/lms/QuizRunner";
 import AdminDashboard from "@/pages/lms/AdminDashboard";
 
+import CompanyAdminDashboard from "@/pages/hrms/CompanyAdmin/CompanyAdminDashboard";
+import CompanyAdminLayout from "@/pages/hrms/CompanyAdmin/CompanyAdminLayout";
+import ManagerLeaves from "@/pages/hrms/Manager/LeavesEmployee";
+import PerformanceMetrics from "@/pages/hrms/Manager/PerformanceMetrics";
+import RDDashboard from "@/pages/ResearchDevelopment/Dashboard";
+import StoreDashboard from "@/pages/store/StoreDashboard";
+import StoreOrders from "@/pages/store/StoreOrders";
+import { RDProvider } from "@/contexts/RDContext";
+import ProductMaster from "@/pages/ResearchDevelopment/ProductMaster";
+import DesignApproval from "@/pages/ResearchDevelopment/DesignApproval";
+import BOMManagement from "@/pages/ResearchDevelopment/BOMManagement";
+import ToolProcess from "@/pages/ResearchDevelopment/ToolProcess";
+import Prototype from "@/pages/ResearchDevelopment/Prototype";
+import ChangeManagement from "@/pages/ResearchDevelopment/ChangeManagement";
+import QualityParameters from "@/pages/ResearchDevelopment/QualityParameters";
+import Documentation from "@/pages/ResearchDevelopment/Documentation";
+
+import { PackagingDispatchProvider } from "@/contexts/PackagingDispatchContext";
+import PkgDispatchDashboard from "@/pages/packaging-dispatch/Dashboard";
+import PackagingQueue from "@/pages/packaging-dispatch/PackagingQueue";
+import PackagingJobs from "@/pages/packaging-dispatch/PackagingJobs";
+import PkgDispatchPlanning from "@/pages/packaging-dispatch/DispatchPlanning";
+import PkgDispatchExecution from "@/pages/packaging-dispatch/DispatchExecution";
+import PkgDispatchHistory from "@/pages/packaging-dispatch/DispatchHistory";
+
+import { QCProvider } from "@/contexts/QCContext";
+import QCDashboard from "@/pages/quality-control/Dashboard";
+import QCInward from "@/pages/quality-control/QCInward";
+import QCJobs from "@/pages/quality-control/QCJobs";
+import QCInspection from "@/pages/quality-control/QCInspection";
+
+// Marketing Module Imports
+import { MarketingProvider } from "@/contexts/MarketingContext";
+import MarketingDashboard from "@/pages/marketing/Dashboard";
+import MarketingLibrary from "@/pages/marketing/Library";
+import UploadContent from "@/pages/marketing/Upload";
+import CategoryManagement from "@/pages/marketing/Categories";
+import MarketingReports from "@/pages/marketing/Reports";
+import AuditLogs from "@/pages/marketing/AuditLogs";
+import MarketingNotifications from "@/pages/marketing/Notifications";
+import { Route, Switch } from "wouter";
 
 function Router() {
   return (
@@ -335,6 +375,16 @@ function Router() {
           <ManagerInterviews />
         </ProtectedRoute>
       </Route>
+      <Route exact path="/hrms/Manager/leaves">
+        <ProtectedRoute requiredRole="Manager">
+          <ManagerLeaves />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Manager/performance-metrics">
+        <ProtectedRoute requiredRole="Manager">
+          <PerformanceMetrics />
+        </ProtectedRoute>
+      </Route>
 
       {/* Manager Approvals Section */}
       <Route exact path="/hrms/Manager/approvals/leaves">
@@ -466,7 +516,8 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/r&d-dashboard">
+      {/* R&D Module Routes */}
+      <Route path="/r&d/dashboard">
         <ProtectedRoute requiredRole={["Research & Development Head", "Research Development Employee"]}>
           <RDDashboard />
         </ProtectedRoute>
@@ -488,6 +539,47 @@ function Router() {
         <RoleBasedProtectedRoute requiredRole="Complaint Management Employee">
           <TechnicianWorkSapce />
         </RoleBasedProtectedRoute>
+      </Route>
+
+      <Route path="/r&d/product-master">
+        <ProtectedRoute requiredRole={["Research & Development Head", "Research Development Employee"]}>
+          <ProductMaster />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/r&d/design-approval">
+        <ProtectedRoute requiredRole={["Research & Development Head", "Research Development Employee"]}>
+          <DesignApproval />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/r&d/bom-management">
+        <ProtectedRoute requiredRole={["Research & Development Head", "Research Development Employee"]}>
+          <BOMManagement />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/r&d/tool-process">
+        <ProtectedRoute requiredRole={["Research & Development Head", "Research Development Employee"]}>
+          <ToolProcess />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/r&d/prototype">
+        <ProtectedRoute requiredRole={["Research & Development Head", "Research Development Employee"]}>
+          <Prototype />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/r&d/change-management">
+        <ProtectedRoute requiredRole={["Research & Development Head", "Research Development Employee"]}>
+          <ChangeManagement />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/r&d/quality-parameters">
+        <ProtectedRoute requiredRole={["Research & Development Head", "Research Development Employee"]}>
+          <QualityParameters />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/r&d/documentation">
+        <ProtectedRoute requiredRole={["Research & Development Head", "Research Development Employee"]}>
+          <Documentation />
+        </ProtectedRoute>
       </Route>
 
       <Route path="/">
@@ -711,6 +803,62 @@ function Router() {
           <DispatchHistory />
         </ProtectedRoute>
       </Route>
+
+      {/* Packaging & Dispatch Module Routes */}
+      <Route path="/packaging-dispatch/dashboard">
+        <ProtectedRoute requiredRole={["Dispatch", "Dispatch Head", "Dispatch Employee"]}>
+          <PackagingDispatchProvider><PkgDispatchDashboard /></PackagingDispatchProvider>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/packaging/queue">
+        <ProtectedRoute requiredRole={["Dispatch", "Dispatch Head", "Dispatch Employee"]}>
+          <PackagingDispatchProvider><PackagingQueue /></PackagingDispatchProvider>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/packaging/jobs">
+        <ProtectedRoute requiredRole={["Dispatch", "Dispatch Head", "Dispatch Employee"]}>
+          <PackagingDispatchProvider><PackagingJobs /></PackagingDispatchProvider>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/dispatch/planning">
+        <ProtectedRoute requiredRole={["Dispatch", "Dispatch Head", "Dispatch Employee"]}>
+          <PackagingDispatchProvider><PkgDispatchPlanning /></PackagingDispatchProvider>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/dispatch/active">
+        <ProtectedRoute requiredRole={["Dispatch", "Dispatch Head", "Dispatch Employee"]}>
+          <PackagingDispatchProvider><PkgDispatchExecution /></PackagingDispatchProvider>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/dispatch/completed">
+        <ProtectedRoute requiredRole={["Dispatch", "Dispatch Head", "Dispatch Employee"]}>
+          <PackagingDispatchProvider><PkgDispatchHistory /></PackagingDispatchProvider>
+        </ProtectedRoute>
+      </Route>
+
+      {/* Quality Control Routes */}
+      <Route path="/qc/dashboard">
+        <ProtectedRoute requiredRole={["QC Head", "QC Employee"]}>
+          <QCProvider><QCDashboard /></QCProvider>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/qc/inward">
+        <ProtectedRoute requiredRole={["QC Head", "QC Employee"]}>
+          <QCProvider><QCInward /></QCProvider>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/qc/jobs/:id">
+        <ProtectedRoute requiredRole={["QC Head", "QC Employee"]}>
+          <QCProvider><QCInspection /></QCProvider>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/qc/jobs">
+        <ProtectedRoute requiredRole={["QC Head", "QC Employee"]}>
+          <QCProvider><QCJobs /></QCProvider>
+        </ProtectedRoute>
+      </Route>
+
+
       <Route path="/accounts-dashboard">
         <ProtectedRoute requiredRole="Accounts">
           <AccountsDashboard />
@@ -726,6 +874,16 @@ function Router() {
         <ProtectedRoute requiredRole="Accounts">
           <SalesOrders />
         </ProtectedRoute>
+      </Route>
+      <Route path="/accounts/sales/order-tracking">
+        <RoleBasedProtectedRoute allowedRoles={['Superadmin', 'Accounts']}>
+          <SalesOrderTracking />
+        </RoleBasedProtectedRoute>
+      </Route>
+      <Route path="/accounts/sales/noc-request">
+        <RoleBasedProtectedRoute allowedRoles={['Superadmin', 'Accounts']}>
+          <NocRequest />
+        </RoleBasedProtectedRoute>
       </Route>
       <Route path="/accounts/sales/customers">
         <ProtectedRoute requiredRole="Accounts">
@@ -771,6 +929,11 @@ function Router() {
       <Route path="/accounts/purchases/vendors">
         <ProtectedRoute requiredRole="Accounts">
           <VendorMaster />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/accounts/purchases/requests">
+        <ProtectedRoute requiredRole="Accounts">
+          <PurchaseRequest />
         </ProtectedRoute>
       </Route>
       <Route path="/accounts/purchases/invoices">
@@ -836,6 +999,28 @@ function Router() {
       <Route path="/accounts/financial-summary">
         <ProtectedRoute requiredRole="Accounts">
           <FinancialSummary />
+        </ProtectedRoute>
+      </Route>
+
+      {/* Store Module Routes */}
+      <Route path="/store-dashboard">
+        <ProtectedRoute requiredRole={["Store Head", "Store Employee"]}>
+          <StoreDashboard />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/store/inventory">
+        <ProtectedRoute requiredRole={["Store Head", "Store Employee"]}>
+          <ModernInventoryUI />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/store/orders">
+        <ProtectedRoute requiredRole={["Store Head", "Store Employee"]}>
+          <StoreOrders />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/store/purchases/requests">
+        <ProtectedRoute requiredRole={["Store Head", "Store Employee"]}>
+          <PurchaseRequest />
         </ProtectedRoute>
       </Route>
       <Route path="/accounts/reports">
@@ -1033,6 +1218,42 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      {/* Marketing Module Routes */}
+      <Route path="/marketing/dashboard">
+        <ProtectedRoute requiredRole={['Marketing Head', 'Sales', 'Sales Employee', 'Sales Head']}>
+          <MarketingProvider><MarketingDashboard /></MarketingProvider>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/marketing/library">
+        <ProtectedRoute requiredRole={['Marketing Head', 'Sales', 'Sales Employee', 'Sales Head']}>
+          <MarketingProvider><MarketingLibrary /></MarketingProvider>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/marketing/upload">
+        <ProtectedRoute requiredRole="Marketing Head">
+          <MarketingProvider><UploadContent /></MarketingProvider>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/marketing/categories">
+        <ProtectedRoute requiredRole="Marketing Head">
+          <MarketingProvider><CategoryManagement /></MarketingProvider>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/marketing/reports">
+        <ProtectedRoute requiredRole="Marketing Head">
+          <MarketingProvider><MarketingReports /></MarketingProvider>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/marketing/audit-logs">
+        <ProtectedRoute requiredRole="Marketing Head">
+          <MarketingProvider><AuditLogs /></MarketingProvider>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/marketing/notifications">
+        <ProtectedRoute requiredRole="Marketing Head">
+          <MarketingProvider><MarketingNotifications /></MarketingProvider>
+        </ProtectedRoute>
+      </Route>
 
       <Route component={NotFound} />
     </Switch>
@@ -1043,15 +1264,18 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <TooltipProvider>
-          <Toaster />
-          <BrowserRouter>
-            <Router />
-          </BrowserRouter>
-        </TooltipProvider>
+        <RDProvider>
+          <TooltipProvider>
+            <Toaster />
+            <BrowserRouter>
+              <Router />
+            </BrowserRouter>
+          </TooltipProvider>
+        </RDProvider>
       </AuthProvider>
     </QueryClientProvider>
   );
 }
 
 export default App;
+

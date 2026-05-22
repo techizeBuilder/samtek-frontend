@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useLocation } from 'wouter';
-import { 
-  ArrowLeft, 
-  Search, 
-  Plus, 
-  Trash2, 
-  Download, 
-  Send, 
-  FileText, 
+import {
+  ArrowLeft,
+  Search,
+  Plus,
+  Trash2,
+  Download,
+  Send,
+  FileText,
   Printer,
   ChevronRight,
   Package,
@@ -22,14 +23,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
 } from "@/components/ui/select";
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { toast } from "@/hooks/use-toast";
 import { jsPDF } from 'jspdf';
@@ -41,7 +42,6 @@ import html2canvas from 'html2canvas';
 const numberToWords = (num) => {
   const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
   const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
-  
   const convert = (n) => {
     if (n < 20) return ones[n];
     if (n < 100) return tens[Math.floor(n / 10)] + (n % 10 !== 0 ? ' ' + ones[n % 10] : '');
@@ -57,16 +57,47 @@ const numberToWords = (num) => {
 
 const Quotation = () => {
   const [location, setLocation] = useLocation();
+  const queryClient = useQueryClient();
   const queryParams = new URLSearchParams(window.location.search);
   const leadId = queryParams.get('lead_id');
 
   const [step, setStep] = useState('select_type'); // select_type, product_selection, builder, preview, price_list_selection, price_list_preview
   const [quotationType, setQuotationType] = useState('Customer'); // Price List, Dealer, Customer, PI
   const [selectedItems, setSelectedItems] = useState([]);
+
+  const getImageUrl = (path) => {
+    if (!path || path.trim() === '') return null; // no image
+    if (path.startsWith('data:')) return path;   // base64 image — use as-is
+    if (path.startsWith('http')) return path;     // absolute URL — use as-is
+    // relative server path — prepend backend base URL
+    const baseUrl = (import.meta.env.VITE_API_URL || 'http://localhost:5000').replace('/api', '');
+    return `${baseUrl}${path}`;
+  };
   const [searchKeyword, setSearchKeyword] = useState('');
   const [searchCategory, setSearchCategory] = useState('All');
   const [buyerType, setBuyerType] = useState('Customer'); // Dealer or Customer
   const [selectedPriceListCategory, setSelectedPriceListCategory] = useState(null);
+  const [isAddProductModalOpen, setIsAddProductModalOpen] = useState(false);
+  const [newProduct, setNewProduct] = useState({
+    name: '',
+    variant: '',
+    code: '',
+    group: '',
+    category: '',
+    subCategory: '',
+    unit: '',
+    salePrice: '',
+    dealerPrice: '',
+    hsn: '',
+    gst: '18',
+    currency: 'INR',
+    unitType: 'Nos',
+    description: '',
+    uses: '',
+    otherInfo: '',
+    minOrderQty: '1',
+    specifications: [{ key: '', value: '' }]
+  });
 
   const PRICE_LIST_DATA = [
     {
@@ -180,7 +211,7 @@ const Quotation = () => {
   const leadData = leadResponse?.lead;
 
   // Fetch Real Items from Sales-specific endpoint
-  const { data: itemsResponse, isLoading: itemsLoading } = useQuery({
+  const { data: itemsResponse, isLoading: itemsLoading, refetch: refetchItems } = useQuery({
     queryKey: ['sales-items'],
     queryFn: async () => {
       const token = localStorage.getItem('token');
@@ -191,6 +222,494 @@ const Quotation = () => {
     }
   });
 
+  const handleAddProduct = async (e) => {
+    e.preventDefault();
+    try {
+      const token = localStorage.getItem('token');
+      const formData = new FormData();
+
+      // Append all fields to FormData
+      Object.keys(newProduct).forEach(key => {
+        if (key === 'specifications') {
+          formData.append(key, JSON.stringify(newProduct[key]));
+        } else if (key === 'photo' || key === 'brochure') {
+          if (newProduct[key]) {
+            formData.append(key === 'photo' ? 'image' : 'brochure', newProduct[key]);
+          }
+        } else {
+          formData.append(key, newProduct[key]);
+        }
+      });
+
+      const res = await axios.post(`${import.meta.env.VITE_API_URL || '/api'}/sales/create-item`, formData, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+
+      if (res.data.success) {
+        toast({ title: "Success", description: "Product added to inventory" });
+        setIsAddProductModalOpen(false);
+        refetchItems();
+        // Reset form
+        setNewProduct({
+          name: '',
+          variant: '',
+          code: '',
+          group: '',
+          category: '',
+          subCategory: '',
+          unit: '',
+          salePrice: '',
+          dealerPrice: '',
+          hsn: '',
+          gst: '18',
+          currency: 'INR',
+          unitType: 'Nos',
+          description: '',
+          uses: '',
+          otherInfo: '',
+          minOrderQty: '1',
+          specifications: [{ key: '', value: '' }],
+          photo: null,
+          brochure: null
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error.response?.data?.message || "Failed to add product",
+        variant: "destructive"
+      });
+    }
+  };
+
+  useEffect(() => {
+    if (isAddProductModalOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [isAddProductModalOpen]);
+
+  const photoInputRef = useRef(null);
+  const brochureInputRef = useRef(null);
+
+  const renderAddProductModal = () => {
+    if (!isAddProductModalOpen) return null;
+
+    return createPortal(
+      <div className="fixed inset-0 z-[50] overflow-hidden flex items-center justify-center">
+        {/* Backdrop */}
+        <div
+          className="fixed inset-0 bg-black/40 transition-opacity"
+          onClick={() => setIsAddProductModalOpen(false)}
+        />
+
+        {/* Modal Content */}
+        <div
+          className="relative bg-white rounded-xl w-full max-w-5xl shadow-2xl overflow-hidden flex flex-col h-full max-h-[90vh] z-[51]"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="px-6 py-4 flex justify-between items-center border-b bg-gray-50 flex-shrink-0">
+            <h2 className="text-xl font-bold flex items-center gap-2 text-gray-800">
+              <Package className="h-5 w-5 text-orange-600" /> Add A New Product
+            </h2>
+            <button onClick={() => setIsAddProductModalOpen(false)} className="hover:bg-gray-200 p-1 rounded-full transition-colors text-gray-500">
+              <X className="h-6 w-6" />
+            </button>
+          </div>
+
+          <form onSubmit={handleAddProduct} className="p-8 overflow-y-auto custom-scrollbar flex-1 min-h-0">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {/* Basic Details */}
+              <div className="space-y-2">
+                <Label className="text-gray-700 font-semibold">Select Group *</Label>
+                <Select
+                  value={newProduct.group}
+                  onValueChange={(v) => setNewProduct({ ...newProduct, group: v })}
+                >
+                  <SelectTrigger className="border-gray-300">
+                    <SelectValue placeholder="--Select Group--" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="FLOUR MILL PLANT">FLOUR MILL PLANT</SelectItem>
+                    <SelectItem value="GRAIN PROCESSING">GRAIN PROCESSING</SelectItem>
+                    <SelectItem value="OIL EXTRACTION">OIL EXTRACTION</SelectItem>
+                    <SelectItem value="PACKAGING MACHINERY">PACKAGING MACHINERY</SelectItem>
+                    <SelectItem value="SPARE PARTS">SPARE PARTS</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-gray-700 font-semibold">Select Category *</Label>
+                <Select
+                  value={newProduct.category}
+                  onValueChange={(v) => setNewProduct({ ...newProduct, category: v })}
+                >
+                  <SelectTrigger className="border-gray-300">
+                    <SelectValue placeholder="--Select Category--" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Automatic Flour Mill">Automatic Flour Mill</SelectItem>
+                    <SelectItem value="Pulverizer Machine">Pulverizer Machine</SelectItem>
+                    <SelectItem value="Stone Crusher">Stone Crusher</SelectItem>
+                    <SelectItem value="Seed Cleaner">Seed Cleaner</SelectItem>
+                    <SelectItem value="Gravity Separator">Gravity Separator</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-gray-700 font-semibold">Select Sub Category</Label>
+                <Select
+                  value={newProduct.subCategory}
+                  onValueChange={(v) => setNewProduct({ ...newProduct, subCategory: v })}
+                >
+                  <SelectTrigger className="border-gray-300">
+                    <SelectValue placeholder="--Select Sub Category--" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Mini Plant">Mini Plant</SelectItem>
+                    <SelectItem value="Commercial Grade">Commercial Grade</SelectItem>
+                    <SelectItem value="Industrial Heavy Duty">Industrial Heavy Duty</SelectItem>
+                    <SelectItem value="Portable Unit">Portable Unit</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-gray-700 font-semibold">Product Name *</Label>
+                <Input
+                  placeholder="Enter Product Name"
+                  value={newProduct.name}
+                  onChange={(e) => setNewProduct({ ...newProduct, name: e.target.value })}
+                  className="border-gray-300 focus:ring-orange-500"
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-gray-700 font-semibold">Product Varient</Label>
+                <Input
+                  placeholder="Enter Product Varient"
+                  value={newProduct.variant}
+                  onChange={(e) => setNewProduct({ ...newProduct, variant: e.target.value })}
+                  className="border-gray-300"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-gray-700 font-semibold">Product Code *</Label>
+                <Input
+                  placeholder="Product Code"
+                  value={newProduct.code}
+                  onChange={(e) => setNewProduct({ ...newProduct, code: e.target.value })}
+                  className="border-gray-300"
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-gray-700 font-semibold">HSN/ SAC Code *</Label>
+                <Input
+                  placeholder="HSN/ SAC Code"
+                  value={newProduct.hsn}
+                  onChange={(e) => setNewProduct({ ...newProduct, hsn: e.target.value })}
+                  className="border-gray-300"
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-gray-700 font-semibold">GST% *</Label>
+                <Input
+                  type="number"
+                  placeholder="GST"
+                  value={newProduct.gst}
+                  onChange={(e) => setNewProduct({ ...newProduct, gst: e.target.value })}
+                  className="border-gray-300"
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-gray-700 font-semibold">Selling Price *</Label>
+                <div className="flex gap-2">
+                  <Input
+                    type="number"
+                    placeholder="e.g:100000"
+                    value={newProduct.salePrice}
+                    onChange={(e) => setNewProduct({ ...newProduct, salePrice: e.target.value })}
+                    className="border-gray-300 flex-1"
+                    required
+                  />
+                  <Select
+                    value={newProduct.currency}
+                    onValueChange={(v) => setNewProduct({ ...newProduct, currency: v })}
+                  >
+                    <SelectTrigger className="border-gray-300 w-32">
+                      <SelectValue placeholder="Currency" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="INR">INR</SelectItem>
+                      <SelectItem value="USD">USD</SelectItem>
+                      <SelectItem value="EUR">EUR</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-gray-700 font-semibold">Dealer Selling Price *</Label>
+                <Input
+                  type="number"
+                  placeholder="e.g:100000"
+                  value={newProduct.dealerPrice}
+                  onChange={(e) => setNewProduct({ ...newProduct, dealerPrice: e.target.value })}
+                  className="border-gray-300"
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-gray-700 font-semibold">Unit *</Label>
+                <div className="flex gap-2">
+                  <Input
+                    type="text"
+                    placeholder="e.g:1"
+                    value={newProduct.unit}
+                    onChange={(e) => setNewProduct({ ...newProduct, unit: e.target.value })}
+                    className="border-gray-300 flex-1"
+                    required
+                  />
+                  <Select
+                    value={newProduct.unitType}
+                    onValueChange={(v) => setNewProduct({ ...newProduct, unitType: v })}
+                  >
+                    <SelectTrigger className="border-gray-300 w-32">
+                      <SelectValue placeholder="Type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Nos">Nos</SelectItem>
+                      <SelectItem value="Box">Box</SelectItem>
+                      <SelectItem value="Pieces">Pieces</SelectItem>
+                      <SelectItem value="Set">Set</SelectItem>
+                      <SelectItem value="Kg">Kg</SelectItem>
+                      <SelectItem value="Unit">Unit</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-gray-700 font-semibold">Min. Order Quantity *</Label>
+                <Input
+                  type="number"
+                  placeholder="Order Quantity"
+                  value={newProduct.minOrderQty}
+                  onChange={(e) => setNewProduct({ ...newProduct, minOrderQty: e.target.value })}
+                  className="border-gray-300"
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-gray-700 font-semibold">Product Video Link</Label>
+                <Input
+                  placeholder="Product Video Link"
+                  value={newProduct.videoUrl || ''}
+                  onChange={(e) => setNewProduct({ ...newProduct, videoUrl: e.target.value })}
+                  className="border-gray-300"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-gray-700 font-semibold">Add Product Photo</Label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  ref={photoInputRef}
+                  onChange={(e) => {
+                    const file = e.target.files[0];
+                    if (file) {
+                      setNewProduct({ ...newProduct, photo: file });
+                    }
+                  }}
+                />
+                <div
+                  className="border-2 border-dashed border-gray-300 rounded-lg p-4 flex flex-col items-center justify-center bg-gray-50 hover:bg-gray-100 cursor-pointer transition-colors h-[80px]"
+                  onClick={() => photoInputRef.current.click()}
+                >
+                  {newProduct.photo ? (
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="h-5 w-5 text-green-500" />
+                      <span className="text-xs font-medium text-gray-700">{newProduct.photo.name.substring(0, 15)}...</span>
+                    </div>
+                  ) : (
+                    <>
+                      <Plus className="h-6 w-6 text-gray-400" />
+                      <span className="text-xs text-gray-500 mt-1">Add Photo</span>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-gray-700 font-semibold">Add Product Brochure</Label>
+                <input
+                  type="file"
+                  accept="application/pdf"
+                  className="hidden"
+                  ref={brochureInputRef}
+                  onChange={(e) => {
+                    const file = e.target.files[0];
+                    if (file) {
+                      setNewProduct({ ...newProduct, brochure: file });
+                    }
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  className={`w-full ${newProduct.brochure ? 'bg-green-500 hover:bg-green-600' : 'bg-cyan-500 hover:bg-cyan-600'} text-white border-none h-[80px]`}
+                  onClick={() => brochureInputRef.current.click()}
+                >
+                  {newProduct.brochure ? (
+                    <div className="flex flex-col items-center">
+                      <CheckCircle2 className="h-6 w-6 mb-1" />
+                      <span>Brochure Added</span>
+                    </div>
+                  ) : (
+                    "Add PDF Brochure"
+                  )}
+                </Button>
+              </div>
+            </div>
+
+            {/* Full Width Fields */}
+            <div className="mt-8 space-y-6">
+              <div className="space-y-2">
+                <Label className="text-gray-700 font-semibold">Description *</Label>
+                <textarea
+                  className="w-full min-h-[100px] p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none transition-all"
+                  placeholder="Enter description..."
+                  value={newProduct.description}
+                  onChange={(e) => setNewProduct({ ...newProduct, description: e.target.value })}
+                  required
+                />
+                <p className="text-xs text-gray-400">Note: Use ", " (comma and space) to insert a new line.</p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label className="text-gray-700 font-semibold">Product Uses *</Label>
+                  <textarea
+                    className="w-full min-h-[80px] p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none"
+                    placeholder="Enter Product Uses..."
+                    value={newProduct.uses}
+                    onChange={(e) => setNewProduct({ ...newProduct, uses: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-gray-700 font-semibold">Product Other Info *</Label>
+                  <textarea
+                    className="w-full min-h-[80px] p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none"
+                    placeholder="Enter Product Other Info..."
+                    value={newProduct.otherInfo}
+                    onChange={(e) => setNewProduct({ ...newProduct, otherInfo: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              {/* Specifications */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <Label className="text-gray-700 font-bold">Product Specifications</Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="text-orange-600 border-orange-600 hover:bg-orange-50"
+                    onClick={() => setNewProduct({
+                      ...newProduct,
+                      specifications: [...newProduct.specifications, { key: '', value: '' }]
+                    })}
+                  >
+                    <Plus className="h-4 w-4 mr-1" /> Add More Specification
+                  </Button>
+                </div>
+
+                {newProduct.specifications.map((spec, index) => (
+                  <div key={index} className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50 p-4 rounded-lg border border-dashed border-gray-300">
+                    <div className="space-y-2">
+                      <Label className="text-xs font-medium uppercase text-gray-500">Specification Key</Label>
+                      <Input
+                        placeholder="e.g. Motor Power"
+                        value={spec.key}
+                        onChange={(e) => {
+                          const newSpecs = [...newProduct.specifications];
+                          newSpecs[index].key = e.target.value;
+                          setNewProduct({ ...newProduct, specifications: newSpecs });
+                        }}
+                        className="bg-white"
+                      />
+                    </div>
+                    <div className="space-y-2 flex gap-2 items-end">
+                      <div className="flex-1">
+                        <Label className="text-xs font-medium uppercase text-gray-500">Specification Value</Label>
+                        <Input
+                          placeholder="e.g. 3 HP"
+                          value={spec.value}
+                          onChange={(e) => {
+                            const newSpecs = [...newProduct.specifications];
+                            newSpecs[index].value = e.target.value;
+                            setNewProduct({ ...newProduct, specifications: newSpecs });
+                          }}
+                          className="bg-white"
+                        />
+                      </div>
+                      {index > 0 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="text-red-500 hover:bg-red-50"
+                          onClick={() => {
+                            const newSpecs = newProduct.specifications.filter((_, i) => i !== index);
+                            setNewProduct({ ...newProduct, specifications: newSpecs });
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-10 flex justify-end gap-4 border-t pt-6">
+              <Button type="button" variant="ghost" onClick={() => setIsAddProductModalOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" className="bg-orange-600 hover:bg-orange-700 px-12 py-6 text-lg font-bold shadow-lg shadow-orange-200">
+                Add Product
+              </Button>
+            </div>
+          </form>
+        </div>
+      </div>,
+      document.body
+    );
+  };
+
   const productsList = itemsResponse?.items || [];
   const categories = [...new Set(productsList.map(p => p.category))];
 
@@ -199,12 +718,12 @@ const Quotation = () => {
       toast({ title: "Already added", description: "Product is already in the list" });
       return;
     }
-    setSelectedItems([...selectedItems, { 
-      ...product, 
-      id: product._id, 
-      price: product.salePrice || 0, 
-      quantity: 1, 
-      gst: 18 
+    setSelectedItems([...selectedItems, {
+      ...product,
+      id: product._id,
+      price: product.salePrice || 0,
+      quantity: 1,
+      gst: 18
     }]);
   };
 
@@ -213,7 +732,7 @@ const Quotation = () => {
   };
 
   const handleUpdateItem = (id, field, value) => {
-    setSelectedItems(selectedItems.map(item => 
+    setSelectedItems(selectedItems.map(item =>
       item.id === id ? { ...item, [field]: value } : item
     ));
   };
@@ -221,53 +740,62 @@ const Quotation = () => {
   const generatePDF = async () => {
     const element = pdfRef.current;
     toast({ title: "Generating PDF...", description: "Optimizing layout for multiple pages..." });
-    
     try {
       // 1. Calculate dimensions
       const width = element.offsetWidth;
       const pageHeightPx = (width * 297) / 210; // A4 Ratio
-      
+
       // 2. Identify sections and prevent splitting
-      const sections = element.querySelectorAll('.pdf-section');
+      const sections = Array.from(element.querySelectorAll('.pdf-section'));
       const addedSpacers = [];
-      
+
       // We need to re-calculate offsets after each spacer is added
-      // So we use a simple loop and check positions
-      sections.forEach((section) => {
-        const rect = section.getBoundingClientRect();
-        const elementTop = section.offsetTop;
-        const elementBottom = elementTop + section.offsetHeight;
-        
+      // So we use a simple loop and check positions relative to the container
+      for (const section of sections) {
+        const pdfRect = element.getBoundingClientRect();
+        const sectionRect = section.getBoundingClientRect();
+
+        const elementTop = sectionRect.top - pdfRect.top;
+        const elementBottom = elementTop + sectionRect.height;
+
         const pageOfTop = Math.floor(elementTop / pageHeightPx);
         const pageOfBottom = Math.floor((elementBottom - 1) / pageHeightPx); // -1 to handle exact boundaries
-        
+
         if (pageOfTop !== pageOfBottom) {
           const spacerHeight = (pageOfTop + 1) * pageHeightPx - elementTop;
-          const spacer = document.createElement('div');
-          spacer.style.height = `${spacerHeight}px`;
+          let spacer;
+          if (section.tagName.toLowerCase() === 'tr') {
+            spacer = document.createElement('tr');
+            const td = document.createElement('td');
+            td.colSpan = section.children.length || 10;
+            td.style.height = `${spacerHeight}px`;
+            spacer.appendChild(td);
+          } else {
+            spacer = document.createElement('div');
+            spacer.style.height = `${spacerHeight}px`;
+          }
           spacer.className = 'pdf-paging-spacer';
           section.parentNode.insertBefore(spacer, section);
           addedSpacers.push(spacer);
         }
-      });
+      }
 
       // 3. Capture high-quality canvas
-      const canvas = await html2canvas(element, { 
-        scale: 2, 
+      const canvas = await html2canvas(element, {
+        scale: 2,
         useCORS: true,
         backgroundColor: "#ffffff",
         logging: false
       });
-      
+
       // 4. Cleanup spacers immediately after capture
       addedSpacers.forEach(s => s.remove());
-      
+
       const imgData = canvas.toDataURL('image/png');
       const pdf = new jsPDF('p', 'mm', 'a4');
       const imgProps = pdf.getImageProperties(imgData);
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-      
       const pageHeight = pdf.internal.pageSize.getHeight();
       let heightLeft = pdfHeight;
       let position = 0;
@@ -294,10 +822,10 @@ const Quotation = () => {
 
   const handleSendEmail = async () => {
     if (!leadData?.email) {
-      toast({ 
-        title: "Missing Email", 
+      toast({
+        title: "Missing Email",
         description: "This lead does not have an email address assigned.",
-        variant: "destructive" 
+        variant: "destructive"
       });
       return;
     }
@@ -307,47 +835,59 @@ const Quotation = () => {
       toast({ title: "Processing...", description: "Optimizing layout and generating PDF" });
 
       const element = pdfRef.current;
-      
+
       // Intelligent Paging Logic
       const width = element.offsetWidth;
       const pageHeightPx = (width * 297) / 210;
-      const sections = element.querySelectorAll('.pdf-section');
+      const sections = Array.from(element.querySelectorAll('.pdf-section'));
       const addedSpacers = [];
-      
-      sections.forEach((section) => {
-        const elementTop = section.offsetTop;
-        const elementBottom = elementTop + section.offsetHeight;
+
+      for (const section of sections) {
+        const pdfRect = element.getBoundingClientRect();
+        const sectionRect = section.getBoundingClientRect();
+
+        const elementTop = sectionRect.top - pdfRect.top;
+        const elementBottom = elementTop + sectionRect.height;
+
         const pageOfTop = Math.floor(elementTop / pageHeightPx);
         const pageOfBottom = Math.floor((elementBottom - 1) / pageHeightPx);
-        
+
         if (pageOfTop !== pageOfBottom) {
           const spacerHeight = (pageOfTop + 1) * pageHeightPx - elementTop;
-          const spacer = document.createElement('div');
-          spacer.style.height = `${spacerHeight}px`;
+          let spacer;
+          if (section.tagName.toLowerCase() === 'tr') {
+            spacer = document.createElement('tr');
+            const td = document.createElement('td');
+            td.colSpan = section.children.length || 10;
+            td.style.height = `${spacerHeight}px`;
+            spacer.appendChild(td);
+          } else {
+            spacer = document.createElement('div');
+            spacer.style.height = `${spacerHeight}px`;
+          }
           spacer.className = 'pdf-paging-spacer';
           section.parentNode.insertBefore(spacer, section);
           addedSpacers.push(spacer);
         }
-      });
+      }
 
-      const canvas = await html2canvas(element, { 
-        scale: 2.0, 
+      const canvas = await html2canvas(element, {
+        scale: 2.0,
         useCORS: true,
         logging: false,
         allowTaint: true,
         backgroundColor: "#ffffff"
       });
-      
+
       // Cleanup spacers
       addedSpacers.forEach(s => s.remove());
-      
+
       const imgData = canvas.toDataURL('image/jpeg', 0.95);
-      
+
       const pdf = new jsPDF('p', 'mm', 'a4');
       const imgProps = pdf.getImageProperties(imgData);
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-      
       const pageHeight = pdf.internal.pageSize.getHeight();
       let heightLeft = pdfHeight;
       let position = 0;
@@ -361,7 +901,6 @@ const Quotation = () => {
         pdf.addImage(imgData, 'JPEG', 0, position, pdfWidth, pdfHeight);
         heightLeft -= pageHeight;
       }
-      
       const pdfBase64 = pdf.output('datauristring');
       const token = localStorage.getItem('token');
 
@@ -383,16 +922,19 @@ const Quotation = () => {
       });
 
       if (res.data.success) {
-        toast({ 
-          title: "Success!", 
+        toast({
+          title: "Success!",
           description: `Quotation has been successfully sent to ${recipients}`,
           className: "bg-green-600 text-white"
         });
+        // Invalidate lead queries to update the UI (button text etc)
+        queryClient.invalidateQueries({ queryKey: ['lead', leadId] });
+        queryClient.invalidateQueries({ queryKey: ['leads'] });
       }
     } catch (error) {
       console.error('Email sending error:', error);
-      toast({ 
-        title: "Error", 
+      toast({
+        title: "Error",
         description: error.response?.data?.message || "Failed to send email. Please check your connection.",
         variant: "destructive"
       });
@@ -457,22 +999,22 @@ const Quotation = () => {
             </div>
             <div className="flex items-center gap-8 bg-gray-50 px-4 py-2 rounded-lg border">
               <div className="flex items-center space-x-2">
-                <input 
-                  type="radio" 
-                  id="dealer" 
-                  name="buyer_type" 
-                  checked={buyerType === 'Dealer'} 
-                  onChange={() => setBuyerType('Dealer')} 
+                <input
+                  type="radio"
+                  id="dealer"
+                  name="buyer_type"
+                  checked={buyerType === 'Dealer'}
+                  onChange={() => setBuyerType('Dealer')}
                 />
                 <Label htmlFor="dealer" className="cursor-pointer">Dealer</Label>
               </div>
               <div className="flex items-center space-x-2">
-                <input 
-                  type="radio" 
-                  id="customer" 
-                  name="buyer_type" 
-                  checked={buyerType === 'Customer'} 
-                  onChange={() => setBuyerType('Customer')} 
+                <input
+                  type="radio"
+                  id="customer"
+                  name="buyer_type"
+                  checked={buyerType === 'Customer'}
+                  onChange={() => setBuyerType('Customer')}
                 />
                 <Label htmlFor="customer" className="cursor-pointer">Customer</Label>
               </div>
@@ -493,16 +1035,16 @@ const Quotation = () => {
                 </thead>
                 <tbody>
                   {PRICE_LIST_DATA.map((item, idx) => (
-                    <tr 
-                      key={item.id} 
+                    <tr
+                      key={item.id}
                       className={`border-b last:border-0 hover:bg-gray-50 transition-colors cursor-pointer ${selectedPriceListCategory?.id === item.id ? 'bg-blue-50' : ''}`}
                       onClick={() => setSelectedPriceListCategory(item)}
                     >
                       <td className="px-4 py-3 text-center">
-                        <input 
-                          type="radio" 
-                          checked={selectedPriceListCategory?.id === item.id} 
-                          readOnly 
+                        <input
+                          type="radio"
+                          checked={selectedPriceListCategory?.id === item.id}
+                          readOnly
                           className="h-4 w-4 accent-blue-600"
                         />
                       </td>
@@ -523,7 +1065,7 @@ const Quotation = () => {
   };
 
   const renderProductSelection = () => {
-    const filteredProducts = productsList.filter(p => 
+    const filteredProducts = productsList.filter(p =>
       (searchKeyword === '' || p.name?.toLowerCase().includes(searchKeyword.toLowerCase()) || p.code?.toLowerCase().includes(searchKeyword.toLowerCase())) &&
       (searchCategory === 'All' || p.category === searchCategory)
     );
@@ -552,27 +1094,10 @@ const Quotation = () => {
                 Requirement For: {leadData?.productRequired || 'Items'} (Lead #{leadData?.leadCode || 'N/A'})
               </p>
             </div>
-            <div className="flex items-center gap-8 bg-gray-50 px-4 py-2 rounded-lg border">
-              <div className="flex items-center space-x-2">
-                <input 
-                  type="radio" 
-                  id="dealer" 
-                  name="buyer_type" 
-                  checked={buyerType === 'Dealer'} 
-                  onChange={() => setBuyerType('Dealer')} 
-                />
-                <Label htmlFor="dealer" className="cursor-pointer">Dealer</Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <input 
-                  type="radio" 
-                  id="customer" 
-                  name="buyer_type" 
-                  checked={buyerType === 'Customer'} 
-                  onChange={() => setBuyerType('Customer')} 
-                />
-                <Label htmlFor="customer" className="cursor-pointer">Customer</Label>
-              </div>
+            <div className="flex items-center gap-4">
+              <Button onClick={() => setIsAddProductModalOpen(true)} className="bg-orange-500 hover:bg-orange-600">
+                <Plus className="h-4 w-4 mr-2" /> Add Product
+              </Button>
             </div>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -581,8 +1106,8 @@ const Quotation = () => {
                 <Label>Search Product</Label>
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                  <Input 
-                    placeholder="Enter keyword or code..." 
+                  <Input
+                    placeholder="Enter keyword or code..."
                     className="pl-10"
                     value={searchKeyword}
                     onChange={(e) => setSearchKeyword(e.target.value)}
@@ -610,6 +1135,7 @@ const Quotation = () => {
                 <thead className="bg-gray-50 border-b">
                   <tr>
                     <th className="px-4 py-3 text-left">Sno</th>
+                    <th className="px-4 py-3 text-left">Image</th>
                     <th className="px-4 py-3 text-left">Product Category</th>
                     <th className="px-4 py-3 text-left">Product Code</th>
                     <th className="px-4 py-3 text-left">Price</th>
@@ -625,14 +1151,29 @@ const Quotation = () => {
                   ) : filteredProducts.map((p, idx) => (
                     <tr key={p._id} className="border-b last:border-0 hover:bg-gray-50 transition-colors">
                       <td className="px-4 py-3">{idx + 1}</td>
+                      <td className="px-4 py-3">
+                        <div className="h-10 w-10 rounded border overflow-hidden bg-gray-100 flex items-center justify-center">
+                          {getImageUrl(p.image) ? (
+                            <img
+                              src={getImageUrl(p.image)}
+                              alt={p.name}
+                              className="h-full w-full object-cover"
+                              onError={(e) => { e.target.style.display='none'; e.target.nextSibling.style.display='flex'; }}
+                            />
+                          ) : null}
+                          <div className="h-full w-full items-center justify-center text-gray-300" style={{display: getImageUrl(p.image) ? 'none' : 'flex'}}>
+                            <Package className="h-5 w-5" />
+                          </div>
+                        </div>
+                      </td>
                       <td className="px-4 py-3 font-medium">{p.name}</td>
                       <td className="px-4 py-3 text-gray-500">{p.code || '-'}</td>
                       <td className="px-4 py-3">₹{(p.salePrice || 0).toLocaleString()}</td>
                       <td className="px-4 py-3">{p.unit}</td>
                       <td className="px-4 py-3 text-center">
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
+                        <Button
+                          variant="ghost"
+                          size="sm"
                           className={selectedItems.find(i => i.id === p._id) ? "text-green-600" : "text-blue-600"}
                           onClick={() => handleAddItem(p)}
                         >
@@ -681,36 +1222,54 @@ const Quotation = () => {
               <tbody>
                 {selectedItems.map((item) => (
                   <tr key={item.id} className="border-b last:border-0">
-                    <td className="px-4 py-3">
-                      <div className="font-bold">{item.name}</div>
-                      <div className="text-xs text-gray-500">Code: {item.code || '-'}</div>
+                    <td className="px-4 py-4">
+                      <div className="flex gap-3">
+                        <div className="h-16 w-16 rounded border overflow-hidden bg-gray-50 flex-shrink-0 flex items-center justify-center">
+                          {getImageUrl(item.image) ? (
+                            <img
+                              src={getImageUrl(item.image)}
+                              alt={item.name}
+                              className="h-full w-full object-cover"
+                              onError={(e) => { e.target.style.display='none'; e.target.nextSibling.style.display='flex'; }}
+                            />
+                          ) : null}
+                          <div className="h-full w-full items-center justify-center text-gray-300" style={{display: getImageUrl(item.image) ? 'none' : 'flex'}}>
+                            <Package className="h-8 w-8" />
+                          </div>
+                        </div>
+                        <div>
+                          <div className="font-bold text-gray-900">{item.name}</div>
+                          <div className="text-xs text-gray-500">Code: {item.code}</div>
+                          <div className="text-xs text-gray-400 line-clamp-1">{item.description}</div>
+                        </div>
+                      </div>
                     </td>
                     <td className="px-4 py-3">
-                      <Input 
-                        type="number" 
-                        value={item.price} 
+                      <Input
+                        type="number"
+                        value={item.price}
                         onChange={(e) => handleUpdateItem(item.id, 'price', parseFloat(e.target.value))}
                         className="h-8 text-center"
                       />
                     </td>
                     <td className="px-4 py-3">
-                      <Input 
-                        type="number" 
-                        value={item.quantity} 
+                      <Input
+                        type="number"
+                        value={item.quantity}
                         onChange={(e) => handleUpdateItem(item.id, 'quantity', parseInt(e.target.value))}
                         className="h-8 text-center"
                       />
                     </td>
                     <td className="px-4 py-3">
-                      <Input 
-                        type="number" 
-                        value={item.gst} 
+                      <Input
+                        type="number"
+                        value={item.gst}
                         onChange={(e) => handleUpdateItem(item.id, 'gst', parseInt(e.target.value))}
                         className="h-8 text-center"
                       />
                     </td>
                     <td className="px-4 py-3 text-right font-bold">
-                      ₹{(item.price * item.quantity * (1 + item.gst/100)).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      ₹{(item.price * item.quantity * (1 + item.gst / 100)).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                     </td>
                     <td className="px-4 py-3 text-center">
                       <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500" onClick={() => handleRemoveItem(item.id)}>
@@ -724,7 +1283,7 @@ const Quotation = () => {
                 <tr>
                   <td colSpan={4} className="px-4 py-3 text-right text-lg">Total Amount:</td>
                   <td className="px-4 py-3 text-right text-lg text-blue-600">
-                    ₹{selectedItems.reduce((acc, item) => acc + (item.price * item.quantity * (1 + item.gst/100)), 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    ₹{selectedItems.reduce((acc, item) => acc + (item.price * item.quantity * (1 + item.gst / 100)), 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                   </td>
                   <td></td>
                 </tr>
@@ -737,7 +1296,7 @@ const Quotation = () => {
   );
 
   const renderPreview = () => {
-    const totalAmount = selectedItems.reduce((acc, item) => acc + (item.price * item.quantity * (1 + item.gst/100)), 0);
+    const totalAmount = selectedItems.reduce((acc, item) => acc + (item.price * item.quantity * (1 + item.gst / 100)), 0);
     const subTotal = selectedItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
     const totalGst = totalAmount - subTotal;
 
@@ -754,8 +1313,8 @@ const Quotation = () => {
             <Button variant="outline" className="gap-2">
               <Printer className="h-4 w-4" /> Print
             </Button>
-            <Button 
-              className="bg-blue-600 hover:bg-blue-700 gap-2" 
+            <Button
+              className="bg-blue-600 hover:bg-blue-700 gap-2"
               onClick={handleSendEmail}
               disabled={isSendingEmail}
             >
@@ -768,14 +1327,12 @@ const Quotation = () => {
         <div className="max-w-[210mm] mx-auto bg-white shadow-2xl p-0 overflow-hidden text-gray-800" ref={pdfRef}>
           {/* Main Container with Border */}
           <div className="border border-gray-400 m-4">
-            
             {/* Header Section */}
             <div className="flex border-b border-gray-400">
               {/* Logo Column */}
               <div className="w-[18%] p-4 border-r border-gray-400 flex items-center justify-center">
                 <img src="/logo Semtek.webp" alt="Logo" className="h-16 w-auto object-contain" />
               </div>
-              
               {/* Address Column */}
               <div className="w-[52%] p-4 border-r border-gray-400 space-y-1 flex flex-col justify-center">
                 <div className="text-xl font-serif font-bold tracking-tight text-black">Samtek Machinery</div>
@@ -810,7 +1367,7 @@ const Quotation = () => {
                 <table className="w-full h-full text-[10px]">
                   <tr className="border-b border-gray-400"><td className="p-2 border-r border-gray-400 font-bold bg-gray-50">Quotation No</td><td className="p-2 font-medium">: SM-7653-17-03</td></tr>
                   <tr className="border-b border-gray-400"><td className="p-2 border-r border-gray-400 font-bold bg-gray-50">Quotation Date</td><td className="p-2 font-medium">: {new Date().toLocaleDateString('en-GB')}</td></tr>
-                  <tr className="border-b border-gray-400"><td className="p-2 border-r border-gray-400 font-bold bg-gray-50">Valid Till</td><td className="p-2 font-medium">: {new Date(Date.now() + 30*24*60*60*1000).toLocaleDateString('en-GB')}</td></tr>
+                  <tr className="border-b border-gray-400"><td className="p-2 border-r border-gray-400 font-bold bg-gray-50">Valid Till</td><td className="p-2 font-medium">: {new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB')}</td></tr>
                   <tr><td className="p-2 border-r border-gray-400 font-bold bg-gray-50">Enquiry Ref ID</td><td className="p-2 font-medium">: {leadData?.leadCode || '3135580830'}</td></tr>
                 </table>
               </div>
@@ -862,12 +1419,16 @@ const Quotation = () => {
                                 <div># Phase : Three</div>
                               </div>
                             </div>
-                            <div className="w-24 h-24 border border-gray-200 rounded flex items-center justify-center p-1 shrink-0 bg-white">
-                              {item.image && item.image !== 'default-product.jpg' ? (
-                                <img src={item.image} alt="Product" className="max-w-full max-h-full object-contain" />
-                              ) : (
-                                <Package className="h-8 w-8 text-gray-200" />
-                              )}
+                            <div className="w-24 h-24 border border-gray-200 rounded flex items-center justify-center p-1 shrink-0 bg-white overflow-hidden">
+                              {getImageUrl(item.image) ? (
+                                <img
+                                  src={getImageUrl(item.image)}
+                                  alt="Product"
+                                  className="max-w-full max-h-full object-contain"
+                                  onError={(e) => { e.target.style.display='none'; e.target.nextSibling.style.display='block'; }}
+                                />
+                              ) : null}
+                              <Package className="h-8 w-8 text-gray-200" style={{display: getImageUrl(item.image) ? 'none' : 'block'}} />
                             </div>
                           </div>
                         </td>
@@ -880,7 +1441,7 @@ const Quotation = () => {
                           <div className="text-[8px] text-gray-400 mt-1 italic">Piece</div>
                         </td>
                         <td className="p-2 border-r border-gray-400 align-top font-bold">{item.gst}%</td>
-                        <td className="p-2 align-top text-right font-black">₹{(item.price * item.quantity * (1 + item.gst/100)).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                        <td className="p-2 align-top text-right font-black">₹{(item.price * item.quantity * (1 + item.gst / 100)).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -888,7 +1449,7 @@ const Quotation = () => {
               </div>
 
               {/* Totals Section */}
-              <div className="flex justify-end">
+              <div className="flex justify-end pdf-section">
                 <div className="w-1/2">
                   <table className="w-full text-[10px] font-bold">
                     <tr>
@@ -915,9 +1476,9 @@ const Quotation = () => {
                 <div className="border border-gray-300 pdf-section">
                   <div className="bg-blue-100 p-2 text-[10px] font-black border-b border-gray-300 uppercase tracking-widest text-blue-900">TERMS & CONDITIONS</div>
                   <div className="p-4 text-[10px] text-gray-600 leading-relaxed italic">
-                    1. 18% GST Extra as applicable.<br/>
-                    2. Payment: 50% Advance, balance before dispatch.<br/>
-                    3. Delivery: Within 2-3 weeks from confirmed order.<br/>
+                    1. 18% GST Extra as applicable.<br />
+                    2. Payment: 50% Advance, balance before dispatch.<br />
+                    3. Delivery: Within 2-3 weeks from confirmed order.<br />
                     4. Transport: Extra as per actual distance.
                   </div>
                 </div>
@@ -961,7 +1522,6 @@ const Quotation = () => {
 
             </div>
           </div>
-          
           {/* Main Page Footer */}
           <div className="bg-white border-t border-gray-200 py-4 px-6">
             <div className="grid grid-cols-3 gap-4 text-[9px] font-bold text-blue-900 uppercase text-center">
@@ -996,8 +1556,8 @@ const Quotation = () => {
             <Button variant="outline" className="gap-2">
               <Printer className="h-4 w-4" /> Print
             </Button>
-            <Button 
-              className="bg-blue-600 hover:bg-blue-700 gap-2" 
+            <Button
+              className="bg-blue-600 hover:bg-blue-700 gap-2"
               onClick={handleSendEmail}
               disabled={isSendingEmail}
             >
@@ -1071,7 +1631,7 @@ const Quotation = () => {
                   <tr>
                     <th className="px-4 py-3 text-center border-r border-blue-700">CAPACITY</th>
                     <th className="px-4 py-3 text-center border-r border-blue-700">Capacity</th>
-                    <th className="px-4 py-3 text-right">PRICE<br/><span className="text-[10px] font-normal">(WITHOUT MOTOR)</span></th>
+                    <th className="px-4 py-3 text-right">PRICE<br /><span className="text-[10px] font-normal">(WITHOUT MOTOR)</span></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1132,6 +1692,7 @@ const Quotation = () => {
       {step === 'builder' && renderBuilder()}
       {step === 'preview' && renderPreview()}
       {step === 'price_list_preview' && renderPriceListPreview()}
+      {renderAddProductModal()}
     </div>
   );
 };

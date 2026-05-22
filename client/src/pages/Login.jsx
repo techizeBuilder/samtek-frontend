@@ -42,7 +42,11 @@ export default function Login() {
           title: "Welcome back!",
           description: `Login successful, ${result.user?.fullName || "User"}!`,
         });
-        navigate("/");
+        if (result.user?.role === 'Store Head' || result.user?.role === 'Store Employee') {
+          navigate("/store-dashboard");
+        } else {
+          navigate("/");
+        }
       } else {
         const errorMsg = result?.message || "Login failed";
         setError(errorMsg);

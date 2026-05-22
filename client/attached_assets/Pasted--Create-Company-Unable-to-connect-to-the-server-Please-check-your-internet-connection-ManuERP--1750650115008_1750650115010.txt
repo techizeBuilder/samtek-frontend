@@ -1,0 +1,174 @@
+
+Create Company: Unable to connect to the server. Please check your internet connection.
+ManuERP
+Enterprise Suite
+
+×
+
+Dashboard
+
+Orders
+
+Manufacturing
+
+Dispatches
+
+Sales
+
+Accounts
+
+Inventory
+
+Customers
+
+Suppliers
+
+Companies
+
+Purchases
+
+Profile
+
+User Management
+
+Settings
+
+Logout
+
+
+3
+Toggle theme
+
+AD
+Companies
+Add Company
+Search companies by name...
+
+All Cities
+
+All Units
+Refresh
+Company Management
+Company Details	Unit & Location	Contact Info	Legal Info	Cutoff Time	Actions
+jeetu jection
+plot No 51, Vijay Nagar-2,ved darwaja,surat katargam road
+rw
+surat, Gujarat
+PIN: 395004
+5454768798
+inventory@sunrisefoods.in
+GST: 27AAAAP0267H2ZN
+FSSAI: 434343
+18:00	
+TechCorp Industries
+123 Industrial Area, Sector 15
+Manufacturing Unit A
+Delhi, Delhi
+PIN: 110001
++91-9876543210
+contact@techcorp.com
+GST: 07AABCT1234H1Z5
+FSSAI: 10019022000135
+18:00	
+Global Manufacturing Co.
+456 Tech Park, Phase 2
+Production Facility B
+Bangalore, Karnataka
+PIN: 560001
++91-9876543211
+info@globalmanuf.com
+GST: 29AABCG1234H2Z6
+FSSAI: 10019022000136
+17:30	
+Precision Engineering Ltd.
+789 Engineering Complex, Block A
+Assembly Unit C
+Mumbai, Maharashtra
+PIN: 400001
++91-9876543212
+admin@precision.com
+GST: 27AABCP1234H3Z7
+FSSAI: 10019022000137
+19:00	
+SafeGuard Systems Pvt Ltd
+321 Quality Street, Industrial Zone
+Quality Control Unit
+Chennai, Tamil Nadu
+PIN: 600001
++91-9876543213
+quality@safeguard.com
+GST: 33AABCS1234H4Z8
+FSSAI: 10019022000138
+18:30	
+Innovation Labs India
+654 R&D Campus, Technology Park
+Research & Development
+Hyderabad, Telangana
+PIN: 500001
++91-9876543214
+research@innovationlabs.com
+GST: 36AABCI1234H5Z9
+FSSAI: 10019022000139
+17:00	
+EcoPackage Solutions
+987 Green Zone, Eco Industrial Area
+Packaging Unit
+Jaipur, Rajasthan
+PIN: 302001
++91-9876543215
+packaging@ecopackage.com
+GST: 08AABCE1234H6ZA
+FSSAI: 10019022000140
+16:30	
+SwiftMove Logistics
+147 Transport Nagar, Logistics Park
+Logistics Hub
+Kolkata, West Bengal
+PIN: 700001
++91-9876543216
+logistics@swiftmove.com
+GST: 19AABCS1234H7ZB
+20:00	
+Accurate Testing Services
+258 Science City, Lab Complex
+Testing Laboratory
+Ahmedabad, Gujarat
+PIN: 380001
++91-9876543217
+lab@accuratetest.com
+GST: 24AABCA1234H8ZC
+FSSAI: 10019022000141
+18:00	
+Add New Company
+Company Information
+Unit Name *
+rw
+Company Name *
+jeetu jection
+Mobile Number *
+5454768798
+Email Address *
+inventory@sunrisefoods.in
+Location Information
+Address *
+plot No 51, Vijay Nagar-2,ved darwaja,surat
+katargam road
+PIN Code *
+395004
+City *
+surat
+State *
+Gujarat
+Country *
+India
+Legal Information
+GST Number *
+27AAAAP0267H2ZN
+FSSAI Number
+434343
+Timing Information
+Order Cutoff Time *
+18:00
+Cancel
+Create Company
+CloseToastDescriptionToast

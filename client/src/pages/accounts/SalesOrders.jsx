@@ -316,14 +316,38 @@ const SalesOrders = () => {
                                 </TableBody>
                             </Table>
                         </div>
-                        <div className="flex justify-end gap-3 pt-4 border-t">
-                            <Button variant="outline" onClick={() => setViewOrder(null)}>Close</Button>
-                            {viewOrder?.accountApproval?.status !== 'approved' && viewOrder?.accountApproval?.status !== 'rejected' && (
-                                <div className="flex gap-2">
-                                    <Button variant="destructive" onClick={() => { setRejectingOrder(viewOrder); setViewOrder(null); }}>Reject</Button>
-                                    <Button className="bg-slate-900 text-white" onClick={() => { setApprovingOrder(viewOrder); setViewOrder(null); }}>Approve Now</Button>
-                                </div>
-                            )}
+                        <div className="flex justify-between items-center pt-4 border-t">
+                            <div>
+                                {viewOrder?.quotation && (
+                                    <Button
+                                        variant="outline"
+                                        className="text-blue-600 border-blue-200 bg-blue-50 hover:bg-blue-100"
+                                        onClick={() => {
+                                            const base64String = viewOrder.quotation;
+                                            if (base64String.startsWith('data:application/pdf')) {
+                                                const win = window.open();
+                                                win.document.write('<iframe src="' + base64String + '" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>');
+                                            } else {
+                                                const link = document.createElement('a');
+                                                link.href = viewOrder.quotation;
+                                                link.download = `Quotation_${viewOrder.orderCode}.pdf`;
+                                                link.click();
+                                            }
+                                        }}
+                                    >
+                                        <FileText className="w-4 h-4 mr-2" /> View Quotation
+                                    </Button>
+                                )}
+                            </div>
+                            <div className="flex gap-3">
+                                <Button variant="outline" onClick={() => setViewOrder(null)}>Close</Button>
+                                {viewOrder?.accountApproval?.status !== 'approved' && viewOrder?.accountApproval?.status !== 'rejected' && (
+                                    <div className="flex gap-2">
+                                        <Button variant="destructive" onClick={() => { setRejectingOrder(viewOrder); setViewOrder(null); }}>Reject</Button>
+                                        <Button className="bg-slate-900 text-white" onClick={() => { setApprovingOrder(viewOrder); setViewOrder(null); }}>Approve Now</Button>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
                 </DialogContent>
@@ -361,19 +385,19 @@ const SalesOrders = () => {
                     <div className="space-y-4 py-4">
                         <div className="space-y-1.5">
                             <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Rejection Reason (Required)</label>
-                            <Input 
-                                placeholder="Enter rejection comment..." 
-                                value={remarks} 
-                                onChange={(e) => setRemarks(e.target.value)} 
+                            <Input
+                                placeholder="Enter rejection comment..."
+                                value={remarks}
+                                onChange={(e) => setRemarks(e.target.value)}
                                 className={cn(!remarks && "border-red-300 focus-visible:ring-red-400")}
                             />
                         </div>
                         <div className="flex gap-3 pt-2">
                             <Button variant="outline" className="flex-1" onClick={() => { setRejectingOrder(null); setRemarks(''); }}>Cancel</Button>
-                            <Button 
-                                variant="destructive" 
-                                className="flex-1" 
-                                onClick={() => rejectMutation.mutate(rejectingOrder._id)} 
+                            <Button
+                                variant="destructive"
+                                className="flex-1"
+                                onClick={() => rejectMutation.mutate(rejectingOrder._id)}
                                 disabled={rejectMutation.isLoading || !remarks.trim()}
                             >
                                 {rejectMutation.isLoading ? 'Rejecting...' : 'Confirm Reject'}

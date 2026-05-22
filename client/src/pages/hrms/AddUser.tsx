@@ -32,6 +32,7 @@ export default function AddUser() {
     'Auditor',
     'Research Development Employee',
     'Complaint Management Employee',
+    'Store Employee',
   ];
 
   const ROLE_MODULES_CONFIG: Record<string, { moduleName: string; features: { key: string; label: string }[] }> = {
@@ -95,6 +96,13 @@ export default function AddUser() {
       moduleName: "dashboard",
       features: [
         { key: "dashboard", label: "Complaints" }
+      ]
+    },
+    "Store Employee": {
+      moduleName: "store",
+      features: [
+        { key: "dashboard", label: "Dashboard" },
+        { key: "orders", label: "Orders" }
       ]
     }
   };

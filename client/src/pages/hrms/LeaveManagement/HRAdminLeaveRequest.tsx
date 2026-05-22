@@ -112,10 +112,10 @@ export default function HRAdminLeaveRequest() {
                     <TableCell>
                       <div className="flex items-center gap-3">
                         <div className="h-9 w-9 rounded-full bg-[#49A7F5]/10 flex items-center justify-center text-black font-bold text-xs">
-                          {request.employee?.name?.charAt(0) || 'E'}
+                          {(request.employee?.fullName || request.employee?.username || 'E').charAt(0)}
                         </div>
                         <div>
-                          <p className="font-medium text-slate-900">{request.employee?.name}</p>
+                          <p className="font-medium text-slate-900">{request.employee?.fullName || request.employee?.username || 'Unknown Employee'}</p>
                           <p className="text-xs text-slate-500">{request.employee?.email}</p>
                         </div>
                       </div>

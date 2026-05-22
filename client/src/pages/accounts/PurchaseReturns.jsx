@@ -209,6 +209,8 @@ const PurchaseReturns = () => {
                             <TableRow>
                                 <TableHead>Date</TableHead>
                                 <TableHead>Vendor</TableHead>
+                                <TableHead>Item(s) Returned</TableHead>
+                                <TableHead className="text-center">Qty</TableHead>
                                 <TableHead>Reason</TableHead>
                                 <TableHead>Amount</TableHead>
                                 <TableHead>Status</TableHead>
@@ -218,30 +220,60 @@ const PurchaseReturns = () => {
                         <TableBody>
                             {isLoading ? (
                                 <TableRow>
-                                    <TableCell colSpan={6} className="text-center py-8 text-slate-400">
+                                    <TableCell colSpan={8} className="text-center py-8 text-slate-400">
                                         <RotateCw className="animate-spin inline mr-2 w-4 h-4" /> Loading...
                                     </TableCell>
                                 </TableRow>
                             ) : returns.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={6} className="text-center py-8 text-slate-400">No purchase returns found</TableCell>
+                                    <TableCell colSpan={8} className="text-center py-8 text-slate-400">No purchase returns found</TableCell>
                                 </TableRow>
                             ) : returns.map((ret) => (
-                                <TableRow key={ret._id}>
+                                <TableRow key={ret._id} className="hover:bg-slate-50/50 transition-colors">
                                     <TableCell>{safeFormat(ret.returnDate)}</TableCell>
-                                    <TableCell className="font-medium">{ret.vendor?.supplierName || '—'}</TableCell>
+                                    <TableCell className="font-semibold text-slate-900">{ret.vendor?.supplierName || '—'}</TableCell>
+                                    <TableCell className="font-medium text-slate-800">
+                                        {ret.items && ret.items.length > 0 ? (
+                                            <div className="flex flex-col gap-1">
+                                                {ret.items.map((i, idx) => (
+                                                    <span key={idx} className="text-xs bg-slate-100/80 text-slate-700 px-2.5 py-0.5 rounded-full border border-slate-200 w-fit font-medium">
+                                                        {i.itemName || i.item?.name || 'Item'}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        ) : '—'}
+                                    </TableCell>
+                                    <TableCell className="text-center font-bold text-slate-600">
+                                        {ret.items && ret.items.length > 0 ? (
+                                            <div className="flex flex-col">
+                                                {ret.items.map((i, idx) => (
+                                                    <span key={idx} className="text-xs text-slate-600 block">
+                                                        {i.quantity} {ret.unit || 'pcs'}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        ) : '—'}
+                                    </TableCell>
                                     <TableCell className="text-slate-500 max-w-[200px] truncate">{ret.reason}</TableCell>
-                                    <TableCell className="font-bold">₹{ret.totalAmount?.toLocaleString()}</TableCell>
+                                    <TableCell className="font-bold text-orange-600">₹{ret.totalAmount?.toLocaleString()}</TableCell>
                                     <TableCell>
-                                        <Badge variant="outline" className="text-green-600 border-green-200 bg-green-50">Recorded</Badge>
+                                        {ret.reason && ret.reason.toLowerCase().includes('qc rejected') ? (
+                                            <Badge variant="outline" className="text-rose-600 border-rose-200 bg-rose-50/50 font-bold px-2 py-0.5 shadow-sm">
+                                                <AlertCircle className="w-3 h-3 mr-1 text-rose-500" /> QC Rejected
+                                            </Badge>
+                                        ) : (
+                                            <Badge variant="outline" className="text-emerald-600 border-emerald-200 bg-emerald-50 font-bold px-2 py-0.5 shadow-sm">
+                                                Recorded
+                                            </Badge>
+                                        )}
                                     </TableCell>
                                     <TableCell>
                                         <div className="flex gap-1">
-                                            <Button variant="ghost" size="sm" onClick={() => setViewReturn(ret)}>
-                                                <Eye className="w-4 h-4" />
+                                            <Button variant="ghost" size="sm" onClick={() => setViewReturn(ret)} className="hover:bg-slate-100">
+                                                <Eye className="w-4 h-4 text-slate-600" />
                                             </Button>
-                                            <Button variant="ghost" size="sm" onClick={() => setEditReturn({ ...ret, returnDate: safeFormatInput(ret.returnDate) })}>
-                                                <Pencil className="w-4 h-4" />
+                                            <Button variant="ghost" size="sm" onClick={() => setEditReturn({ ...ret, returnDate: safeFormatInput(ret.returnDate) })} className="hover:bg-slate-100">
+                                                <Pencil className="w-4 h-4 text-slate-600" />
                                             </Button>
                                         </div>
                                     </TableCell>

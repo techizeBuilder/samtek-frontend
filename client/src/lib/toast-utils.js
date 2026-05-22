@@ -125,7 +125,7 @@ export const categorizeError = (error) => {
       category: ERROR_CATEGORIES.SERVER,
       severity: ERROR_SEVERITY.HIGH,
       title: 'Server Error',
-      description: 'An unexpected server error occurred. Our team has been notified.',
+      description: error.message || 'An unexpected server error occurred.',
       action: 'Try Again',
       icon: '🔧'
     };
