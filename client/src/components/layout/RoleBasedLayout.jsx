@@ -1,7 +1,6 @@
 import React from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import MainLayout from './MainLayout';
-import UnitManagerLayout from './UnitManagerLayout';
 
 const RoleBasedLayout = ({ children, requiredRole = null }) => {
   const { user, loading } = useAuth();
@@ -20,8 +19,18 @@ const RoleBasedLayout = ({ children, requiredRole = null }) => {
 
   // Check role restriction if specified - STRICT role checking
   // Exception: Super User can access all pages regardless of role restriction
-  if (requiredRole && user.role !== requiredRole && user.role !== 'Super User') {
-    const Layout = user.role === 'Unit Manager' ? UnitManagerLayout : MainLayout;
+  const isAuthorized = !requiredRole || 
+    user.role === 'Super User' || 
+    user.role === requiredRole ||
+    (requiredRole === 'Sales' && (user.role === 'Sales Employee' || user.role === 'Sales Head')) ||
+    (requiredRole === 'Dispatch' && (user.role === 'Dispatch Employee' || user.role === 'Dispatch Head')) ||
+    (requiredRole === 'Production' && (user.role === 'Production Employee' || user.role === 'Production Head')) ||
+    (requiredRole === 'Packing' && (user.role === 'Packing Employee' || user.role === 'Packing Head')) ||
+    (requiredRole === 'Accounts' && (user.role === 'Account Employee' || user.role === 'Accounts Head')) ||
+    (requiredRole === 'Employee' && (user.role.endsWith('Employee') || user.role === 'Employee'));
+
+  if (!isAuthorized) {
+    const Layout = MainLayout;
     return (
       <Layout>
         <div className="flex items-center justify-center h-64">
@@ -36,8 +45,8 @@ const RoleBasedLayout = ({ children, requiredRole = null }) => {
     );
   }
 
-  // Use UnitManagerLayout for Unit Manager, MainLayout for others
-  const Layout = user.role === 'Unit Manager' ? UnitManagerLayout : MainLayout;
+  // Use MainLayout for all roles
+  const Layout = MainLayout;
   return <Layout>{children}</Layout>;
 };
 

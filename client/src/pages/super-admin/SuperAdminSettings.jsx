@@ -465,7 +465,7 @@ export default function SuperAdminSettings() {
                     { role: 'Unit Manager', key: 'unitManager', description: 'Department and unit managers' },
                     { role: 'Production', key: 'production', description: 'Production staff and managers' },
                     { role: 'Accounts', key: 'accounts', description: 'Accounting and finance team' },
-                    { role: 'Super Admin', key: 'superAdmin', description: 'System administrators' }
+                    { role: 'Superadmin', key: 'superAdmin', description: 'System administrators' }
                   ].map((roleInfo) => (
                     <div key={roleInfo.key} className="flex items-center justify-between p-4 border rounded-lg">
                       <div className="flex-1">

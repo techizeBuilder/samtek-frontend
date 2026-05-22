@@ -18,12 +18,12 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from '
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import ProductSelector from '@/components/products/ProductSelector';
 import { useToast } from '@/hooks/use-toast';
-import { 
-  Search, 
-  RefreshCw, 
-  Eye, 
+import {
+  Search,
+  RefreshCw,
+  Eye,
   Edit,
-  Trash2, 
+  Trash2,
   MoreHorizontal,
   FileText,
   Calendar,
@@ -39,15 +39,16 @@ import {
   RotateCcw,
   Plus,
   Save,
-  Loader2
+  Loader2,
+  ExternalLink
 } from 'lucide-react';
 
 const MyOrders = () => {
   const { hasFeatureAccess, canPerformAction } = usePermissions();
-  
+
   // Check if user has access to orders feature (check sales.orders, sales.myIndent, and orders.indent)
   const hasOrdersAccess = hasFeatureAccess('sales', 'orders', 'view') || hasFeatureAccess('sales', 'myIndent', 'view') || hasFeatureAccess('orders', 'indent', 'view');
-  
+
   if (!hasOrdersAccess) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -76,6 +77,8 @@ const MyOrders = () => {
     remarks: '',
     selectedProducts: []
   });
+
+
 
 
 
@@ -135,6 +138,8 @@ const MyOrders = () => {
 
 
 
+
+
   // Fetch orders from API with pagination
   const { data: ordersResponse, isLoading: ordersLoading, refetch: refetchOrders } = useQuery({
     queryKey: ['/api/sales/orders', currentPage, itemsPerPage, searchTerm, statusFilter],
@@ -170,8 +175,8 @@ const MyOrders = () => {
 
   const orderPermission = orderPermissionResponse?.data || { allowed: true, message: 'Loading...' };
   const canCreateOrders = orderPermission.allowed;
-  const cutoffMessage = orderPermission.allowed ? 
-    `Orders allowed until ${orderPermission.cutoffTime || 'N/A'}` : 
+  const cutoffMessage = orderPermission.allowed ?
+    `Orders allowed until ${orderPermission.cutoffTime || 'N/A'}` :
     orderPermission.message;
 
   // Create order mutation
@@ -221,10 +226,10 @@ const MyOrders = () => {
 
   const handleCreate = () => {
     if (!formData.customerId || formData.selectedProducts.length === 0) {
-      toast({ 
-        title: "Validation Error", 
-        description: "Please select a customer and products", 
-        variant: "destructive" 
+      toast({
+        title: "Validation Error",
+        description: "Please select a customer and products",
+        variant: "destructive"
       });
       return;
     }
@@ -256,14 +261,14 @@ const MyOrders = () => {
       };
       setFormData({ ...formData, selectedProducts: updatedProducts });
     } else {
-      setFormData({ 
-        ...formData, 
-        selectedProducts: [...formData.selectedProducts, { 
-          ...product, 
+      setFormData({
+        ...formData,
+        selectedProducts: [...formData.selectedProducts, {
+          ...product,
           quantity: 1,
           price: product.price || product.sellingPrice || 0,
           unitPrice: product.price || product.sellingPrice || 0
-        }] 
+        }]
       });
     }
   };
@@ -371,9 +376,9 @@ const MyOrders = () => {
       }))
     };
 
-    updateOrderMutation.mutate({ 
-      orderId: selectedOrder._id, 
-      orderData 
+    updateOrderMutation.mutate({
+      orderId: selectedOrder._id,
+      orderData
     });
   };
 
@@ -488,14 +493,14 @@ const MyOrders = () => {
         };
         setLocalFormData({ ...localFormData, selectedProducts: updatedProducts });
       } else {
-        setLocalFormData({ 
-          ...localFormData, 
-          selectedProducts: [...localFormData.selectedProducts, { 
-            ...product, 
+        setLocalFormData({
+          ...localFormData,
+          selectedProducts: [...localFormData.selectedProducts, {
+            ...product,
             quantity: 1,
             price: product.price || product.sellingPrice || 0,
             unitPrice: product.price || product.sellingPrice || 0
-          }] 
+          }]
         });
       }
     };
@@ -511,8 +516,8 @@ const MyOrders = () => {
       const numQuantity = Number(quantity);
       setLocalFormData(prev => ({
         ...prev,
-        selectedProducts: prev.selectedProducts.map(product => 
-          product._id === productId 
+        selectedProducts: prev.selectedProducts.map(product =>
+          product._id === productId
             ? { ...product, quantity: numQuantity, totalPrice: product.price * numQuantity }
             : product
         )
@@ -528,7 +533,7 @@ const MyOrders = () => {
         });
         return;
       }
-      
+
       onUpdate({
         ...localFormData,
         remarks: localFormData.remarks
@@ -572,9 +577,8 @@ const MyOrders = () => {
                         }}
                       >
                         <Check
-                          className={`mr-2 h-4 w-4 ${
-                            localFormData.customerName?.toLowerCase() === customer.name.toLowerCase() ? "opacity-100" : "opacity-0"
-                          }`}
+                          className={`mr-2 h-4 w-4 ${localFormData.customerName?.toLowerCase() === customer.name.toLowerCase() ? "opacity-100" : "opacity-0"
+                            }`}
                         />
                         {customer.name}
                       </CommandItem>
@@ -612,13 +616,13 @@ const MyOrders = () => {
             id="editRemarks"
             placeholder="Add any special instructions or notes..."
             value={localFormData.remarks}
-            onChange={(e) => setLocalFormData({...localFormData, remarks: e.target.value})}
+            onChange={(e) => setLocalFormData({ ...localFormData, remarks: e.target.value })}
             rows={3}
           />
         </div>
 
         <div className="flex gap-3 pt-4">
-          <Button 
+          <Button
             onClick={handleEditSubmit}
             disabled={updateOrderMutation.isPending}
             className="bg-blue-600 hover:bg-blue-700 text-white"
@@ -654,16 +658,16 @@ const MyOrders = () => {
             <h1 className="text-lg font-semibold">My Orders</h1>
           </div>
           <div className="flex items-center space-x-2">
-            <Button 
-              onClick={() => setIsCreateModalOpen(true)} 
+            <Button
+              onClick={() => setIsCreateModalOpen(true)}
               className="bg-white text-blue-600 hover:bg-gray-100 text-sm px-3 py-2"
               disabled={!canCreateOrders}
               title={!canCreateOrders ? cutoffMessage : "Create new order"}
             >
               <Plus className="h-4 w-4" />
             </Button>
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               className="bg-white/10 border-white/20 text-white hover:bg-white/20 text-sm px-3 py-2"
               onClick={() => refetchOrders()}
             >
@@ -671,7 +675,7 @@ const MyOrders = () => {
             </Button>
           </div>
         </div>
-        
+
         {/* Desktop Layout */}
         <div className="hidden sm:flex sm:items-center sm:justify-between">
           <div className="flex items-center space-x-3">
@@ -680,8 +684,8 @@ const MyOrders = () => {
             <span className="hidden lg:inline text-blue-100 text-sm">Manage and track your sales orders</span>
           </div>
           <div className="flex items-center space-x-3">
-            <Button 
-              onClick={() => setIsCreateModalOpen(true)} 
+            <Button
+              onClick={() => setIsCreateModalOpen(true)}
               className={`bg-white text-blue-600 hover:bg-gray-100 ${!canCreateOrders ? 'opacity-50 cursor-not-allowed' : ''}`}
               disabled={!canCreateOrders}
               title={cutoffMessage}
@@ -689,8 +693,8 @@ const MyOrders = () => {
               <Plus className="h-4 w-4 mr-2" />
               Create Order
             </Button>
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               className="bg-white/10 border-white/20 text-white hover:bg-white/20 text-sm px-3 py-2"
               onClick={() => refetchOrders()}
             >
@@ -713,7 +717,7 @@ const MyOrders = () => {
           </div>
         </div>
       )}
-      
+
       {/* Cutoff time banner removed - status now shown via button tooltips */}
 
       {/* Stats Cards */}
@@ -750,7 +754,7 @@ const MyOrders = () => {
       {/* Table */}
       <div className="bg-white border border-gray-200 rounded-lg sm:rounded-lg p-3 sm:p-6 mx-0 sm:mx-0">
         <h3 className="text-lg font-medium mb-3 sm:mb-4 px-0 sm:px-0">Order List</h3>
-        
+
         {/* Mobile Card View */}
         <div className="block sm:hidden">
           {ordersLoading ? (
@@ -771,68 +775,77 @@ const MyOrders = () => {
                 <span className="w-20 text-center">STATUS</span>
                 <span className="w-24 text-center">ACTIONS</span>
               </div>
-              
+
               {/* Mobile Cards */}
               <div className="space-y-0 border border-gray-200 border-t-0 rounded-b-lg overflow-hidden">
                 {orders.map((order, index) => (
-              <div key={order._id} className={`p-2 ${index !== orders.length - 1 ? 'border-b border-gray-200' : ''} bg-white hover:bg-gray-50:bg-gray-700`}>
-                <div className="flex justify-between items-center">
-                  <div className="flex-1 min-w-0 pr-2">
-                    <div className="font-medium text-sm text-gray-900 mb-1">
-                      {order.customer?.name || 'Unknown Customer'}
-                    </div>
-                    <div className="text-xs text-gray-500 font-mono mb-1">
-                      {order.orderCode || order._id}
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      {new Date(order.orderDate).toLocaleDateString()} • Qty: {order.products?.reduce((sum, p) => sum + (p.quantity || 0), 0) || 0}
-                    </div>
-                  </div>
-                  <div className="w-20 flex justify-center">
-                    <Badge variant={getStatusVariant(order.status)} className="text-xs">
-                      {order.status}
-                    </Badge>
-                  </div>
-                  <div className="w-24 flex justify-center items-center gap-0.5">
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      className="h-6 w-6 p-0"
-                      onClick={() => handleView(order)}
-                    >
-                      <Eye className="h-3 w-3" />
-                    </Button>
+                  <div key={order._id} className={`p-2 ${index !== orders.length - 1 ? 'border-b border-gray-200' : ''} bg-white hover:bg-gray-50`}>
+                    <div className="flex justify-between items-center">
+                      <div className="flex-1 min-w-0 pr-2">
+                        <div className="font-medium text-sm text-gray-900 mb-1">
+                          {order.customer?.name || 'Unknown Customer'}
+                        </div>
+                        <div className="text-xs text-gray-500 font-mono mb-1">
+                          {order.orderCode || order._id}
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          {new Date(order.orderDate).toLocaleDateString()} • Qty: {order.products?.reduce((sum, p) => sum + (p.quantity || 0), 0) || 0}
+                        </div>
+                      </div>
+                      <div className="w-20 flex justify-center">
+                        <Badge variant={getStatusVariant(order.status)} className="text-xs">
+                          {order.status}
+                        </Badge>
+                      </div>
+                      <div className="w-24 flex justify-center items-center gap-0.5">
+                        {order.status === 'pending' && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 p-0 text-green-600 hover:text-green-700 hover:bg-green-50"
+                            onClick={() => handleStatusUpdate(order._id, 'approved')}
+                            title="Approve & Finalize"
+                          >
+                            <Check className="h-4 w-4" />
+                          </Button>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0"
+                          onClick={() => handleView(order)}
+                        >
+                          <Eye className="h-3 w-3" />
+                        </Button>
 
-                    {(canPerformAction('sales', 'orders', 'edit') || canPerformAction('sales', 'myIndent', 'edit') || canPerformAction('orders', 'indent', 'edit')) && (
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        className="h-6 w-6 p-0"
-                        onClick={() => handleEdit(order)}
-                        disabled={!canCreateOrders}
-                        title={!canCreateOrders ? cutoffMessage : "Edit order"}
-                      >
-                        <Edit className="h-3 w-3" />
-                      </Button>
-                    )}
+                        {(canPerformAction('sales', 'orders', 'edit') || canPerformAction('sales', 'myIndent', 'edit') || canPerformAction('orders', 'indent', 'edit')) && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 w-6 p-0"
+                            onClick={() => handleEdit(order)}
+                            disabled={!canCreateOrders}
+                            title={!canCreateOrders ? cutoffMessage : "Edit order"}
+                          >
+                            <Edit className="h-3 w-3" />
+                          </Button>
+                        )}
 
-                    {(canPerformAction('sales', 'orders', 'delete') || canPerformAction('sales', 'myIndent', 'delete') || canPerformAction('orders', 'indent', 'delete')) && (
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        className="h-6 w-6 p-0 text-red-600 hover:text-red-700"
-                        onClick={() => handleDelete(order._id)}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                    )}
+                        {(canPerformAction('sales', 'orders', 'delete') || canPerformAction('sales', 'myIndent', 'delete') || canPerformAction('orders', 'indent', 'delete')) && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 w-6 p-0 text-red-600 hover:text-red-700"
+                            onClick={() => handleDelete(order._id)}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                </div>
+                ))}
               </div>
-            ))}
-          </div>
-
-
             </>
           )}
         </div>
@@ -872,56 +885,67 @@ const MyOrders = () => {
               </TableHeader>
               <TableBody>
                 {orders.map((order) => (
-                <TableRow key={order._id} className="hover:bg-gray-50:bg-gray-700">
-                  <TableCell className="font-medium text-sm font-mono">{order.orderCode || order._id}</TableCell>
-                  <TableCell className="text-sm">
-                    <div className="font-medium">{order.customer?.name || 'Unknown Customer'}</div>
-                  </TableCell>
-                  <TableCell className="text-sm">{new Date(order.orderDate).toLocaleDateString()}</TableCell>
-                  <TableCell>
-                    <Badge variant={getStatusVariant(order.status)} className="text-xs">
-                      {getStatusIcon(order.status)}
-                      <span className="ml-1">{order.status}</span>
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-sm">{order.products?.reduce((sum, p) => sum + (p.quantity || 0), 0) || 0}</TableCell>
-                  {(canPerformAction('sales', 'orders', 'edit') || canPerformAction('sales', 'myIndent', 'edit') || canPerformAction('orders', 'indent', 'edit') || canPerformAction('sales', 'orders', 'delete') || canPerformAction('sales', 'myIndent', 'delete') || canPerformAction('orders', 'indent', 'delete')) && (
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          className="h-8 w-8 p-0"
-                          onClick={() => handleView(order)}
-                        >
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                        {(canPerformAction('sales', 'orders', 'edit') || canPerformAction('sales', 'myIndent', 'edit') || canPerformAction('orders', 'indent', 'edit')) && (
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            className="h-8 w-8 p-0"
-                            onClick={() => handleEdit(order)}
-                            disabled={!canCreateOrders}
-                            title={!canCreateOrders ? cutoffMessage : "Edit order"}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                        )}
-                        {(canPerformAction('sales', 'orders', 'delete') || canPerformAction('sales', 'myIndent', 'delete') || canPerformAction('orders', 'indent', 'delete')) && (
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
-                            onClick={() => handleDelete(order._id)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        )}
-                      </div>
+                  <TableRow key={order._id} className="hover:bg-gray-50:bg-gray-700">
+                    <TableCell className="font-medium text-sm font-mono">{order.orderCode || order._id}</TableCell>
+                    <TableCell className="text-sm">
+                      <div className="font-medium">{order.customer?.name || 'Unknown Customer'}</div>
                     </TableCell>
-                  )}
-                </TableRow>
+                    <TableCell className="text-sm">{new Date(order.orderDate).toLocaleDateString()}</TableCell>
+                    <TableCell>
+                      <Badge variant={getStatusVariant(order.status)} className="text-xs">
+                        {getStatusIcon(order.status)}
+                        <span className="ml-1">{order.status}</span>
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-sm">{order.products?.reduce((sum, p) => sum + (p.quantity || 0), 0) || 0}</TableCell>
+                    {(canPerformAction('sales', 'orders', 'edit') || canPerformAction('sales', 'myIndent', 'edit') || canPerformAction('orders', 'indent', 'edit') || canPerformAction('sales', 'orders', 'delete') || canPerformAction('sales', 'myIndent', 'delete') || canPerformAction('orders', 'indent', 'delete')) && (
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-1">
+                          {order.status === 'pending' && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 w-8 p-0 text-green-600 hover:text-green-700 hover:bg-green-50"
+                              onClick={() => handleStatusUpdate(order._id, 'approved')}
+                              title="Approve & Finalize"
+                            >
+                              <Check className="h-4 w-4" />
+                            </Button>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0"
+                            onClick={() => handleView(order)}
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          {(canPerformAction('sales', 'orders', 'edit') || canPerformAction('sales', 'myIndent', 'edit') || canPerformAction('orders', 'indent', 'edit')) && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 w-8 p-0"
+                              onClick={() => handleEdit(order)}
+                              disabled={!canCreateOrders}
+                              title={!canCreateOrders ? cutoffMessage : "Edit order"}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                          )}
+                          {(canPerformAction('sales', 'orders', 'delete') || canPerformAction('sales', 'myIndent', 'delete') || canPerformAction('orders', 'indent', 'delete')) && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
+                              onClick={() => handleDelete(order._id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    )}
+                  </TableRow>
                 ))}
               </TableBody>
             </Table>
@@ -944,21 +968,21 @@ const MyOrders = () => {
               >
                 Previous
               </Button>
-              
+
               {/* Page numbers */}
               <div className="flex items-center space-x-1">
                 {Array.from({ length: totalPages }, (_, i) => i + 1)
                   .filter(page => {
                     // Show first page, last page, current page, and pages around current
-                    return page === 1 || 
-                           page === totalPages || 
-                           Math.abs(page - currentPage) <= 1;
+                    return page === 1 ||
+                      page === totalPages ||
+                      Math.abs(page - currentPage) <= 1;
                   })
                   .map((page, index, array) => {
                     // Add ellipsis if there's a gap
                     const prevPage = array[index - 1];
                     const showEllipsis = prevPage && page - prevPage > 1;
-                    
+
                     return (
                       <div key={page}>
                         {showEllipsis && (
@@ -1032,7 +1056,7 @@ const MyOrders = () => {
                     <Label className="text-base font-semibold text-gray-700">Selected Products by Category</Label>
                     <p className="text-sm text-gray-500 mt-1">Products ordered from our bakery categories</p>
                   </div>
-                  
+
                   {/* Group products by category */}
                   {(() => {
                     const groupedOrderProducts = viewOrderDetails.products.reduce((acc, orderProduct) => {
@@ -1082,13 +1106,12 @@ const MyOrders = () => {
                       return (
                         <div key={category} className="border rounded-lg mb-4 overflow-hidden">
                           {/* Category Header */}
-                          <button 
+                          <button
                             onClick={() => toggleCategory(category)}
-                            className={`w-full flex items-center justify-between p-3 transition-colors ${
-                              category === 'Unavailable Products' 
-                                ? 'bg-red-50 hover:bg-red-100:bg-red-900/30 border-red-200' 
+                            className={`w-full flex items-center justify-between p-3 transition-colors ${category === 'Unavailable Products'
+                                ? 'bg-red-50 hover:bg-red-100:bg-red-900/30 border-red-200'
                                 : 'bg-gray-50 hover:bg-gray-100:bg-gray-700'
-                            }`}
+                              }`}
                           >
                             <div className="flex items-center gap-2">
                               {isExpanded ? (
@@ -1096,17 +1119,16 @@ const MyOrders = () => {
                               ) : (
                                 <ChevronRight className="h-4 w-4 text-gray-600" />
                               )}
-                              <span className={`font-medium text-sm ${
-                                category === 'Unavailable Products' 
-                                  ? 'text-red-900' 
+                              <span className={`font-medium text-sm ${category === 'Unavailable Products'
+                                  ? 'text-red-900'
                                   : 'text-gray-900'
-                              }`}>{category}</span>
+                                }`}>{category}</span>
                             </div>
                             <Badge variant="secondary" className="text-xs">
                               {groupedOrderProducts[category].length} items
                             </Badge>
                           </button>
-                          
+
                           {/* Category Products - Collapsible */}
                           {isExpanded && (
                             <div className="border-t">
@@ -1115,23 +1137,22 @@ const MyOrders = () => {
                                 <span>ITEM NAME</span>
                                 <span className="w-16 text-center">QUANTITY</span>
                               </div>
-                              
+
                               {/* Product Rows */}
                               <div className="divide-y">
                                 {groupedOrderProducts[category].map((product) => (
                                   <div key={product._id} className="flex flex-col sm:flex-row items-start sm:items-center gap-3 p-3 hover:bg-gray-50:bg-gray-800">
                                     {/* Product Info - No Image */}
                                     <div className="flex-1 min-w-0 w-full sm:w-auto">
-                                      <h4 className={`text-sm font-medium mb-1 ${
-                                        category === 'Unavailable Products' 
-                                          ? 'text-red-900' 
+                                      <h4 className={`text-sm font-medium mb-1 ${category === 'Unavailable Products'
+                                          ? 'text-red-900'
                                           : 'text-gray-900'
-                                      }`}>{product.name}</h4>
+                                        }`}>{product.name}</h4>
                                       <div className="flex flex-wrap items-center gap-2">
                                         <span className="text-xs text-gray-500">₹{product.salePrice || product.price || 0} each</span>
                                       </div>
                                     </div>
-                                    
+
                                     {/* Quantity and Total - Mobile/Desktop responsive */}
                                     <div className="flex items-center justify-between w-full sm:w-auto sm:gap-4">
                                       {/* Quantity Display */}
@@ -1141,7 +1162,7 @@ const MyOrders = () => {
                                           <span className="text-sm font-medium text-blue-600">{product.quantity}</span>
                                         </div>
                                       </div>
-                                      
+
                                       {/* Total Price */}
                                       <div className="text-right">
                                         <div className="text-sm font-medium">₹{((product.salePrice || product.price || 0) * parseInt(product.quantity)).toLocaleString()}</div>
@@ -1157,7 +1178,7 @@ const MyOrders = () => {
                       );
                     });
                   })()}
-                  
+
                   {/* Order Summary */}
                   <div className="mt-6 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
                     <div className="flex justify-between items-center">
@@ -1240,12 +1261,12 @@ const MyOrders = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
               <div>
                 <Label htmlFor="customer" className="text-sm font-medium">Customer Name *</Label>
-                <Select 
-                  value={formData.customerId || ''} 
+                <Select
+                  value={formData.customerId || ''}
                   onValueChange={(value) => {
                     const customer = customersList.find(c => c._id === value);
                     setFormData({
-                      ...formData, 
+                      ...formData,
                       customerId: value,
                       customerName: customer?.name || ''
                     });
@@ -1269,7 +1290,7 @@ const MyOrders = () => {
                   id="orderDate"
                   type="date"
                   value={formData.orderDate}
-                  onChange={(e) => setFormData({...formData, orderDate: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, orderDate: e.target.value })}
                   className="mt-1"
                 />
               </div>
@@ -1291,12 +1312,12 @@ const MyOrders = () => {
                 id="remarks"
                 placeholder="Add any special instructions or notes..."
                 value={formData.remarks}
-                onChange={(e) => setFormData({...formData, remarks: e.target.value})}
+                onChange={(e) => setFormData({ ...formData, remarks: e.target.value })}
                 rows={3}
               />
             </div>
             <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 pt-3 sm:pt-4">
-              <Button 
+              <Button
                 onClick={handleCreate}
                 disabled={createOrderMutation.isPending}
                 className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto"
@@ -1313,8 +1334,8 @@ const MyOrders = () => {
                   </>
                 )}
               </Button>
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 onClick={() => setIsCreateModalOpen(false)}
                 className="w-full sm:w-auto"
               >
@@ -1340,7 +1361,7 @@ const MyOrders = () => {
             </DialogDescription>
           </DialogHeader>
           {selectedOrder && (
-            <EditOrderForm 
+            <EditOrderForm
               initialData={selectedOrder}
               onUpdate={handleUpdate}
               onCancel={() => {

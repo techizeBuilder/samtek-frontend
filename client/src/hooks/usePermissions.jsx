@@ -7,8 +7,8 @@ export const usePermissions = () => {
   const hasModuleAccess = (moduleName) => {
     if (!user || !user.permissions) return false;
     
-    // Super Admin has access to everything
-    if (user.role === 'Super Admin') return true;
+    // Super Admin has access to everything (both variants)
+    if (user.role === 'Superadmin' || user.role === 'Super Admin') return true;
     
     // Special handling for Unit Head role
     if (user.role === 'Unit Head') {
@@ -64,8 +64,8 @@ export const usePermissions = () => {
   const hasFeatureAccess = (moduleName, featureKey, action = 'view') => {
     if (!user || !user.permissions) return false;
     
-    // Super Admin has access to everything
-    if (user.role === 'Super Admin') return true;
+    // Super Admin has access to everything (both variants)
+    if (user.role === 'Superadmin' || user.role === 'Super Admin') return true;
     
     // Special handling for Unit Head role
     if (user.role === 'Unit Head') {
@@ -104,6 +104,10 @@ export const usePermissions = () => {
       
       if (!userModule) return false;
       
+      if (featureKey === 'dashboard') {
+        return userModule.dashboard === true;
+      }
+      
       const feature = userModule.features?.find(f => f.key === featureKey);
       if (!feature) return false;
       
@@ -125,6 +129,10 @@ export const usePermissions = () => {
     
     if (!userModule) return false;
     
+    if (featureKey === 'dashboard') {
+      return userModule.dashboard === true;
+    }
+    
     const feature = userModule.features?.find(f => f.key === featureKey);
     if (!feature) return false;
     
@@ -135,8 +143,8 @@ export const usePermissions = () => {
   const getAccessibleModules = () => {
     if (!user || !user.permissions) return [];
     
-    // Super Admin gets all modules
-    if (user.role === 'Super Admin') {
+    // Super Admin gets all modules (both variants)
+    if (user.role === 'Superadmin' || user.role === 'Super Admin') {
       return [
         'dashboard', 'orders', 'manufacturing', 'production', 'dispatches', 
         'sales', 'accounts', 'inventory', 'customers', 
@@ -189,18 +197,18 @@ export const usePermissions = () => {
 
   // Check if user can manage users (for backwards compatibility)
   const canManageUsers = () => {
-    return user && ['Super Admin', 'Unit Head'].includes(user.role);
+    return user && ['Superadmin', 'Super Admin', 'Unit Head'].includes(user.role);
   };
 
   // Check if user can access settings (for backwards compatibility)
   const canAccessSettings = () => {
-    return user && user.role === 'Super Admin';
+    return user && (user.role === 'Superadmin' || user.role === 'Super Admin');
   };
 
   // Check if user can access all units
   const canAccessAllUnits = () => {
     if (!user || !user.permissions) return false;
-    return user.role === 'Super Admin' || user.permissions.canAccessAllUnits;
+    return user.role === 'Superadmin' || user.role === 'Super Admin' || user.permissions?.canAccessAllUnits;
   };
 
   // Get user's permission role

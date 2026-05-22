@@ -1,11 +1,11 @@
 import { Switch, Route } from "wouter";
+import { BrowserRouter } from "react-router-dom";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "./lib/queryClient";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
-import { UnitManagerProtectedRoute } from "@/components/auth/UnitManagerProtectedRoute";
 import { RoleBasedProtectedRoute } from "@/components/auth/RoleBasedProtectedRoute";
 import NotFound from "@/pages/not-found";
 import Login from "@/pages/Login";
@@ -16,13 +16,11 @@ import DispatchDashboard from "@/pages/DispatchDashboard";
 import Sales from "@/pages/Sales";
 import Accounts from "@/pages/Accounts";
 import ModernInventoryUI from "@/components/inventory/ModernInventoryUI";
-import UnitHeadInventoryManagement from "@/components/inventory/UnitHeadInventoryManagement";
 import Customers from "@/pages/Customers";
 import Suppliers from "@/pages/Suppliers";
 import Purchases from "@/pages/Purchases";
 import Settings from "@/pages/Settings";
 import RolePermissionManagement from "@/pages/RolePermissionManagement";
-import UnitHeadRolePermissionManagement from "@/pages/UnitHeadRolePermissionManagement";
 import MainLayout from "@/components/layout/MainLayout";
 import Profile from "@/pages/Profile";
 import Companies from "@/pages/Companies";
@@ -30,6 +28,8 @@ import MyOrders from "@/pages/sales/MyIndent";
 import MyCustomers from "@/pages/sales/MyCustomers";
 import MyDeliveries from "@/pages/sales/MyDeliveries";
 import MyInvoices from "@/pages/sales/MyInvoices";
+import Leads from "@/pages/sales/Leads";
+import Quotation from "@/pages/sales/Quotation";
 
 import Returns from "@/pages/sales/Returns";
 import Damages from "@/pages/sales/Damages";
@@ -37,12 +37,6 @@ import SalesDashboard from "@/pages/SalesDashboard";
 import ProductionHistoryPage from "@/pages/ProductionHistoryPage";
 import RoleBasedDashboard from "@/components/layout/RoleBasedDashboard";
 import NotificationsPage from "@/pages/NotificationsPage";
-import UnitHeadDashboard from "@/pages/UnitHeadDashboard";
-import UnitHeadOrdersManagement from "@/components/orders/UnitHeadOrdersManagement";
-import UnitHeadSales from "@/pages/UnitHeadSales";
-import UnitHeadCustomers from "@/pages/UnitHeadCustomers";
-import UnitHeadCutoffTime from "@/pages/UnitHeadCutoffTime";
-import UnitManagerDashboard from "@/pages/UnitManagerDashboard";
 import SuperAdminDashboard from "@/pages/SuperAdminDashboard";
 import SuperAdminOrders from "@/pages/super-admin/SuperAdminOrders";
 import SuperAdminSales from "@/pages/super-admin/SuperAdminSales";
@@ -76,6 +70,7 @@ import AccountsSettings from "@/pages/accounts/Settings";
 
 // Sales Account Module (New)
 import CustomerMaster from "@/pages/accounts/CustomerMaster";
+import SalesOrders from "@/pages/accounts/SalesOrders";
 import SalesInvoices from "@/pages/accounts/SalesInvoices";
 import SalesReturns from "@/pages/accounts/SalesReturns";
 import CustomerPayments from "@/pages/accounts/CustomerPayments";
@@ -84,19 +79,84 @@ import SalesReports from "@/pages/accounts/SalesReports";
 import Expenses from "@/pages/accounts/Expenses";
 import FinancialSummary from "@/pages/accounts/FinancialSummary";
 import LedgerRecord from "@/pages/accounts/LedgerRecord";
+import PaymentReminders from "@/pages/accounts/PaymentReminders";
 import DeliveryChallan from "@/pages/dispatch/DeliveryChallan";
 import DispatchHistory from "@/pages/dispatch/DispatchHistory";
 import SalesApproval from "@/pages/SalesApproval";
 import SalesOrderList from "@/pages/SalesOrderList";
-import UnitHeadProductionGroup from "@/components/unit-head/UnitHeadProductionGroup";
-import UnitHeadIndentSummary from "@/pages/unit-head/UnitHeadIndentSummary";
-import UnitHeadDispatchSummary from "@/pages/unit-head/UnitHeadDispatchSummary";
-import UnitHeadProductionReports from "@/pages/unit-head/UnitHeadProductionReports";
-import UnitManagerProductionGroup from "@/pages/unit-manager/UnitManagerProductionGroup";
-import UnitManagerReturns from "@/pages/unit-manager/UnitManagerReturns";
-import UnitManagerLayout from "@/components/layout/UnitManagerLayout";
 import RoleBasedLayout from "@/components/layout/RoleBasedLayout";
 import SuperAdminAccounts from "@/pages/super-admin/Accounts";
+
+// HRMS Module Imports
+import HRMSDashboard from "@/pages/hrms/HRMSDashboard";
+import HRMSEmployees from "@/pages/hrms/Employee";
+import HRMSAttendance from "@/pages/hrms/AttendanceReport";
+import HRMSSalaryStructure from "@/pages/hrms/Payroll/SalaryStructure";
+import HRMSPayrollRun from "@/pages/hrms/Payroll/PayrollRun";
+import HRMSPayslips from "@/pages/hrms/Payroll/Payslips";
+import HRMSJobOpenings from "@/pages/hrms/Recruitment/JobOpenings";
+import HRMSCandidates from "@/pages/hrms/Recruitment/Candidates";
+import HRMSInterviewPipeline from "@/pages/hrms/Recruitment/InterviewPipeline";
+import HRMSHoliday from "@/pages/hrms/Holidays/Holiday";
+import HRMSPolicies from "@/pages/hrms/SystemConfigration/Policies";
+import HRMSAddUser from "@/pages/hrms/AddUser";
+import HRMSProfile from "@/pages/hrms/Profile";
+import HRMSStatutoryReport from "@/pages/hrms/Payroll/StatutoryReport";
+import HRMSLeaveTypes from "@/pages/hrms/LeaveManagement/LeaveType";
+import HRMSLeaveRequests from "@/pages/hrms/LeaveManagement/HRAdminLeaveRequest";
+import HRMSAttendanceRequests from "@/pages/hrms/Attendance/HRAdminAttendanceRequest";
+
+// System Configuration Imports
+import HRMSCompany from "@/pages/hrms/SystemConfigration/Company";
+import HRMSBranches from "@/pages/hrms/SystemConfigration/Branches";
+import HRMSDepartments from "@/pages/hrms/SystemConfigration/Departments";
+import HRMSDesignation from "@/pages/hrms/SystemConfigration/Desigantion";
+
+import ManagerDashboard from "@/pages/hrms/Manager/ManagerDashboard";
+import ManagerLeaveRequest from "@/pages/hrms/Manager/Approvals/LeaveRequest";
+import ManagerAttendanceRequest from "@/pages/hrms/Manager/Approvals/AttendanceRequest";
+import ManagerOverTimeRequest from "@/pages/hrms/Manager/Approvals/OverTimeRequest";
+import ManagerExpenseRequest from "@/pages/hrms/Manager/Approvals/ExpenseRequest";
+import ManagerTravelRequest from "@/pages/hrms/Manager/Approvals/TravelRequest";
+import ManagerProfileRequest from "@/pages/hrms/Manager/Approvals/ProfileRequest";
+import ManagerInterviews from "@/pages/hrms/Manager/Interviews/ManagerInterviews";
+import EmployeeDashboard from "@/pages/hrms/Employee/Dashboard/EmployeeDashboard";
+import EmployeePersonalInformation from "@/pages/hrms/Employee/Profile/PersonalInformation";
+import EmployeeDocumentUpload from "@/pages/hrms/Employee/Profile/DocumentUpload";
+import EmployeePolicies from "@/pages/hrms/Employee/Profile/EmployeePolicies";
+import EmployeeMarkAttendance from "@/pages/hrms/Employee/Attendance/MarkAttendance";
+import EmployeeAttendanceCalendar from "@/pages/hrms/Employee/Attendance/AttendanceCalender";
+import EmployeeAttendanceRequest from "@/pages/hrms/Employee/Attendance/AttendanceRequest";
+import EmployeeLeaveBalance from "@/pages/hrms/Employee/Leave/LeaveBalance";
+import EmployeeLeaves from "@/pages/hrms/Employee/Leave/Leaves";
+import EmployeePayslips from "@/pages/hrms/Payroll/Payslips";
+import EmployeeSalaryStructure from "@/pages/hrms/Payroll/SalaryStructure";
+import EmployeeExpenses from "@/pages/hrms/Employee/Expenses/Expenses";
+import EmployeeTravelRequests from "@/pages/hrms/Employee/Request/TravelRequests";
+import EmployeeResignRequest from "@/pages/hrms/Employee/Request/ResignRequest";
+import EmployeeOverTimeRequests from "@/pages/hrms/Employee/Request/OverTimeRequests";
+import EmployeeProfileUpdateRequest from "@/pages/hrms/Employee/Request/ProfileUpdateRequest";
+import HRMSTaskManagement from "@/pages/hrms/TaskManagement/TaskManagement";
+import EmployeeTasks from "@/pages/hrms/TaskManagement/EmployeeTasks";
+import CompanyAdminDashboard from "@/pages/hrms/CompanyAdmin/CompanyAdminDashboard";
+import CompanyAdminLayout from "@/pages/hrms/CompanyAdmin/CompanyAdminLayout";
+import RDDashboard from "@/pages/ResearchDevelopment/Dashboard";
+
+// complaints and services imports
+import SupportDashboard from "@/pages/complaintsAndServices/SupportDashboard";
+import TicketWorkspace from "@/pages/complaintsAndServices/TicketWorkspace";
+import CustomerVerificationPage from "@/pages/complaintsAndServices/CustomerVerificationPage";
+import TechnicianWorkSapce from "@/pages/complaintsAndServices/TechnicianWorkSapce";
+
+// training management imports
+import Trainees from "@/pages/lms/Trainees";
+import TrainingModules from "@/pages/lms/TrainingModules";
+import QuestionBank from "@/pages/lms/QuestionBank";
+import CandidateDashboard from "@/pages/lms/CandidateDashboard";
+import ModulePlayer from "@/pages/lms/ModulePlayer";
+import QuizRunner from "@/pages/lms/QuizRunner";
+import AdminDashboard from "@/pages/lms/AdminDashboard";
+
 
 function Router() {
   return (
@@ -104,6 +164,332 @@ function Router() {
       <Route path="/login">
         {() => <Login />}
       </Route>
+
+      {/* ========================================== */}
+      {/* NEW: PUBLIC CUSTOMER VERIFICATION ROUTE */}
+      {/* ========================================== */}
+      <Route path="/verify-ticket/:token">
+        <CustomerVerificationPage />
+      </Route>
+
+      {/* task management routes for production deparment */}
+      <Route path="/production/task-management">
+        <ProtectedRoute requiredRole="Production Head">
+          <HRMSTaskManagement />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/production/my-task">
+        <ProtectedRoute requiredRole={["Production Head", "Production Employee"]}>
+          <EmployeeTasks />
+        </ProtectedRoute>
+      </Route>
+
+      {/* HRMS Module Routes - Moved to top to ensure priority and prevent overlap */}
+      <Route exact path="/hrms/SuperAdmin/dashboard">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HRMSDashboard />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/SuperAdmin/employees">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HRMSEmployees />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/SuperAdmin/employees/profile/:id">
+        <ProtectedRoute requiredRole={["HR-Admin", "Company Admin", "Manager"]}>
+          <HRMSProfile />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/SuperAdmin/addUser">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HRMSAddUser />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/SuperAdmin/attendance-record">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HRMSAttendance />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/SuperAdmin/attendance-requests">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HRMSAttendanceRequests />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/SuperAdmin/leave-requests">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HRMSLeaveRequests />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/SuperAdmin/leave-types">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HRMSLeaveTypes />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/SuperAdmin/payroll/salary-structure">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HRMSSalaryStructure />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/SuperAdmin/payroll/run">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HRMSPayrollRun />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/SuperAdmin/payroll/payslips">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HRMSPayslips />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/SuperAdmin/payroll/statutory-report">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HRMSStatutoryReport />
+        </ProtectedRoute>
+      </Route>
+
+      <Route exact path="/hrms/SuperAdmin/recruitment/job-openings">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HRMSJobOpenings />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/SuperAdmin/recruitment/candidates">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HRMSCandidates />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/SuperAdmin/recruitment/pipeline">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HRMSInterviewPipeline />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/SuperAdmin/holidays">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HRMSHoliday />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/SuperAdmin/hr-policy">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HRMSPolicies />
+        </ProtectedRoute>
+      </Route>
+
+      {/* System Configuration Routes */}
+      <Route exact path="/hrms/SuperAdmin/companies">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HRMSCompany />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/SuperAdmin/branches">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HRMSBranches />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/SuperAdmin/departments">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HRMSDepartments />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/SuperAdmin/designations">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HRMSDesignation />
+        </ProtectedRoute>
+      </Route>
+
+      {/* HRMS Manager Routes */}
+      <Route exact path="/hrms/Manager/dashboard">
+        <ProtectedRoute requiredRole="Manager">
+          <ManagerDashboard />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Manager/employees">
+        <ProtectedRoute requiredRole={["Manager", "HR-Admin"]}>
+          <HRMSEmployees />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Manager/employees/profile/:id">
+        <ProtectedRoute requiredRole={["Manager", "HR-Admin"]}>
+          <HRMSProfile />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Manager/attendance">
+        <ProtectedRoute requiredRole={["Manager", "HR-Admin"]}>
+          <HRMSAttendance />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Manager/holidays">
+        <ProtectedRoute requiredRole={["Manager", "HR-Admin"]}>
+          <HRMSHoliday />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Manager/recruitment/job-openings">
+        <ProtectedRoute requiredRole={["Manager", "HR-Admin"]}>
+          <HRMSJobOpenings />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Manager/recruitment/candidates">
+        <ProtectedRoute requiredRole={["Manager", "HR-Admin"]}>
+          <HRMSCandidates />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Manager/recruitment/pipeline">
+        <ProtectedRoute requiredRole={["Manager", "HR-Admin"]}>
+          <ManagerInterviews />
+        </ProtectedRoute>
+      </Route>
+
+      {/* Manager Approvals Section */}
+      <Route exact path="/hrms/Manager/approvals/leaves">
+        <ProtectedRoute requiredRole="Manager">
+          <ManagerLeaveRequest />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Manager/approvals/attendance">
+        <ProtectedRoute requiredRole="Manager">
+          <ManagerAttendanceRequest />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Manager/approvals/overtime">
+        <ProtectedRoute requiredRole="Manager">
+          <ManagerOverTimeRequest />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Manager/approvals/expense">
+        <ProtectedRoute requiredRole="Manager">
+          <ManagerExpenseRequest />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Manager/approvals/travel">
+        <ProtectedRoute requiredRole="Manager">
+          <ManagerTravelRequest />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Manager/approvals/profile">
+        <ProtectedRoute requiredRole="Manager">
+          <ManagerProfileRequest />
+        </ProtectedRoute>
+      </Route>
+
+      {/* Employee Module Routes */}
+      <Route exact path="/hrms/Employee/dashboard">
+        <RoleBasedProtectedRoute requiredRole="Employee">
+          <EmployeeDashboard />
+        </RoleBasedProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Employee/profile/personal">
+        <RoleBasedProtectedRoute requiredRole="Employee">
+          <EmployeePersonalInformation />
+        </RoleBasedProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Employee/profile/documents">
+        <RoleBasedProtectedRoute requiredRole="Employee">
+          <EmployeeDocumentUpload />
+        </RoleBasedProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Employee/profile/org">
+        <RoleBasedProtectedRoute requiredRole="Employee">
+          <EmployeePolicies />
+        </RoleBasedProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Employee/attendance/mark">
+        <RoleBasedProtectedRoute requiredRole="Employee">
+          <EmployeeMarkAttendance />
+        </RoleBasedProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Employee/attendance/calendar">
+        <RoleBasedProtectedRoute requiredRole="Employee">
+          <EmployeeAttendanceCalendar />
+        </RoleBasedProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Employee/attendance/requests">
+        <RoleBasedProtectedRoute requiredRole="Employee">
+          <EmployeeAttendanceRequest />
+        </RoleBasedProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Employee/leave/balance">
+        <RoleBasedProtectedRoute requiredRole="Employee">
+          <EmployeeLeaveBalance />
+        </RoleBasedProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Employee/leave/apply">
+        <RoleBasedProtectedRoute requiredRole="Employee">
+          <EmployeeLeaves />
+        </RoleBasedProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Employee/payroll/payslips">
+        <RoleBasedProtectedRoute requiredRole="Employee">
+          <EmployeePayslips />
+        </RoleBasedProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Employee/payroll/structure">
+        <RoleBasedProtectedRoute requiredRole="Employee">
+          <EmployeeSalaryStructure />
+        </RoleBasedProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Employee/expenses/submit">
+        <RoleBasedProtectedRoute requiredRole="Employee">
+          <EmployeeExpenses />
+        </RoleBasedProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Employee/requests/travel">
+        <RoleBasedProtectedRoute requiredRole="Employee">
+          <EmployeeTravelRequests />
+        </RoleBasedProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Employee/requests/resign">
+        <RoleBasedProtectedRoute requiredRole="Employee">
+          <EmployeeResignRequest />
+        </RoleBasedProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Employee/requests/overtime">
+        <RoleBasedProtectedRoute requiredRole="Employee">
+          <EmployeeOverTimeRequests />
+        </RoleBasedProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/Employee/requests/profile-update">
+        <RoleBasedProtectedRoute requiredRole="Employee">
+          <EmployeeProfileUpdateRequest />
+        </RoleBasedProtectedRoute>
+      </Route>
+
+
+      <Route path="/hrms/CompanyAdmin/:rest*">
+        <ProtectedRoute requiredRole="Company Admin">
+          <Switch>
+            <Route exact path="/hrms/CompanyAdmin/dashboard" component={CompanyAdminDashboard} />
+            <Route exact path="/hrms/CompanyAdmin/employees" component={HRMSEmployees} />
+            <Route exact path="/hrms/CompanyAdmin/companies" component={HRMSCompany} />
+            <Route exact path="/hrms/CompanyAdmin/branches" component={HRMSBranches} />
+            <Route exact path="/hrms/CompanyAdmin/departments" component={HRMSDepartments} />
+            <Route exact path="/hrms/CompanyAdmin/designations" component={HRMSDesignation} />
+            <Route exact path="/hrms/CompanyAdmin/user-management" component={RolePermissionManagement} />
+            <Route component={NotFound} />
+          </Switch>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/r&d-dashboard">
+        <ProtectedRoute requiredRole={["Research & Development Head", "Research Development Employee"]}>
+          <RDDashboard />
+        </ProtectedRoute>
+      </Route>
+
+      {/* support management route*/}
+      <Route path="/complaints/dashboard">
+        <ProtectedRoute requiredRole="Complaint Management Head">
+          <SupportDashboard />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/complaints/support">
+        <ProtectedRoute requiredRole="Complaint Management Head">
+          <TicketWorkspace />
+        </ProtectedRoute>
+      </Route>
+
+      <Route exact path="/complaints/service">
+        <RoleBasedProtectedRoute requiredRole="Complaint Management Employee">
+          <TechnicianWorkSapce />
+        </RoleBasedProtectedRoute>
+      </Route>
+
       <Route path="/">
         <ProtectedRoute>
           <RoleBasedDashboard />
@@ -132,11 +518,6 @@ function Router() {
           <ProductionModule />
         </ProtectedRoute>
       </Route>
-      <Route path="/unit-head/production/:rest*">
-        <ProtectedRoute requiredRole="Unit Head">
-          <ProductionModule />
-        </ProtectedRoute>
-      </Route>
 
       <Route path="/production/history">
         <ProtectedRoute requiredRole="Production">
@@ -147,6 +528,16 @@ function Router() {
       <Route path="/sales/orders">
         <ProtectedRoute>
           <MyOrders />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/sales/leads">
+        <ProtectedRoute>
+          <Leads />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/sales/quotation">
+        <ProtectedRoute>
+          <Quotation />
         </ProtectedRoute>
       </Route>
       <Route path="/sales/my-customers">
@@ -289,93 +680,6 @@ function Router() {
       </Route>
 
       {/* Role-specific Dashboard routes */}
-      <Route path="/unit-head-dashboard">
-        <ProtectedRoute requiredRole="Unit Head">
-          <UnitHeadDashboard />
-        </ProtectedRoute>
-      </Route>
-
-      {/* Unit Head specific routes */}
-      <Route path="/unit-head/orders">
-        <ProtectedRoute requiredRole="Unit Head">
-          <UnitHeadOrdersManagement />
-        </ProtectedRoute>
-      </Route>
-      <Route path="/unit-head/sales">
-        <ProtectedRoute requiredRole="Unit Head">
-          <UnitHeadSales />
-        </ProtectedRoute>
-      </Route>
-      <Route path="/unit-head/customers">
-        <ProtectedRoute requiredRole="Unit Head">
-          <UnitHeadCustomers />
-        </ProtectedRoute>
-      </Route>
-      <Route path="/unit-head/inventory">
-        <ProtectedRoute requiredRole="Unit Head">
-          <UnitHeadInventoryManagement />
-        </ProtectedRoute>
-      </Route>
-      <Route path="/unit-head/role-permission-management">
-        <ProtectedRoute requiredRole="Unit Head">
-          <UnitHeadRolePermissionManagement />
-        </ProtectedRoute>
-      </Route>
-      <Route path="/unit-head/production-group">
-        <ProtectedRoute requiredRole="Unit Head">
-          <UnitHeadProductionGroup />
-        </ProtectedRoute>
-      </Route>
-      <Route path="/unit-head/cutoff-time">
-        <ProtectedRoute requiredRole="Unit Head">
-          <UnitHeadCutoffTime />
-        </ProtectedRoute>
-      </Route>
-      <Route path="/unit-head/indent-summary">
-        <ProtectedRoute requiredRole="Unit Head">
-          <UnitHeadIndentSummary />
-        </ProtectedRoute>
-      </Route>
-      <Route path="/unit-head/dispatch-summary">
-        <ProtectedRoute requiredRole="Unit Head">
-          <UnitHeadDispatchSummary />
-        </ProtectedRoute>
-      </Route>
-      <Route path="/unit-head/production-reports">
-        <ProtectedRoute requiredRole="Unit Head">
-          <UnitHeadProductionReports />
-        </ProtectedRoute>
-      </Route>
-
-      {/* Unit Manager specific routes with dedicated layout */}
-      <Route path="/unit-manager/dashboard">
-        <UnitManagerProtectedRoute requiredRole="Unit Manager">
-          <UnitManagerDashboard />
-        </UnitManagerProtectedRoute>
-      </Route>
-
-      <Route path="/unit-manager/indent-summary">
-        <UnitManagerProtectedRoute requiredRole="Unit Manager">
-          <SalesApproval />
-        </UnitManagerProtectedRoute>
-      </Route>
-
-      <Route path="/unit-manager/sales-order-list">
-        <UnitManagerProtectedRoute requiredRole="Unit Manager">
-          <SalesOrderList />
-        </UnitManagerProtectedRoute>
-      </Route>
-      <Route path="/unit-manager/production-group">
-        <UnitManagerProtectedRoute requiredRole="Unit Manager">
-          <UnitManagerProductionGroup />
-        </UnitManagerProtectedRoute>
-      </Route>
-
-      <Route path="/unit-manager/returns">
-        <UnitManagerProtectedRoute requiredRole="Unit Manager">
-          <UnitManagerReturns />
-        </UnitManagerProtectedRoute>
-      </Route>
 
       <Route path="/packing-dashboard">
         <ProtectedRoute requiredRole="Packing">
@@ -417,13 +721,12 @@ function Router() {
           <ChartOfAccounts />
         </ProtectedRoute>
       </Route>
-      <Route path="/accounts/sales">
+      {/* Sales Account Module (New Routes) */}
+      <Route path="/accounts/sales/orders">
         <ProtectedRoute requiredRole="Accounts">
-          <AccountsSales />
+          <SalesOrders />
         </ProtectedRoute>
       </Route>
-
-      {/* Sales Account Module (New Routes) */}
       <Route path="/accounts/sales/customers">
         <ProtectedRoute requiredRole="Accounts">
           <CustomerMaster />
@@ -432,6 +735,12 @@ function Router() {
       <Route path="/accounts/sales/invoices">
         <ProtectedRoute requiredRole="Accounts">
           <SalesInvoices />
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/accounts/sales">
+        <ProtectedRoute requiredRole="Accounts">
+          <AccountsSales />
         </ProtectedRoute>
       </Route>
       <Route path="/accounts/sales/returns">
@@ -539,6 +848,191 @@ function Router() {
           <AccountsSettings />
         </ProtectedRoute>
       </Route>
+      <Route path="/accounts/payment-reminders">
+        <ProtectedRoute requiredRole="Accounts">
+          <PaymentReminders />
+        </ProtectedRoute>
+      </Route>
+
+
+      {/* HRMS Module Routes */}
+      <Route path="/hrms/dashboard">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HRMSDashboard />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/hrms/employees">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HRMSEmployees />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/hrms/attendance">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HRMSAttendance />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/hrms/payroll">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HRMSSalaryStructure />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/hrms/payroll/run">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HRMSPayrollRun />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/hrms/payslips">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HRMSPayslips />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/hrms/recruitment">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HRMSJobOpenings />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/hrms/recruitment/candidates">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HRMSCandidates />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/hrms/recruitment/pipeline">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HRMSInterviewPipeline />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/hrms/holidays">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HRMSHoliday />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/hrms/hr-policy">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HRMSPolicies />
+        </ProtectedRoute>
+      </Route>
+      {/* task management route for HR-Admin */}
+      <Route path="/hrms/SuperAdmin/task-management">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HRMSTaskManagement />
+        </ProtectedRoute>
+      </Route>
+
+      {/* Employee My task Route */}
+      <Route exact path="/hrms/Employee/my-task">
+        <RoleBasedProtectedRoute requiredRole="Employee">
+          <EmployeeTasks />
+        </RoleBasedProtectedRoute>
+      </Route>
+
+      
+
+      {/* task management and my task routes for packing department */}
+      <Route path="/packing/task-management">
+        <ProtectedRoute requiredRole="Packing Head">
+          <HRMSTaskManagement />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/packing/my-task">
+        <ProtectedRoute requiredRole={["Packing Head", "Packing Employee"]}>
+          <EmployeeTasks />
+        </ProtectedRoute>
+      </Route>
+
+      {/* task management and my task routes for dispatch department */}
+      <Route path="/dispatch/task-management">
+        <ProtectedRoute requiredRole="Dispatch Head">
+          <HRMSTaskManagement />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/dispatch/my-task">
+        <ProtectedRoute requiredRole={["Dispatch Head", "Dispatch Employee"]}>
+          <EmployeeTasks />
+        </ProtectedRoute>
+      </Route>
+
+      {/* task management and my task routes for sales department */}
+      <Route path="/sales/task-management">
+        <ProtectedRoute requiredRole="Sales Head">
+          <HRMSTaskManagement />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/sales/my-task">
+        <ProtectedRoute requiredRole={["Sales Head", "Sales Employee"]}>
+          <EmployeeTasks />
+        </ProtectedRoute>
+      </Route>
+
+      {/* task management and my task routes for accounts department */}
+      <Route path="/accounts/task-management">
+        <ProtectedRoute requiredRole="Accounts Head">
+          <HRMSTaskManagement />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/accounts/my-task">
+        <ProtectedRoute requiredRole={["Accounts Head", "Account Employee"]}>
+          <EmployeeTasks />
+        </ProtectedRoute>
+      </Route>
+
+      {/*  my task routes for manager */}
+
+      <Route path="/hrms/Manager/my-task">
+        <ProtectedRoute requiredRole="Manager">
+          <EmployeeTasks />
+        </ProtectedRoute>
+      </Route>
+
+      {/* task management route for company admin */}
+
+      <Route path="/hrms/CompanyAdmin/task-management">
+        <ProtectedRoute requiredRole="Company Admin">
+          <HRMSTaskManagement />
+        </ProtectedRoute>
+      </Route>
+
+      {/* to be removed only testing purpose -- training modules routes */}
+      <Route path="/lms/dashboard">
+        <ProtectedRoute requiredRole={["HR-Admin", "Accounts Head", "Sales Head", "Production Head", "Packing Head", "Dispatch Head"]}>
+          <AdminDashboard />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/lms/trainees">
+        <ProtectedRoute requiredRole={["HR-Admin", "Accounts Head", "Sales Head", "Production Head", "Packing Head", "Dispatch Head"]}>
+          <Trainees />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/lms/training-modules">
+        <ProtectedRoute requiredRole={["HR-Admin", "Accounts Head", "Sales Head", "Production Head", "Packing Head", "Dispatch Head"]}>
+          <TrainingModules />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/lms/question-bank/:moduleId?">
+        <ProtectedRoute requiredRole={["HR-Admin", "Accounts Head", "Sales Head", "Production Head", "Packing Head", "Dispatch Head"]}>
+          <QuestionBank />
+        </ProtectedRoute>
+      </Route>
+      {/* 1. Trainee Dashboard */}
+      <Route path="/lms/training">
+        <ProtectedRoute requiredRole={["Dispatch Employee", "Packing Employee", "Production Employee", "Sales Employee", "Account Employee"]}>
+          <CandidateDashboard />
+        </ProtectedRoute>
+      </Route>
+
+      {/* 2. The Classroom (Watching Videos/PDFs) */}
+      <Route path="/lms/my-training/:moduleId/learn">
+        <ProtectedRoute requiredRole={["Dispatch Employee", "Packing Employee", "Production Employee", "Sales Employee", "Account Employee"]}>
+          <ModulePlayer />
+        </ProtectedRoute>
+      </Route>
+
+      {/* 3. The Exam Room (Taking the Test) */}
+      <Route path="/lms/my-training/:moduleId/quiz">
+        <ProtectedRoute requiredRole={["Dispatch Employee", "Packing Employee", "Production Employee", "Sales Employee", "Account Employee"]}>
+          <QuizRunner />
+        </ProtectedRoute>
+      </Route>
+
 
       <Route component={NotFound} />
     </Switch>
@@ -551,7 +1045,9 @@ function App() {
       <AuthProvider>
         <TooltipProvider>
           <Toaster />
-          <Router />
+          <BrowserRouter>
+            <Router />
+          </BrowserRouter>
         </TooltipProvider>
       </AuthProvider>
     </QueryClientProvider>

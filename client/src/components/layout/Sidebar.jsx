@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
+import { Bell, Pen } from 'lucide-react';
 import {
   LayoutDashboard,
   Cog,
@@ -37,7 +38,20 @@ import {
   BarChart,
   Clock,
   AlertTriangle,
-  History
+  History,
+  UserCheck,
+  Target,
+  Star,
+  MessageSquare,
+  Briefcase,
+  ClipboardList,
+  CalendarCheck,
+  CheckSquare,
+  UserCircle,
+  Award,
+  Layers,
+  Beaker,
+  ShieldAlert
 } from 'lucide-react';
 
 // Separate menu items for each role
@@ -101,144 +115,9 @@ const superAdminMenuItems = [
     path: '/super-admin/settings',
     icon: Settings,
     module: 'settings'
-  }
-];
+  },
 
-const unitHeadMenuItems = [
-  {
-    label: 'Dashboard',
-    path: '/unit-head-dashboard',
-    icon: LayoutDashboard,
-    module: 'dashboard'
-  },
-  {
-    label: 'Orders',
-    path: '/unit-head/orders',
-    icon: Receipt,
-    module: 'orders'
-  },
-  {
-    label: 'Sales',
-    path: '/unit-head/sales',
-    icon: TrendingUp,
-    module: 'sales'
-  },
-  {
-    label: 'Dispatches',
-    path: '/unit-head/dispatches',
-    icon: Truck,
-    module: 'dispatches'
-  },
-  {
-    label: 'Accounts',
-    path: '/accounts-dashboard',
-    icon: Calculator,
-    module: 'accounts'
-  },
-  {
-    label: 'Inventory',
-    path: '/unit-head/inventory',
-    icon: Package,
-    module: 'inventory'
-  },
-  {
-    label: 'Customers',
-    path: '/unit-head/customers',
-    icon: Users,
-    module: 'customers'
-  },
-  {
-    label: 'Indent Summary',
-    path: '/unit-head/indent-summary',
-    icon: FileText,
-    module: null
-  },
-  {
-    label: 'Dispatch Summary',
-    path: '/unit-head/dispatch-summary',
-    icon: Truck,
-    module: 'dispatches'
-  },
-  {
-    label: 'Production Reports',
-    path: '/unit-head/production-reports',
-    icon: BarChart,
-    module: null
-  },
-  {
-    label: 'Production Group',
-    path: '/unit-head/production-group',
-    icon: Users,
-    module: 'unitManager',
-    feature: 'productionGroup'
-  },
-  {
-    label: 'User Management',
-    path: '/unit-head/role-permission-management',
-    icon: Shield,
-    module: 'userManagement'
-  },
-  {
-    label: 'Settings',
-    path: '/unit-head/settings',
-    icon: Settings,
-    module: 'settings'
-  }
-];
 
-const unitManagerMenuItems = [
-  {
-    label: 'Dashboard',
-    path: '/unit-manager/dashboard',
-    icon: LayoutDashboard,
-    module: 'dashboard'
-  },
-  {
-    label: 'Sales Order List',
-    path: '/unit-manager/sales-order-list',
-    icon: TrendingUp,
-    module: 'unitManager',
-    feature: 'salesOrderList'
-  },
-  {
-    label: 'Indent Summary ',
-    path: '/unit-manager/indent-summary',
-    icon: Shield,
-    module: 'unitManager',
-    feature: 'salesApproval'
-  },
-  {
-    label: 'Production Group',
-    path: '/unit-manager/production-group',
-    icon: Users,
-    module: 'unitManager',
-    feature: 'productionGroup'
-  },
-  {
-    label: 'Orders',
-    path: '/orders',
-    icon: Receipt,
-    module: 'orders'
-  },
-  {
-    label: 'Inventory',
-    path: '/inventory',
-    icon: Package,
-    module: 'inventory'
-  },
-  {
-    label: 'Customers',
-    path: '/customers',
-    icon: Users,
-    module: 'customers'
-  },
-  {
-    label: 'Returns & Damage',
-    path: '/unit-manager/returns',
-    icon: RotateCcw,
-    module: 'unitManager',
-    feature: 'returns'
-  }
 ];
 
 const productionMenuItems = [
@@ -246,6 +125,18 @@ const productionMenuItems = [
     label: 'Dashboard',
     path: '/production/dashboard',
     icon: Factory,
+    module: 'production'
+  },
+  {
+    label: 'Task Management',
+    path: '/production/task-management',
+    icon: CheckSquare,
+    module: 'production'
+  },
+  {
+    label: 'My Task',
+    path: '/production/my-task',
+    icon: CheckSquare,
     module: 'production'
   },
   {
@@ -261,7 +152,28 @@ const productionMenuItems = [
     icon: BarChart,
     module: 'production',
     feature: 'productionReports'
-  }
+  },
+  // to be removed only testing purpose
+  {
+    label: 'Training Management',
+    path: '/lms',
+    icon: CheckSquare,
+    module: 'production',
+    feature: 'productionGroup',
+    submodules: [
+      { label: 'Dashboard', path: '/lms/dashboard', feature: 'productionGroup' },
+      { label: 'Trainees', path: '/lms/trainees', feature: 'productionGroup' },
+      { label: 'Training Modules', path: '/lms/training-modules', feature: 'productionGroup' },
+      { label: 'Question Bank', path: '/lms/question-bank', feature: 'productionGroup' },
+    ]
+  },
+  {
+    label: 'Training',
+    path: '/lms/training',
+    icon: Pen,
+    module: 'production',
+    feature: 'traineeDashboard'
+  },
 ];
 
 const packingMenuItems = [
@@ -271,6 +183,18 @@ const packingMenuItems = [
     icon: LayoutDashboard,
     module: 'packing',
     feature: 'dashboard'
+  },
+  {
+    label: 'Task Management',
+    path: '/packing/task-management',
+    icon: CheckSquare,
+    module: 'packing'
+  },
+  {
+    label: 'My Task',
+    path: '/packing/my-task',
+    icon: CheckSquare,
+    module: 'packing'
   },
   {
     label: 'Packing Sheet',
@@ -285,7 +209,28 @@ const packingMenuItems = [
     icon: BarChart,
     module: 'packing',
     feature: 'packingHistory'
-  }
+  },
+  // to be removed only testing purpose
+  {
+    label: 'Training Management',
+    path: '/lms',
+    icon: CheckSquare,
+    module: 'packing',
+    feature: 'packingSheet',
+    submodules: [
+      { label: 'Dashboard', path: '/lms/dashboard', feature: 'packingSheet' },
+      { label: 'Trainees', path: '/lms/trainees', feature: 'packingSheet' },
+      { label: 'Training Modules', path: '/lms/training-modules', feature: 'packingSheet' },
+      { label: 'Question Bank', path: '/lms/question-bank', feature: 'packingSheet' },
+    ]
+  },
+  {
+    label: 'Training',
+    path: '/lms/training',
+    icon: Pen,
+    module: 'packing',
+    feature: 'traineeDashboard'
+  },
 ];
 
 const dispatchMenuItems = [
@@ -295,6 +240,18 @@ const dispatchMenuItems = [
     icon: LayoutDashboard,
     module: 'dispatches',
     feature: 'dashboard'
+  },
+  {
+    label: 'Task Management',
+    path: '/dispatch/task-management',
+    icon: CheckSquare,
+    module: 'dispatches'
+  },
+  {
+    label: 'My Task',
+    path: '/dispatch/my-task',
+    icon: CheckSquare,
+    module: 'dispatches'
   },
   {
     label: 'Delivery Challan',
@@ -309,7 +266,30 @@ const dispatchMenuItems = [
     icon: BarChart,
     module: 'dispatches',
     feature: 'dispatchHistory'
-  }
+  },
+  // to be removed only testing purpose
+  {
+    label: 'Training Management',
+    path: '/lms',
+    icon: CheckSquare,
+    module: 'dispatches',
+    feature: 'dispatchHistory',
+    submodules: [
+      { label: 'Dashboard', path: '/lms/dashboard', feature: 'dispatchHistory' },
+      { label: 'Trainees', path: '/lms/trainees', feature: 'dispatchHistory' },
+      { label: 'Training Modules', path: '/lms/training-modules', feature: 'dispatchHistory' },
+      { label: 'Question Bank', path: '/lms/question-bank', feature: 'dispatchHistory' },
+    ]
+  },
+
+  {
+    label: 'Training',
+    path: '/lms/training',
+    icon: Pen,
+    module: 'dispatches',
+    feature: 'traineeDashboard'
+  },
+
 ];
 
 const salesMenuItems = [
@@ -317,7 +297,14 @@ const salesMenuItems = [
     label: 'Dashboard',
     path: '/sales-dashboard',
     icon: LayoutDashboard,
-    module: 'dashboard'
+    module: 'sales',
+    feature: 'dashboard'
+  },
+  {
+    label: 'Leads',
+    path: '/sales/leads',
+    icon: Target,
+    module: 'sales'
   },
   {
     label: 'My Orders',
@@ -366,7 +353,41 @@ const salesMenuItems = [
     path: '/customers',
     icon: Users,
     module: 'customers'
-  }
+  },
+
+  {
+    label: 'Task Management',
+    path: '/sales/task-management',
+    icon: CheckSquare,
+    module: 'sales'
+  },
+  {
+    label: 'My Task',
+    path: '/sales/my-task',
+    icon: CheckSquare,
+    module: 'sales',
+  },
+
+  {
+    label: 'Training Management',
+    path: '/lms',
+    icon: CheckSquare,
+    module: 'sales',
+    feature: 'myDeliveries',
+    submodules: [
+      { label: 'Dashboard', path: '/lms/dashboard', feature: 'myDeliveries' },
+      { label: 'Trainees', path: '/lms/trainees', feature: 'myDeliveries' },
+      { label: 'Training Modules', path: '/lms/training-modules', feature: 'myDeliveries' },
+      { label: 'Question Bank', path: '/lms/question-bank', feature: 'myDeliveries' },
+    ]
+  },
+  {
+    label: 'Training',
+    path: '/lms/training',
+    icon: Pen,
+    module: 'sales',
+    feature: 'traineeDashboard'
+  },
 ];
 
 const accountsMenuItems = [
@@ -376,6 +397,18 @@ const accountsMenuItems = [
     icon: LayoutDashboard,
     module: 'accounts',
     feature: 'dashboard'
+  },
+  {
+    label: 'Task Management',
+    path: '/accounts/task-management',
+    icon: CheckSquare,
+    module: 'accounts'
+  },
+  {
+    label: 'My Task',
+    path: '/accounts/my-task',
+    icon: CheckSquare,
+    module: 'accounts'
   },
   // {
   //   label: 'Chart of Accounts',
@@ -391,6 +424,7 @@ const accountsMenuItems = [
     module: 'accounts',
     feature: 'sales',
     submodules: [
+      { label: 'Sales Order', path: '/accounts/sales/orders', feature: 'sales' },
       { label: 'Customer Master', path: '/accounts/sales/customers', feature: 'sales' },
       { label: 'Sales Invoice', path: '/accounts/sales/invoices', feature: 'sales' },
       { label: 'Sales Return', path: '/accounts/sales/returns', feature: 'sales' },
@@ -485,33 +519,458 @@ const accountsMenuItems = [
       feature: 'reports'
     }, */
   {
+    label: 'Payment Reminders',
+    path: '/accounts/payment-reminders',
+    icon: Bell,
+    module: 'accounts',
+    feature: 'bankAndCash'
+  },
+  {
     label: 'Settings',
     path: '/accounts/settings',
     icon: Settings,
     module: 'accounts',
     feature: 'settings'
+  },
+  // to be removed only testing purpose
+  {
+    label: 'Training Management',
+    path: '/lms',
+    icon: CheckSquare,
+    module: 'accounts',
+    feature: 'purchases',
+    submodules: [
+      { label: 'Dashboard', path: '/lms/dashboard', feature: 'purchases' },
+      { label: 'Trainees', path: '/lms/trainees', feature: 'purchases' },
+      { label: 'Training Modules', path: '/lms/training-modules', feature: 'purchases' },
+      { label: 'Question Bank', path: '/lms/question-bank', feature: 'purchases' },
+    ]
+  },
+  {
+    label: 'Training',
+    path: '/lms/training',
+    icon: Pen,
+    module: 'accounts',
+    feature: 'traineeDashboard'
+  },
+];
+
+const hrAdminMenuItems = [
+  {
+    label: 'Dashboard',
+    path: '/hrms/SuperAdmin/dashboard',
+    icon: LayoutDashboard,
+    module: 'hrms'
+  },
+  {
+    label: 'System Configuration',
+    path: '/hrms/SuperAdmin/system-configuration',
+    icon: Settings,
+    module: 'hrms',
+    submodules: [
+      { label: 'Companies', path: '/hrms/SuperAdmin/companies', feature: 'companies' },
+      { label: 'Branches', path: '/hrms/SuperAdmin/branches', feature: 'branches' },
+      { label: 'Departments', path: '/hrms/SuperAdmin/departments', feature: 'departments' },
+      { label: 'Designations', path: '/hrms/SuperAdmin/designations', feature: 'designations' }
+    ]
+  },
+  {
+    label: 'Employee Management',
+    path: '/hrms/SuperAdmin/employees',
+    icon: Users,
+    module: 'hrms'
+  },
+  {
+    label: 'Leave Management',
+    path: '/hrms/SuperAdmin/leave-management',
+    icon: CalendarCheck,
+    module: 'hrms',
+    submodules: [
+      { label: 'Leave Requests', path: '/hrms/SuperAdmin/leave-requests', feature: 'leaveRequests' },
+      { label: 'Leave Types & Rules', path: '/hrms/SuperAdmin/leave-types', feature: 'leaveTypes' }
+    ]
+  },
+  {
+    label: 'Attendance',
+    path: '/hrms/SuperAdmin/attendance-module',
+    icon: Clock,
+    module: 'hrms',
+    submodules: [
+      { label: 'Attendance Record', path: '/hrms/SuperAdmin/attendance-record', feature: 'attendanceRecord' },
+      { label: 'Attendance Requests', path: '/hrms/SuperAdmin/attendance-requests', feature: 'attendanceRequests' }
+    ]
+  },
+  {
+    label: 'Payroll',
+    path: '/hrms/SuperAdmin/payroll',
+    icon: Calculator,
+    module: 'hrms',
+    submodules: [
+      { label: 'Salary Structure', path: '/hrms/SuperAdmin/payroll/salary-structure', feature: 'salaryStructure' },
+      { label: 'Payroll Run', path: '/hrms/SuperAdmin/payroll/run', feature: 'payrollRun' },
+      { label: 'Payslips', path: '/hrms/SuperAdmin/payroll/payslips', feature: 'payslips' },
+      { label: 'Statutory Reports', path: '/hrms/SuperAdmin/payroll/statutory-report', feature: 'statutoryReport' }
+    ]
+  },
+  {
+    label: 'Recruitment',
+    path: '/hrms/SuperAdmin/recruitment',
+    icon: Handshake,
+    module: 'hrms',
+    submodules: [
+      { label: 'Job Opening', path: '/hrms/SuperAdmin/recruitment/job-openings', feature: 'jobOpenings' },
+      { label: 'Candidate', path: '/hrms/SuperAdmin/recruitment/candidates', feature: 'candidates' },
+      { label: 'Interview Pipeline', path: '/hrms/SuperAdmin/recruitment/pipeline', feature: 'interviewPipeline' }
+    ]
+  },
+  {
+    label: 'Holidays',
+    path: '/hrms/SuperAdmin/holidays',
+    icon: Calendar,
+    module: 'hrms'
+  },
+  {
+    label: 'HR Policy',
+    path: '/hrms/SuperAdmin/hr-policy',
+    icon: Shield,
+    module: 'hrms'
+  },
+  {
+    label: 'Task Management',
+    path: '/hrms/SuperAdmin/task-management',
+    icon: CheckSquare,
+    module: 'hrms'
+  },
+  // to be removed only testing purpose
+  {
+    label: 'Training Management',
+    path: '/lms',
+    icon: CheckSquare,
+    module: 'hrms',
+    submodules: [
+      { label: 'Dashboard', path: '/lms/dashboard', feature: 'dashboard' },
+      { label: 'Trainees', path: '/lms/trainees', feature: 'trainees' },
+      { label: 'Training Modules', path: '/lms/training-modules', feature: 'trainingModules' },
+      { label: 'Question Bank', path: '/lms/question-bank', feature: 'questionBank' },
+    ]
+  },
+
+];
+
+// ============================================================
+// MANAGER MENU ITEMS - HRMS Manager Role
+// ============================================================
+const managerMenuItems = [
+  {
+    label: 'Dashboard',
+    path: '/hrms/Manager/dashboard',
+    icon: LayoutDashboard,
+    module: 'hrms'
+  },
+  // {
+  //   label: 'Task Management',
+  //   path: '/hrms/Manager/task-management',
+  //   icon: CheckSquare,
+  //   module: 'hrms'
+  // },
+  {
+    label: 'My Task',
+    path: '/hrms/Manager/my-task',
+    icon: CheckSquare,
+    module: 'hrms'
+  },
+  {
+    label: 'Team',
+    path: '/hrms/Manager/team',
+    icon: Users,
+    module: 'hrms',
+    submodules: [
+      { label: 'Team Members', path: '/hrms/Manager/employees', feature: 'teamMembers' },
+      { label: 'Team Attendance', path: '/hrms/Manager/attendance', feature: 'teamAttendance' }
+    ]
+  },
+  {
+    label: 'Holiday Calendar',
+    path: '/hrms/Manager/holidays',
+    icon: Calendar,
+    module: 'hrms'
+  },
+  {
+    label: 'Leaves - Employee',
+    path: '/hrms/Manager/leaves',
+    icon: CalendarCheck,
+    module: 'hrms'
+  },
+  {
+    label: 'Performance Metrics',
+    path: '/hrms/Manager/performance-metrics',
+    icon: BarChart,
+    module: 'hrms'
+  },
+  {
+    label: 'Approvals',
+    path: '/hrms/Manager/approvals',
+    icon: CheckSquare,
+    module: 'hrms',
+    submodules: [
+      { label: 'Leave Requests', path: '/hrms/Manager/approvals/leaves', feature: 'leaveRequests' },
+      { label: 'Attendance Corrections', path: '/hrms/Manager/approvals/attendance', feature: 'attendanceCorrections' },
+      { label: 'Overtime Requests', path: '/hrms/Manager/approvals/overtime', feature: 'overtimeRequests' },
+      { label: 'Expense / Reimbursement', path: '/hrms/Manager/approvals/expense', feature: 'expenseRequests' },
+      { label: 'Travel Requests', path: '/hrms/Manager/approvals/travel', feature: 'travelRequests' },
+      { label: 'Profile Update Requests', path: '/hrms/Manager/approvals/profile', feature: 'profileRequests' }
+    ]
+  },
+  // {
+  //   label: 'Performance',
+  //   path: '/hrms/Manager/performance',
+  //   icon: Award,
+  //   module: 'hrms',
+  //   submodules: [
+  //     { label: 'Goals / OKRs', path: '/hrms/Manager/performance/goals', feature: 'goals' },
+  //     { label: 'Appraisals', path: '/hrms/Manager/performance/appraisals', feature: 'appraisals' },
+  //     { label: 'Feedback & Ratings', path: '/hrms/Manager/performance/feedback', feature: 'feedback' }
+  //   ]
+  // },
+  {
+    label: 'Recruitment',
+    path: '/hrms/Manager/recruitment',
+    icon: Briefcase,
+    module: 'hrms',
+    submodules: [
+      { label: 'Interview Feedback', path: '/hrms/Manager/recruitment/pipeline', feature: 'interviewFeedback' },
+      // { label: 'Recommended Candidates', path: '/hrms/Manager/recruitment/candidates', feature: 'recommendedCandidates' }
+    ]
   }
 ];
 
+const employeeMenuItems = [
+  {
+    label: 'Dashboard',
+    path: '/hrms/Employee/dashboard',
+    icon: LayoutDashboard,
+    module: 'hrms'
+  },
+  {
+    label: 'My Task',
+    path: '/hrms/Employee/my-task',
+    icon: CheckSquare,
+    module: 'hrms'
+  },
+  {
+    label: 'My Profile',
+    path: '/hrms/Employee/profile',
+    icon: UserCircle,
+    module: 'hrms',
+    submodules: [
+      { label: 'Personal Information', path: '/hrms/Employee/profile/personal', feature: 'profile' },
+      { label: 'Document Upload', path: '/hrms/Employee/profile/documents', feature: 'profile' },
+      { label: 'Organizational Info', path: '/hrms/Employee/profile/org', feature: 'profile' }
+    ]
+  },
+  {
+    label: 'Attendance',
+    path: '/hrms/Employee/attendance',
+    icon: Clock,
+    module: 'hrms',
+    submodules: [
+      { label: 'Mark Attendance', path: '/hrms/Employee/attendance/mark', feature: 'attendance' },
+      { label: 'Attendance Calendar', path: '/hrms/Employee/attendance/calendar', feature: 'attendance' },
+      { label: 'Attendance Requests', path: '/hrms/Employee/attendance/requests', feature: 'attendance' }
+    ]
+  },
+  {
+    label: 'Leave',
+    path: '/hrms/Employee/leave',
+    icon: Calendar,
+    module: 'hrms',
+    submodules: [
+      { label: 'Leave Balance', path: '/hrms/Employee/leave/balance', feature: 'leave' },
+      { label: 'Apply Leave', path: '/hrms/Employee/leave/apply', feature: 'leave' }
+    ]
+  },
+  {
+    label: 'Payroll',
+    path: '/hrms/Employee/payroll',
+    icon: Calculator,
+    module: 'hrms',
+    submodules: [
+      { label: 'Payslips', path: '/hrms/Employee/payroll/payslips', feature: 'payroll' },
+      { label: 'Salary Structure', path: '/hrms/Employee/payroll/structure', feature: 'payroll' }
+    ]
+  },
+  {
+    label: 'Expenses',
+    path: '/hrms/Employee/expenses',
+    icon: Receipt,
+    module: 'hrms',
+    submodules: [
+      { label: 'Submit Expense', path: '/hrms/Employee/expenses/submit', feature: 'expenses' }
+    ]
+  },
+  {
+    label: 'Requests',
+    path: '/hrms/Employee/requests',
+    icon: ClipboardList,
+    module: 'hrms',
+    submodules: [
+      { label: 'My Travel Requests', path: '/hrms/Employee/requests/travel', feature: 'requests' },
+      { label: 'My Resign Requests', path: '/hrms/Employee/requests/resign', feature: 'requests' },
+      { label: 'Overtime Requests', path: '/hrms/Employee/requests/overtime', feature: 'requests' },
+      { label: 'Profile Update Requests', path: '/hrms/Employee/requests/profile-update', feature: 'requests' }
+    ]
+  },
+
+];
+
+// ============================================================
+// COMPANY ADMIN MENU ITEMS
+// ============================================================
+const companyAdminMenuItems = [
+  {
+    label: 'Dashboard',
+    path: '/hrms/CompanyAdmin/dashboard',
+    icon: LayoutDashboard,
+    module: 'hrms'
+  },
+  {
+    label: 'Employee Management',
+    path: '/hrms/CompanyAdmin/employees',
+    icon: Users,
+    module: 'hrms'
+  },
+  {
+    label: 'My Company',
+    path: '/hrms/CompanyAdmin/companies',
+    icon: Building2,
+    module: 'hrms'
+  },
+  {
+    label: 'Operating Units',
+    path: '/hrms/CompanyAdmin/branches',
+    icon: Building,
+    module: 'hrms'
+  },
+  {
+    label: 'Departments',
+    path: '/hrms/CompanyAdmin/departments',
+    icon: Users,
+    module: 'hrms'
+  },
+  {
+    label: 'Designations',
+    path: '/hrms/CompanyAdmin/designations',
+    icon: Briefcase,
+    module: 'hrms'
+  },
+  {
+    label: 'Roles & Permissions',
+    path: '/hrms/CompanyAdmin/user-management',
+    icon: Shield,
+    module: 'hrms'
+  },
+  {
+    label: 'Task Management',
+    path: '/hrms/CompanyAdmin/task-management',
+    icon: CheckSquare,
+    module: 'hrms'
+  }
+];
+
+// ============================================================
+// R&D MENU ITEMS - Shared for both R&D Head and R&D Employee
+// HR Admin assigns access per user at creation time
+// ============================================================
+const rdMenuItems = [
+  {
+    label: 'Dashboard',
+    path: '/r&d-dashboard',
+    icon: LayoutDashboard,
+    module: 'rnd'
+  }
+];
+
+const complaintHeadMenuItems = [
+  {
+    label: 'Dashboard',
+    path: '/complaints/dashboard',
+    icon: LayoutDashboard,
+    module: 'complaints'
+  },
+  {
+    label: 'Support Management',
+    path: '/complaints/support',
+    icon: MessageSquare,
+    module: 'complaints'
+  },
+];
+
+const complaintAgentMenuItems = [
+  {
+    label: 'Service Requests',
+    path: '/complaints/service',
+    icon: MessageSquare,
+    module: 'complaints'
+  },
+]
+
+
+
+
+
+
 // Function to get menu items based on role
 const getMenuItemsByRole = (role) => {
+  // Safety check
+  if (!role) return [];
+
+  // THE FIX: Catch ALL Trainees instantly, regardless of their department
+  if (role.toLowerCase().includes('trainee')) {
+    return traineeMenuItems;
+  }
   switch (role) {
-    case 'Super Admin':
+    case 'Superadmin':
+    case 'Super Admin': // backend uses 'Super Admin'
       return superAdminMenuItems;
-    case 'Unit Head':
-      return unitHeadMenuItems;
-    case 'Unit Manager':
-      return unitManagerMenuItems;
     case 'Production':
+    case 'Production Employee':
+    case 'Production Head':
       return productionMenuItems;
     case 'Packing':
+    case 'Packing Employee':
+    case 'Packing Head':
       return packingMenuItems;
     case 'Dispatch':
+    case 'Dispatch Employee':
+    case 'Dispatch Head':
       return dispatchMenuItems;
     case 'Sales':
+    case 'Sales Employee':
+    case 'Sales Head':
       return salesMenuItems;
     case 'Accounts':
+    case 'Account Employee':
+    case 'Accounts Head':
       return accountsMenuItems;
+    case 'Hr Admin':
+    case 'HR-Admin': // backend uses 'HR-Admin'
+      return hrAdminMenuItems;
+    case 'Manager': // HRMS Manager role
+      return managerMenuItems;
+    case 'Employee': // HRMS Employee role
+      return employeeMenuItems;
+    case 'Company Admin':
+      return companyAdminMenuItems;
+    case 'Research & Development Head':
+    case 'Research Development Employee': // same sidebar, permissions control access
+      return rdMenuItems;
+    case 'Complaint Management Head':
+      return complaintHeadMenuItems;
+    case 'Complaint Management Employee':
+      return complaintAgentMenuItems;
+    // to be removed only testing purpose
+    case 'Account Trainee':
+      return traineeMenuItems;
     default:
       return [];
   }
@@ -528,7 +987,7 @@ const profileMenuItem = {
 export default function Sidebar({ isOpen, onClose }) {
   const [location] = useLocation();
   const { user, logout } = useAuth();
-  const { companyLogo, companyName, settings } = useSettings();
+  const { settings } = useSettings();
   const { hasModuleAccess, hasFeatureAccess } = usePermissions();
   const [expandedModules, setExpandedModules] = useState({});
 
@@ -547,14 +1006,32 @@ export default function Sidebar({ isOpen, onClose }) {
   // Get menu items based on user role - much simpler and cleaner
   let roleMenuItems = getMenuItemsByRole(user?.role);
 
-  // If Unit Head is in the Accounts section, show Accounts menu items
-  if (user?.role === 'Unit Head' && (location.startsWith('/accounts') || location === '/accounts-dashboard')) {
-    roleMenuItems = getMenuItemsByRole('Accounts');
-  }
+  // Normalize role for filtering logic below
+  const normalizedRole = user?.role === 'Super Admin' ? 'Superadmin'
+    : user?.role === 'HR-Admin' ? 'Hr Admin'
+      : user?.role;
+
+  // Manager and HR Admin always see all submodules; other roles need feature permission
+  const isHrmsRole = user?.role === 'Manager' || user?.role === 'HR-Admin' || user?.role === 'Hr Admin' || user?.role === 'Employee';
+  const isManagerRole = user?.role === 'Manager';
 
   // For Production role users, apply strict filtering to only show production items
   let filteredMenuItems;
-  if (user?.role === 'Production') {
+
+  // Pre-filter to handle 'Task Management' and 'My Task' visibility based on role type
+  const isHeadRole = normalizedRole?.includes('Head') || normalizedRole === 'Manager' || normalizedRole === 'Superadmin' || normalizedRole === 'Hr Admin' || normalizedRole === 'Company Admin';
+  roleMenuItems = roleMenuItems.filter(item => {
+    // Only Head-level roles can see Task Management
+    if (item.label === 'Task Management' && !isHeadRole) return false;
+    // My Task is visible to everyone if it's in their array
+    return true;
+  });
+
+  if (normalizedRole === 'Superadmin') {
+    // Super Admin gets ALL menu items - no permission filtering needed
+    // Backend filters permissions to only 'superAdmin' module, so we bypass hasModuleAccess
+    filteredMenuItems = roleMenuItems;
+  } else if (normalizedRole === 'Production' || normalizedRole === 'Production Employee' || normalizedRole === 'Production Head') {
     // For Production users, only show production-related items and profile
     filteredMenuItems = roleMenuItems.filter(item => {
       // Always show items without module restriction (like profile)
@@ -572,7 +1049,7 @@ export default function Sidebar({ isOpen, onClose }) {
 
       return false; // Hide all non-production items for Production users
     });
-  } else if (user?.role === 'Packing') {
+  } else if (normalizedRole === 'Packing' || normalizedRole === 'Packing Employee' || normalizedRole === 'Packing Head') {
     // For Packing users, only show packing-related items and profile
     filteredMenuItems = roleMenuItems.filter(item => {
       // Always show items without module restriction (like profile)
@@ -590,7 +1067,7 @@ export default function Sidebar({ isOpen, onClose }) {
 
       return false; // Hide all non-packing items for Packing users
     });
-  } else if (user?.role === 'Dispatch') {
+  } else if (normalizedRole === 'Dispatch' || normalizedRole === 'Dispatch Employee' || normalizedRole === 'Dispatch Head') {
     // For Dispatch users, only show dispatch-related items and profile
     filteredMenuItems = roleMenuItems.filter(item => {
       // Always show items without module restriction (like profile)
@@ -610,7 +1087,7 @@ export default function Sidebar({ isOpen, onClose }) {
 
       return false; // Hide all non-dispatch items for Dispatch users
     });
-  } else if (user?.role === 'Accounts') {
+  } else if (normalizedRole === 'Accounts' || normalizedRole === 'Account Employee' || normalizedRole === 'Accounts Head') {
     // For Accounts users, only show accounts-related items and profile
     filteredMenuItems = roleMenuItems.filter(item => {
       // Always show items without module restriction (like profile)
@@ -628,22 +1105,37 @@ export default function Sidebar({ isOpen, onClose }) {
 
       return false; // Hide all non-accounts items for Accounts users
     });
+  } else if (normalizedRole === 'Sales' || normalizedRole === 'Sales Employee' || normalizedRole === 'Sales Head') {
+    // For Sales users, only show sales-related items and profile
+    filteredMenuItems = roleMenuItems.filter(item => {
+      if (!item.module) return true;
+      if (item.module === 'sales' || item.module === 'customers') {
+        if (item.feature && item.module !== 'customers') {
+          return hasFeatureAccess('sales', item.feature, 'view');
+        }
+        return true;
+      }
+      return false;
+    });
+  } else if (normalizedRole === 'Hr Admin' || normalizedRole === 'Manager' || normalizedRole === 'Employee') {
+    // For HR-Admin, Manager and Employee users, show all hrms-related items directly
+    filteredMenuItems = roleMenuItems.filter(item => {
+      if (!item.module) return true;
+      if (item.module === 'hrms') return true;
+      return false;
+    });
+  } else if (normalizedRole === 'Research & Development Head' || normalizedRole === 'Research Development Employee') {
+    // Both R&D roles share the same sidebar — no separate filtering
+    filteredMenuItems = roleMenuItems;
+  } else if (normalizedRole === 'Complaint Management Head' || normalizedRole === 'Complaint Management Employee') {
+    // Complaint Management roles - show all complaint module items directly
+    filteredMenuItems = roleMenuItems;
+  } else if (normalizedRole === 'Company Admin') {
+    // Company Admin - show all hrms items directly
+    filteredMenuItems = roleMenuItems;
   } else {
     // For other roles, use the existing filtering logic
     filteredMenuItems = roleMenuItems.filter(item => {
-      // Always show dashboard
-      if (item.module === 'dashboard') return true;
-
-      // Always show items without module restriction
-      if (!item.module) return true;
-
-      // Special handling for Unit Head role with unitManager module features
-      if (user?.role === 'Unit Head' && item.module === 'unitManager' && item.feature) {
-        // For Unit Head, check feature access directly without module access check
-        const hasFeature = hasFeatureAccess(item.module, item.feature, 'view');
-        return hasFeature;
-      }
-
       // Check if user has access to the module
       const hasAccess = hasModuleAccess(item.module);
       if (!hasAccess) return false;
@@ -679,49 +1171,19 @@ export default function Sidebar({ isOpen, onClose }) {
         isOpen ? "translate-x-0" : "-translate-x-full"
       )}>
         <div className="flex flex-col h-full">
-          {/* Logo and Company Name */}
-          <div className="flex items-center justify-between h-16 px-4 sm:px-6 border-b border-slate-200">
-            <div className="flex items-center space-x-2 sm:space-x-3 min-w-0">
-              <div className="relative flex-shrink-0">
-                {companyLogo ? (
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl overflow-hidden shadow-lg transform hover:scale-110 transition-transform duration-200 border border-slate-200">
-                    <img
-                      src={companyLogo}
-                      alt="Company Logo"
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        console.log('Sidebar logo load error:', e);
-                        e.target.style.display = 'none';
-                        e.target.parentElement.innerHTML = `
-                          <div class="w-full h-full bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
-                            <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
-                              <path d="M12 2L2 7L12 12L22 7L12 2Z"></path>
-                              <path d="M2 17L12 22L22 17"></path>
-                              <path d="M2 12L12 17L22 12"></path>
-                            </svg>
-                          </div>
-                        `;
-                      }}
-                    />
-                  </div>
-                ) : (
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl flex items-center justify-center shadow-lg transform hover:scale-110 transition-transform duration-200">
-                    <Factory className="w-4 h-4 sm:w-6 sm:h-6 text-white" />
-                  </div>
-                )}
-                <div className="absolute -top-1 -right-1 w-2 h-2 sm:w-3 sm:h-3 bg-green-500 rounded-full animate-pulse"></div>
-              </div>
-              <div className="min-w-0">
-                <span className="text-lg sm:text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent truncate block">
-                  {companyName}
-                </span>
-                <p className="text-xs text-slate-500 hidden sm:block">Enterprise Suite</p>
-              </div>
+          {/* Logo */}
+          <div className="flex items-center justify-between h-16 px-3 border-b border-slate-200 bg-white">
+            <div className="flex-1 flex items-center justify-center h-full py-2">
+              <img
+                src="/logo Semtek.webp"
+                alt="Samtek Logo"
+                className="h-full w-auto object-contain"
+              />
             </div>
             <Button
               variant="ghost"
               size="sm"
-              className="md:hidden text-slate-600 hover:bg-slate-100:bg-slate-800 rounded-full w-8 h-8"
+              className="md:hidden text-slate-500 hover:bg-slate-100 rounded-full w-8 h-8 flex-shrink-0"
               onClick={onClose}
             >
               ×
@@ -737,11 +1199,14 @@ export default function Sidebar({ isOpen, onClose }) {
                 const Icon = item.icon;
                 const isActive = location === item.path ||
                   (item.module === 'dashboard' && location === '/') ||
-                  (item.module === 'dashboard' && location === '/super-admin-dashboard');
+                  (item.module === 'dashboard' && location === '/super-admin-dashboard') ||
+                  (item.module === 'rnd' && location === '/r&d-dashboard') ||
+                  (item.module === 'complaints' && location === '/complaints');
                 const hasSubmodules = item.submodules && item.submodules.length > 0;
                 const isExpanded = expandedModules[item.path];
+                // Manager/HR Admin always sees all submodules; other roles need feature permission
                 const hasAccessibleSubmodules = hasSubmodules &&
-                  item.submodules.some(sub => hasFeatureAccess(item.module, sub.feature, 'view'));
+                  (isHrmsRole || item.submodules.some(sub => hasFeatureAccess(item.module, sub.feature, 'view')));
 
                 return (
                   <div key={item.path} className="space-y-1">
@@ -801,7 +1266,8 @@ export default function Sidebar({ isOpen, onClose }) {
                     {hasAccessibleSubmodules && isExpanded && (
                       <div className="ml-6 sm:ml-8 space-y-1">
                         {item.submodules
-                          .filter(sub => hasFeatureAccess(item.module, sub.feature, 'view'))
+                          // Manager/HR Admin sees all submodules; others need feature permission
+                          .filter(sub => isHrmsRole || hasFeatureAccess(item.module, sub.feature, 'view'))
                           .map((submodule) => {
                             const isSubActive = location === submodule.path;
                             return (

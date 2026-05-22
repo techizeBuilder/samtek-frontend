@@ -39,7 +39,7 @@ export default function Header({ onSidebarToggle, title = "Dashboard" }) {
       'Unit Manager': 'unitManager', 
       'Production': 'production',
       'Accounts': 'accounts',
-      'Super Admin': 'superAdmin'
+      'Superadmin': 'superAdmin'
     };
 
     const roleKey = roleKeyMapping[user.role];

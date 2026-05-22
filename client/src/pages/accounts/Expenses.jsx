@@ -63,6 +63,16 @@ export default function Expenses() {
     const [expenseToDelete, setExpenseToDelete] = useState(null);
     const [pagination, setPagination] = useState({ page: 1, limit: 10, total: 0, pages: 1 });
 
+    // Expense Requests State
+    const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
+    const [expenseRequests, setExpenseRequests] = useState([]);
+    const [loadingRequests, setLoadingRequests] = useState(false);
+    const [processingPayment, setProcessingPayment] = useState(null);
+    const [paymentFormData, setPaymentFormData] = useState({
+        paymentMode: 'Cash',
+        notes: ''
+    });
+
     // Form State
     const [formData, setFormData] = useState({
         category: 'Operational',
@@ -105,6 +115,20 @@ export default function Expenses() {
             }
         } catch (error) {
             console.error("Failed to fetch stats", error);
+        }
+    };
+
+    const fetchRequests = async () => {
+        setLoadingRequests(true);
+        try {
+            const response = await api.getAllExpenseRequests();
+            // Backend returns an array directly or { success, data }
+            const data = response.data || response;
+            setExpenseRequests(Array.isArray(data) ? data : []);
+        } catch (error) {
+            console.error("Failed to fetch requests", error);
+        } finally {
+            setLoadingRequests(false);
         }
     };
 
@@ -210,6 +234,19 @@ export default function Expenses() {
                     <p className="text-slate-500">Track and manage your bakery expenses and overheads</p>
                 </div>
                 <div className="flex gap-2">
+                    <Button
+                        variant="outline"
+                        className="border-blue-200 text-blue-600 hover:bg-blue-50"
+                        onClick={() => { fetchRequests(); setIsRequestModalOpen(true); }}
+                    >
+                        <PieChart className="w-4 h-4 mr-2" />
+                        Expense Requests
+                        {expenseRequests.filter(r => r.status === 'APPROVED' || r.status === 'PENDING').length > 0 && (
+                            <Badge className="ml-2 bg-blue-600 text-white border-none h-5 w-5 flex items-center justify-center p-0 text-[10px]">
+                                {expenseRequests.filter(r => r.status === 'APPROVED' || r.status === 'PENDING').length}
+                            </Badge>
+                        )}
+                    </Button>
                     <Button
                         className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg"
                         onClick={() => { resetForm(); setIsModalOpen(true); }}
@@ -525,6 +562,135 @@ export default function Expenses() {
                             {isDeleting ? 'Deleting...' : 'Yes, Delete'}
                         </Button>
                     </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Expense Requests Modal */}
+            <Dialog open={isRequestModalOpen} onOpenChange={setIsRequestModalOpen}>
+                <DialogContent className="sm:max-w-[800px] max-h-[80vh] overflow-hidden flex flex-col">
+                    <DialogHeader>
+                        <DialogTitle>Expense Requests Review</DialogTitle>
+                        <DialogDescription>
+                            Process employee expense requests and post them to the ledger.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="flex-1 overflow-y-auto py-4">
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Employee</TableHead>
+                                    <TableHead>Type</TableHead>
+                                    <TableHead>Amount</TableHead>
+                                    <TableHead>Status</TableHead>
+                                    <TableHead className="text-right">Action</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {loadingRequests ? (
+                                    <TableRow><TableCell colSpan={5} className="text-center py-10">Loading requests...</TableCell></TableRow>
+                                ) : expenseRequests.length === 0 ? (
+                                    <TableRow><TableCell colSpan={5} className="text-center py-10 text-slate-500">No requests found.</TableCell></TableRow>
+                                ) : (
+                                    expenseRequests.map((req) => (
+                                        <TableRow key={req._id}>
+                                            <TableCell>
+                                                <div className="font-medium text-slate-900">{req.employee?.name}</div>
+                                                <div className="text-[10px] text-slate-400">{req.employee?.employeeId}</div>
+                                            </TableCell>
+                                            <TableCell>
+                                                <div className="text-sm font-semibold">{req.expenseType}</div>
+                                                <div className="text-xs text-slate-500">{req.remarks}</div>
+                                            </TableCell>
+                                            <TableCell className="font-bold">₹{req.amount.toLocaleString()}</TableCell>
+                                            <TableCell>
+                                                <Badge variant="outline" className={cn(
+                                                    "capitalize",
+                                                    req.status === 'PAID' ? "bg-green-50 text-green-700 border-green-200" :
+                                                    req.status === 'APPROVED' ? "bg-blue-50 text-blue-700 border-blue-200" :
+                                                    req.status === 'REJECTED' ? "bg-red-50 text-red-700 border-red-200" :
+                                                    "bg-amber-50 text-amber-700 border-amber-200"
+                                                )}>
+                                                    {req.status}
+                                                </Badge>
+                                            </TableCell>
+                                            <TableCell className="text-right">
+                                                {req.status !== 'PAID' && req.status !== 'REJECTED' && (
+                                                    <Button 
+                                                        size="sm" 
+                                                        className="bg-green-600 hover:bg-green-700 text-white h-8"
+                                                        onClick={() => setProcessingPayment(req)}
+                                                    >
+                                                        Pay Now
+                                                    </Button>
+                                                )}
+                                            </TableCell>
+                                        </TableRow>
+                                    ))
+                                )}
+                            </TableBody>
+                        </Table>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* Payment Processing Modal */}
+            <Dialog open={!!processingPayment} onOpenChange={() => setProcessingPayment(null)}>
+                <DialogContent className="sm:max-w-[400px]">
+                    <DialogHeader>
+                        <DialogTitle>Process Payment</DialogTitle>
+                        <DialogDescription>
+                            Confirm payment for {processingPayment?.expenseType} of ₹{processingPayment?.amount.toLocaleString()}
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium">Payment Mode</label>
+                            <Select
+                                value={paymentFormData.paymentMode}
+                                onValueChange={(v) => setPaymentFormData(prev => ({ ...prev, paymentMode: v }))}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {PAYMENT_MODES.map(mode => (
+                                        <SelectItem key={mode} value={mode}>{mode}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium">Internal Notes</label>
+                            <Input 
+                                placeholder="Any internal notes..."
+                                value={paymentFormData.notes}
+                                onChange={(e) => setPaymentFormData(prev => ({ ...prev, notes: e.target.value }))}
+                            />
+                        </div>
+
+                        <Button 
+                            className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                            onClick={async () => {
+                                try {
+                                    const response = await api.payExpenseRequest(processingPayment._id, paymentFormData);
+                                    if (response.success) {
+                                        toast({ title: "Paid", description: "Expense request has been paid and added to ledger." });
+                                        setProcessingPayment(null);
+                                        fetchRequests();
+                                        fetchExpenses();
+                                        fetchStats();
+                                    }
+                                } catch (error) {
+                                    toast({ title: "Payment Failed", description: error.message, variant: "destructive" });
+                                }
+                            }}
+                        >
+                            Confirm & Pay
+                        </Button>
+                    </div>
                 </DialogContent>
             </Dialog>
         </div>
