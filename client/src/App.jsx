@@ -478,9 +478,50 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/r&d-dashboard">
+      {/* R&D Module Routes */}
+      <Route path="/r&d/dashboard">
         <ProtectedRoute requiredRole={["Research & Development Head", "Research Development Employee"]}>
           <RDDashboard />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/r&d/product-master">
+        <ProtectedRoute requiredRole={["Research & Development Head", "Research Development Employee"]}>
+          <ProductMaster />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/r&d/design-approval">
+        <ProtectedRoute requiredRole={["Research & Development Head", "Research Development Employee"]}>
+          <DesignApproval />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/r&d/bom-management">
+        <ProtectedRoute requiredRole={["Research & Development Head", "Research Development Employee"]}>
+          <BOMManagement />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/r&d/tool-process">
+        <ProtectedRoute requiredRole={["Research & Development Head", "Research Development Employee"]}>
+          <ToolProcess />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/r&d/prototype">
+        <ProtectedRoute requiredRole={["Research & Development Head", "Research Development Employee"]}>
+          <Prototype />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/r&d/change-management">
+        <ProtectedRoute requiredRole={["Research & Development Head", "Research Development Employee"]}>
+          <ChangeManagement />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/r&d/quality-parameters">
+        <ProtectedRoute requiredRole={["Research & Development Head", "Research Development Employee"]}>
+          <QualityParameters />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/r&d/documentation">
+        <ProtectedRoute requiredRole={["Research & Development Head", "Research Development Employee"]}>
+          <Documentation />
         </ProtectedRoute>
       </Route>
 
@@ -778,9 +819,6 @@ function Router() {
         </ProtectedRoute>
       </Route>
       <Route path="/accounts/sales/order-tracking">
-        <ProtectedRoute requiredRole="Accounts">
-          <SalesOrderTracking />
-        </ProtectedRoute>
         <RoleBasedProtectedRoute allowedRoles={['Superadmin', 'Accounts']}>
           <SalesOrderTracking />
         </RoleBasedProtectedRoute>
@@ -944,6 +982,43 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      {/* Marketing Module Routes */}
+      <Route path="/marketing/dashboard">
+        <ProtectedRoute requiredRole={['Marketing Head', 'Sales', 'Sales Employee', 'Sales Head']}>
+          <MarketingProvider><MarketingDashboard /></MarketingProvider>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/marketing/library">
+        <ProtectedRoute requiredRole={['Marketing Head', 'Sales', 'Sales Employee', 'Sales Head']}>
+          <MarketingProvider><MarketingLibrary /></MarketingProvider>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/marketing/upload">
+        <ProtectedRoute requiredRole="Marketing Head">
+          <MarketingProvider><UploadContent /></MarketingProvider>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/marketing/categories">
+        <ProtectedRoute requiredRole="Marketing Head">
+          <MarketingProvider><CategoryManagement /></MarketingProvider>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/marketing/reports">
+        <ProtectedRoute requiredRole="Marketing Head">
+          <MarketingProvider><MarketingReports /></MarketingProvider>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/marketing/audit-logs">
+        <ProtectedRoute requiredRole="Marketing Head">
+          <MarketingProvider><AuditLogs /></MarketingProvider>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/marketing/notifications">
+        <ProtectedRoute requiredRole="Marketing Head">
+          <MarketingProvider><MarketingNotifications /></MarketingProvider>
+        </ProtectedRoute>
+      </Route>
+
       <Route component={NotFound} />
     </Switch>
   );
@@ -953,12 +1028,14 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <TooltipProvider>
-          <Toaster />
-          <BrowserRouter>
-            <Router />
-          </BrowserRouter>
-        </TooltipProvider>
+        <RDProvider>
+          <TooltipProvider>
+            <Toaster />
+            <BrowserRouter>
+              <Router />
+            </BrowserRouter>
+          </TooltipProvider>
+        </RDProvider>
       </AuthProvider>
     </QueryClientProvider>
   );

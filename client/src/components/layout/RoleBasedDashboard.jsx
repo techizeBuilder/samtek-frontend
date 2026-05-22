@@ -7,6 +7,8 @@ import SuperAdminDashboard from "@/pages/SuperAdminDashboard";
 import ProductionModule from "@/components/production/ProductionModule";
 import PackingDashboard from "@/pages/PackingDashboard";
 import DispatchDashboard from "@/pages/DispatchDashboard";
+import { PackagingDispatchProvider } from "@/contexts/PackagingDispatchContext";
+import PkgDispatchDashboard from "@/pages/packaging-dispatch/Dashboard";
 import AccountsDashboard from "@/pages/AccountsDashboard";
 import HRMSDashboard from "@/pages/hrms/HRMSDashboard";
 import ManagerDashboard from "@/pages/hrms/Manager/ManagerDashboard";
@@ -47,7 +49,7 @@ export default function RoleBasedDashboard() {
         case 'Dispatch':
         case 'Dispatch Employee':
         case 'Dispatch Head':
-          setLocation('/dispatch-dashboard');
+          setLocation('/packaging-dispatch/dashboard');
           return;
         case 'Accounts':
         case 'Account Employee':
@@ -69,7 +71,18 @@ export default function RoleBasedDashboard() {
           return;
         case 'Research & Development Head':
         case 'Research Development Employee':
-          setLocation('/r&d-dashboard');
+          setLocation('/r&d/dashboard');
+          return;
+        case 'QC Head':
+        case 'QC Employee':
+          setLocation('/qc/dashboard');
+          return;
+        case 'Marketing Head':
+          setLocation('/sales-dashboard');
+          return;
+        case 'Store Head':
+        case 'Store Employee':
+          setLocation('/store-dashboard');
           return;
         case 'Store Head':
         case 'Store Employee':
@@ -106,7 +119,7 @@ export default function RoleBasedDashboard() {
     case 'Dispatch':
     case 'Dispatch Employee':
     case 'Dispatch Head':
-      return <DispatchDashboard />;
+      return <PackagingDispatchProvider><PkgDispatchDashboard /></PackagingDispatchProvider>;
     case 'Accounts':
     case 'Account Employee':
     case 'Accounts Head':

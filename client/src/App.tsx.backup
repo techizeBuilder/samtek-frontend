@@ -4,6 +4,7 @@ import { queryClient } from "@/lib/queryClient";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { RDProvider } from "@/contexts/RDContext";
 import { useAuth } from "@/hooks/useAuth";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import NotFound from "@/pages/not-found";
@@ -24,6 +25,15 @@ import MyInvoices from "@/pages/sales/MyInvoices";
 import MyLedger from "@/pages/sales/MyLedger";
 import RefundReturn from "@/pages/sales/RefundReturn";
 import SalesDashboard from "@/pages/SalesDashboard";
+import RDDashboard from "@/pages/ResearchDevelopment/Dashboard";
+import ProductMaster from "@/pages/ResearchDevelopment/ProductMaster";
+import DesignApproval from "@/pages/ResearchDevelopment/DesignApproval";
+import BOMManagement from "@/pages/ResearchDevelopment/BOMManagement";
+import ToolProcess from "@/pages/ResearchDevelopment/ToolProcess";
+import Prototype from "@/pages/ResearchDevelopment/Prototype";
+import ChangeManagement from "@/pages/ResearchDevelopment/ChangeManagement";
+import QualityParameters from "@/pages/ResearchDevelopment/QualityParameters";
+import Documentation from "@/pages/ResearchDevelopment/Documentation";
 
 function ProtectedRoute({ component: Component, ...props }) {
   const { user, loading } = useAuth();
@@ -96,6 +106,35 @@ function Router() {
         <ProtectedRoute component={Dispatches} />
       </Route>
       
+      {/* R&D Module Routes */}
+      <Route path="/r&d/dashboard">
+        <ProtectedRoute component={RDDashboard} />
+      </Route>
+      <Route path="/r&d/product-master">
+        <ProtectedRoute component={ProductMaster} />
+      </Route>
+      <Route path="/r&d/design-approval">
+        <ProtectedRoute component={DesignApproval} />
+      </Route>
+      <Route path="/r&d/bom-management">
+        <ProtectedRoute component={BOMManagement} />
+      </Route>
+      <Route path="/r&d/tool-process">
+        <ProtectedRoute component={ToolProcess} />
+      </Route>
+      <Route path="/r&d/prototype">
+        <ProtectedRoute component={Prototype} />
+      </Route>
+      <Route path="/r&d/change-management">
+        <ProtectedRoute component={ChangeManagement} />
+      </Route>
+      <Route path="/r&d/quality-parameters">
+        <ProtectedRoute component={QualityParameters} />
+      </Route>
+      <Route path="/r&d/documentation">
+        <ProtectedRoute component={Documentation} />
+      </Route>
+
       {/* Other routes */}
       <Route path="/profile">
         <ProtectedRoute component={Profile} />
@@ -132,8 +171,10 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <AuthProvider>
-          <Router />
-          <Toaster />
+          <RDProvider>
+            <Router />
+            <Toaster />
+          </RDProvider>
         </AuthProvider>
       </TooltipProvider>
     </QueryClientProvider>

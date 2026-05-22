@@ -206,11 +206,9 @@ const MODULES = [
     ]
   },
   {
-    name: 'Store',
-    label: 'Store',
+    name: 'marketing',
+    label: 'Marketing',
     features: [
-      { key: 'dashboard', label: 'Dashboard' },
-      { key: 'orders', label: 'Orders' }
       { key: 'library', label: 'Marketing Library' },
       { key: 'upload', label: 'Upload Content' },
       { key: 'categories', label: 'Category Management' },
