@@ -511,6 +511,7 @@ function Router() {
             <Route exact path="/hrms/CompanyAdmin/departments" component={HRMSDepartments} />
             <Route exact path="/hrms/CompanyAdmin/designations" component={HRMSDesignation} />
             <Route exact path="/hrms/CompanyAdmin/user-management" component={RolePermissionManagement} />
+            <Route exact path="/hrms/CompanyAdmin/task-management" component={HRMSTaskManagement} />
             <Route component={NotFound} />
           </Switch>
         </ProtectedRoute>
