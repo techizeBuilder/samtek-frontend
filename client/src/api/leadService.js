@@ -96,5 +96,38 @@ export const leadApi = {
         'Authorization': `Bearer ${token}`
       }
     });
+  },
+
+  requestPaymentCheck: (id) => {
+    const token = localStorage.getItem('token');
+    return apiRequest(`/leads/${id}/request-payment-check`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+  },
+
+  updatePaymentCheckStatus: (id, status, remarks) => {
+    const token = localStorage.getItem('token');
+    const bodyData = typeof status === 'object' ? status : { status, remarks };
+    return apiRequest(`/leads/${id}/payment-check`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(bodyData)
+    });
+  },
+
+  sendToAccount: (id) => {
+    const token = localStorage.getItem('token');
+    return apiRequest(`/leads/${id}/send-to-account`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
   }
 };

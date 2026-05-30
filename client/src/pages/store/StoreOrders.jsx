@@ -6,7 +6,9 @@ import {
   Eye,
   Printer,
   RefreshCw,
-  CheckCircle2
+  CheckCircle2,
+  PackageCheck,
+  Clock
 } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -58,14 +60,21 @@ const StoreOrders = () => {
 
   const orders = Array.isArray(trackingData) ? trackingData : (trackingData?.data || []);
 
-  // Filter for orders that are approved (Store Orders)
-  const storeOrders = orders.filter(item => {
-    const isApproved = item.orderStatus === 'approved' || item.paymentStatus === 'Paid';
+  // Filter for orders that are service-verified (pending) or fully approved
+  const storeOrders = orders
+  .filter(item => {
+    const isVisible =
+      item.orderStatus === 'approved' ||
+      item.orderStatus === 'pending' ||
+      item.paymentStatus === 'Paid';
+
     const matchesSearch =
       (item.orderCode || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       (item.customerName || '').toLowerCase().includes(searchTerm.toLowerCase());
-    return isApproved && matchesSearch;
-  });
+
+    return isVisible && matchesSearch;
+  })
+  .sort((a, b) => new Date(b.orderDate) - new Date(a.orderDate));
 
   const handleViewOrder = async (item) => {
     if (!item.orderId) {
@@ -87,25 +96,39 @@ const StoreOrders = () => {
     }
   };
 
-  const handleUpdateStoreInfo = async (saleId, updates) => {
+  const handleUpdateStoreInfo = async (itemId, updates) => {
     if (!updates) return;
-    setStoreInfoLoading(saleId);
+    setStoreInfoLoading(itemId);
     try {
-      const response = await apiRequest('PATCH', `/api/orders/sale/${saleId}/store-info`, updates);
+      // Find the item to determine if it's a Sale or Order
+      const item = orders.find(o => o._id === itemId);
+      
+      let response;
+      if (item.source === 'sale') {
+        // This is a Sale record, use the sale endpoint
+        response = await apiRequest('PATCH', `/api/orders/sale/${itemId}/store-info`, updates);
+      } else {
+        // This is an Order record, use the order endpoint
+        response = await apiRequest('PATCH', `/api/orders/order/${item.orderId}/store-info`, updates);
+      }
+      
       setLocalStoreInfo(prev => ({
         ...prev,
-        [saleId]: {
-          ...(prev[saleId] || {}),
+        [itemId]: {
+          ...(prev[itemId] || {}),
           ...updates
         }
       }));
+
+      // Refetch data to get updated values from backend
+      await refetch();
 
       if (updates.isAvailableInInventory === 'Available') {
         toast({ title: "Sent to QC", description: "Order has been successfully sent to QC department." });
       } else if (updates.isAvailableInInventory === 'Not Available' || updates.productType === 'In-house Manufactured') {
         // If the combined condition is met (taking local state into account)
-        const currentAvailability = updates.isAvailableInInventory || localStoreInfo[saleId]?.isAvailableInInventory || orders.find(o => o._id === saleId)?.isAvailableInInventory;
-        const currentType = updates.productType || localStoreInfo[saleId]?.productType || orders.find(o => o._id === saleId)?.productType;
+        const currentAvailability = updates.isAvailableInInventory || localStoreInfo[itemId]?.isAvailableInInventory || orders.find(o => o._id === itemId)?.isAvailableInInventory;
+        const currentType = updates.productType || localStoreInfo[itemId]?.productType || orders.find(o => o._id === itemId)?.productType;
 
         if (currentAvailability === 'Not Available' && currentType === 'In-house Manufactured') {
           toast({
@@ -120,7 +143,12 @@ const StoreOrders = () => {
         toast({ title: "Saved", description: "Store information updated successfully" });
       }
     } catch (error) {
-      toast({ title: "Error", description: "Failed to update store info", variant: "destructive" });
+      console.error('Store info update error:', error);
+      toast({ 
+        title: "Error", 
+        description: error.response?.data?.message || "Failed to update store info", 
+        variant: "destructive" 
+      });
     } finally {
       setStoreInfoLoading(null);
     }
@@ -163,6 +191,7 @@ const StoreOrders = () => {
               <TableRow>
                 <TableHead className="w-[160px]">Order & Date</TableHead>
                 <TableHead>Customer Details</TableHead>
+                <TableHead className="w-[120px]">Status</TableHead>
                 <TableHead className="w-[180px]">Product Type</TableHead>
                 <TableHead className="w-[180px]">Inventory Status</TableHead>
                 <TableHead className="text-right">Value</TableHead>
@@ -194,6 +223,18 @@ const StoreOrders = () => {
                   <TableCell>
                     <div className="font-medium text-slate-900">{item.customerName}</div>
                     <div className="text-xs text-slate-500">{item.customerMobile}</div>
+                  </TableCell>
+                  {/* Status Column */}
+                  <TableCell>
+                    {item.orderStatus === 'approved' ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        <PackageCheck className="w-3 h-3" /> Approved
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                        <Clock className="w-3 h-3" /> Service Verified
+                      </span>
+                    )}
                   </TableCell>
                   {/* Product Type Column */}
                   <TableCell>

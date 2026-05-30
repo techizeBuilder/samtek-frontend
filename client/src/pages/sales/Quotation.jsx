@@ -99,98 +99,39 @@ const Quotation = () => {
     specifications: [{ key: '', value: '' }]
   });
 
-  const PRICE_LIST_DATA = [
-    {
-      id: 1,
-      category: "1440 RPM",
-      code: "C/0.25/1440/3",
-      price: 6.00,
-      unit: 1,
-      description: "- HIGH SPEED MOTOR PERFORMANCE\n- OPTIMIZED FOR INDUSTRIAL USE",
-      features: ["Single Phase", "Three Phase", "Copper Winding", "Low Noise", "High Efficiency"],
-      products: [
-        { capacity: "0.25 HP", price: 6000 },
-        { capacity: "0.5 HP", price: 8500 },
-        { capacity: "1 HP", price: 12000 },
-        { capacity: "2 HP", price: 18000 },
-      ]
-    },
-    {
-      id: 2,
-      category: "3 in 1 Cleaning Machine",
-      code: "MS31C24",
-      price: 90000.00,
-      unit: 1,
-      description: "- COMPLETE CLEANING SOLUTION\n- GRADING, DE-STONING AND CLEANING",
-      features: ["Vibrator Screen", "Aspirator System", "Magnetic Separator", "Dust Collector"],
-      products: [
-        { capacity: "500 KG/HR", price: 90000 },
-        { capacity: "1000 KG/HR", price: 125000 },
-      ]
-    },
-    {
-      id: 3,
-      category: "960 RPM",
-      code: "C/1/960/3",
-      price: 8330.00,
-      unit: 1,
-      description: "- LOW SPEED HIGH TORQUE MOTOR\n- DESIGNED FOR HEAVY LOAD",
-      features: ["Cast Iron Body", "High Torque", "Energy Efficient"],
-      products: [
-        { capacity: "1 HP", price: 8330 },
-        { capacity: "2 HP", price: 14500 },
-      ]
-    },
-    {
-      id: 4,
-      category: "AUTOMATIC FLOUR MILL PLANT 1000 KG/HR",
-      code: "F1000AC24",
-      price: 35000.00,
-      unit: 1,
-      image: "/flour_mill_machine.png",
-      description: "- WITH 4 INCH FRAME. 60 MM SHAFT. 12 MM PLATE\n- WITH CHINESE BEARING. MOTOR FRAME COST EXTRA.",
-      features: ["Wheat", "Maize", "Bajra", "Jowar", "Ragi", "Besan", "Suji", "& More"],
-      products: [
-        { capacity: "24 INCH", price: 40000 },
-        { capacity: "500-800 KG/HR", price: 65000 },
-        { capacity: "1200 KG/HR", price: 75000 },
-        { capacity: "1200 KG/HR", capacity2: "1200 Kg/hr", price: 220000 },
-        { capacity: "800-1000 KG/HR", price: 100000 },
-        { capacity: "1000 Kg/Hr", price: 135000 },
-        { capacity: "1000 KG/HR", price: 90000 },
-        { capacity: "1000 KG/HR", price: 35000 },
-        { capacity: "88 HP", price: 300000 },
-      ]
-    },
-    {
-      id: 5,
-      category: "AUTOMATIC FLOUR MILL PLANT 2000 KG/HR",
-      code: "F2000AC24",
-      price: 35000.00,
-      unit: 1,
-      image: "/flour_mill_machine.png",
-      description: "- HEAVY DUTY INDUSTRIAL PLANT\n- FULLY AUTOMATIC OPERATION",
-      features: ["Wheat", "Maize", "Bajra", "Jowar", "Ragi", "Besan", "Suji", "& More"],
-      products: [
-        { capacity: "2000 KG/HR", price: 350000 },
-        { capacity: "2500 KG/HR", price: 450000 },
-      ]
-    },
-    {
-      id: 6,
-      category: "AUTOMATIC FLOUR MILL PLANT 250 KG/HR",
-      code: "F250AC24",
-      price: 35000.00,
-      unit: 1,
-      image: "/flour_mill_machine.png",
-      description: "- COMPACT CHAKKI PLANT\n- IDEAL FOR SMALL BUSINESS",
-      features: ["Wheat", "Maize", "Bajra", "Jowar", "Ragi", "Besan", "Suji", "& More"],
-      products: [
-        { capacity: "250 KG/HR", price: 35000 },
-        { capacity: "300 KG/HR", price: 42000 },
-      ]
+  // Fetch Real Items for Price List (Dynamic Data)
+  const { data: priceListResponse, isLoading: priceListLoading } = useQuery({
+    queryKey: ['price-list-items'],
+    queryFn: async () => {
+      const token = localStorage.getItem('token');
+      const res = await axios.get(`${import.meta.env.VITE_API_URL || '/api'}/sales/items?limit=1000&type=Product`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      return res.data;
     }
-  ];
+  });
+
+  // Transform items data for price list
+  const PRICE_LIST_DATA = (priceListResponse?.items || []).map((item, index) => ({
+    id: item._id,
+    category: item.name,
+    code: item.code,
+    price: buyerType === 'Dealer' ? (item.dealerPrice || item.salePrice) : item.salePrice,
+    unit: item.unit || 1,
+    description: item.description || '',
+    features: item.applications || [],
+    products: (item.variants && item.variants.length > 0) ? item.variants.map(variant => ({
+      ...variant,
+      price: buyerType === 'Dealer' ? (variant.dealerPrice || variant.price) : variant.price
+    })) : [
+      { 
+        Capacity: item.name, 
+        price: buyerType === 'Dealer' ? (item.dealerPrice || item.salePrice) : item.salePrice 
+      }
+    ],
+    image: item.image,
+    specifications: item.specifications || []
+  }));
 
   const pdfRef = useRef();
 
@@ -1034,7 +975,11 @@ const Quotation = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {PRICE_LIST_DATA.map((item, idx) => (
+                  {priceListLoading ? (
+                    <tr><td colSpan={6} className="text-center py-10 text-gray-500">Loading price list...</td></tr>
+                  ) : PRICE_LIST_DATA.length === 0 ? (
+                    <tr><td colSpan={6} className="text-center py-10 text-gray-500">No products found for price list</td></tr>
+                  ) : PRICE_LIST_DATA.map((item, idx) => (
                     <tr
                       key={item.id}
                       className={`border-b last:border-0 hover:bg-gray-50 transition-colors cursor-pointer ${selectedPriceListCategory?.id === item.id ? 'bg-blue-50' : ''}`}
@@ -1543,6 +1488,29 @@ const Quotation = () => {
     const category = selectedPriceListCategory;
     if (!category) return null;
 
+    let dynamicColumns = [];
+    if (category.products && category.products.length > 0) {
+      const keySet = new Set();
+      category.products.forEach(p => {
+        Object.keys(p).forEach(k => {
+          const lowerK = k.toLowerCase();
+          if (!['price', '_id', 'id', 'dealerprice', 'pricewithoutmotor', 'pricewithmotor', 'margin', 'name', 'capacity', 'createdat', 'updatedat', '__v', 'status'].includes(lowerK)) {
+             keySet.add(k);
+          }
+        });
+      });
+      let firstCols = [];
+      if (category.products.some(prod => prod.capacity || prod.Capacity)) firstCols.push('Capacity');
+      else if (category.products.some(prod => prod.name || prod.Name)) firstCols.push('Name');
+      
+      const otherCols = Array.from(keySet);
+      dynamicColumns = [...firstCols, ...otherCols];
+      
+      if (dynamicColumns.length === 0) {
+         dynamicColumns = ['Details']; // fallback
+      }
+    }
+
     return (
       <div className="space-y-6 pb-20">
         <div className="flex items-center justify-between sticky top-0 bg-white/80 backdrop-blur-md z-10 py-4 border-b">
@@ -1629,17 +1597,27 @@ const Quotation = () => {
               <table className="w-full text-sm">
                 <thead className="bg-blue-800 text-white">
                   <tr>
-                    <th className="px-4 py-3 text-center border-r border-blue-700">CAPACITY</th>
-                    <th className="px-4 py-3 text-center border-r border-blue-700">Capacity</th>
+                    {dynamicColumns.map((col) => (
+                      <th key={col} className="px-4 py-3 text-center border-r border-blue-700 uppercase">
+                        {col.replace(/([A-Z])/g, ' $1').trim()}
+                      </th>
+                    ))}
                     <th className="px-4 py-3 text-right">PRICE<br /><span className="text-[10px] font-normal">(WITHOUT MOTOR)</span></th>
                   </tr>
                 </thead>
                 <tbody>
                   {category.products.map((p, idx) => (
                     <tr key={idx} className={`${idx % 2 === 0 ? "bg-orange-500 text-white" : "bg-white text-blue-800"} pdf-section`}>
-                      <td className="px-4 py-2 text-center font-bold border-r border-white/20 uppercase">{p.capacity}</td>
-                      <td className="px-4 py-2 text-center font-bold border-r border-white/20 uppercase">{p.capacity2 || 'N/A'}</td>
-                      <td className="px-4 py-2 text-right font-black">{p.price.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                      {dynamicColumns.map(col => {
+                        const actualKey = Object.keys(p).find(k => k.toLowerCase() === col.toLowerCase());
+                        const val = actualKey && p[actualKey] ? p[actualKey] : '-';
+                        return (
+                          <td key={col} className="px-4 py-2 text-center font-bold border-r border-white/20 uppercase">
+                            {val}
+                          </td>
+                        );
+                      })}
+                      <td className="px-4 py-2 text-right font-black">{(p.price || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                     </tr>
                   ))}
                 </tbody>
