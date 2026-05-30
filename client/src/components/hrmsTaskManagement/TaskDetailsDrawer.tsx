@@ -7,7 +7,14 @@ const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 const FILE_BASE = API_BASE.replace('/api', '');
 
 const TOP_LEVEL_ADMINS = ['HR-Admin', 'MIS Admin', 'Company Admin', 'Super Admin', 'Admin'];
-const DEPT_HEADS = ['Production Head', 'Packing Head', 'Dispatch Head', 'Accounts Head', 'Sales Head', 'Manager', 'Finance Manager', 'Unit Head', 'Unit Manager'];
+
+// 🔥 ADDED NEW DEPARTMENT HEADS HERE
+const DEPT_HEADS = [
+  'Production Head', 'Packing Head', 'Dispatch Head', 
+  'Accounts Head', 'Sales Head', 'Manager', 'Finance Manager', 
+  'Unit Head', 'Unit Manager',
+  'Research & Development Head', 'Store Head', 'QC Head'
+];
 
 const getDepartmentFromRole = (role: string) => {
   if (!role) return "General";
@@ -16,6 +23,12 @@ const getDepartmentFromRole = (role: string) => {
   if (role.includes('Dispatch')) return 'Dispatch';
   if (role.includes('Account') || role.includes('Finance')) return 'Accounts';
   if (role.includes('Sales')) return 'Sales';
+  
+  // 🔥 ADDED NEW DEPARTMENT MAPPINGS HERE
+  if (role.includes('Research') || role.includes('R&D')) return 'R&D';
+  if (role.includes('Store')) return 'Store';
+  if (role.includes('QC')) return 'QC';
+
   return role.replace(/(Head|Manager|Employee)/gi, '').trim() || "General";
 };
 
@@ -85,6 +98,7 @@ const TaskDetailsDrawer: React.FC<TaskDetailsDrawerProps> = ({ taskId, onClose, 
 
   const currentUserId = user?.id || user?._id;
   const isTopAdmin = TOP_LEVEL_ADMINS.includes(user?.role);
+  // This depends on the updated getDepartmentFromRole to show controls to the new Dept Heads
   const isDeptHead = DEPT_HEADS.includes(user?.role) && task?.department === getDepartmentFromRole(user?.role);
   const isAssigned = task?.assignedTo.some(u => u._id === currentUserId);
 

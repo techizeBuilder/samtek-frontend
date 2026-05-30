@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
-import { Bell, Pen } from 'lucide-react';
+import { Bell, Pen, User } from 'lucide-react';
 import {
   LayoutDashboard,
   Cog,
@@ -187,12 +187,12 @@ const productionMenuItems = [
     path: '/lms',
     icon: CheckSquare,
     module: 'production',
-    feature: 'productionGroup',
+    feature: 'lms',
     submodules: [
-      { label: 'Dashboard', path: '/lms/dashboard', feature: 'productionGroup' },
-      { label: 'Trainees', path: '/lms/trainees', feature: 'productionGroup' },
-      { label: 'Training Modules', path: '/lms/training-modules', feature: 'productionGroup' },
-      { label: 'Question Bank', path: '/lms/question-bank', feature: 'productionGroup' },
+      { label: 'Dashboard', path: '/lms/dashboard', feature: 'lms' },
+      { label: 'Trainees', path: '/lms/trainees', feature: 'lms' },
+      { label: 'Training Modules', path: '/lms/training-modules', feature: 'lms' },
+      { label: 'Question Bank', path: '/lms/question-bank', feature: 'lms' },
     ]
   },
   {
@@ -244,12 +244,12 @@ const packingMenuItems = [
     path: '/lms',
     icon: CheckSquare,
     module: 'packing',
-    feature: 'packingSheet',
+    feature: 'lms',
     submodules: [
-      { label: 'Dashboard', path: '/lms/dashboard', feature: 'packingSheet' },
-      { label: 'Trainees', path: '/lms/trainees', feature: 'packingSheet' },
-      { label: 'Training Modules', path: '/lms/training-modules', feature: 'packingSheet' },
-      { label: 'Question Bank', path: '/lms/question-bank', feature: 'packingSheet' },
+      { label: 'Dashboard', path: '/lms/dashboard', feature: 'lms' },
+      { label: 'Trainees', path: '/lms/trainees', feature: 'lms' },
+      { label: 'Training Modules', path: '/lms/training-modules', feature: 'lms' },
+      { label: 'Question Bank', path: '/lms/question-bank', feature: 'lms' },
     ]
   },
   {
@@ -320,12 +320,12 @@ const dispatchMenuItems = [
     path: '/lms',
     icon: CheckSquare,
     module: 'dispatches',
-    feature: 'dispatchHistory',
+    feature: 'lms',
     submodules: [
-      { label: 'Dashboard', path: '/lms/dashboard', feature: 'dispatchHistory' },
-      { label: 'Trainees', path: '/lms/trainees', feature: 'dispatchHistory' },
-      { label: 'Training Modules', path: '/lms/training-modules', feature: 'dispatchHistory' },
-      { label: 'Question Bank', path: '/lms/question-bank', feature: 'dispatchHistory' },
+      { label: 'Dashboard', path: '/lms/dashboard', feature: 'lms' },
+      { label: 'Trainees', path: '/lms/trainees', feature: 'lms' },
+      { label: 'Training Modules', path: '/lms/training-modules', feature: 'lms' },
+      { label: 'Question Bank', path: '/lms/question-bank', feature: 'lms' },
     ]
   },
 
@@ -427,12 +427,12 @@ const salesMenuItems = [
     path: '/lms',
     icon: CheckSquare,
     module: 'sales',
-    feature: 'myDeliveries',
+    feature: 'lms',
     submodules: [
-      { label: 'Dashboard', path: '/lms/dashboard', feature: 'myDeliveries' },
-      { label: 'Trainees', path: '/lms/trainees', feature: 'myDeliveries' },
-      { label: 'Training Modules', path: '/lms/training-modules', feature: 'myDeliveries' },
-      { label: 'Question Bank', path: '/lms/question-bank', feature: 'myDeliveries' },
+      { label: 'Dashboard', path: '/lms/dashboard', feature: 'lms' },
+      { label: 'Trainees', path: '/lms/trainees', feature: 'lms' },
+      { label: 'Training Modules', path: '/lms/training-modules', feature: 'lms' },
+      { label: 'Question Bank', path: '/lms/question-bank', feature: 'lms' },
     ]
   },
   {
@@ -595,12 +595,12 @@ const accountsMenuItems = [
     path: '/lms',
     icon: CheckSquare,
     module: 'accounts',
-    feature: 'purchases',
+    feature: 'lms',
     submodules: [
-      { label: 'Dashboard', path: '/lms/dashboard', feature: 'purchases' },
-      { label: 'Trainees', path: '/lms/trainees', feature: 'purchases' },
-      { label: 'Training Modules', path: '/lms/training-modules', feature: 'purchases' },
-      { label: 'Question Bank', path: '/lms/question-bank', feature: 'purchases' },
+      { label: 'Dashboard', path: '/lms/dashboard', feature: 'lms' },
+      { label: 'Trainees', path: '/lms/trainees', feature: 'lms' },
+      { label: 'Training Modules', path: '/lms/training-modules', feature: 'lms' },
+      { label: 'Question Bank', path: '/lms/question-bank', feature: 'lms' },
     ]
   },
   {
@@ -952,6 +952,39 @@ const rdMenuItems = [
   { label: 'Change Management', path: '/r&d/change-management', icon: AlertTriangle, module: 'rnd' },
   { label: 'Quality Parameters', path: '/r&d/quality-parameters', icon: ShieldAlert, module: 'rnd' },
   { label: 'Documentation', path: '/r&d/documentation', icon: FolderOpen, module: 'rnd' },
+  {
+    label: 'Training Management',
+    path: '/lms',
+    icon: CheckSquare,
+    module: 'rnd',
+    submodules: [
+      { label: 'Dashboard', path: '/lms/dashboard', feature: 'dashboard' },
+      { label: 'Trainees', path: '/lms/trainees', feature: 'trainees' },
+      { label: 'Training Modules', path: '/lms/training-modules', feature: 'trainingModules' },
+      { label: 'Question Bank', path: '/lms/question-bank', feature: 'questionBank' },
+    ]
+  },
+  {
+    label: 'Task Management',
+    path: '/r&d/task-management',
+    icon: CheckSquare,
+    module: 'rnd'
+  },
+  {
+    label: 'My Task',
+    path: '/r&d/my-task',
+    icon: CheckSquare,
+    module: 'rnd'
+  },
+
+  {
+    label: 'Training',
+    path: '/lms/training',
+    icon: Pen,
+    module: 'rnd',
+    feature: 'traineeDashboard'
+  },
+
 ];
 
 const complaintHeadMenuItems = [
@@ -967,6 +1000,18 @@ const complaintHeadMenuItems = [
     icon: MessageSquare,
     module: 'complaints'
   },
+  {
+    label: 'Technicians',
+    path: '/complaints/technicians',
+    icon: User,
+    module: 'complaints'
+  },
+  {
+    label: 'Customer Records',
+    path: '/complaints/customer-records',
+    icon: Users,
+    module: 'complaints'
+  }
 ];
 
 const complaintAgentMenuItems = [
@@ -1014,7 +1059,38 @@ const storeMenuItems = [
     path: '/store/purchases/requests',
     icon: ShoppingCart,
     module: 'Store'
-  }
+  },
+  {
+    label: 'Task Management',
+    path: '/store/task-management',
+    icon: CheckSquare,
+    module: 'store'
+  },
+  {
+    label: 'My Task',
+    path: '/store/my-task',
+    icon: CheckSquare,
+    module: 'store'
+  },
+  {
+    label: 'Training Management',
+    path: '/lms',
+    icon: CheckSquare,
+    module: 'store',
+    submodules: [
+      { label: 'Dashboard', path: '/lms/dashboard', feature: 'dashboard' },
+      { label: 'Trainees', path: '/lms/trainees', feature: 'trainees' },
+      { label: 'Training Modules', path: '/lms/training-modules', feature: 'trainingModules' },
+      { label: 'Question Bank', path: '/lms/question-bank', feature: 'questionBank' },
+    ]
+  },
+  {
+    label: 'Training',
+    path: '/lms/training',
+    icon: Pen,
+    module: 'store',
+    feature: 'traineeDashboard'
+  },
 ];
 const qcMenuItems = [
   { label: 'Dashboard', path: '/qc/dashboard', icon: LayoutDashboard, module: 'quality-control' },
@@ -1022,6 +1098,37 @@ const qcMenuItems = [
   { label: 'All QC Jobs', path: '/qc/jobs', icon: ShieldAlert, module: 'quality-control' },
   { label: 'Pending Inspection', path: '/qc/jobs?status=Pending', icon: Clock, module: 'quality-control' },
   { label: 'In Progress', path: '/qc/jobs?status=In Progress', icon: AlertTriangle, module: 'quality-control' },
+  {
+    label: 'Task Management',
+    path: '/qc/task-management',
+    icon: CheckSquare,
+    module: 'quality-control'
+  },
+  {
+    label: 'My Task',
+    path: '/qc/my-task',
+    icon: CheckSquare,
+    module: 'quality-control'
+  },
+  {
+    label: 'Training Management',
+    path: '/lms',
+    icon: CheckSquare,
+    module: 'quality-control',
+    submodules: [
+      { label: 'Dashboard', path: '/lms/dashboard', feature: 'dashboard' },
+      { label: 'Trainees', path: '/lms/trainees', feature: 'trainees' },
+      { label: 'Training Modules', path: '/lms/training-modules', feature: 'trainingModules' },
+      { label: 'Question Bank', path: '/lms/question-bank', feature: 'questionBank' },
+    ]
+  },
+  {
+    label: 'Training',
+    path: '/lms/training',
+    icon: Pen,
+    module: 'quality-control',
+    feature: 'traineeDashboard'
+  },
 ];
 
 // Function to get menu items based on role
@@ -1131,6 +1238,18 @@ export default function Sidebar({ isOpen, onClose }) {
   const isHrmsRole = user?.role === 'Manager' || user?.role === 'HR-Admin' || user?.role === 'Hr Admin' || user?.role === 'Employee';
   const isManagerRole = user?.role === 'Manager';
 
+  // Roles that should always see all of their configured submodules without granular feature permission checks
+  const shouldBypassSubmoduleCheck = isHrmsRole ||
+    normalizedRole === 'Research & Development Head' ||
+    normalizedRole === 'Research Development Employee' ||
+    normalizedRole === 'Complaint Management Head' ||
+    normalizedRole === 'Complaint Management Employee' ||
+    normalizedRole === 'QC Head' ||
+    normalizedRole === 'QC Employee' ||
+    normalizedRole === 'Store Head' ||
+    normalizedRole === 'Store Employee' ||
+    normalizedRole === 'Company Admin';
+
   // For Production role users, apply strict filtering to only show production items
   let filteredMenuItems;
 
@@ -1139,6 +1258,14 @@ export default function Sidebar({ isOpen, onClose }) {
   roleMenuItems = roleMenuItems.filter(item => {
     // Only Head-level roles can see Task Management
     if (item.label === 'Task Management' && !isHeadRole) return false;
+
+    // R&D, QC, and Store specific filtering for Training modules:
+    const isSpecialDept = normalizedRole?.includes('Research') || normalizedRole?.includes('QC') || normalizedRole?.includes('Store');
+    if (isSpecialDept) {
+      if (item.label === 'Training Management' && !isHeadRole) return false;
+      if (item.label === 'Training' && isHeadRole) return false;
+    }
+
     // My Task is visible to everyone if it's in their array
     return true;
   });
@@ -1328,7 +1455,7 @@ export default function Sidebar({ isOpen, onClose }) {
                 const isExpanded = expandedModules[item.path];
                 // Manager/HR Admin always sees all submodules; other roles need feature permission
                 const hasAccessibleSubmodules = hasSubmodules &&
-                  (isHrmsRole || item.submodules.some(sub => hasFeatureAccess(item.module, sub.feature, 'view')));
+                  (shouldBypassSubmoduleCheck || item.submodules.some(sub => hasFeatureAccess(item.module, sub.feature, 'view')));
 
                 return (
                   <div key={item.path} className="space-y-1">
@@ -1389,7 +1516,7 @@ export default function Sidebar({ isOpen, onClose }) {
                       <div className="ml-6 sm:ml-8 space-y-1">
                         {item.submodules
                           // Manager/HR Admin sees all submodules; others need feature permission
-                          .filter(sub => isHrmsRole || hasFeatureAccess(item.module, sub.feature, 'view'))
+                          .filter(sub => shouldBypassSubmoduleCheck || hasFeatureAccess(item.module, sub.feature, 'view'))
                           .map((submodule) => {
                             const isSubActive = location === submodule.path;
                             return (

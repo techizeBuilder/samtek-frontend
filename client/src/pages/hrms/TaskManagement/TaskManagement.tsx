@@ -32,10 +32,13 @@ export default function HRMSTaskManagement() {
   if (loading) return <div className="p-6">Loading...</div>;
 
   const TOP_LEVEL_ADMINS = ['HR-Admin', 'MIS Admin', 'Company Admin', 'Super Admin', 'Admin']; 
+  
+  // 🔥 ADDED NEW DEPARTMENT HEADS HERE
   const DEPT_HEADS = [
     'Production Head', 'Packing Head', 'Dispatch Head', 
     'Accounts Head', 'Sales Head', 'Manager', 'Finance Manager',
-    'Unit Head', 'Unit Manager'
+    'Unit Head', 'Unit Manager',
+    'Research & Development Head', 'Store Head', 'QC Head'
   ];
 
   const canCreateTask = user && (TOP_LEVEL_ADMINS.includes(user.role) || DEPT_HEADS.includes(user.role));

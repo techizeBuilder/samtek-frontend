@@ -18,6 +18,7 @@ import RDDashboard from "@/pages/ResearchDevelopment/Dashboard";
 import StoreDashboard from "@/pages/store/StoreDashboard";
 import { QCProvider } from "@/contexts/QCContext";
 import QCDashboard from "@/pages/quality-control/Dashboard";
+import TechnicianWorkSapce from "@/pages/complaintsAndServices/TechnicianWorkSapce";
 
 export default function RoleBasedDashboard() {
   const { user } = useAuth();
@@ -72,13 +73,13 @@ export default function RoleBasedDashboard() {
         case 'Research & Development Head':
         case 'Research Development Employee':
           setLocation('/r&d-dashboard');
+          setLocation('/r&d/dashboard');
           return;
         case 'Complaint Management Head':
           setLocation('/complaints/dashboard');
           return;
         case 'Complaint Management Employee':
           setLocation('/complaints/service');
-          setLocation('/r&d/dashboard');
           return;
         case 'QC Head':
         case 'QC Employee':
@@ -151,6 +152,8 @@ export default function RoleBasedDashboard() {
       return <QCProvider><QCDashboard /></QCProvider>;
     case 'Marketing Head':
       return <SalesDashboard />;
+    case 'Complaint Management Employee':
+      return <TechnicianWorkSapce/>;
     default:
       // Default to main dashboard for Super User and others
       return <Dashboard />;

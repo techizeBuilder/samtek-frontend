@@ -26,8 +26,10 @@ export const getCustomerHistory = async (mobileNumber: string) => {
 };
 
 
-export const getServicemen = async (status?: string) => {
-  const params = status ? { status } : {};
+export const getServicemen = async (status?: string, zone?: string) => {
+  const params: any = {};
+  if (status) params.status = status;
+  if (zone) params.zone = zone;
   const { data } = await complaintClient.get('/servicemen', { params });
   return data;
 };
@@ -88,5 +90,10 @@ export const startVisit = async (id: string) => {
 export const completeVisit = async (id: string, formData: FormData) => {
   // Axios automatically sets 'multipart/form-data' when it detects FormData
   const { data } = await complaintClient.put(`/technician/complete-visit/${id}`, formData);
+  return data;
+};
+
+export const updateTechnician = async (id: string, payload: { serviceZone: string; technicianSkills: string[] }) => {
+  const { data } = await complaintClient.put(`/servicemen/${id}`, payload);
   return data;
 };

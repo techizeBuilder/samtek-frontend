@@ -6,19 +6,34 @@ import { useAuth } from "@/hooks/useAuth";
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
 const TOP_LEVEL_ADMINS = ['HR-Admin', 'MIS Admin', 'Company Admin', 'Super Admin', 'Admin']; 
-const DEPARTMENTS = ["Production", "Packing", "Dispatch", "Accounts", "Sales", "General"];
+
+// 🔥 ADDED NEW DEPARTMENT HEADS
+const DEPT_HEADS = [
+  'Production Head', 'Packing Head', 'Dispatch Head',
+  'Accounts Head', 'Sales Head', 'Manager', 'Finance Manager',
+  'Unit Head', 'Unit Manager',
+  'Research & Development Head', 'Store Head', 'QC Head'
+];
+
+// 🔥 ADDED NEW DEPARTMENTS
+const DEPARTMENTS = ["Production", "Packing", "Dispatch", "Accounts", "Sales", "R&D", "Store", "QC", "General"];
 
 const getDepartmentFromRole = (role: string) => {
-    if (!role) return "General";
-    if (role.includes('Production')) return 'Production';
-    if (role.includes('Packing')) return 'Packing';
-    if (role.includes('Dispatch')) return 'Dispatch';
-    if (role.includes('Account') || role.includes('Finance')) return 'Accounts';
-    if (role.includes('Sales')) return 'Sales';
-    return role.replace(/(Head|Manager|Employee)/gi, '').trim() || "General"; 
+  if (!role) return "General";
+  if (role.includes('Production')) return 'Production';
+  if (role.includes('Packing')) return 'Packing';
+  if (role.includes('Dispatch')) return 'Dispatch';
+  if (role.includes('Account') || role.includes('Finance')) return 'Accounts';
+  if (role.includes('Sales')) return 'Sales';
+  
+  // 🔥 ADDED NEW DEPARTMENT MAPPINGS
+  if (role.includes('Research') || role.includes('R&D')) return 'R&D';
+  if (role.includes('Store')) return 'Store';
+  if (role.includes('QC')) return 'QC';
+
+  return role.replace(/(Head|Manager|Employee)/gi, '').trim() || "General"; 
 };
 
-// FIX: Added onSuccess to the props
 interface TaskCreationFormProps {
   onClose: () => void;
   onSuccess?: () => void; 
@@ -31,6 +46,9 @@ const TaskCreationForm: React.FC<TaskCreationFormProps> = ({ onClose, onSuccess 
 
   const isTopAdmin = TOP_LEVEL_ADMINS.includes(user?.role);
   const defaultDepartment = isTopAdmin ? "" : getDepartmentFromRole(user?.role);
+
+  // Get current user ID to prevent self-assignment
+  const currentUserId = user?.id || user?._id;
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -85,9 +103,16 @@ const TaskCreationForm: React.FC<TaskCreationFormProps> = ({ onClose, onSuccess 
     setAssignedTo([]);
   }, [department]);
 
-  const filteredEmployees = department 
-    ? employees.filter(emp => getDepartmentFromRole(emp.role) === department)
-    : employees;
+  // 🔥 RESTORED CORRECT LOGIC: Filter out the logged-in user AND filter by department
+  const filteredEmployees = employees.filter(emp => {
+    // 1. Prevent self-assignment for EVERYONE (no one can assign a task to themselves here)
+    if (emp._id === currentUserId) return false;
+    
+    // 2. Filter by department if a department is selected
+    if (department && getDepartmentFromRole(emp.role) !== department) return false;
+    
+    return true;
+  });
 
   const handleAssignUser = (userId: string) => {
     setAssignedTo(prev => prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]);
@@ -122,7 +147,7 @@ const TaskCreationForm: React.FC<TaskCreationFormProps> = ({ onClose, onSuccess 
 
       if (response.data.success) {
         alert("Task created successfully!");
-        if (onSuccess) onSuccess(); // TRIGER THE REFRESH
+        if (onSuccess) onSuccess(); // TRIGGER THE REFRESH
         onClose(); 
       }
     } catch (error: any) {

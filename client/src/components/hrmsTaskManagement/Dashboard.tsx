@@ -13,7 +13,14 @@ interface DashboardData {
 }
 
 const TOP_LEVEL_ADMINS = ['HR-Admin', 'MIS Admin', 'Company Admin', 'Super Admin', 'Admin'];
-const DEPT_HEADS = ['Production Head', 'Packing Head', 'Dispatch Head', 'Accounts Head', 'Sales Head', 'Manager', 'Finance Manager', 'Unit Head', 'Unit Manager'];
+
+// 🔥 ADDED NEW DEPARTMENT HEADS HERE
+const DEPT_HEADS = [
+  'Production Head', 'Packing Head', 'Dispatch Head', 
+  'Accounts Head', 'Sales Head', 'Manager', 'Finance Manager', 
+  'Unit Head', 'Unit Manager',
+  'Research & Development Head', 'Store Head', 'QC Head'
+];
 
 const getDepartmentFromRole = (role: string) => {
   if (!role) return "General";
@@ -22,6 +29,12 @@ const getDepartmentFromRole = (role: string) => {
   if (role.includes('Dispatch')) return 'Dispatch';
   if (role.includes('Account') || role.includes('Finance')) return 'Accounts';
   if (role.includes('Sales')) return 'Sales';
+  
+  // 🔥 ADDED NEW DEPARTMENT MAPPINGS HERE
+  if (role.includes('Research') || role.includes('R&D')) return 'R&D';
+  if (role.includes('Store')) return 'Store';
+  if (role.includes('QC')) return 'QC';
+
   return role.replace(/(Head|Manager|Employee)/gi, '').trim() || "General";
 };
 
@@ -35,6 +48,7 @@ const TaskDashboardView = ({ refreshTrigger }: { refreshTrigger?: number }) => {
   const isDeptHead = DEPT_HEADS.includes(user?.role);
   const userDepartment = getDepartmentFromRole(user?.role);
   const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+  
   useEffect(() => {
     const fetchDashboardStats = async () => {
       try {

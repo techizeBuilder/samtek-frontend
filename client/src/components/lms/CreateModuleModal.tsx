@@ -6,7 +6,7 @@ interface CreateModuleModalProps {
   onClose: () => void;
 }
 
-const DEPARTMENTS = ["Production", "Packing", "Dispatch", "Accounts", "Sales", "General"];
+const DEPARTMENTS = ["Production", "Packing", "Dispatch", "Accounts", "Sales", "Research & Development", "Store", "QC", "General"];
 const CATEGORIES = ["Induction", "SOP", "Reporting", "ERP Usage", "Professional / Behavioral", "Task Management", "Skill", "Safety", "Customer Relationship", "Sales", "Product", "Demo"];
 const TOP_LEVEL_ADMINS = ['HR-Admin', 'Super Admin', 'Admin', 'Company Admin'];
 
@@ -116,7 +116,7 @@ export default function CreateModuleModal({ isOpen, onClose }: CreateModuleModal
               <div className="opacity-75">
                 <label className="block text-sm font-medium text-gray-700">Department Assignment</label>
                 <div className="mt-1 w-full rounded-md border border-gray-300 bg-gray-50 shadow-sm p-2 text-sm font-semibold text-gray-600 cursor-not-allowed">
-                  Locked: {currentUser?.role.replace(/(Head|Manager)/gi, '').trim() || 'Your Department'}
+                  Locked: {currentUser?.role.replace(/(Head|Manager|Employee)/gi, '').trim() || 'Your Department'}
                 </div>
               </div>
             )}

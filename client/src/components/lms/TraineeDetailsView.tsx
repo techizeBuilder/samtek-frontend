@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  useTraineeDetails, 
+import {
+  useTraineeDetails,
   useFinalizeTrainee,
   useModules,
   useUpdateTraineeModules,
-  useViewCertificate 
-} from '../../hooks/useTraining'; 
+  useViewCertificate
+} from '../../hooks/useTraining';
 
 interface TraineeDetailsViewProps {
   isOpen: boolean;
@@ -24,7 +24,7 @@ const TestReviewModal = ({ isOpen, onClose, attempt }: { isOpen: boolean, onClos
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200">
-        
+
         {/* Header */}
         <div className="p-6 border-b flex justify-between items-center bg-gray-50">
           <div>
@@ -36,8 +36,8 @@ const TestReviewModal = ({ isOpen, onClose, attempt }: { isOpen: boolean, onClos
               <span><strong>Time Taken:</strong> {attempt.timeTakenFormatted}</span>
             </div>
           </div>
-          <button 
-            onClick={onClose} 
+          <button
+            onClick={onClose}
             className="text-gray-400 hover:text-gray-800 bg-gray-100 hover:bg-gray-200 rounded-full w-8 h-8 flex items-center justify-center transition-colors"
           >
             ✕
@@ -52,13 +52,13 @@ const TestReviewModal = ({ isOpen, onClose, attempt }: { isOpen: boolean, onClos
                 <p className="font-semibold text-gray-900 text-sm mb-4">
                   <span className={item.isCorrect ? 'text-green-600' : 'text-red-600'}>Q{idx + 1}.</span> {item.questionText}
                 </p>
-                
+
                 <div className="grid md:grid-cols-2 gap-3 text-sm">
                   <div className={`p-3 rounded-md border ${item.isCorrect ? 'bg-green-50 border-green-200 text-green-900' : 'bg-red-50 border-red-200 text-red-900'}`}>
                     <span className="block text-xs font-bold uppercase mb-1 opacity-75">Candidate's Answer</span>
                     {item.selectedAnswerText}
                   </div>
-                  
+
                   {!item.isCorrect && (
                     <div className="p-3 rounded-md border bg-blue-50 border-blue-200 text-blue-900">
                       <span className="block text-xs font-bold uppercase mb-1 opacity-75">Correct Answer</span>
@@ -81,10 +81,10 @@ const TestReviewModal = ({ isOpen, onClose, attempt }: { isOpen: boolean, onClos
 // MAIN COMPONENT: TRAINEE DETAILS VIEW
 // ==========================================
 export default function TraineeDetailsView({ isOpen, profileId, onClose }: TraineeDetailsViewProps) {
-  
+
   const [isEditingModules, setIsEditingModules] = useState(false);
   const [selectedModuleIds, setSelectedModuleIds] = useState<string[]>([]);
-  
+
   // Tracks which attempt the user wants to review
   const [reviewAttempt, setReviewAttempt] = useState<any>(null);
 
@@ -94,10 +94,10 @@ export default function TraineeDetailsView({ isOpen, profileId, onClose }: Train
 
   const { data: response, isLoading, isError } = useTraineeDetails(profileId || '');
   const { mutate: finalizeTrainee, isPending: isFinalizing } = useFinalizeTrainee();
-  
+
   const { data: modulesResponse, isLoading: isLoadingModules } = useModules();
   const { mutate: updateModules, isPending: isUpdatingModules } = useUpdateTraineeModules();
-  
+
   const { mutate: viewCertificate, isPending: isViewingCert } = useViewCertificate();
 
   const profile = response?.data;
@@ -106,16 +106,24 @@ export default function TraineeDetailsView({ isOpen, profileId, onClose }: Train
   const allAvailableModules = modulesResponse?.data || [];
   const user = profile?.user;
 
-  // 🔥 THE FIX: Filter the master module list based on the trainee's specific department
+  // 🔥 THE FIX: Use the robust normalizer so "Edit Courses" works perfectly for the new departments
   const traineeDept = profile?.assignedDepartment || '';
+
+  const normalizeDept = (dept: string) => {
+    if (!dept) return '';
+    const d = dept.toLowerCase().trim();
+    if (d.includes('research') || d.includes('r&d')) return 'r&d';
+    if (d.includes('account') || d.includes('finance')) return 'accounts';
+    if (d.includes('quality') || d === 'qc') return 'qc';
+    if (d.includes('store')) return 'store';
+    return d;
+  };
+
   const dynamicModules = allAvailableModules.filter((module: any) => {
-    if (!traineeDept) return true; 
-    const modDept = module.department?.toLowerCase() || '';
-    let userDept = traineeDept.toLowerCase();
-    
-    // Normalize frontend matching
-    if (userDept === 'account') userDept = 'accounts';
-    
+    if (!traineeDept) return true;
+    const modDept = normalizeDept(module.department);
+    const userDept = normalizeDept(traineeDept);
+
     return modDept === userDept || modDept === 'general' || modDept === 'all';
   });
 
@@ -138,13 +146,13 @@ export default function TraineeDetailsView({ isOpen, profileId, onClose }: Train
     const actionText = action === 'hire' ? 'Approve & Activate' : 'Revoke Access';
     if (window.confirm(`Are you sure you want to ${actionText}? This updates their permanent HRMS record.`)) {
       finalizeTrainee({ id: profileId, action }, {
-        onSuccess: () => onClose() 
+        onSuccess: () => onClose()
       });
     }
   };
 
   const handleModuleToggle = (moduleId: string) => {
-    setSelectedModuleIds(prev => 
+    setSelectedModuleIds(prev =>
       prev.includes(moduleId) ? prev.filter(id => id !== moduleId) : [...prev, moduleId]
     );
   };
@@ -165,7 +173,7 @@ export default function TraineeDetailsView({ isOpen, profileId, onClose }: Train
       <div className="fixed inset-0 bg-black bg-opacity-50 transition-opacity" onClick={onClose}></div>
 
       <div className="relative bg-gray-50 rounded-lg shadow-xl w-full max-w-5xl m-4 max-h-[90vh] flex flex-col overflow-hidden z-10">
-        
+
         <div className="bg-white px-6 py-4 border-b border-gray-200 flex justify-between items-center sticky top-0 z-20">
           <h2 className="text-xl font-bold text-gray-900">Candidate Details</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
@@ -186,11 +194,11 @@ export default function TraineeDetailsView({ isOpen, profileId, onClose }: Train
                   <p className="text-gray-500">{user?.email} • {profile.assignedDepartment} Department</p>
                   <div className="mt-2 flex items-center gap-2">
                     <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium 
-                      ${profile.status === 'Passed' ? 'bg-green-100 text-green-800' : 
-                        profile.status === 'Completed_Onboarding' ? 'bg-blue-600 text-white' : 
-                        profile.status === 'Failed' ? 'bg-red-100 text-red-800' : 
-                        profile.status === 'Rejected' ? 'bg-gray-800 text-white' : 
-                        'bg-blue-100 text-blue-800'}`}>
+                      ${profile.status === 'Passed' ? 'bg-green-100 text-green-800' :
+                        profile.status === 'Completed_Onboarding' ? 'bg-blue-600 text-white' :
+                          profile.status === 'Failed' ? 'bg-red-100 text-red-800' :
+                            profile.status === 'Rejected' ? 'bg-gray-800 text-white' :
+                              'bg-blue-100 text-blue-800'}`}>
                       Status: {profile.status.replace(/_/g, ' ')}
                     </span>
                     {!profile.isEligible && (
@@ -209,7 +217,7 @@ export default function TraineeDetailsView({ isOpen, profileId, onClose }: Train
                         disabled={isViewingCert}
                         className="px-4 py-2 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-md hover:bg-indigo-100 disabled:opacity-50 transition-colors shadow-sm font-bold text-sm flex items-center gap-2"
                       >
-                        <span className="text-lg">🎓</span> 
+                        <span className="text-lg">🎓</span>
                         {isViewingCert ? 'Loading PDF...' : 'Preview Certificate'}
                       </button>
                     )}
@@ -276,7 +284,7 @@ export default function TraineeDetailsView({ isOpen, profileId, onClose }: Train
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-lg font-bold text-gray-900">Assigned Coursework Breakdown</h2>
                 {!isEditingModules ? (
-                  <button 
+                  <button
                     onClick={() => setIsEditingModules(true)}
                     className="text-sm text-blue-600 hover:text-blue-800 font-medium bg-blue-50 px-3 py-1 rounded-md transition-colors"
                   >
@@ -284,13 +292,13 @@ export default function TraineeDetailsView({ isOpen, profileId, onClose }: Train
                   </button>
                 ) : (
                   <div className="flex gap-2">
-                    <button 
+                    <button
                       onClick={() => setIsEditingModules(false)}
                       className="text-sm text-gray-600 hover:text-gray-800 bg-gray-200 px-3 py-1 rounded-md transition-colors"
                     >
                       Cancel
                     </button>
-                    <button 
+                    <button
                       onClick={handleSaveModules}
                       disabled={isUpdatingModules}
                       className="text-sm text-white bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded-md transition-colors disabled:opacity-50"
@@ -312,7 +320,6 @@ export default function TraineeDetailsView({ isOpen, profileId, onClose }: Train
                       </p>
                     ) : (
                       <div className="space-y-2">
-                        {/* 🔥 THE FIX: Map over dynamicModules instead of allAvailableModules */}
                         {dynamicModules.map((mod: any) => (
                           <label key={mod._id} className={`flex items-start p-3 rounded cursor-pointer border transition-colors ${selectedModuleIds.includes(mod._id) ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-200 hover:bg-gray-100'}`}>
                             <div className="flex-shrink-0 h-5 w-5 mt-0.5">
@@ -359,16 +366,16 @@ export default function TraineeDetailsView({ isOpen, profileId, onClose }: Train
                             {testAttempts.length > 0 && (
                               <div className="mt-4 grid gap-2">
                                 {testAttempts.map((attempt: any, idx: number) => (
-                                  <div 
-                                    key={attempt._id || idx} 
+                                  <div
+                                    key={attempt._id || idx}
                                     className={`text-sm p-3 rounded border flex flex-col md:flex-row md:items-center justify-between gap-3 
                                       ${attempt.isPassed ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-800'}`}
                                   >
                                     <div className="font-semibold flex items-center gap-2">
-                                      {attempt.isPassed ? '✅' : '⚠'} 
+                                      {attempt.isPassed ? '✅' : '⚠'}
                                       <span>Attempt {attempt.attemptNumber} {attempt.isPassed ? '(Passed)' : '(Failed)'}</span>
                                     </div>
-                                    
+
                                     <div className="flex flex-wrap items-center gap-4 text-xs font-medium opacity-90">
                                       <span className="flex items-center gap-1" title="Time Taken">
                                         ⏱ {attempt.timeTakenFormatted || 'N/A'}
@@ -382,8 +389,8 @@ export default function TraineeDetailsView({ isOpen, profileId, onClose }: Train
                                       <span className="font-bold border-l pl-4 border-current">
                                         Score: {attempt.scorePercentage}%
                                       </span>
-                                      
-                                      <button 
+
+                                      <button
                                         onClick={() => setReviewAttempt(attempt)}
                                         className={`ml-2 px-3 py-1 rounded text-xs font-bold transition-colors shadow-sm bg-white border 
                                           ${attempt.isPassed ? 'border-green-300 text-green-700 hover:bg-green-100' : 'border-red-300 text-red-700 hover:bg-red-100'}`}
@@ -407,12 +414,12 @@ export default function TraineeDetailsView({ isOpen, profileId, onClose }: Train
         </div>
       </div>
 
-      <TestReviewModal 
-        isOpen={!!reviewAttempt} 
-        onClose={() => setReviewAttempt(null)} 
-        attempt={reviewAttempt} 
+      <TestReviewModal
+        isOpen={!!reviewAttempt}
+        onClose={() => setReviewAttempt(null)}
+        attempt={reviewAttempt}
       />
-      
+
     </div>
   );
 }

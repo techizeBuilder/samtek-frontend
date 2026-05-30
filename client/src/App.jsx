@@ -146,6 +146,8 @@ import SupportDashboard from "@/pages/complaintsAndServices/SupportDashboard";
 import TicketWorkspace from "@/pages/complaintsAndServices/TicketWorkspace";
 import CustomerVerificationPage from "@/pages/complaintsAndServices/CustomerVerificationPage";
 import TechnicianWorkSapce from "@/pages/complaintsAndServices/TechnicianWorkSapce";
+import MyTechnicians from "@/pages/complaintsAndServices/MyTechnicians";
+import CustomerHistoryDashboard from "@/pages/complaintsAndServices/CustomerHistoryDashboard";
 
 // training management imports
 import Trainees from "@/pages/lms/Trainees";
@@ -534,6 +536,16 @@ function Router() {
           <TicketWorkspace />
         </ProtectedRoute>
       </Route>
+      <Route path="/complaints/technicians">
+        <ProtectedRoute requiredRole="Complaint Management Head">
+          <MyTechnicians />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/complaints/customer-records">
+        <ProtectedRoute requiredRole="Complaint Management Head">
+          <CustomerHistoryDashboard />
+        </ProtectedRoute>
+      </Route>
 
       <Route exact path="/complaints/service">
         <RoleBasedProtectedRoute requiredRole="Complaint Management Employee">
@@ -579,6 +591,17 @@ function Router() {
       <Route path="/r&d/documentation">
         <ProtectedRoute requiredRole={["Research & Development Head", "Research Development Employee"]}>
           <Documentation />
+        </ProtectedRoute>
+      </Route>
+      {/* task management route for R&D department */}
+      <Route path="/r&d/task-management">
+        <ProtectedRoute requiredRole="Research & Development Head">
+          <HRMSTaskManagement />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/r&d/my-task">
+        <ProtectedRoute requiredRole={["Research & Development Head", "Research Development Employee"]}>
+          <EmployeeTasks />
         </ProtectedRoute>
       </Route>
 
@@ -857,6 +880,17 @@ function Router() {
           <QCProvider><QCJobs /></QCProvider>
         </ProtectedRoute>
       </Route>
+      {/* task management route for quality control department */}
+      <Route path="/qc/task-management">
+        <ProtectedRoute requiredRole="QC Head">
+          <QCProvider><HRMSTaskManagement /></QCProvider>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/qc/my-task">
+        <ProtectedRoute requiredRole={["QC Head", "QC Employee"]}>
+          <QCProvider><EmployeeTasks /></QCProvider>
+        </ProtectedRoute>
+      </Route>
 
 
       <Route path="/accounts-dashboard">
@@ -1023,6 +1057,17 @@ function Router() {
           <PurchaseRequest />
         </ProtectedRoute>
       </Route>
+      {/* task management route for store department */}
+      <Route path="/store/task-management">
+        <ProtectedRoute requiredRole="Store Head">
+          <HRMSTaskManagement />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/store/my-task">
+        <ProtectedRoute requiredRole={["Store Head", "Store Employee"]}>
+          <EmployeeTasks />
+        </ProtectedRoute>
+      </Route>
       <Route path="/accounts/reports">
         <ProtectedRoute requiredRole="Accounts">
           <AccountsReports />
@@ -1110,7 +1155,7 @@ function Router() {
         </RoleBasedProtectedRoute>
       </Route>
 
-      
+
 
       {/* task management and my task routes for packing department */}
       <Route path="/packing/task-management">
@@ -1178,42 +1223,42 @@ function Router() {
 
       {/* to be removed only testing purpose -- training modules routes */}
       <Route path="/lms/dashboard">
-        <ProtectedRoute requiredRole={["HR-Admin", "Accounts Head", "Sales Head", "Production Head", "Packing Head", "Dispatch Head"]}>
+        <ProtectedRoute requiredRole={["HR-Admin", "Accounts Head", "Sales Head", "Production Head", "Packing Head", "Dispatch Head", "Research & Development Head", "QC Head", "Store Head"]}>
           <AdminDashboard />
         </ProtectedRoute>
       </Route>
       <Route path="/lms/trainees">
-        <ProtectedRoute requiredRole={["HR-Admin", "Accounts Head", "Sales Head", "Production Head", "Packing Head", "Dispatch Head"]}>
+        <ProtectedRoute requiredRole={["HR-Admin", "Accounts Head", "Sales Head", "Production Head", "Packing Head", "Dispatch Head", "Research & Development Head", "QC Head", "Store Head"]}>
           <Trainees />
         </ProtectedRoute>
       </Route>
       <Route path="/lms/training-modules">
-        <ProtectedRoute requiredRole={["HR-Admin", "Accounts Head", "Sales Head", "Production Head", "Packing Head", "Dispatch Head"]}>
+        <ProtectedRoute requiredRole={["HR-Admin", "Accounts Head", "Sales Head", "Production Head", "Packing Head", "Dispatch Head", "Research & Development Head", "QC Head", "Store Head"]}>
           <TrainingModules />
         </ProtectedRoute>
       </Route>
       <Route path="/lms/question-bank/:moduleId?">
-        <ProtectedRoute requiredRole={["HR-Admin", "Accounts Head", "Sales Head", "Production Head", "Packing Head", "Dispatch Head"]}>
+        <ProtectedRoute requiredRole={["HR-Admin", "Accounts Head", "Sales Head", "Production Head", "Packing Head", "Dispatch Head", "Research & Development Head", "QC Head", "Store Head"]}>
           <QuestionBank />
         </ProtectedRoute>
       </Route>
       {/* 1. Trainee Dashboard */}
       <Route path="/lms/training">
-        <ProtectedRoute requiredRole={["Dispatch Employee", "Packing Employee", "Production Employee", "Sales Employee", "Account Employee"]}>
+        <ProtectedRoute requiredRole={["Dispatch Employee", "Packing Employee", "Production Employee", "Sales Employee", "Account Employee", "Research Development Employee", "QC Employee", "Store Employee"]}>
           <CandidateDashboard />
         </ProtectedRoute>
       </Route>
 
       {/* 2. The Classroom (Watching Videos/PDFs) */}
       <Route path="/lms/my-training/:moduleId/learn">
-        <ProtectedRoute requiredRole={["Dispatch Employee", "Packing Employee", "Production Employee", "Sales Employee", "Account Employee"]}>
+        <ProtectedRoute requiredRole={["Dispatch Employee", "Packing Employee", "Production Employee", "Sales Employee", "Account Employee", "Research Development Employee", "QC Employee", "Store Employee"]}>
           <ModulePlayer />
         </ProtectedRoute>
       </Route>
 
       {/* 3. The Exam Room (Taking the Test) */}
       <Route path="/lms/my-training/:moduleId/quiz">
-        <ProtectedRoute requiredRole={["Dispatch Employee", "Packing Employee", "Production Employee", "Sales Employee", "Account Employee"]}>
+        <ProtectedRoute requiredRole={["Dispatch Employee", "Packing Employee", "Production Employee", "Sales Employee", "Account Employee", "Research Development Employee", "QC Employee", "Store Employee"]}>
           <QuizRunner />
         </ProtectedRoute>
       </Route>

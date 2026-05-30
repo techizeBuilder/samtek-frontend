@@ -23,12 +23,17 @@ const FILE_BASE = API_BASE.replace('/api', '');
 type ViewMode = "list" | "kanban" | "calendar";
 
 const TOP_LEVEL_ADMINS = ['HR-Admin', 'MIS Admin', 'Company Admin', 'Super Admin', 'Admin'];
+
+// 🔥 ADDED NEW DEPARTMENT HEADS HERE
 const DEPT_HEADS = [
   'Production Head', 'Packing Head', 'Dispatch Head',
   'Accounts Head', 'Sales Head', 'Manager', 'Finance Manager',
-  'Unit Head', 'Unit Manager'
+  'Unit Head', 'Unit Manager',
+  'Research & Development Head', 'Store Head', 'QC Head'
 ];
-const DEPARTMENTS = ["Production", "Packing", "Dispatch", "Accounts", "Sales", "General"];
+
+// 🔥 ADDED NEW DEPARTMENTS HERE
+const DEPARTMENTS = ["Production", "Packing", "Dispatch", "Accounts", "Sales", "R&D", "Store", "QC", "General"];
 
 const getDepartmentFromRole = (role: string) => {
   if (!role) return "General";
@@ -37,10 +42,15 @@ const getDepartmentFromRole = (role: string) => {
   if (role.includes('Dispatch')) return 'Dispatch';
   if (role.includes('Account') || role.includes('Finance')) return 'Accounts';
   if (role.includes('Sales')) return 'Sales';
+  
+  // 🔥 ADDED NEW DEPARTMENT MAPPINGS HERE
+  if (role.includes('Research') || role.includes('R&D')) return 'R&D';
+  if (role.includes('Store')) return 'Store';
+  if (role.includes('QC')) return 'QC';
+
   return role.replace(/(Head|Manager|Employee)/gi, '').trim() || "General";
 };
 
-// 🔥 FIX: Added myTasksOnly to the props
 const TaskWorkspaceView = ({ refreshTrigger, myTasksOnly = false }: { refreshTrigger?: number, myTasksOnly?: boolean }) => {
   const { user } = useAuth() as { user: any };
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -58,7 +68,6 @@ const TaskWorkspaceView = ({ refreshTrigger, myTasksOnly = false }: { refreshTri
   const [department, setDepartment] = useState("");
   const [employees, setEmployees] = useState<any[]>([]);
 
-  // 🔥 FIX: Automatically set assignedTo to the current user if in My Tasks mode
   const currentUserId = user?.id || user?._id;
   const [assignedTo, setAssignedTo] = useState(myTasksOnly ? currentUserId : "");
 
@@ -69,7 +78,6 @@ const TaskWorkspaceView = ({ refreshTrigger, myTasksOnly = false }: { refreshTri
   const isTopAdmin = TOP_LEVEL_ADMINS.includes(user?.role);
   const isDeptHead = DEPT_HEADS.includes(user?.role);
   
-  // 🔥 FIX: Hide the user filter dropdown if we are in My Tasks mode
   const canFilterUsers = (isTopAdmin || isDeptHead) && !myTasksOnly;
 
   const handleFilePreview = (e: React.MouseEvent, fileUrl: string) => {
@@ -120,7 +128,6 @@ const TaskWorkspaceView = ({ refreshTrigger, myTasksOnly = false }: { refreshTri
       setLoading(true);
       const token = localStorage.getItem("token");
       const response = await axios.get(`${API_BASE}/hrms/tasks/all`, {
-        // 🔥 This now accurately sends assignedTo=YOUR_ID if myTasksOnly is true
         params: { search, status, priority, taskType, assignedTo, date, department, page, limit },
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -137,7 +144,6 @@ const TaskWorkspaceView = ({ refreshTrigger, myTasksOnly = false }: { refreshTri
   useEffect(() => { setPage(1); }, [search, status, priority, taskType, assignedTo, date, department]);
   useEffect(() => { fetchTasks(); }, [page, search, status, priority, taskType, assignedTo, date, department, refreshTrigger]);
 
-  // 🔥 FIX: Prevent clearing the assignedTo state if we are in My Tasks mode
   useEffect(() => { 
     if (!myTasksOnly) {
       setAssignedTo(""); 
@@ -154,7 +160,24 @@ const TaskWorkspaceView = ({ refreshTrigger, myTasksOnly = false }: { refreshTri
     } catch (error) { console.error("Delete error:", error); }
   };
 
-  const filteredEmployees = department ? employees.filter(emp => getDepartmentFromRole(emp.role) === department) : employees;
+  const filteredEmployees = employees.filter(emp => {
+    // 1. Exclude the logged-in user ONLY IF they are a Dept Head
+    if (!isTopAdmin && isDeptHead && emp._id === currentUserId) {
+      return false;
+    }
+
+    // 2. If user is a Top Admin, filter by the selected department (if they selected one)
+    if (isTopAdmin && department) {
+      return getDepartmentFromRole(emp.role) === department;
+    }
+
+    // 3. If user is a Dept Head, STRICTLY lock the filter list to their department ONLY
+    if (!isTopAdmin && isDeptHead) {
+      return getDepartmentFromRole(emp.role) === getDepartmentFromRole(user?.role);
+    }
+
+    return true;
+  });
 
   return (
     <div className="space-y-4">
@@ -170,7 +193,6 @@ const TaskWorkspaceView = ({ refreshTrigger, myTasksOnly = false }: { refreshTri
           <input type="text" placeholder="Search tasks..." className="bg-transparent border-none focus:outline-none text-sm w-full" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
 
-        {/* Hide Department Dropdown for Dept Heads/Employees */}
         {isTopAdmin && (
           <div className="flex items-center gap-2 border border-gray-200 rounded-lg px-2 bg-white">
             <Building2 className="w-4 h-4 text-gray-400" />
@@ -181,7 +203,6 @@ const TaskWorkspaceView = ({ refreshTrigger, myTasksOnly = false }: { refreshTri
           </div>
         )}
 
-        {/* Hide Assignee Dropdown if myTasksOnly is true */}
         {canFilterUsers && (
           <div className="flex items-center gap-2 border border-gray-200 rounded-lg px-2 bg-white">
             <User className="w-4 h-4 text-gray-400" />
@@ -244,8 +265,12 @@ const TaskWorkspaceView = ({ refreshTrigger, myTasksOnly = false }: { refreshTri
                   </thead>
                   <tbody className="divide-y divide-gray-50">
                     {tasks?.map((task) => (
-                      <tr key={task._id} className="hover:bg-gray-50/50 transition-colors group">
-                        <td className="p-4 cursor-pointer" onClick={() => handleTaskClick(task)}>
+                      <tr 
+                        key={task._id} 
+                        onClick={() => handleTaskClick(task)}
+                        className="hover:bg-gray-50/50 transition-colors group cursor-pointer"
+                      >
+                        <td className="p-4">
                           <div className="flex flex-col">
                             <div className="flex items-center gap-2">
                               <span className="text-sm font-semibold text-gray-800 group-hover:text-indigo-600 transition-colors">{task.title}</span>
@@ -284,8 +309,26 @@ const TaskWorkspaceView = ({ refreshTrigger, myTasksOnly = false }: { refreshTri
                         </td>
                         <td className="p-4 text-center">
                           <div className="flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button onClick={() => handleTaskClick(task)} className="p-1.5 text-gray-500 hover:bg-indigo-50 hover:text-indigo-600 rounded-md"><Eye className="w-4 h-4" /></button>
-                            {isTopAdmin && <button onClick={() => handleDeleteTask(task._id)} className="p-1.5 text-gray-500 hover:bg-red-50 hover:text-red-600 rounded-md"><Trash2 className="w-4 h-4" /></button>}
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleTaskClick(task);
+                              }} 
+                              className="p-1.5 text-gray-500 hover:bg-indigo-50 hover:text-indigo-600 rounded-md"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
+                            {isTopAdmin && (
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteTask(task._id);
+                                }} 
+                                className="p-1.5 text-gray-500 hover:bg-red-50 hover:text-red-600 rounded-md"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -371,6 +414,7 @@ const TaskWorkspaceView = ({ refreshTrigger, myTasksOnly = false }: { refreshTri
         )}
       </div>
       
+      {/* File Preview Modal */}
       {previewFile && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <button onClick={() => setPreviewFile(null)} className="absolute top-6 right-6 text-white bg-black/50 p-2 rounded-full"><X size={28} /></button>
@@ -382,8 +426,8 @@ const TaskWorkspaceView = ({ refreshTrigger, myTasksOnly = false }: { refreshTri
             ) : (
               <div className="bg-white p-8 rounded-2xl shadow-2xl max-w-md text-center">
                 <Paperclip size={32} className="mx-auto mb-4 text-indigo-600" />
-                <h3 className="text-xl font-bold mb-4">{previewFile.name}</h3>
-                <a href={previewFile.url} download className="bg-indigo-600 text-white px-6 py-3 rounded-xl flex items-center justify-center gap-2"><Download size={18} /> Download to View</a>
+                <h3 className="text-xl font-bold mb-4">{previewFile?.name}</h3>
+                <a href={previewFile?.url} download className="bg-indigo-600 text-white px-6 py-3 rounded-xl flex items-center justify-center gap-2"><Download size={18} /> Download to View</a>
               </div>
             )}
           </div>

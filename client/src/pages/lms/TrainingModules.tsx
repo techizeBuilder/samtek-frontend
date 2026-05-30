@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom'; 
-import { useModules, useDeactivateModule } from '../../hooks/useTraining'; 
+import { useNavigate } from 'react-router-dom';
+import { useModules, useDeactivateModule } from '../../hooks/useTraining';
 import CreateModuleModal from '../../components/lms/CreateModuleModal';
 import EditModuleInfoModal from '../../components/lms/EditModuleInfoModal';
 import ManageMediaModal from '../../components/lms/ManageMediaModal';
@@ -27,7 +27,7 @@ interface TrainingModule {
 const TOP_LEVEL_ADMINS = ['HR-Admin', 'Super Admin', 'Admin', 'Company Admin'];
 
 export default function TrainingModules() {
-  const navigate = useNavigate(); 
+  const navigate = useNavigate();
 
   // --- ROLE CHECKS ---
   const userStr = localStorage.getItem('user');
@@ -41,7 +41,7 @@ export default function TrainingModules() {
 
   // --- FILTER STATE ---
   const [departmentFilter, setDepartmentFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState('Active'); // Default to Active
+  const [statusFilter, setStatusFilter] = useState('Active');
 
   // --- FETCH DATA ---
   const { data: response, isLoading, isError } = useModules({
@@ -59,6 +59,17 @@ export default function TrainingModules() {
     }
   };
 
+  // --- UI FORMATTING HELPER ---
+  const formatDeptName = (dept: string) => {
+    if (!dept) return 'General';
+    const map: Record<string, string> = {
+      'Research & Development': 'R&D',
+      'Quality Control': 'QC',
+      'Store': 'Store'
+    };
+    return map[dept] || dept;
+  };
+
   return (
     <div className="p-6 max-w-7xl mx-auto">
       {/* Header Section */}
@@ -67,7 +78,7 @@ export default function TrainingModules() {
           <h1 className="text-2xl font-bold text-gray-900">Training Course Library</h1>
           <p className="text-sm text-gray-500">Manage the educational content, videos, and SOPs for your company.</p>
         </div>
-        <button 
+        <button
           onClick={() => setIsCreateModalOpen(true)}
           className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md shadow transition-colors"
         >
@@ -77,13 +88,13 @@ export default function TrainingModules() {
 
       {/* Filter Section */}
       <div className="mb-6 bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex items-center gap-4">
-        
-        {/* 🔥 DYNAMIC DEPARTMENT FILTER */}
+
+        {/* 🔥 UPDATED DYNAMIC DEPARTMENT FILTER */}
         {isTopAdmin ? (
           <div className="flex items-center gap-2">
             <label className="text-sm font-medium text-gray-700">Department:</label>
-            <select 
-              value={departmentFilter} 
+            <select
+              value={departmentFilter}
               onChange={(e) => setDepartmentFilter(e.target.value)}
               className="rounded-md border-gray-300 shadow-sm p-2 border text-sm w-48"
             >
@@ -93,6 +104,9 @@ export default function TrainingModules() {
               <option value="Dispatch">Dispatch</option>
               <option value="Accounts">Accounts</option>
               <option value="Sales">Sales</option>
+              <option value="Research & Development">R&D</option>
+              <option value="Store">Store</option>
+              <option value="QC">QC</option>
               <option value="General">General / All</option>
             </select>
           </div>
@@ -100,7 +114,7 @@ export default function TrainingModules() {
           <div className="flex items-center gap-2 opacity-75">
             <label className="text-sm font-medium text-gray-700">Department:</label>
             <div className="rounded-md border border-gray-200 bg-gray-50 shadow-sm p-2 text-sm w-48 font-semibold text-gray-600 cursor-not-allowed truncate">
-              Locked: {currentUser?.role.replace(/(Head|Manager)/gi, '').trim() || 'Your Department'}
+              Locked: {formatDeptName(currentUser?.role.replace(/(Head|Manager|Employee)/gi, '').trim()) || 'Your Department'}
             </div>
           </div>
         )}
@@ -108,8 +122,8 @@ export default function TrainingModules() {
         {/* STATUS FILTER DROPDOWN */}
         <div className="flex items-center gap-2">
           <label className="text-sm font-medium text-gray-700">Status:</label>
-          <select 
-            value={statusFilter} 
+          <select
+            value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
             className="rounded-md border-gray-300 shadow-sm p-2 border text-sm w-36"
           >
@@ -140,39 +154,41 @@ export default function TrainingModules() {
             </div>
           ) : (
             modules.map((module) => (
-              <div 
-                key={module._id} 
-                // Fade out archived modules slightly
+              <div
+                key={module._id}
                 className={`bg-white rounded-lg shadow-sm border overflow-hidden hover:shadow-md transition-shadow flex flex-col ${!module.isActive ? 'opacity-75 border-gray-300' : 'border-gray-200'}`}
               >
-                
-                {/* Card Header */}
                 <div className="p-5 border-b border-gray-100">
                   <div className="flex justify-between items-start mb-2">
-                    <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700">
-                      {module.category}
-                    </span>
-                    <div className="flex gap-2">
-                      {/* Visual indicator for Archived Modules */}
+
+                    {/* 🔥 NEW: DEPARTMENT & CATEGORY TAGS */}
+                    <div className="flex gap-2 flex-wrap items-center">
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-100 uppercase tracking-wider">
+                        {formatDeptName(module.department)}
+                      </span>
+                      <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-blue-50 text-blue-700">
+                        {module.category}
+                      </span>
+                    </div>
+
+                    <div className="flex gap-2 items-center">
                       {!module.isActive && (
-                        <span className="px-2 py-0.5 rounded text-xs font-bold bg-red-100 text-red-700">
-                          ARCHIVED
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700 uppercase">
+                          Archived
                         </span>
                       )}
-                      <span className="text-xs font-medium text-gray-400 bg-gray-50 px-2 py-1 rounded">
+                      <span className="text-[11px] font-medium text-gray-400 bg-gray-50 px-2 py-1 rounded">
                         Seq: {module.sequenceOrder}
                       </span>
                     </div>
                   </div>
-                  <h3 className="text-lg font-bold text-gray-900 line-clamp-1" title={module.title}>
-                    {module.title}
-                  </h3>
+
+                  <h3 className="text-lg font-bold text-gray-900 line-clamp-1 mt-1" title={module.title}>{module.title}</h3>
                   <p className="text-sm text-gray-500 mt-1 line-clamp-2" title={module.description}>
                     {module.description || 'No description provided.'}
                   </p>
                 </div>
 
-                {/* Card Body - Content Stats */}
                 <div className="p-5 flex-1 bg-gray-50/50">
                   <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">Course Contents</p>
                   <div className="flex gap-4">
@@ -187,53 +203,25 @@ export default function TrainingModules() {
                   </div>
                 </div>
 
-                {/* Card Footer - Actions */}
                 <div className="p-4 border-t border-gray-100 bg-white flex justify-between items-center gap-2">
                   <div className="flex gap-2">
-                    <button 
-                      onClick={() => setModuleToEdit(module)}
-                      className="text-xs font-medium text-gray-600 hover:text-blue-600 px-2 py-1 rounded transition-colors"
-                    >
-                      Edit Info
-                    </button>
-                    <button 
-                      onClick={() => setModuleToManageMedia(module)}
-                      className="text-xs font-medium text-gray-600 hover:text-blue-600 px-2 py-1 rounded transition-colors"
-                    >
-                      Manage Media
-                    </button>
-                    
-                    {/* --- MANAGE QUIZ BUTTON --- */}
-                    <button 
-                      onClick={() => navigate(`/lms/question-bank/${module._id}`)} 
-                      className="text-xs font-medium text-purple-600 hover:text-purple-800 bg-purple-50 px-2 py-1 rounded transition-colors"
-                    >
-                      Manage Quiz
-                    </button>
+                    <button onClick={() => setModuleToEdit(module)} className="text-xs font-medium text-gray-600 hover:text-blue-600 px-2 py-1 rounded transition-colors">Edit Info</button>
+                    <button onClick={() => setModuleToManageMedia(module)} className="text-xs font-medium text-gray-600 hover:text-blue-600 px-2 py-1 rounded transition-colors">Manage Media</button>
+                    <button onClick={() => navigate(`/lms/question-bank/${module._id}`)} className="text-xs font-medium text-purple-600 hover:text-purple-800 bg-purple-50 px-2 py-1 rounded transition-colors">Manage Quiz</button>
                   </div>
-                  
-                  {/* Only show Archive button if it's currently active */}
                   {module.isActive && (
-                    <button 
-                      onClick={() => handleDelete(module._id, module.title)}
-                      className="text-xs font-medium text-red-500 hover:text-red-700 px-2 py-1 transition-colors"
-                    >
-                      Archive
-                    </button>
+                    <button onClick={() => handleDelete(module._id, module.title)} className="text-xs font-medium text-red-500 hover:text-red-700 px-2 py-1 transition-colors">Archive</button>
                   )}
                 </div>
-
               </div>
             ))
           )}
         </div>
-      )} 
-      
-      {/* Mounted Modals */}
+      )}
+
       <CreateModuleModal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} />
       <EditModuleInfoModal module={moduleToEdit} onClose={() => setModuleToEdit(null)} />
       <ManageMediaModal module={moduleToManageMedia} onClose={() => setModuleToManageMedia(null)} />
-      
     </div>
   );
 }

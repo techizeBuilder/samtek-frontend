@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { useActiveTrainees, useDeleteTraineeRecord } from '../../hooks/useTraining'; 
-import StageCandidateModal from '../../components/lms/StageCandidateModal'; 
-import TraineeDetailsView from '../../components/lms/TraineeDetailsView'; 
+import { useActiveTrainees, useDeleteTraineeRecord } from '../../hooks/useTraining';
+import StageCandidateModal from '../../components/lms/StageCandidateModal';
+import TraineeDetailsView from '../../components/lms/TraineeDetailsView';
 
 interface PopulatedUser {
     _id: string;
@@ -13,7 +13,7 @@ interface PopulatedUser {
 
 interface ActiveTrainee {
     _id: string;
-    user: PopulatedUser | null; 
+    user: PopulatedUser | null;
     assignedDepartment: string;
     status: string;
     isEligible: boolean;
@@ -29,7 +29,7 @@ export default function Trainees() {
 
     // --- UI STATE ---
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [selectedTraineeId, setSelectedTraineeId] = useState<string | null>(null); 
+    const [selectedTraineeId, setSelectedTraineeId] = useState<string | null>(null);
 
     // --- PAGINATION & FILTER STATE ---
     const [page, setPage] = useState(1);
@@ -56,7 +56,7 @@ export default function Trainees() {
     const totalRecords: number = response?.total || 0;
 
     const handleDelete = (e: React.MouseEvent, id: string) => {
-        e.stopPropagation(); 
+        e.stopPropagation();
         if (window.confirm("Are you sure you want to permanently delete this candidate's training record and HRMS account?")) {
             deleteTrainee(id);
         }
@@ -69,6 +69,16 @@ export default function Trainees() {
         if (name === 'eligibility') setEligibilityFilter(value);
         if (name === 'search') setSearchTerm(value);
         setPage(1);
+    };
+
+    // Helper to format the department name nicely if needed in the table
+    const formatDeptName = (dept: string) => {
+        const map: Record<string, string> = {
+            'Research & Development': 'R&D',
+            'Quality Control': 'QC',
+            'Store': 'Store'
+        };
+        return map[dept] || dept;
     };
 
     return (
@@ -120,13 +130,17 @@ export default function Trainees() {
                                 <option value="Dispatch">Dispatch</option>
                                 <option value="Accounts">Accounts</option>
                                 <option value="Sales">Sales</option>
+                                {/* 🔥 NEW DEPARTMENTS ADDED HERE */}
+                                <option value="Research & Development">R&D</option>
+                                <option value="Store">Store</option>
+                                <option value="QC">QC</option>
                             </select>
                         </div>
                     ) : (
                         <div className="opacity-60">
                             <label className="block text-xs font-medium text-gray-500 uppercase mb-1">Department Access</label>
                             <div className="w-full rounded-md bg-gray-50 border border-gray-200 p-2 text-sm font-semibold text-gray-700">
-                                Locked: {currentUser?.role.replace(/(Head|Manager)/gi, '').trim()}
+                                Locked: {formatDeptName(currentUser?.role.replace(/(Head|Manager)/gi, '').trim())}
                             </div>
                         </div>
                     )}
@@ -198,7 +212,7 @@ export default function Trainees() {
                                 trainees.map((trainee: ActiveTrainee) => (
                                     <tr
                                         key={trainee._id}
-                                        onClick={() => setSelectedTraineeId(trainee._id)} 
+                                        onClick={() => setSelectedTraineeId(trainee._id)}
                                         className="hover:bg-blue-50 cursor-pointer transition-colors"
                                     >
                                         <td className="px-6 py-4 whitespace-nowrap">
@@ -210,15 +224,15 @@ export default function Trainees() {
                                             </div>
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-semibold">
-                                            {trainee.assignedDepartment}
+                                            {formatDeptName(trainee.assignedDepartment)}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full 
                                                 ${trainee.status === 'Passed' ? 'bg-green-100 text-green-800' :
-                                                  trainee.status === 'Failed' ? 'bg-red-100 text-red-800' :
-                                                  trainee.status === 'Completed_Onboarding' ? 'bg-blue-600 text-white' : 
-                                                  trainee.status === 'Rejected' ? 'bg-gray-800 text-white' : 
-                                                  'bg-yellow-100 text-yellow-800'}`}
+                                                    trainee.status === 'Failed' ? 'bg-red-100 text-red-800' :
+                                                        trainee.status === 'Completed_Onboarding' ? 'bg-blue-600 text-white' :
+                                                            trainee.status === 'Rejected' ? 'bg-gray-800 text-white' :
+                                                                'bg-yellow-100 text-yellow-800'}`}
                                             >
                                                 {trainee.status.replace(/_/g, ' ')}
                                             </span>
@@ -232,7 +246,7 @@ export default function Trainees() {
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                             <button
-                                                onClick={(e) => handleDelete(e, trainee._id)} 
+                                                onClick={(e) => handleDelete(e, trainee._id)}
                                                 className="text-red-600 hover:text-red-900 px-3 py-1 rounded hover:bg-red-50 transition-colors"
                                             >
                                                 Delete

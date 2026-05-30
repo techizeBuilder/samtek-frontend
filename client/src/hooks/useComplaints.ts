@@ -10,15 +10,15 @@ export const useCustomerHistory = (mobileNumber: string) => {
     queryKey: ['customerHistory', mobileNumber],
     queryFn: () => api.getCustomerHistory(mobileNumber),
     // Only fire the request if the mobile number is exactly 10 digits
-    enabled: !!mobileNumber && mobileNumber.length === 10, 
+    enabled: !!mobileNumber && mobileNumber.length === 10,
     retry: false, // Don't retry on 404 (new customers won't have history)
   });
 };
 
-export const useServicemen = (status?: string) => {
+export const useServicemen = (status?: string, zone?: string) => {
   return useQuery({
-    queryKey: ['servicemen', status],
-    queryFn: () => api.getServicemen(status),
+    queryKey: ['servicemen', status, zone],
+    queryFn: () => api.getServicemen(status, zone),
   });
 };
 
@@ -120,6 +120,17 @@ export const useCompleteVisit = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['myTickets'] });
       queryClient.invalidateQueries({ queryKey: ['ticketDetails'] });
+    },
+  });
+};
+
+export const useUpdateTechnician = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: any }) => api.updateTechnician(id, payload),
+    onSuccess: () => {
+      // Invalidate the serviceman list so the UI refreshes with new data
+      queryClient.invalidateQueries({ queryKey: ['servicemen'] });
     },
   });
 };
