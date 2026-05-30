@@ -10,7 +10,7 @@ export function useSettings() {
   return {
     settings: settingsData?.data,
     isLoading,
-    // companyLogo: settingsData?.data?.company?.logo,
-    // companyName: settingsData?.data?.company?.name || 'Samtek Machinery'
+    companyLogo: settingsData?.data?.company?.logo,
+    companyName: settingsData?.data?.company?.name || 'Samtek Machinery'
   };
 }

@@ -59,7 +59,10 @@ import {
   Mic,
   Volume2,
   FileDown,
-  Pencil
+  Pencil,
+  Star,
+  ThumbsUp,
+  ThumbsDown
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -161,6 +164,229 @@ const Leads = () => {
   const [isEditReqModalOpen, setIsEditReqModalOpen] = useState(false);
   const [editingLeadId, setEditingLeadId] = useState(null);
   const [existingLead, setExistingLead] = useState(null);
+
+  // Constants
+  const STAGES = [
+    "Call Not Picked",
+    "Contacted",
+    "Product Qualified",
+    "Budget Qualified",
+    "Bank Funding",
+    "Self Funding",
+    "Sent Marketing Data",
+    "Quatation Sent",
+    "Visit Scheduled",
+    "Visited",
+    "Deal Closing",
+    "Deal Won"
+  ];
+
+  const STATUSES = [
+    "Hot",
+    "Warm",
+    "Cold",
+    "Pending",
+    "Star Lead",
+    "Followup"
+  ];
+
+  const DISQUALIFY_REASONS = [
+    "Payment Term Is Out Of Scope",
+    "Freight Charged Are High",
+    "Client Is Not Responding",
+    "Client Dropped His Purchase Requirement",
+    "Quoted Price Is High",
+    "Purchased From Local Vendor",
+    "Irrelevant Product Enquiry",
+    "Low/ Retail Quantity",
+    "Delivery Location Is Out Of Scope",
+    "Legal Issue",
+    "Junk Enquiry",
+    "Payment Not Received",
+    "Duplicate Leads",
+    "Quoted But Delaying Decision",
+    "Invalid Contact Number",
+    "Not Potential"
+  ];
+
+  // Helper Functions
+  const formatHistoryDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const dd = String(date.getDate()).padStart(2, '0');
+    const hh = String(date.getHours()).padStart(2, '0');
+    const min = String(date.getMinutes()).padStart(2, '0');
+    const ss = String(date.getSeconds()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd} ${hh}:${min}:${ss}`;
+  };
+
+  const formatNoteDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    const day = date.getDate();
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const monthName = months[date.getMonth()];
+    const year = date.getFullYear();
+    let hours = date.getHours();
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12;
+    hours = hours ? hours : 12;
+    const strTime = String(hours).padStart(2, '0') + ':' + minutes + ' ' + ampm;
+    return `${day}-${monthName}-${year} ${strTime}`;
+  };
+
+  const getVisitedStages = (lead) => {
+    const stagesFromHistory = lead.history
+      ?.filter(h => h.action === 'Lead Stage Updated')
+      ?.map(h => {
+        const match = h.notes?.match(/to '([^']+)'/);
+        return match ? match[1] : null;
+      })
+      ?.filter(Boolean) || [];
+
+    const uniqueStages = [...new Set([...stagesFromHistory, lead.stage])];
+    return uniqueStages.filter(s => STAGES.includes(s));
+  };
+
+  // Popup / Modal States
+  const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
+  const [statusLead, setStatusLead] = useState(null);
+  const [selectedStatus, setSelectedStatus] = useState('');
+
+  const [isStageModalOpen, setIsStageModalOpen] = useState(false);
+  const [stageLead, setStageLead] = useState(null);
+  const [selectedStage, setSelectedStage] = useState('');
+
+  const [isDisqualifyModalOpen, setIsDisqualifyModalOpen] = useState(false);
+  const [disqualifyLead, setDisqualifyLead] = useState(null);
+  const [selectedDisqualify, setSelectedDisqualify] = useState('');
+
+  const [isNotesModalOpen, setIsNotesModalOpen] = useState(false);
+  const [notesLead, setNotesLead] = useState(null);
+  const [newNoteContent, setNewNoteContent] = useState('');
+
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  const [historyLead, setHistoryLead] = useState(null);
+  const [historyFilter, setHistoryFilter] = useState('All');
+
+  // Popup Handlers
+  const handleOpenStatusModal = (lead) => {
+    setStatusLead(lead);
+    setSelectedStatus(lead.status || 'New');
+    setIsStatusModalOpen(true);
+  };
+
+  const handleOpenStageModal = (lead) => {
+    setStageLead(lead);
+    setSelectedStage(lead.stage || 'N/A');
+    setIsStageModalOpen(true);
+  };
+
+  const handleOpenDisqualifyModal = (lead) => {
+    setDisqualifyLead(lead);
+    setSelectedDisqualify('');
+    setIsDisqualifyModalOpen(true);
+  };
+
+  const handleOpenNotesModal = (lead) => {
+    setNotesLead(lead);
+    setNewNoteContent('');
+    setIsNotesModalOpen(true);
+  };
+
+  const handleOpenHistoryModal = (lead) => {
+    setHistoryLead(lead);
+    setHistoryFilter('All');
+    setIsHistoryModalOpen(true);
+  };
+
+  const handleStatusSubmit = () => {
+    if (!statusLead) return;
+    updateLeadMutation.mutate(
+      {
+        id: statusLead._id,
+        data: { status: selectedStatus }
+      },
+      {
+        onSuccess: (data) => {
+          // Invalidate and refetch leads data for real-time sync
+          queryClient.invalidateQueries({ queryKey: ['leads'] });
+          queryClient.refetchQueries({ queryKey: ['leads'] });
+          toast({ title: "Success", description: "Status updated successfully" });
+          setIsStatusModalOpen(false);
+        }
+      }
+    );
+  };
+
+  const handleStageSubmit = () => {
+    if (!stageLead) return;
+    updateLeadMutation.mutate(
+      {
+        id: stageLead._id,
+        data: { stage: selectedStage }
+      },
+      {
+        onSuccess: (data) => {
+          // Invalidate and refetch leads data for real-time sync
+          queryClient.invalidateQueries({ queryKey: ['leads'] });
+          queryClient.refetchQueries({ queryKey: ['leads'] });
+          toast({ title: "Success", description: "Stage updated successfully" });
+          setIsStageModalOpen(false);
+        }
+      }
+    );
+  };
+
+  const handleDisqualifySubmit = () => {
+    if (!disqualifyLead || !selectedDisqualify) {
+      toast({ title: "Required", description: "Please select a reason", variant: "destructive" });
+      return;
+    }
+    updateLeadMutation.mutate(
+      {
+        id: disqualifyLead._id,
+        data: { status: selectedDisqualify }
+      },
+      {
+        onSuccess: () => {
+          toast({ title: "Success", description: "Lead disqualified successfully" });
+          setIsDisqualifyModalOpen(false);
+        }
+      }
+    );
+  };
+
+  const handleNoteSubmit = () => {
+    if (!notesLead || !newNoteContent.trim()) {
+      toast({ title: "Required", description: "Note content cannot be empty", variant: "destructive" });
+      return;
+    }
+    const newNote = {
+      content: newNoteContent.trim(),
+      userName: user?.fullName || user?.username || 'System User',
+      userId: user?._id,
+      createdAt: new Date().toISOString()
+    };
+    const updatedNotes = [...(notesLead.notes || []), newNote];
+    updateLeadMutation.mutate(
+      {
+        id: notesLead._id,
+        data: { notes: updatedNotes }
+      },
+      {
+        onSuccess: (data) => {
+          toast({ title: "Success", description: "Note added successfully" });
+          setNewNoteContent('');
+          const updatedLead = data?.lead || { ...notesLead, notes: updatedNotes };
+          setNotesLead(updatedLead);
+        }
+      }
+    );
+  };
 
   // Closure Date / Deal Value Modal
   const [isClosureDealModalOpen, setIsClosureDealModalOpen] = useState(false);
@@ -295,6 +521,36 @@ const Leads = () => {
       toast({
         title: "Error",
         description: error?.message || "Failed to mark lead as won",
+        variant: "destructive"
+      });
+    }
+  });
+
+  const requestPaymentCheckMutation = useMutation({
+    mutationFn: (id) => leadApi.requestPaymentCheck(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+      toast({ title: "Success", description: "Payment check requested successfully" });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to request payment check",
+        variant: "destructive"
+      });
+    }
+  });
+
+  const goToAccountMutation = useMutation({
+    mutationFn: (id) => leadApi.sendToAccount(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+      toast({ title: "Success", description: "Lead sent to Account successfully" });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to send lead to account",
         variant: "destructive"
       });
     }
@@ -628,6 +884,105 @@ const Leads = () => {
                       </div>
                     </div>
 
+                    {/* Action Icons Row */}
+                    <div className="flex items-center gap-4 mt-2 mb-3 px-1 border-b border-gray-100 pb-2">
+                      {/* Star Button - Active when status has been changed */}
+                      <button 
+                        onClick={() => handleOpenStatusModal(lead)} 
+                        className={cn(
+                          "transition-colors",
+                          (lead.status === 'Star Lead' || lead.status === 'Hot') 
+                            ? "text-yellow-500 animate-none" 
+                            : lead.status && lead.status !== 'New' 
+                              ? "text-yellow-400 hover:text-yellow-500" 
+                              : "text-gray-400 hover:text-yellow-500 animate-pulse"
+                        )}
+                        title="Change Status"
+                      >
+                        <Star className={cn(
+                          "h-5 w-5", 
+                          (lead.status === 'Star Lead' || lead.status === 'Hot') 
+                            ? "fill-yellow-500 text-yellow-500" 
+                            : lead.status && lead.status !== 'New'
+                              ? "fill-yellow-400 text-yellow-400"
+                              : "text-gray-400"
+                        )} />
+                      </button>
+                      
+                      {/* Thumbs Up Button - Active when stage has been changed */}
+                      <button 
+                        onClick={() => handleOpenStageModal(lead)} 
+                        className={cn(
+                          "transition-colors",
+                          lead.stage && lead.stage !== 'N/A' && lead.stage !== 'Call Not Picked'
+                            ? "text-green-600 hover:text-green-700"
+                            : "text-gray-400 hover:text-green-600"
+                        )}
+                        title="Change Stage"
+                      >
+                        <ThumbsUp className={cn(
+                          "h-5 w-5",
+                          lead.stage && lead.stage !== 'N/A' && lead.stage !== 'Call Not Picked'
+                            ? "fill-green-600 text-green-600"
+                            : "text-gray-400"
+                        )} />
+                      </button>
+                      
+                      {/* Thumbs Down Button - Active when lead is disqualified */}
+                      <button 
+                        onClick={() => handleOpenDisqualifyModal(lead)} 
+                        className={cn(
+                          "transition-colors",
+                          DISQUALIFY_REASONS.includes(lead.status)
+                            ? "text-red-600 hover:text-red-700"
+                            : "text-gray-400 hover:text-red-600"
+                        )}
+                        title="Disqualify Lead"
+                      >
+                        <ThumbsDown className={cn(
+                          "h-5 w-5",
+                          DISQUALIFY_REASONS.includes(lead.status)
+                            ? "fill-red-600 text-red-600"
+                            : "text-gray-400"
+                        )} />
+                      </button>
+                      
+                      {/* Notes Button with green badge */}
+                      <button 
+                        onClick={() => handleOpenNotesModal(lead)} 
+                        className={cn(
+                          "relative transition-colors",
+                          lead.notes?.length > 0
+                            ? "text-blue-500 hover:text-blue-600"
+                            : "text-gray-400 hover:text-blue-500"
+                        )}
+                        title="Notes"
+                      >
+                        <MessageSquare className="h-5 w-5" />
+                        {lead.notes?.length > 0 && (
+                          <span className="absolute -top-2 -right-2 bg-green-500 text-white rounded-full text-[10px] min-w-[18px] h-[18px] flex items-center justify-center font-bold shadow-md border-2 border-white">
+                            {lead.notes.length}
+                          </span>
+                        )}
+                      </button>
+                      
+                      {/* Message Button (unclickable) */}
+                      <button disabled className="text-gray-200 cursor-not-allowed" title="Message (Disabled)">
+                        <Mail className="h-5 w-5" />
+                      </button>
+                      
+                      {/* Lead History Button */}
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="h-7 px-2.5 text-xs bg-blue-50 text-blue-700 border-blue-100 hover:bg-blue-100 rounded-md flex items-center"
+                        onClick={() => handleOpenHistoryModal(lead)}
+                      >
+                        <History className="h-3.5 w-3.5 mr-1" />
+                        Lead History
+                      </Button>
+                    </div>
+
                     <div className="mb-4">
                       <h3 className="text-blue-600 font-bold text-lg flex items-center">
                         {lead.productRequired}
@@ -642,6 +997,35 @@ const Leads = () => {
                       <p className="text-xs text-gray-500 mt-1 line-clamp-1">
                         {lead.describeRequirements || "I'm interested in buying this product. Kindly send us the details."}
                       </p>
+
+                      {/* Progress timeline chain */}
+                      {lead.stage && lead.stage !== 'N/A' && (
+                        <div className="mt-4 overflow-x-auto pb-2 scrollbar-thin">
+                          <div className="flex items-center min-w-max gap-0 py-2 px-1">
+                            {getVisitedStages(lead).map((stageName, index, arr) => {
+                              const isCurrent = stageName === lead.stage;
+                              return (
+                                <React.Fragment key={stageName}>
+                                  <div className="flex flex-col items-center">
+                                    <div className={cn(
+                                      "w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold shadow-sm",
+                                      isCurrent ? "bg-green-500 font-extrabold" : "bg-green-500"
+                                    )}>
+                                      {isCurrent ? "..." : "✓"}
+                                    </div>
+                                    <span className="text-[9px] font-semibold text-gray-500 uppercase mt-1.5 tracking-wide whitespace-nowrap">
+                                      {stageName}
+                                    </span>
+                                  </div>
+                                  {index < arr.length - 1 && (
+                                    <div className="h-[2px] bg-green-500 flex-1 min-w-[50px] max-w-[100px] -mt-5.5 mx-2" />
+                                  )}
+                                </React.Fragment>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -749,6 +1133,36 @@ const Leads = () => {
                     <Button 
                       variant="outline" 
                       size="sm" 
+                      className="h-8 text-xs rounded-full bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100"
+                      onClick={() => {
+                        if (!lead.quotation) {
+                          toast({ title: "Required", description: "Please send a quotation first.", variant: "destructive" });
+                          return;
+                        }
+                        requestPaymentCheckMutation.mutate(lead._id);
+                      }}
+                      disabled={requestPaymentCheckMutation.isPending && requestPaymentCheckMutation.variables === lead._id}
+                    >
+                      {lead.paymentCheckStatus === 'Pending' ? 'Verification Pending' :
+                       lead.paymentCheckStatus === 'Paid' ? 'Payment Verified' :
+                       lead.paymentCheckStatus === 'Partially Paid' ? 'Partial Payment Verified' :
+                       'Check Payment'}
+                    </Button>
+                    
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="h-8 text-xs rounded-full bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100"
+                      onClick={() => goToAccountMutation.mutate(lead._id)}
+                      disabled={lead.sentToAccount || goToAccountMutation.isPending}
+                    >
+                      <Briefcase className="h-3 w-3 mr-1" />
+                      {lead.sentToAccount ? 'Sent to Account' : 'Go to Account'}
+                    </Button>
+
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
                       className={cn(
                         "h-8 text-xs rounded-full",
                         lead.status === 'Won' 
@@ -798,11 +1212,11 @@ const Leads = () => {
                     <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Stage</span>
                     <span className={cn(
                       "text-xs font-semibold mt-0.5 px-2 py-0.5 rounded-full w-fit",
-                      lead.stage?.toLowerCase() === 'hot' ? "bg-red-100 text-red-700" :
-                        lead.stage?.toLowerCase() === 'warm' ? "bg-orange-100 text-orange-700" :
+                      lead.status?.toLowerCase() === 'hot' ? "bg-red-100 text-red-700" :
+                        lead.status?.toLowerCase() === 'warm' ? "bg-orange-100 text-orange-700" :
                           "bg-blue-100 text-blue-700"
                     )}>
-                      {lead.stage}
+                      {lead.status}
                     </span>
                   </div>
                   <div className="flex flex-col">
@@ -2050,6 +2464,288 @@ const Leads = () => {
               disabled={updateLeadMutation.isPending}
             >
               {updateLeadMutation.isPending ? 'Saving...' : 'Save'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Change Status Modal */}
+      <Dialog open={isStatusModalOpen} onOpenChange={setIsStatusModalOpen}>
+        <DialogContent className="max-w-md p-0 overflow-hidden rounded-xl border border-gray-100 shadow-xl">
+          <div className="px-6 py-4 border-b flex justify-between items-center bg-white sticky top-0 z-10">
+            <DialogTitle className="text-lg font-bold text-gray-800">
+              Change status
+            </DialogTitle>
+            <button onClick={() => setIsStatusModalOpen(false)} className="hover:bg-gray-100 p-1.5 rounded-full transition-colors text-gray-400">
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+
+          <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
+            {STATUSES.map((statusOption) => (
+              <div 
+                key={statusOption} 
+                className="flex items-center gap-3 py-1 cursor-pointer"
+                onClick={() => setSelectedStatus(statusOption)}
+              >
+                <input
+                  type="radio"
+                  id={`status-${statusOption}`}
+                  name="leadStatus"
+                  value={statusOption}
+                  checked={selectedStatus === statusOption}
+                  onChange={() => setSelectedStatus(statusOption)}
+                  className="h-4.5 w-4.5 text-blue-600 focus:ring-blue-500 border-gray-300 cursor-pointer"
+                />
+                <label 
+                  htmlFor={`status-${statusOption}`} 
+                  className="text-sm font-semibold text-gray-700 cursor-pointer flex-1"
+                >
+                  {statusOption}
+                </label>
+              </div>
+            ))}
+          </div>
+
+          <div className="px-6 pb-6 pt-2 bg-white flex justify-end">
+            <Button
+              className="bg-blue-600 hover:bg-blue-700 px-8 py-2.5 text-sm font-bold rounded-lg shadow-md transition-all"
+              onClick={handleStatusSubmit}
+              disabled={updateLeadMutation.isPending}
+            >
+              {updateLeadMutation.isPending ? 'Submitting...' : 'Submit'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Change Stage Modal */}
+      <Dialog open={isStageModalOpen} onOpenChange={setIsStageModalOpen}>
+        <DialogContent className="max-w-md p-0 overflow-hidden rounded-xl border border-gray-100 shadow-xl">
+          <div className="px-6 py-4 border-b flex justify-between items-center bg-white sticky top-0 z-10">
+            <DialogTitle className="text-lg font-bold text-gray-800">
+              Change Stage
+            </DialogTitle>
+            <button onClick={() => setIsStageModalOpen(false)} className="hover:bg-gray-100 p-1.5 rounded-full transition-colors text-gray-400">
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+
+          <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto scrollbar-thin">
+            {STAGES.map((stageOption) => (
+              <div 
+                key={stageOption} 
+                className="flex items-center gap-3 py-1 cursor-pointer"
+                onClick={() => setSelectedStage(stageOption)}
+              >
+                <input
+                  type="radio"
+                  id={`stage-${stageOption}`}
+                  name="leadStage"
+                  value={stageOption}
+                  checked={selectedStage === stageOption}
+                  onChange={() => setSelectedStage(stageOption)}
+                  className="h-4.5 w-4.5 text-blue-600 focus:ring-blue-500 border-gray-300 cursor-pointer"
+                />
+                <label 
+                  htmlFor={`stage-${stageOption}`} 
+                  className="text-sm font-semibold text-gray-700 cursor-pointer flex-1"
+                >
+                  {stageOption}
+                </label>
+              </div>
+            ))}
+          </div>
+
+          <div className="px-6 pb-6 pt-2 bg-white flex justify-end">
+            <Button
+              className="bg-blue-600 hover:bg-blue-700 px-8 py-2.5 text-sm font-bold rounded-lg shadow-md transition-all"
+              onClick={handleStageSubmit}
+              disabled={updateLeadMutation.isPending}
+            >
+              {updateLeadMutation.isPending ? 'Submitting...' : 'Submit'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Disqualify Lead Modal */}
+      <Dialog open={isDisqualifyModalOpen} onOpenChange={setIsDisqualifyModalOpen}>
+        <DialogContent className="max-w-md p-0 overflow-hidden rounded-xl border border-gray-100 shadow-xl">
+          <div className="px-6 py-4 border-b flex justify-between items-center bg-white sticky top-0 z-10">
+            <DialogTitle className="text-lg font-bold text-gray-800">
+              Disqualify Lead
+            </DialogTitle>
+            <button onClick={() => setIsDisqualifyModalOpen(false)} className="hover:bg-gray-100 p-1.5 rounded-full transition-colors text-gray-400">
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+
+          <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto scrollbar-thin">
+            {DISQUALIFY_REASONS.map((reasonOption) => (
+              <div 
+                key={reasonOption} 
+                className="flex items-center gap-3 py-1 cursor-pointer"
+                onClick={() => setSelectedDisqualify(reasonOption)}
+              >
+                <input
+                  type="radio"
+                  id={`disqualify-${reasonOption}`}
+                  name="disqualifyReason"
+                  value={reasonOption}
+                  checked={selectedDisqualify === reasonOption}
+                  onChange={() => setSelectedDisqualify(reasonOption)}
+                  className="h-4.5 w-4.5 text-blue-600 focus:ring-blue-500 border-gray-300 cursor-pointer"
+                />
+                <label 
+                  htmlFor={`disqualify-${reasonOption}`} 
+                  className="text-sm font-semibold text-gray-700 cursor-pointer flex-1"
+                >
+                  {reasonOption}
+                </label>
+              </div>
+            ))}
+          </div>
+
+          <div className="px-6 pb-6 pt-2 bg-white flex justify-end">
+            <Button
+              className="bg-blue-600 hover:bg-blue-700 px-8 py-2.5 text-sm font-bold rounded-lg shadow-md transition-all"
+              onClick={handleDisqualifySubmit}
+              disabled={updateLeadMutation.isPending}
+            >
+              {updateLeadMutation.isPending ? 'Submitting...' : 'Submit'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Notes Modal */}
+      <Dialog open={isNotesModalOpen} onOpenChange={setIsNotesModalOpen}>
+        <DialogContent className="max-w-xl p-0 overflow-hidden rounded-xl border border-gray-100 shadow-xl">
+          <div className="px-6 py-4 border-b flex justify-between items-center bg-white sticky top-0 z-10">
+            <DialogTitle className="text-lg font-bold text-gray-800">
+              Notes List
+            </DialogTitle>
+            <button onClick={() => setIsNotesModalOpen(false)} className="hover:bg-gray-100 p-1.5 rounded-full transition-colors text-gray-400">
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+
+          <div className="p-6 space-y-4 max-h-[50vh] overflow-y-auto bg-gray-50/50">
+            {notesLead?.notes && notesLead.notes.length > 0 ? (
+              notesLead.notes.map((note, index) => (
+                <div key={index} className="bg-white p-4 rounded-lg border border-gray-100 shadow-sm relative">
+                  <div className="flex justify-between items-center mb-1.5">
+                    <span className="text-xs font-bold text-gray-800">{note.userName} wrote</span>
+                    <span className="text-[10px] text-gray-400 font-semibold">{formatNoteDate(note.createdAt)}</span>
+                  </div>
+                  <p className="text-sm text-blue-600 font-medium whitespace-pre-wrap leading-relaxed">
+                    {note.content}
+                  </p>
+                </div>
+              ))
+            ) : (
+              <div className="text-center py-8 text-gray-400 text-sm">
+                No notes added yet.
+              </div>
+            )}
+          </div>
+
+          <div className="p-6 border-t bg-white space-y-3">
+            <textarea
+              className="w-full min-h-[90px] border border-gray-300 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+              placeholder="Enter new note content here..."
+              value={newNoteContent}
+              onChange={(e) => setNewNoteContent(e.target.value)}
+            />
+            <div className="flex justify-end gap-3">
+              <Button variant="outline" onClick={() => setIsNotesModalOpen(false)} className="px-5 py-2">
+                Close
+              </Button>
+              <Button
+                className="bg-[#00acc1] hover:bg-[#00838f] text-white font-semibold border-2 border-black px-6 py-2 rounded-md shadow-sm"
+                onClick={handleNoteSubmit}
+                disabled={updateLeadMutation.isPending}
+              >
+                {updateLeadMutation.isPending ? 'Adding...' : 'Add Note'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Lead History Modal */}
+      <Dialog open={isHistoryModalOpen} onOpenChange={setIsHistoryModalOpen}>
+        <DialogContent className="max-w-4xl p-0 overflow-hidden rounded-xl border border-gray-100 shadow-xl">
+          <div className="px-6 py-4 border-b flex justify-between items-center bg-white sticky top-0 z-10">
+            <DialogTitle className="text-lg font-bold text-gray-800">
+              Lead History for Lead ID: {historyLead?.leadCode} (Company: {historyLead?.companyName})
+            </DialogTitle>
+            <button onClick={() => setIsHistoryModalOpen(false)} className="hover:bg-gray-100 p-1.5 rounded-full transition-colors text-gray-400">
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+
+          <div className="px-6 py-3 border-b flex items-center gap-3 bg-gray-50/50">
+            <Button
+              variant={historyFilter === 'All' ? 'default' : 'outline'}
+              size="sm"
+              className={cn(
+                "h-8 text-xs font-semibold px-3.5 py-1 rounded-md flex items-center gap-1.5",
+                historyFilter === 'All' ? "bg-blue-600 text-white" : "bg-white text-gray-700 border-gray-200"
+              )}
+              onClick={() => setHistoryFilter('All')}
+            >
+              <Calendar className="h-3.5 w-3.5" />
+              All
+            </Button>
+            <Button
+              variant={historyFilter === 'MOM' ? 'default' : 'outline'}
+              size="sm"
+              className={cn(
+                "h-8 text-xs font-semibold px-3.5 py-1 rounded-md flex items-center gap-1.5",
+                historyFilter === 'MOM' ? "bg-blue-600 text-white" : "bg-white text-gray-700 border-gray-200"
+              )}
+              onClick={() => setHistoryFilter('MOM')}
+            >
+              <Edit className="h-3.5 w-3.5" />
+              MOM
+            </Button>
+          </div>
+
+          <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto bg-gray-50/30 scrollbar-thin">
+            {historyLead?.history && historyLead.history.length > 0 ? (
+              historyLead.history
+                .filter(item => {
+                  if (historyFilter === 'MOM') {
+                    return item.action === 'Note Added';
+                  }
+                  return true;
+                })
+                .map((item, index) => (
+                  <div key={index} className="bg-[#fffaf4] p-4 rounded-md border border-[#fed7aa] shadow-sm">
+                    <h4 className="text-sm font-bold text-gray-800 mb-2">{item.action}</h4>
+                    <div className="flex flex-wrap gap-x-6 gap-y-1.5 text-xs text-gray-600 font-semibold mb-3">
+                      <div><span className="font-bold text-gray-700">Date:</span> {formatHistoryDate(item.timestamp)}</div>
+                      <div><span className="font-bold text-gray-700">Updated By:</span> {item.performedBy?.fullName || 'System'}</div>
+                      <div><span className="font-bold text-gray-700">IP:</span> 157.49.28.56</div>
+                      <div><span className="font-bold text-gray-700">Source:</span> {historyLead.source || 'Website'}</div>
+                    </div>
+                    <div className="text-xs text-gray-700 leading-relaxed font-semibold">
+                      <span className="font-bold">Comment:</span> {item.notes}
+                    </div>
+                  </div>
+                ))
+            ) : (
+              <div className="text-center py-12 text-gray-400 text-sm">
+                No history logs found for this lead.
+              </div>
+            )}
+          </div>
+
+          <div className="px-6 py-4 border-t bg-white flex justify-end">
+            <Button variant="outline" onClick={() => setIsHistoryModalOpen(false)} className="px-6">
+              Close
             </Button>
           </div>
         </DialogContent>

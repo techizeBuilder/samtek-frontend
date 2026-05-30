@@ -78,5 +78,18 @@ export const orderApi = {
         'Authorization': `Bearer ${token}`
       }
     });
+  },
+
+  // Service Team: Verify or reject a deal (pending_service_approval -> pending or rejected_by_service)
+  verifyServiceOrder: (id, data) => {
+    const token = localStorage.getItem('token');
+    return apiRequest(`/orders/${id}/service-verify`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(data)
+    });
   }
 };

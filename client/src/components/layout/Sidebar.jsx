@@ -144,6 +144,12 @@ const productionMenuItems = [
     module: 'production'
   },
   {
+    label: 'Orders',
+    path: '/production/orders',
+    icon: ClipboardList,
+    module: 'production'
+  },
+  {
     label: 'Work Planning',
     path: '/production/work-planning',
     icon: Calendar,
@@ -354,6 +360,12 @@ const salesMenuItems = [
     module: 'sales'
   },
   {
+    label: 'Payment Requests',
+    path: '/sales/payment-requests',
+    icon: Receipt,
+    module: 'sales'
+  },
+  {
     label: 'My Customers',
     path: '/sales/my-customers',
     icon: Users,
@@ -451,6 +463,12 @@ const accountsMenuItems = [
     icon: LayoutDashboard,
     module: 'accounts',
     feature: 'dashboard'
+  },
+  {
+    label: 'Payment Verifications',
+    path: '/accounts/payment-verifications',
+    icon: CheckCircle,
+    module: 'accounts'
   },
   {
     label: 'Task Management',
@@ -581,6 +599,12 @@ const accountsMenuItems = [
     icon: Bell,
     module: 'accounts',
     feature: 'bankAndCash'
+  },
+  {
+    label: 'Lead Payments',
+    path: '/accounts/lead-payments',
+    icon: Target,
+    module: 'accounts'
   },
   {
     label: 'Settings',
@@ -967,6 +991,30 @@ const complaintHeadMenuItems = [
     icon: MessageSquare,
     module: 'complaints'
   },
+  {
+    label: 'Deal Verifications',
+    path: '/complaints/deal-verifications',
+    icon: CheckCircle,
+    module: 'complaints'
+  },
+  {
+    label: 'Delivery Confirmation',
+    path: '/complaints/delivery-confirmation',
+    icon: CheckCircle,
+    module: 'complaints'
+  },
+  {
+    label: 'Installation Schedule',
+    path: '/complaints/installation-schedule',
+    icon: CalendarCheck,
+    module: 'complaints'
+  },
+  {
+    label: 'Feedback & Ratings',
+    path: '/complaints/feedback-ratings',
+    icon: Star,
+    module: 'complaints'
+  },
 ];
 
 const complaintAgentMenuItems = [
@@ -974,6 +1022,30 @@ const complaintAgentMenuItems = [
     label: 'Service Requests',
     path: '/complaints/service',
     icon: MessageSquare,
+    module: 'complaints'
+  },
+  {
+    label: 'Deal Verifications',
+    path: '/complaints/deal-verifications',
+    icon: CheckCircle,
+    module: 'complaints'
+  },
+  {
+    label: 'Delivery Confirmation',
+    path: '/complaints/delivery-confirmation',
+    icon: CheckCircle,
+    module: 'complaints'
+  },
+  {
+    label: 'Installation Schedule',
+    path: '/complaints/installation-schedule',
+    icon: CalendarCheck,
+    module: 'complaints'
+  },
+  {
+    label: 'Feedback & Ratings',
+    path: '/complaints/feedback-ratings',
+    icon: Star,
     module: 'complaints'
   },
 ]

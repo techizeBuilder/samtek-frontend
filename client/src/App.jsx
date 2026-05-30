@@ -29,6 +29,9 @@ import MyDeliveries from "@/pages/sales/MyDeliveries";
 import MyInvoices from "@/pages/sales/MyInvoices";
 import Leads from "@/pages/sales/Leads";
 import Quotation from "@/pages/sales/Quotation";
+import PaymentRequests from "@/pages/sales/PaymentRequests";
+import PaymentVerifications from "@/pages/accounts/PaymentVerifications";
+import DealVerifications from "@/pages/complaintsAndServices/DealVerifications";
 
 import Returns from "@/pages/sales/Returns";
 import Damages from "@/pages/sales/Damages";
@@ -80,6 +83,7 @@ import Expenses from "@/pages/accounts/Expenses";
 import FinancialSummary from "@/pages/accounts/FinancialSummary";
 import LedgerRecord from "@/pages/accounts/LedgerRecord";
 import PaymentReminders from "@/pages/accounts/PaymentReminders";
+import LeadPayments from "@/pages/accounts/LeadPayments";
 import DeliveryChallan from "@/pages/dispatch/DeliveryChallan";
 import DispatchHistory from "@/pages/dispatch/DispatchHistory";
 import SalesApproval from "@/pages/SalesApproval";
@@ -146,6 +150,9 @@ import SupportDashboard from "@/pages/complaintsAndServices/SupportDashboard";
 import TicketWorkspace from "@/pages/complaintsAndServices/TicketWorkspace";
 import CustomerVerificationPage from "@/pages/complaintsAndServices/CustomerVerificationPage";
 import TechnicianWorkSapce from "@/pages/complaintsAndServices/TechnicianWorkSapce";
+import DeliveryConfirmation from "@/pages/complaintsAndServices/DeliveryConfirmation";
+import InstallationSchedule from "@/pages/complaintsAndServices/InstallationSchedule";
+import FeedbackRatings from "@/pages/complaintsAndServices/FeedbackRatings";
 
 // training management imports
 import Trainees from "@/pages/lms/Trainees";
@@ -530,6 +537,11 @@ function Router() {
           <SupportDashboard />
         </ProtectedRoute>
       </Route>
+      <Route path="/complaints/deal-verifications">
+        <ProtectedRoute requiredRole={["Complaint Management Head", "Complaint Management Employee"]}>
+          <DealVerifications />
+        </ProtectedRoute>
+      </Route>
       <Route path="/complaints/support">
         <ProtectedRoute requiredRole="Complaint Management Head">
           <TicketWorkspace />
@@ -540,6 +552,21 @@ function Router() {
         <RoleBasedProtectedRoute requiredRole="Complaint Management Employee">
           <TechnicianWorkSapce />
         </RoleBasedProtectedRoute>
+      </Route>
+      <Route path="/complaints/delivery-confirmation">
+        <ProtectedRoute requiredRole={["Complaint Management Head", "Complaint Management Employee"]}>
+          <DeliveryConfirmation />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/complaints/installation-schedule">
+        <ProtectedRoute requiredRole={["Complaint Management Head", "Complaint Management Employee"]}>
+          <InstallationSchedule />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/complaints/feedback-ratings">
+        <ProtectedRoute requiredRole={["Complaint Management Head", "Complaint Management Employee"]}>
+          <FeedbackRatings />
+        </ProtectedRoute>
       </Route>
 
       <Route path="/r&d/product-master">
@@ -623,6 +650,11 @@ function Router() {
           <MyOrders />
         </ProtectedRoute>
       </Route>
+      <Route path="/sales/payment-requests">
+        <ProtectedRoute>
+          <PaymentRequests />
+        </ProtectedRoute>
+      </Route>
       <Route path="/sales/leads">
         <ProtectedRoute>
           <Leads />
@@ -678,6 +710,11 @@ function Router() {
       <Route path="/accounts">
         <ProtectedRoute>
           <Accounts />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/accounts/payment-verifications">
+        <ProtectedRoute>
+          <PaymentVerifications />
         </ProtectedRoute>
       </Route>
       <Route path="/inventory">
@@ -1037,6 +1074,11 @@ function Router() {
       <Route path="/accounts/payment-reminders">
         <ProtectedRoute requiredRole="Accounts">
           <PaymentReminders />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/accounts/lead-payments">
+        <ProtectedRoute requiredRole="Accounts">
+          <LeadPayments />
         </ProtectedRoute>
       </Route>
 
