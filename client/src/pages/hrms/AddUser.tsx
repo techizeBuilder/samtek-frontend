@@ -31,6 +31,7 @@ export default function AddUser() {
     'Research Development Employee',
     'Complaint Management Employee',
     'Store Employee',
+    'QC Employee',
   ];
 
   const ROLE_MODULES_CONFIG: Record<string, { moduleName: string; features: { key: string; label: string }[] }> = {
@@ -101,6 +102,15 @@ export default function AddUser() {
       features: [
         { key: "dashboard", label: "Dashboard" },
         { key: "orders", label: "Orders" }
+      ]
+    },
+    "QC Employee": {
+      moduleName: "quality-control",
+      features: [
+        { key: "dashboard", label: "Dashboard" },
+        { key: "qcJobs", label: "QC Jobs" },
+        { key: "qcInspection", label: "QC Inspection" },
+        { key: "qcInward", label: "QC Inward" }
       ]
     }
   };

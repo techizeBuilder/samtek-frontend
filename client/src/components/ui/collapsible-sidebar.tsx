@@ -20,10 +20,32 @@ import { cn } from "@/lib/utils";
 export const Sidebar = ShadcnSidebar;
 export const SidebarContent = ShadcnSidebarContent;
 export const SidebarFooter = ShadcnSidebarFooter;
-export const SidebarGroup = ShadcnSidebarGroup;
 export const SidebarHeader = ShadcnSidebarHeader;
 export const useSidebar = useShadcnSidebar;
 export const SidebarProvider = ShadcnSidebarProvider;
+
+export const SidebarGroup = ({
+  children,
+  label,
+  className,
+}: {
+  children: React.ReactNode;
+  label?: string;
+  className?: string;
+}) => {
+  const { state } = useShadcnSidebar();
+  const isCollapsed = state === "collapsed";
+  return (
+    <ShadcnSidebarGroup className={className}>
+      {label && !isCollapsed && (
+        <p className="px-3 pb-1 text-xs font-semibold uppercase tracking-wider text-slate-400">
+          {label}
+        </p>
+      )}
+      {children}
+    </ShadcnSidebarGroup>
+  );
+};
 
 export const SidebarTitle = ({
   children,

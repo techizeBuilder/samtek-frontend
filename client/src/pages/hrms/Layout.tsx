@@ -65,7 +65,8 @@ export default function SuperAdminLayout({ children }: HRMSAdminLayoutProps) {
 }
 
 function SuperAdminLayoutContent({ children }: HRMSAdminLayoutProps) {
-  const { isCollapsed } = useSidebar();
+  const { state } = useSidebar();
+  const isCollapsed = state === "collapsed";
   const { user } = useAuth();
 
   return (
