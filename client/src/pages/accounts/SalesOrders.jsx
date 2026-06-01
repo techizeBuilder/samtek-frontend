@@ -21,7 +21,8 @@ import {
     XCircle,
     FileText,
     ShieldCheck,
-    Check
+    Check,
+    CreditCard
 } from 'lucide-react';
 import {
     Dialog,
@@ -204,6 +205,7 @@ const SalesOrders = () => {
                                     <TableHead className="font-semibold">Customer</TableHead>
                                     <TableHead className="font-semibold">Billing Status</TableHead>
                                     <TableHead className="text-right font-semibold">Amount</TableHead>
+                                    <TableHead className="text-center font-semibold">Advanced Payment</TableHead>
                                     <TableHead className="text-center font-semibold">Approval</TableHead>
                                     <TableHead className="text-right px-6 font-semibold">Actions</TableHead>
                                 </TableRow>
@@ -238,6 +240,21 @@ const SalesOrders = () => {
                                                 </div>
                                             </TableCell>
                                             <TableCell className="text-right font-bold text-slate-900">₹{order.totalAmount.toLocaleString('en-IN')}</TableCell>
+                                            <TableCell className="text-center">
+                                                {order.advancedPaymentAmount > 0 ? (
+                                                    <div className="flex flex-col items-center gap-0.5">
+                                                        <Badge className="bg-emerald-100 text-emerald-700 border-none text-[9px] px-2 py-0.5 flex items-center gap-1">
+                                                            <CreditCard className="w-2.5 h-2.5" />
+                                                            Advanced Paid
+                                                        </Badge>
+                                                        <span className="text-xs font-bold text-emerald-600">
+                                                            ₹{order.advancedPaymentAmount.toLocaleString('en-IN')}
+                                                        </span>
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-[10px] text-slate-400 italic">No Advance</span>
+                                                )}
+                                            </TableCell>
                                             <TableCell className="text-center">
                                                 {order.accountApproval?.status === 'approved' ? (
                                                     <Badge className="bg-blue-100 text-blue-700 uppercase text-[10px] px-3 py-1 font-bold">Approved</Badge>
@@ -294,8 +311,38 @@ const SalesOrders = () => {
                                 <p className="text-[10px] text-slate-400 uppercase font-bold mb-1">Financials</p>
                                 <p className="text-xl font-bold text-blue-600">₹{viewOrder?.totalAmount?.toLocaleString()}</p>
                                 <p className="text-xs text-slate-500 mt-1">Total items: {viewOrder?.products?.length}</p>
+                                {viewOrder?.advancedPaymentAmount > 0 && (
+                                    <div className="mt-2 pt-2 border-t border-slate-200">
+                                        <p className="text-xs text-emerald-600 font-semibold flex items-center gap-1">
+                                            <CreditCard className="w-3 h-3" />
+                                            Advanced Paid: ₹{viewOrder.advancedPaymentAmount.toLocaleString('en-IN')}
+                                        </p>
+                                        <p className="text-sm font-bold text-blue-700 mt-0.5">
+                                            Net Payable: ₹{Math.max(0, viewOrder.totalAmount - viewOrder.advancedPaymentAmount).toLocaleString('en-IN')}
+                                        </p>
+                                    </div>
+                                )}
                             </div>
                         </div>
+
+                        {/* Advanced Payment Details */}
+                        {viewOrder?.advancedPayments?.length > 0 && (
+                            <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4">
+                                <p className="text-xs font-bold text-emerald-700 uppercase mb-2 flex items-center gap-1">
+                                    <CreditCard className="w-3.5 h-3.5" />
+                                    Advanced Payment Details (from Lead)
+                                </p>
+                                <div className="space-y-1">
+                                    {viewOrder.advancedPayments.map((ap, idx) => (
+                                        <div key={idx} className="flex justify-between text-xs text-emerald-800">
+                                            <span>{ap.leadCode} — {ap.paymentMethod} {ap.transactionId ? `(Ref: ${ap.transactionId})` : ''}</span>
+                                            <span className="font-bold">₹{ap.amount?.toLocaleString('en-IN')}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
                         <div className="border rounded-lg overflow-hidden">
                             <Table>
                                 <TableHeader className="bg-slate-50">
@@ -415,6 +462,29 @@ const SalesOrders = () => {
                         <DialogDescription>Select the billing type for order {billingOrder?.orderCode}</DialogDescription>
                     </DialogHeader>
                     <div className="py-6 space-y-6">
+
+                        {/* Advanced Payment Notice */}
+                        {billingOrder?.advancedPaymentAmount > 0 && (
+                            <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 space-y-1">
+                                <p className="text-xs font-bold text-emerald-700 flex items-center gap-1">
+                                    <CreditCard className="w-3.5 h-3.5" />
+                                    Advanced Payment Applied
+                                </p>
+                                <div className="flex justify-between text-sm">
+                                    <span className="text-slate-600">Order Total</span>
+                                    <span className="font-semibold">₹{billingOrder.totalAmount?.toLocaleString('en-IN')}</span>
+                                </div>
+                                <div className="flex justify-between text-sm text-emerald-700">
+                                    <span>Less: Advanced Paid</span>
+                                    <span className="font-semibold">- ₹{billingOrder.advancedPaymentAmount?.toLocaleString('en-IN')}</span>
+                                </div>
+                                <div className="flex justify-between text-sm font-bold text-blue-700 border-t border-emerald-200 pt-1">
+                                    <span>Net Payable</span>
+                                    <span>₹{Math.max(0, billingOrder.totalAmount - billingOrder.advancedPaymentAmount).toLocaleString('en-IN')}</span>
+                                </div>
+                            </div>
+                        )}
+
                         <div className="grid grid-cols-2 gap-4">
                             <button
                                 className={cn(

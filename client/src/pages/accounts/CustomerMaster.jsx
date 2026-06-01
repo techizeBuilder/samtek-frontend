@@ -242,6 +242,7 @@ export default function CustomerMaster() {
                                             </div>
                                         </div>
                                     </TableHead>
+                                    <TableHead className="font-semibold text-right">Advance</TableHead>
                                     <TableHead className="font-semibold">Status</TableHead>
                                     <TableHead className="text-right px-6 font-semibold">Action</TableHead>
                                 </TableRow>
@@ -286,6 +287,15 @@ export default function CustomerMaster() {
                                                 )}>
                                                     ₹{(customer.outstandingAmount || 0).toLocaleString('en-IN')}
                                                 </span>
+                                            </TableCell>
+                                            <TableCell className="text-right">
+                                                {(customer.advancePayment || 0) > 0 ? (
+                                                    <span className="font-bold text-emerald-600">
+                                                        ₹{(customer.advancePayment || 0).toLocaleString('en-IN')}
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-slate-300 text-sm">—</span>
+                                                )}
                                             </TableCell>
                                             <TableCell>
                                                 <Badge className={cn("px-2.5 py-0.5 rounded-full border-0 text-xs font-semibold", getStatusColor(customer.active))}>
@@ -364,7 +374,7 @@ export default function CustomerMaster() {
                     {viewingCustomer && (
                         <div className="p-8 space-y-8 overflow-y-auto flex-1 min-h-0">
                             {/* Financial Info */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
                                     <p className="text-slate-500 text-xs font-bold uppercase tracking-wider">Credit Limit</p>
                                     <p className="text-2xl font-bold text-slate-900 mt-1">₹{(viewingCustomer.creditLimit || 0).toLocaleString('en-IN')}</p>
@@ -386,6 +396,22 @@ export default function CustomerMaster() {
                                     <p className="text-2xl font-bold text-red-700 mt-1">₹{(viewingCustomer.outstandingAmount || 0).toLocaleString('en-IN')}</p>
                                     <p className="text-[10px] text-red-400 mt-1">Unpaid sales — Amount due from customer</p>
                                 </div>
+                                {(viewingCustomer.advancePayment || 0) > 0 && (
+                                    <div className="bg-emerald-50 p-4 rounded-xl border border-emerald-100">
+                                        <div className="flex items-center gap-1">
+                                            <p className="text-emerald-600 text-xs font-bold uppercase tracking-wider">Advance Balance</p>
+                                            <div className="group relative cursor-pointer">
+                                                <Info className="h-3.5 w-3.5 text-emerald-400" />
+                                                <div className="absolute left-0 bottom-5 z-50 hidden group-hover:block w-64 bg-slate-900 text-white text-xs rounded-xl p-3 shadow-2xl">
+                                                    <p className="font-bold text-amber-300 mb-1">📌 Advance Balance kya hai?</p>
+                                                    <p>Customer ne Lead stage pe jo advance payment di thi, uska remaining balance. Yeh invoice generate hone par automatically deduct ho jaata hai.</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <p className="text-2xl font-bold text-emerald-700 mt-1">₹{(viewingCustomer.advancePayment || 0).toLocaleString('en-IN')}</p>
+                                        <p className="text-[10px] text-emerald-500 mt-1">Pre-paid advance — will adjust against invoices</p>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Credit Note explanation box */}

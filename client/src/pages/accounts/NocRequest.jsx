@@ -7,7 +7,8 @@ import {
   FileText,
   RefreshCw,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  CreditCard
 } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -328,6 +329,12 @@ const NocRequest = () => {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="font-semibold text-slate-900">₹{item.totalAmount?.toLocaleString()}</div>
+                    {item.advancedPaymentAmount > 0 && (
+                      <div className="text-[10px] text-emerald-600 font-medium flex items-center justify-end gap-0.5 mt-0.5">
+                        <CreditCard className="w-2.5 h-2.5" />
+                        Advance: ₹{item.advancedPaymentAmount?.toLocaleString()}
+                      </div>
+                    )}
                     <div className={`text-[10px] font-medium ${item.paymentStatus === 'Paid' ? 'text-emerald-600' : 'text-amber-600'}`}>
                       {item.paymentStatus} (Paid: ₹{item.paidAmount?.toLocaleString()})
                     </div>
@@ -492,6 +499,16 @@ const NocRequest = () => {
                     <td className="p-3">Order Total Amount</td>
                     <td className="p-3 text-right">₹{gatePassData?.totalAmount?.toLocaleString()}</td>
                   </tr>
+                  {gatePassData?.advancedPaymentAmount > 0 && (
+                    <tr className="bg-emerald-50">
+                      <td className="p-3 text-emerald-700 flex items-center gap-1">
+                        <CreditCard className="w-3.5 h-3.5" /> Advanced Paid (Lead)
+                      </td>
+                      <td className="p-3 text-right text-emerald-700 font-semibold">
+                        - ₹{gatePassData.advancedPaymentAmount?.toLocaleString()}
+                      </td>
+                    </tr>
+                  )}
                   <tr>
                     <td className="p-3">Payment Status</td>
                     <td className="p-3 text-right">
@@ -500,6 +517,14 @@ const NocRequest = () => {
                       </span>
                     </td>
                   </tr>
+                  {gatePassData?.advancedPaymentAmount > 0 && (
+                    <tr className="bg-blue-50">
+                      <td className="p-3 font-bold text-blue-700">Net Balance Due</td>
+                      <td className="p-3 text-right font-bold text-blue-700">
+                        ₹{gatePassData?.balanceAmount?.toLocaleString()}
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
