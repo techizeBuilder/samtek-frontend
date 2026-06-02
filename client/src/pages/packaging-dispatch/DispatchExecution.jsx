@@ -18,9 +18,9 @@ function ExecuteDispatchModal({ dispatch, onClose }) {
   const { executeDispatch } = usePackagingDispatch();
   const { toast } = useToast();
   const [form, setForm] = useState({
-    vehicleNumber: dispatch.vehicleNumber || '',
-    driverName: dispatch.driverName || '',
-    driverContact: dispatch.driverContact || '',
+    vehicleNumber: dispatch.vehicleNumber || dispatch.gatePassVehicleNumber || '',
+    driverName: dispatch.driverName || dispatch.gatePassDriverName || '',
+    driverContact: dispatch.driverContact || dispatch.gatePassContactNumber || '',
     transportCompanyName: dispatch.transportCompanyName || '',
     notes: '',
   });
@@ -41,43 +41,94 @@ function ExecuteDispatchModal({ dispatch, onClose }) {
     }
   };
 
+  const hasGatePass = dispatch.gatePassGenerated;
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
-        <div className="flex justify-between items-center px-6 pt-6 pb-4 border-b border-slate-100">
-          <h2 className="font-semibold text-slate-800">Execute Dispatch</h2>
-          <button onClick={onClose}><X className="h-5 w-5 text-slate-400 hover:text-slate-600" /></button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col" style={{ maxHeight: 'calc(100vh - 80px)' }}>
+        {/* Header — fixed */}
+        <div className="flex justify-between items-center px-7 pt-7 pb-5 border-b border-slate-100 flex-shrink-0">
+          <div>
+            <h2 className="font-bold text-lg text-slate-800">Execute Dispatch</h2>
+            <p className="text-xs text-slate-400 mt-0.5">Confirm vehicle & driver details to dispatch</p>
+          </div>
+          <button onClick={onClose} className="p-1 rounded-lg hover:bg-slate-100">
+            <X className="h-5 w-5 text-slate-400 hover:text-slate-600" />
+          </button>
         </div>
-        <div className="px-6 py-4 space-y-3">
-          <div className="p-3 bg-slate-50 rounded-lg text-sm">
-            <p className="font-medium text-slate-700">{dispatch.dispatchId}</p>
-            <p className="text-slate-500">{dispatch.machineName} → {dispatch.customerName || 'Customer'}</p>
-            <p className="text-slate-400 text-xs mt-1">{dispatch.deliveryAddress}</p>
+
+        {/* Scrollable body */}
+        <div className="overflow-y-auto flex-1 px-7 py-5 space-y-4">
+          {/* Dispatch Info */}
+          <div className="p-4 bg-slate-50 rounded-xl text-sm border border-slate-100">
+            <p className="font-semibold text-slate-700">{dispatch.dispatchId}</p>
+            <p className="text-slate-500 mt-0.5">{dispatch.machineName} → {dispatch.customerName || 'Customer'}</p>
+            {dispatch.deliveryAddress && (
+              <p className="text-slate-400 text-xs mt-1">{dispatch.deliveryAddress}</p>
+            )}
+          </div>
+
+          {/* Gate Pass autofill notice */}
+          {hasGatePass && (
+            <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-lg">
+              <CheckCircle2 className="h-4 w-4 text-emerald-600 flex-shrink-0" />
+              <p className="text-xs text-emerald-700 font-medium">
+                Gate Pass details auto-filled — {dispatch.gatePassNumber}
+              </p>
+            </div>
+          )}
+
+          <div>
+            <Label className="text-sm font-medium text-slate-700">Vehicle Number</Label>
+            <Input
+              className="mt-1.5"
+              value={form.vehicleNumber}
+              onChange={e => set('vehicleNumber', e.target.value)}
+              placeholder="e.g. MH12AB1234"
+            />
           </div>
           <div>
-            <Label>Vehicle Number</Label>
-            <Input className="mt-1" value={form.vehicleNumber} onChange={e => set('vehicleNumber', e.target.value)} placeholder="MH12AB1234" />
+            <Label className="text-sm font-medium text-slate-700">Driver Name</Label>
+            <Input
+              className="mt-1.5"
+              value={form.driverName}
+              onChange={e => set('driverName', e.target.value)}
+              placeholder="Driver full name"
+            />
           </div>
           <div>
-            <Label>Driver Name</Label>
-            <Input className="mt-1" value={form.driverName} onChange={e => set('driverName', e.target.value)} placeholder="Driver full name" />
+            <Label className="text-sm font-medium text-slate-700">Driver Contact</Label>
+            <Input
+              className="mt-1.5"
+              value={form.driverContact}
+              onChange={e => set('driverContact', e.target.value)}
+              placeholder="10-digit mobile number"
+            />
           </div>
           <div>
-            <Label>Driver Contact</Label>
-            <Input className="mt-1" value={form.driverContact} onChange={e => set('driverContact', e.target.value)} placeholder="Phone number" />
+            <Label className="text-sm font-medium text-slate-700">Transport Company Name</Label>
+            <Input
+              className="mt-1.5"
+              value={form.transportCompanyName}
+              onChange={e => set('transportCompanyName', e.target.value)}
+              placeholder="Company name (if applicable)"
+            />
           </div>
           <div>
-            <Label>Transport Company Name</Label>
-            <Input className="mt-1" value={form.transportCompanyName} onChange={e => set('transportCompanyName', e.target.value)} placeholder="Company name (if applicable)" />
-          </div>
-          <div>
-            <Label>Notes</Label>
-            <Input className="mt-1" value={form.notes} onChange={e => set('notes', e.target.value)} placeholder="Loading notes, special instructions..." />
+            <Label className="text-sm font-medium text-slate-700">Notes</Label>
+            <Input
+              className="mt-1.5"
+              value={form.notes}
+              onChange={e => set('notes', e.target.value)}
+              placeholder="Loading notes, special instructions..."
+            />
           </div>
         </div>
-        <div className="px-6 pb-6 pt-4 border-t border-slate-100 flex gap-3">
-          <Button variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
-          <Button className="flex-1" onClick={handle} disabled={loading}>
+
+        {/* Footer — fixed */}
+        <div className="px-7 pb-6 pt-4 border-t border-slate-100 flex gap-3 flex-shrink-0">
+          <Button variant="outline" className="flex-1 h-11" onClick={onClose}>Cancel</Button>
+          <Button className="flex-1 h-11 bg-blue-600 hover:bg-blue-700" onClick={handle} disabled={loading}>
             {loading ? 'Dispatching...' : 'Confirm Dispatch'}
           </Button>
         </div>

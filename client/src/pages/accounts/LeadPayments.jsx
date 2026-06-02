@@ -80,7 +80,7 @@ const LeadPayments = () => {
 
     getBankAccounts: () => {
       const token = localStorage.getItem('token');
-      return apiRequest('/accounts/bank-cash/summary', {
+      return apiRequest('/lead-payments/bank-accounts', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
     },
@@ -137,7 +137,7 @@ const LeadPayments = () => {
 
   const leads = leadsData?.leads || [];
   const payments = paymentsData?.payments || [];
-  const bankAccounts = bankAccountsData?.data?.accounts || [];
+  const bankAccounts = bankAccountsData?.bankAccounts || [];
 
   // Mutations
   const addPaymentMutation = useMutation({
@@ -394,7 +394,9 @@ const LeadPayments = () => {
                       </TableCell>
                       <TableCell>
                         <div>
-                          {payment.bankAccount ? (
+                          {payment.bankAccountName ? (
+                            <p className="text-xs text-gray-600">{payment.bankAccountName}</p>
+                          ) : payment.bankAccount ? (
                             <p className="text-xs text-gray-600">Bank Transfer</p>
                           ) : (
                             <p className="text-xs text-gray-400">Cash Payment</p>
@@ -515,8 +517,8 @@ const LeadPayments = () => {
                       <SelectItem value="no-accounts" disabled>No bank accounts found</SelectItem>
                     ) : (
                       bankAccounts.map((account) => (
-                        <SelectItem key={account.id} value={account.id}>
-                          {account.bankDetails?.bankName || 'Bank'} - {account.name} ({account.bankDetails?.accountNumber || 'N/A'})
+                        <SelectItem key={account._id} value={account._id}>
+                          {account.bankName} - {account.accountName} ({account.accountNumber})
                         </SelectItem>
                       ))
                     )}
@@ -642,7 +644,11 @@ const LeadPayments = () => {
                   <div>
                     <Label className="text-xs text-slate-400">Selected Bank Account</Label>
                     <p className="text-sm text-slate-800">
-                      {selectedPayment.bankAccount ? 'Bank Transfer' : 'Cash Account'}
+                      {selectedPayment.bankAccountName
+                        ? selectedPayment.bankAccountName
+                        : selectedPayment.bankAccount
+                          ? 'Bank Transfer'
+                          : 'Cash Payment'}
                     </p>
                   </div>
                   <div>

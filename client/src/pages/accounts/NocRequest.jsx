@@ -39,7 +39,7 @@ import { useSettings } from '@/hooks/useSettings';
 const NocRequest = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { settings } = useSettings();
+  const { settings, companyName, companyLogo } = useSettings();
   const [searchTerm, setSearchTerm] = useState('');
 
   // State for Gate Pass Modal
@@ -175,7 +175,8 @@ const NocRequest = () => {
     doc.setTextColor(30, 41, 59);
     doc.text(`Gate Pass No. : GP-${data.orderCode}`, 190, 25, { align: 'right' }); // Usually from gatePassData
     doc.setFont('helvetica', 'normal');
-    doc.text(`Date : ${new Date().toLocaleDateString()}`, 190, 30, { align: 'right' });
+    const formattedDate = data.gatePassGeneratedAt ? new Date(data.gatePassGeneratedAt).toLocaleDateString() : new Date().toLocaleDateString();
+    doc.text(`Date : ${formattedDate}`, 190, 30, { align: 'right' });
     doc.text(`Ref. : ${data.orderCode}`, 190, 35, { align: 'right' });
 
     doc.setFontSize(14);
@@ -202,10 +203,13 @@ const NocRequest = () => {
 
     doc.setFontSize(9);
     doc.setFont('helvetica', 'bold');
-    doc.text(`Vehicle No: ${vehicleNumber}`, 107, 73);
+    const vNo = data.vehicleNumber || data.vehicleNo || data.gatePass?.vehicleNumber || data.gatePass?.vehicleNo || 'N/A';
+    const dName = data.driverName || data.driver || data.gatePass?.driverName || data.gatePass?.driver || 'N/A';
+    const cNo = data.contactNumber || data.contactNo || data.gatePass?.contactNumber || data.gatePass?.contactNo || 'N/A';
+    doc.text(`Vehicle No: ${vNo}`, 107, 73);
     doc.setFont('helvetica', 'normal');
-    doc.text(`Driver Name: ${driverName}`, 107, 78);
-    doc.text(`Contact: ${contactNumber}`, 107, 83);
+    doc.text(`Driver Name: ${dName}`, 107, 78);
+    doc.text(`Contact: ${cNo}`, 107, 83);
     doc.text(`Status: Verified for Dispatch`, 107, 88);
 
     doc.autoTable({
@@ -244,6 +248,14 @@ const NocRequest = () => {
     const finalY = doc.lastAutoTable.finalY + 30;
 
     addBorder(20, finalY - 5, 170, 30);
+    
+    // Add Samtek Stamp next to Authorized Signatory inside the border
+    try {
+      doc.addImage('/samtek_stamp.png', 'PNG', 148, finalY - 3, 26, 26);
+    } catch (e) {
+      console.error('Failed to add stamp to PDF:', e);
+    }
+
     doc.setFontSize(8);
     doc.setFont('helvetica', 'bold');
     doc.text(`For, ${company.name || 'SAMTEK MACHINERY'}`, 185, finalY + 5, { align: 'right' });
@@ -311,7 +323,7 @@ const NocRequest = () => {
               ) : filteredRequests.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={5} className="text-center py-12 text-slate-500">
-                    No pending NOC requests found
+                    No NOC requests found
                   </TableCell>
                 </TableRow>
               ) : filteredRequests.map((item) => (
@@ -343,9 +355,16 @@ const NocRequest = () => {
                     <div className="flex flex-col gap-2 items-center">
                       {item.nocStatus === 'Approved' ? (
                         <>
-                          <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200">
-                            NOC Approved
-                          </Badge>
+                          <div className="flex gap-1 flex-wrap justify-center">
+                            <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px]">
+                              NOC Approved
+                            </Badge>
+                            {item.gatePassStatus === 'Generated' && (
+                              <Badge className="bg-blue-50 text-blue-700 border-blue-200 text-[10px]">
+                                Gate Pass Done
+                              </Badge>
+                            )}
+                          </div>
                           {item.gatePassStatus === 'Generated' ? (
                             <Button
                               variant="outline"
@@ -353,7 +372,7 @@ const NocRequest = () => {
                               className="h-8 w-full gap-1 bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100"
                               onClick={() => handleViewGatePass(item)}
                             >
-                              <FileText className="w-3.5 h-3.5" /> Gate Pass
+                              <FileText className="w-3.5 h-3.5" /> View Gate Pass
                             </Button>
                           ) : (
                             <Button
@@ -443,104 +462,173 @@ const NocRequest = () => {
 
       {/* View Gate Pass Modal */}
       <Dialog open={viewGatePassOpen} onOpenChange={setViewGatePassOpen}>
-        <DialogContent className="sm:max-w-[700px] bg-white p-0 overflow-hidden rounded-[1.5rem] shadow-2xl border-none max-h-[90vh] flex flex-col">
+        <DialogContent className="sm:max-w-[750px] bg-white p-0 overflow-hidden rounded-[1.5rem] shadow-2xl border-none max-h-[90vh] flex flex-col">
           <div className="p-10 space-y-8 flex-1 overflow-y-auto custom-scrollbar" id="gate-pass-content">
-            <div className="flex justify-between items-start border-b border-slate-100 pb-10">
-              <div className="flex gap-4 items-center">
-                <img src="/logo Semtek.webp" alt="Logo" className="w-16 h-16 object-contain" onError={(e) => e.target.style.display = 'none'} />
+            <div className="flex justify-between items-start border-b border-slate-100 pb-6">
+              <div className="flex gap-5 items-center">
+                <img 
+                  src={companyLogo || "/logo Semtek.webp"} 
+                  alt="Logo" 
+                  className="w-24 h-24 object-contain transition-transform duration-300 hover:scale-105" 
+                  onError={(e) => e.target.style.display = 'none'} 
+                />
                 <div>
-                  <h2 className="text-3xl font-bold tracking-tighter text-slate-900">SUNRISE</h2>
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.3em] text-blue-600">Dispatch Gate Pass</p>
+                  <h2 className="text-2xl font-bold tracking-tight text-slate-900">
+                    {companyName || 'SAMTEK MACHINERY'}
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-1 max-w-[280px]">
+                    {settings?.company?.address || 'Industrial Area, Phase-1'}
+                  </p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    GST: {settings?.company?.gstNumber || '27ABCDE1234F1Z5'}
+                  </p>
                 </div>
               </div>
-              <div className="text-right">
-                <div className="text-sm font-semibold text-slate-900">GP-{gatePassData?.orderCode}</div>
-                <div className="text-xs text-slate-400">{new Date().toLocaleString()}</div>
+              <div className="text-right space-y-1">
+                <div className="inline-flex items-center px-3 py-1 bg-slate-100 text-slate-800 rounded-full text-xs font-semibold">
+                  GP-{gatePassData?.orderCode}
+                </div>
+                <p className="text-xs text-slate-500 mt-1">
+                  Date: {gatePassData?.gatePassGeneratedAt ? new Date(gatePassData.gatePassGeneratedAt).toLocaleDateString() : new Date().toLocaleDateString()}
+                </p>
+                <p className="text-xs text-slate-400">
+                  Ref: {gatePassData?.orderCode}
+                </p>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-8">
-              <div className="space-y-1">
-                <Label className="text-[10px] uppercase text-slate-400 font-bold">Consignee Details</Label>
-                <div className="font-semibold text-slate-900">{gatePassData?.customerName}</div>
-                <div className="text-sm text-slate-500">{gatePassData?.customerMobile}</div>
+            <div className="text-center my-4">
+              <h1 className="text-3xl font-extrabold tracking-widest text-slate-800 border-y-2 border-double border-slate-200 py-2 inline-block px-16">
+                GATE PASS
+              </h1>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 border-b border-slate-100 pb-6">
+              <div className="p-4 rounded-xl border border-slate-100 bg-slate-50/50 space-y-2">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Consignee Details</h3>
+                <div className="text-base font-semibold text-slate-900">{gatePassData?.customerName}</div>
+                <div className="text-sm text-slate-600">Mobile: {gatePassData?.customerMobile}</div>
+                <div className="text-xs text-slate-500">Verified for Dispatch</div>
               </div>
-              <div className="space-y-1 text-right">
-                <Label className="text-[10px] uppercase text-slate-400 font-bold">Order Details</Label>
-                <div className="font-semibold text-slate-900">ID: {gatePassData?.orderCode}</div>
+              <div className="p-4 rounded-xl border border-slate-100 bg-slate-50/50 space-y-2">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Logistics & Vehicle Details</h3>
+                <div className="grid grid-cols-2 gap-x-2 gap-y-1.5 text-sm">
+                  <span className="text-slate-500">Vehicle No:</span>
+                  <span className="font-semibold text-slate-950">
+                    {gatePassData?.vehicleNumber || gatePassData?.vehicleNo || gatePassData?.gatePass?.vehicleNumber || gatePassData?.gatePass?.vehicleNo || 'N/A'}
+                  </span>
+                  
+                  <span className="text-slate-500">Driver Name:</span>
+                  <span className="font-semibold text-slate-950">
+                    {gatePassData?.driverName || gatePassData?.driver || gatePassData?.gatePass?.driverName || gatePassData?.gatePass?.driver || 'N/A'}
+                  </span>
+                  
+                  <span className="text-slate-500">Contact No:</span>
+                  <span className="font-semibold text-slate-950">
+                    {gatePassData?.contactNumber || gatePassData?.contactNo || gatePassData?.gatePass?.contactNumber || gatePassData?.gatePass?.contactNo || 'N/A'}
+                  </span>
+                </div>
               </div>
             </div>
 
-            <div className="bg-slate-50 p-4 rounded-lg grid grid-cols-3 gap-4">
-              <div className="space-y-1">
-                <Label className="text-[10px] uppercase text-slate-400 font-bold">Vehicle Number</Label>
-                <div className="text-sm font-semibold">{vehicleNumber || 'N/A'}</div>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-[10px] uppercase text-slate-400 font-bold">Driver Name</Label>
-                <div className="text-sm font-semibold">{driverName || 'N/A'}</div>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-[10px] uppercase text-slate-400 font-bold">Contact No.</Label>
-                <div className="text-sm font-semibold">{contactNumber || 'N/A'}</div>
-              </div>
-            </div>
-
-            <div className="border rounded-lg overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-slate-50">
-                  <tr>
-                    <th className="text-left p-3 font-semibold text-slate-600">Description</th>
-                    <th className="text-right p-3 font-semibold text-slate-600">Value</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  <tr>
-                    <td className="p-3">Order Total Amount</td>
-                    <td className="p-3 text-right">₹{gatePassData?.totalAmount?.toLocaleString()}</td>
-                  </tr>
-                  {gatePassData?.advancedPaymentAmount > 0 && (
-                    <tr className="bg-emerald-50">
-                      <td className="p-3 text-emerald-700 flex items-center gap-1">
-                        <CreditCard className="w-3.5 h-3.5" /> Advanced Paid (Lead)
+            <div className="space-y-3">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Description of Goods</h3>
+              <div className="border rounded-xl overflow-hidden bg-white shadow-sm">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-50 border-b">
+                    <tr>
+                      <th className="text-left p-3 font-semibold text-slate-600 w-12 text-center">Sr.</th>
+                      <th className="text-left p-3 font-semibold text-slate-600">Items & Details</th>
+                      <th className="text-center p-3 font-semibold text-slate-600 w-16">Qty</th>
+                      <th className="text-right p-3 font-semibold text-slate-600 w-32">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y text-slate-700">
+                    <tr>
+                      <td className="p-3 text-center text-slate-400">1</td>
+                      <td className="p-3">
+                        <div className="font-semibold text-slate-900">{gatePassData?.machineName || 'Machine'}</div>
+                        <div className="text-xs text-slate-500 mt-0.5">Code: {gatePassData?.machineCode || 'N/A'}</div>
+                        <div className="text-xs text-slate-500">SN: {gatePassData?.serialNumber || 'N/A'}</div>
                       </td>
-                      <td className="p-3 text-right text-emerald-700 font-semibold">
-                        - ₹{gatePassData.advancedPaymentAmount?.toLocaleString()}
+                      <td className="p-3 text-center font-medium">1 Lot</td>
+                      <td className="p-3 text-right">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-100">
+                          Dispatched
+                        </span>
                       </td>
                     </tr>
-                  )}
-                  <tr>
-                    <td className="p-3">Payment Status</td>
-                    <td className="p-3 text-right">
-                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-emerald-100 text-emerald-800">
-                        {gatePassData?.paymentStatus}
-                      </span>
-                    </td>
-                  </tr>
-                  {gatePassData?.advancedPaymentAmount > 0 && (
-                    <tr className="bg-blue-50">
-                      <td className="p-3 font-bold text-blue-700">Net Balance Due</td>
-                      <td className="p-3 text-right font-bold text-blue-700">
-                        ₹{gatePassData?.balanceAmount?.toLocaleString()}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Payment Details Summary</h3>
+              <div className="border rounded-xl overflow-hidden bg-white shadow-sm">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-50 border-b">
+                    <tr>
+                      <th className="text-left p-3 font-semibold text-slate-600">Description</th>
+                      <th className="text-right p-3 font-semibold text-slate-600">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y text-slate-700">
+                    <tr>
+                      <td className="p-3 text-slate-600">Order Total Amount</td>
+                      <td className="p-3 text-right font-semibold text-slate-950">₹{gatePassData?.totalAmount?.toLocaleString()}</td>
+                    </tr>
+                    {gatePassData?.advancedPaymentAmount > 0 && (
+                      <tr className="bg-emerald-50/50">
+                        <td className="p-3 text-emerald-800 flex items-center gap-1 font-medium">
+                          <CreditCard className="w-3.5 h-3.5 text-emerald-600" /> Advanced Paid (Lead)
+                        </td>
+                        <td className="p-3 text-right text-emerald-700 font-semibold">
+                          - ₹{gatePassData.advancedPaymentAmount?.toLocaleString()}
+                        </td>
+                      </tr>
+                    )}
+                    <tr>
+                      <td className="p-3 text-slate-600">Payment Status</td>
+                      <td className="p-3 text-right">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                          gatePassData?.paymentStatus === 'Paid' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                        }`}>
+                          {gatePassData?.paymentStatus}
+                        </span>
                       </td>
                     </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="pt-12 flex justify-between">
-              <div className="text-center">
-                <div className="w-32 border-b border-slate-300 mb-2"></div>
-                <div className="text-[10px] text-slate-400 uppercase font-bold">Authorized Signatory</div>
-              </div>
-              <div className="text-center">
-                <div className="w-32 border-b border-slate-300 mb-2"></div>
-                <div className="text-[10px] text-slate-400 uppercase font-bold">Receiver's Signature</div>
+                    {gatePassData?.advancedPaymentAmount > 0 && (
+                      <tr className="bg-blue-50/50 border-t-2">
+                        <td className="p-3 font-bold text-blue-900">Net Balance Due</td>
+                        <td className="p-3 text-right font-bold text-blue-900 text-base">
+                          ₹{gatePassData?.balanceAmount?.toLocaleString()}
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
 
-            <div className="text-center pt-6">
+            <div className="pt-12 flex justify-between items-end">
+              <div className="text-center flex flex-col items-center relative">
+                <img 
+                  src="/samtek_stamp.png" 
+                  alt="Stamp" 
+                  className="w-24 h-24 object-contain absolute bottom-4 opacity-85 pointer-events-none transition-all duration-300 hover:scale-105" 
+                  onError={(e) => e.target.style.display = 'none'} 
+                />
+                <div className="w-40 border-b border-slate-200 mt-20"></div>
+                <div className="text-[10px] text-slate-400 uppercase font-bold tracking-wider mt-2">Authorized Signatory</div>
+              </div>
+              <div className="text-center flex flex-col items-center">
+                <div className="w-40 border-b border-slate-200"></div>
+                <div className="text-[10px] text-slate-400 uppercase font-bold tracking-wider mt-2">Receiver's Signature</div>
+              </div>
+            </div>
+
+            <div className="text-center pt-4">
               <p className="text-[10px] text-slate-400 italic">This is a computer generated document and does not require physical signature.</p>
             </div>
           </div>

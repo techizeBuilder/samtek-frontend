@@ -228,7 +228,7 @@ const SalesOrderTracking = () => {
               <TableHead className="text-right">Paid</TableHead>
               <TableHead className="text-right">Balance</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead className="text-center">Action</TableHead>
+              
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -278,7 +278,7 @@ const SalesOrderTracking = () => {
                     {item.paymentStatus}
                   </Badge>
                 </TableCell>
-                <TableCell className="text-center">
+                {/* <TableCell className="text-center">
                   <div className="flex justify-center gap-2">
                     <Button
                       variant="ghost"
@@ -310,7 +310,7 @@ const SalesOrderTracking = () => {
                       </Button>
                     )}
                   </div>
-                </TableCell>
+                </TableCell> */}
               </TableRow>
             ))}
           </TableBody>

@@ -62,7 +62,7 @@ const LedgerRecord = () => {
     const fetchAccounts = async () => {
         try {
             setAccountsLoading(true);
-            const res = await api.get('/accounts?limit=100');
+            const res = await api.get('/accounts?limit=200');
             console.log('Ledger: Accounts API Response:', res);
 
             if (res.success) {
@@ -70,7 +70,13 @@ const LedgerRecord = () => {
                 console.log('Ledger: Account list extracted:', accountList);
 
                 if (Array.isArray(accountList)) {
-                    setAccounts(accountList);
+                    // Sort: Bank & Cash accounts first, then the rest
+                    const sorted = [...accountList].sort((a, b) => {
+                        if (a.isBankOrCash && !b.isBankOrCash) return -1;
+                        if (!a.isBankOrCash && b.isBankOrCash) return 1;
+                        return (a.accountName || '').localeCompare(b.accountName || '');
+                    });
+                    setAccounts(sorted);
                 } else {
                     console.log('Ledger: accountList is not an array!');
                 }
@@ -234,8 +240,10 @@ const LedgerRecord = () => {
                                         )}
                                         {accounts.map(acc => (
                                             <SelectItem key={acc._id} value={acc._id}>
-                                                {acc.accountName}
-                                                <span className="text-[10px] text-slate-400 ml-2">({acc.accountNumber})</span>
+                                                {acc.isBankOrCash ? '🏦 ' : ''}{acc.accountName}
+                                                {acc.bankDetails?.bankName && (
+                                                    <span className="text-[10px] text-slate-400 ml-1">({acc.bankDetails.bankName})</span>
+                                                )}
                                             </SelectItem>
                                         ))}
                                     </SelectContent>

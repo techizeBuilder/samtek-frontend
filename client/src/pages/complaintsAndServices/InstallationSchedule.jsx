@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
+import { getServicemen } from '@/api/complaintApi';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { CalendarCheck, MapPin, CheckCircle, Package, User, Phone, MessageCircle, Mail } from 'lucide-react';
 
@@ -16,9 +16,25 @@ export default function InstallationSchedule() {
   const qc = useQueryClient();
   const [selectedOrder, setSelectedOrder] = useState(null);
 
+  // Controlled form state for modal
+  const [formState, setFormState] = useState({
+    status: 'Scheduled',
+    scheduledDate: '',
+    technicianName: '',
+    technicianId: '',
+    remarks: ''
+  });
+
   const { data: ordersData, isLoading } = useQuery({
     queryKey: ['dispatched-orders'],
     queryFn: () => apiRequest('GET', '/api/complaints/dispatched-orders')
+  });
+
+  // Fetch servicemen / technicians for the company
+  const { data: servicemenData } = useQuery({
+    queryKey: ['servicemen'],
+    queryFn: () => getServicemen(),
+    staleTime: 1000 * 60 * 5
   });
 
   const updateMutation = useMutation({
@@ -34,24 +50,44 @@ export default function InstallationSchedule() {
   });
 
   const orders = ordersData?.data || [];
+  const servicemen = servicemenData?.servicemen || servicemenData?.data || [];
 
   const reachedOrders = orders.filter(o => o.customerConfirmation?.status === 'Reached Safely');
   const pendingOrders = reachedOrders.filter(o => !o.installation || o.installation.status === 'Pending');
   const scheduledOrders = reachedOrders.filter(o => o.installation?.status === 'Scheduled');
   const completedOrders = reachedOrders.filter(o => o.installation?.status === 'Completed');
 
+  const openModal = (order) => {
+    setSelectedOrder(order);
+    setFormState({
+      status: order.installation?.status || 'Scheduled',
+      scheduledDate: order.installation?.scheduledDate
+        ? new Date(order.installation.scheduledDate).toISOString().split('T')[0]
+        : '',
+      technicianName: order.installation?.technicianName || '',
+      technicianId: order.installation?.technicianId || '',
+      remarks: order.installation?.remarks || ''
+    });
+  };
+
   const handleUpdate = (e) => {
     e.preventDefault();
-    const fd = new FormData(e.target);
     updateMutation.mutate({
       id: selectedOrder._id,
       data: {
-        status: fd.get('status'),
-        scheduledDate: fd.get('scheduledDate'),
-        technicianName: fd.get('technicianName'),
-        remarks: fd.get('remarks')
+        status: formState.status,
+        scheduledDate: formState.scheduledDate,
+        technicianName: formState.technicianName,
+        technicianId: formState.technicianId,
+        remarks: formState.remarks
       }
     });
+  };
+
+  const handleTechnicianSelect = (value) => {
+    // value is "_id|fullName|designation"
+    const [id, name, designation] = value.split('|');
+    setFormState(f => ({ ...f, technicianId: id, technicianName: name }));
   };
 
   const notifyCustomer = (order, e) => {
@@ -121,7 +157,7 @@ export default function InstallationSchedule() {
               ) : (
                 <InstallationList 
                   list={pendingOrders} 
-                  setSelectedOrder={setSelectedOrder} 
+                  setSelectedOrder={openModal} 
                   notifyCustomer={notifyCustomer}
                   handleWhatsApp={handleWhatsApp}
                   handleCall={handleCall}
@@ -140,7 +176,7 @@ export default function InstallationSchedule() {
               ) : (
                 <InstallationList 
                   list={scheduledOrders} 
-                  setSelectedOrder={setSelectedOrder} 
+                  setSelectedOrder={openModal} 
                   notifyCustomer={notifyCustomer}
                   handleWhatsApp={handleWhatsApp}
                   handleCall={handleCall}
@@ -172,28 +208,37 @@ export default function InstallationSchedule() {
         )}
       </div>
 
-      {/* Dialog Modal */}
-      <Dialog open={!!selectedOrder} onOpenChange={(open) => !open && setSelectedOrder(null)}>
-        <DialogContent className="sm:max-w-[450px]">
-          <DialogHeader>
-            <DialogTitle>Schedule Installation</DialogTitle>
-            <DialogDescription>
-              Update installation details for {selectedOrder?.customerName}
-            </DialogDescription>
-          </DialogHeader>
+      {/* Custom Modal — centered with top/bottom space, scrollable content */}
+      {!!selectedOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col" style={{ maxHeight: 'calc(100vh - 80px)' }}>
 
-          {selectedOrder && (
-            <div className="pt-2">
+            {/* Header — fixed */}
+            <div className="flex justify-between items-center px-7 pt-7 pb-5 border-b border-slate-100 flex-shrink-0">
+              <div>
+                <h2 className="font-bold text-lg text-slate-800">Schedule Installation</h2>
+                <p className="text-xs text-slate-400 mt-0.5">Update installation details for {selectedOrder.customerName}</p>
+              </div>
+              <button onClick={() => setSelectedOrder(null)} className="p-1 rounded-lg hover:bg-slate-100">
+                <span className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</span>
+              </button>
+            </div>
+
+            {/* Scrollable body */}
+            <div className="overflow-y-auto flex-1 px-7 py-5">
               <div className="mb-5 p-3 bg-blue-50/50 rounded-lg border border-blue-100">
                 <p className="text-sm font-medium text-slate-800">{selectedOrder.customerName}</p>
                 <p className="text-xs text-slate-500 mt-1">{selectedOrder.machineName}</p>
                 <p className="text-xs text-slate-500">Contact: {selectedOrder.customerContact}</p>
               </div>
 
-              <form onSubmit={handleUpdate} className="space-y-4">
+              <form id="installation-form" onSubmit={handleUpdate} className="space-y-4">
                 <div className="space-y-2">
-                  <Label>Status</Label>
-                  <Select name="status" defaultValue={selectedOrder.installation?.status || "Scheduled"}>
+                  <Label className="text-sm font-medium text-slate-700">Status</Label>
+                  <Select
+                    value={formState.status}
+                    onValueChange={(v) => setFormState(f => ({ ...f, status: v }))}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Select status" />
                     </SelectTrigger>
@@ -206,39 +251,85 @@ export default function InstallationSchedule() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Schedule Date</Label>
+                  <Label className="text-sm font-medium text-slate-700">Schedule Date</Label>
                   <Input
                     type="date"
-                    name="scheduledDate"
-                    defaultValue={selectedOrder.installation?.scheduledDate ? new Date(selectedOrder.installation.scheduledDate).toISOString().split('T')[0] : ''}
+                    value={formState.scheduledDate}
+                    onChange={e => setFormState(f => ({ ...f, scheduledDate: e.target.value }))}
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Technician Name</Label>
-                  <Input name="technicianName" defaultValue={selectedOrder.installation?.technicianName} placeholder="Enter technician name" />
+                  <Label className="text-sm font-medium text-slate-700">Technician / Serviceman</Label>
+                  {servicemen.length > 0 ? (
+                    <Select
+                      value={formState.technicianId || ''}
+                      onValueChange={(value) => {
+                        const tech = servicemen.find(s => (s._id || s.id) === value);
+                        if (tech) {
+                          setFormState(f => ({
+                            ...f,
+                            technicianId: value,
+                            technicianName: tech.fullName || tech.name || tech.username || ''
+                          }));
+                        }
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select technician">
+                          {formState.technicianName || 'Select technician'}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {servicemen.map((s) => {
+                          const id = s._id || s.id;
+                          const name = s.fullName || s.name || s.username || 'Unknown';
+                          const extra = s.designation || s.role || s.serviceZone || '';
+                          return (
+                            <SelectItem key={id} value={id}>
+                              {name}{extra ? ` — ${extra}` : ''}
+                            </SelectItem>
+                          );
+                        })}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <Input
+                      value={formState.technicianName}
+                      onChange={e => setFormState(f => ({ ...f, technicianName: e.target.value }))}
+                      placeholder="Enter technician name"
+                    />
+                  )}
+                  {formState.technicianName && servicemen.length > 0 && (
+                    <p className="text-xs text-emerald-600">✓ {formState.technicianName}</p>
+                  )}
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Remarks</Label>
-                  <Input name="remarks" defaultValue={selectedOrder.installation?.remarks} placeholder="Any notes..." />
-                </div>
-
-                <div className="flex gap-2 pt-2">
-                  {selectedOrder.installation?.status === 'Scheduled' && (
-                    <Button type="button" variant="outline" className="flex-1 text-green-600 border-green-200" onClick={() => notifyCustomer(selectedOrder, null)}>
-                      Notify via WhatsApp
-                    </Button>
-                  )}
-                  <Button type="submit" className="flex-1" disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? 'Saving...' : 'Save Schedule'}
-                  </Button>
+                  <Label className="text-sm font-medium text-slate-700">Remarks</Label>
+                  <Input
+                    value={formState.remarks}
+                    onChange={e => setFormState(f => ({ ...f, remarks: e.target.value }))}
+                    placeholder="Any notes..."
+                  />
                 </div>
               </form>
             </div>
-          )}
-        </DialogContent>
-      </Dialog>
+
+            {/* Footer — fixed */}
+            <div className="px-7 pb-6 pt-4 border-t border-slate-100 flex gap-3 flex-shrink-0">
+              {selectedOrder.installation?.status === 'Scheduled' && (
+                <Button type="button" variant="outline" className="flex-1 text-green-600 border-green-200" onClick={() => notifyCustomer(selectedOrder, null)}>
+                  Notify via WhatsApp
+                </Button>
+              )}
+              <Button type="submit" form="installation-form" className="flex-1 h-11" disabled={updateMutation.isPending}>
+                {updateMutation.isPending ? 'Saving...' : 'Save Schedule'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
