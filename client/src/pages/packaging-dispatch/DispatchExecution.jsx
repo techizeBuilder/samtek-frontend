@@ -303,7 +303,7 @@ function DispatchCard({ dispatch }) {
 
 export default function DispatchExecution() {
   const { dispatchOrders, dispatchOrdersLoading } = usePackagingDispatch();
-  const [filter, setFilter] = useState('active');
+  const [filter, setFilter] = useState('all');
 
   const activeStatuses = ['Ready', 'Dispatched', 'In Transit', 'Delivered'];
   const allStatuses = ['all', 'Ready', 'Dispatched', 'In Transit', 'Delivered'];
