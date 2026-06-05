@@ -58,7 +58,9 @@ const ROLES = [
   { value: 'Research & Development Head', label: 'Research & Development Head' },
   { value: 'Complaint Management Head', label: 'Complaint Management Head' },
   { value: 'Store Head', label: 'Store Head' },
+  { value: 'QC Head', label: 'QC Head' },
   { value: 'Marketing Head', label: 'Marketing Head' },
+  { value: 'MIS Admin', label: 'MIS Admin' },
 ];
 
 const UNITS = [
@@ -215,6 +217,32 @@ const MODULES = [
       { key: 'reports', label: 'Reports' },
       { key: 'auditLogs', label: 'Audit Logs' },
       { key: 'notifications', label: 'Notifications' },
+      { key: 'lms', label: 'LMS' }
+    ]
+  },
+  {
+    name: 'mis',
+    label: 'MIS Admin',
+    features: [
+      { key: 'dashboard', label: 'Dashboard' },
+      { key: 'salesReport', label: 'Sales Reports' },
+      { key: 'financeReport', label: 'Finance Reports' },
+      { key: 'productionReport', label: 'Production Summary' },
+      { key: 'inventoryReport', label: 'Inventory Reports' },
+      { key: 'complaintReport', label: 'Complaint & Service' },
+      { key: 'hrmsReport', label: 'HRMS Report' },
+      { key: 'qualityReport', label: 'Quality Reports' },
+    ]
+  },
+  {
+    name: 'quality-control',
+    label: 'Quality Control',
+    features: [
+      { key: 'dashboard', label: 'Dashboard' },
+      { key: 'qcJobs', label: 'QC Jobs' },
+      { key: 'qcInspection', label: 'QC Inspection' },
+      { key: 'qcInward', label: 'QC Inward' },
+      { key: 'qcReports', label: 'QC Reports' },
       { key: 'lms', label: 'LMS' }
     ]
   }
@@ -691,6 +719,38 @@ export default function RolePermissionManagement() {
             dashboard: false,
             features: [
               { key: 'addEditView', view: true, add: false, edit: false, delete: false, alter: false }
+            ]
+          }
+        ];
+      case 'MIS Admin':
+        return [
+          {
+            name: 'mis',
+            dashboard: true,
+            features: [
+              { key: 'dashboard', label: 'Dashboard', view: true, add: false, edit: false, delete: false },
+              { key: 'salesReport', label: 'Sales Reports', view: true, add: false, edit: false, delete: false },
+              { key: 'financeReport', label: 'Finance Reports', view: true, add: false, edit: false, delete: false },
+              { key: 'productionReport', label: 'Production Summary', view: true, add: false, edit: false, delete: false },
+              { key: 'inventoryReport', label: 'Inventory Reports', view: true, add: false, edit: false, delete: false },
+              { key: 'complaintReport', label: 'Complaint & Service', view: true, add: false, edit: false, delete: false },
+              { key: 'hrmsReport', label: 'HRMS Report', view: true, add: false, edit: false, delete: false },
+              { key: 'qualityReport', label: 'Quality Reports', view: true, add: false, edit: false, delete: false },
+            ]
+          }
+        ];
+      case 'QC Head':
+        return [
+          {
+            name: 'quality-control',
+            dashboard: true,
+            features: [
+              { key: 'dashboard', label: 'Dashboard', view: true, add: true, edit: true, delete: true, alter: true },
+              { key: 'qcJobs', label: 'QC Jobs', view: true, add: true, edit: true, delete: true, alter: true },
+              { key: 'qcInspection', label: 'QC Inspection', view: true, add: true, edit: true, delete: true, alter: true },
+              { key: 'qcInward', label: 'QC Inward', view: true, add: true, edit: true, delete: true, alter: true },
+              { key: 'qcReports', label: 'QC Reports', view: true, add: false, edit: false, delete: false, alter: false },
+              { key: 'lms', label: 'LMS', view: true, add: false, edit: false, delete: false, alter: false }
             ]
           }
         ];

@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Card,
@@ -61,6 +62,7 @@ import { useToast } from '@/hooks/use-toast';
 import { api } from '@/services/api';
 
 const SuperAdminCompanies = () => {
+  const navigate = useNavigate();
   const [filters, setFilters] = useState({
     search: '',
     city: '',
@@ -456,6 +458,7 @@ const SuperAdminCompanies = () => {
                   <TableHead>Company ID</TableHead>
                   <TableHead>Location</TableHead>
                   <TableHead>Contact</TableHead>
+                  <TableHead>Company Admin</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -463,7 +466,7 @@ const SuperAdminCompanies = () => {
               <TableBody>
                 {companies.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8">
+                    <TableCell colSpan={7} className="text-center py-8">
                       <div className="flex flex-col items-center space-y-3">
                         <Building2 className="h-12 w-12 text-muted-foreground" />
                         <div className="space-y-1">
@@ -507,6 +510,17 @@ const SuperAdminCompanies = () => {
                           </div>
                         </div>
                       </TableCell>
+                      <TableCell className="min-w-[150px]">
+                        {company.companyAdmin ? (
+                          <div className="space-y-1">
+                            <div className="font-medium text-xs sm:text-sm text-gray-900">{company.companyAdmin.fullName}</div>
+                            <div className="text-[11px] text-muted-foreground">{company.companyAdmin.email}</div>
+                            <div className="text-[11px] text-muted-foreground">{company.companyAdmin.mobile}</div>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground italic">No Admin</span>
+                        )}
+                      </TableCell>
                       <TableCell className="min-w-[80px]">
                         <Badge variant={company.isActive ? "default" : "secondary"} className="text-xs">
                           {company.isActive ? "Active" : "Inactive"}
@@ -537,6 +551,14 @@ const SuperAdminCompanies = () => {
                             >
                               <Edit className="h-4 w-4 mr-2" />
                               Edit
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => {
+                                navigate(`/super-admin/companies/${company._id}/report`);
+                              }}
+                            >
+                              <FileText className="h-4 w-4 mr-2" />
+                              Company Report
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() => {
@@ -1050,6 +1072,17 @@ const CompanyViewDetails = ({ company }) => {
             </div>
           </div>
         </div>
+
+        {company.companyAdmin && (
+          <div className="border-t pt-3">
+            <Label className="text-sm font-semibold text-gray-900">Company Admin Details</Label>
+            <div className="mt-1.5 space-y-1 bg-blue-50/50 border border-blue-100 p-3 rounded-lg text-sm">
+              <div><span className="font-medium text-slate-700">Name:</span> {company.companyAdmin.fullName}</div>
+              <div><span className="font-medium text-slate-700">Email:</span> {company.companyAdmin.email}</div>
+              <div><span className="font-medium text-slate-700">Phone:</span> {company.companyAdmin.mobile}</div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

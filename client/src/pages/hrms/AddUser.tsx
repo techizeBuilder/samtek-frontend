@@ -32,6 +32,7 @@ export default function AddUser() {
     'Complaint Management Employee',
     'Store Employee',
     'QC Employee',
+    'MIS Admin',
   ];
 
   const ROLE_MODULES_CONFIG: Record<string, { moduleName: string; features: { key: string; label: string }[] }> = {

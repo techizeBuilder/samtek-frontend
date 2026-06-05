@@ -605,6 +605,10 @@ class APIService {
     return this.get('/super-admin/companies/stats');
   }
 
+  async getCompanyReport(id) {
+    return this.get(`/super-admin/companies/${id}/report`);
+  }
+
   // ============ CUTOFF TIME MANAGEMENT APIs ============
 
   // Get current cutoff time setting for unit head's company
@@ -800,3 +804,6 @@ export const canPlaceOrder = () => api.canPlaceOrder();
 
 // Sales Cutoff Time API
 export const getSalesCutoffTimeStatus = () => api.getSalesCutoffTimeStatus();
+
+// Company Report API
+export const getCompanyReport = (id) => api.getCompanyReport(id);

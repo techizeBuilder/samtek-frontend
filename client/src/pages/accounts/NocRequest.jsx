@@ -148,124 +148,160 @@ const NocRequest = () => {
     setViewGatePassOpen(true);
   };
 
-  const downloadGatePassPDF = (data) => {
-    const doc = new jsPDF();
-    const company = settings?.company || {};
-
-    const addBorder = (x, y, w, h) => {
-      doc.setDrawColor(200, 200, 200);
-      doc.rect(x, y, w, h);
-    };
-
-    doc.setFontSize(14);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(30, 41, 59);
-    doc.text(company.name || 'SAMTEK MACHINERY', 20, 20);
-
-    doc.setFontSize(8);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(71, 85, 105);
-    doc.text(company.address || 'Industrial Area, Phase-1', 20, 25);
-    doc.text(`GST : ${company.gstNumber || '27ABCDE1234F1Z5'}`, 20, 29);
-    doc.text(`Phone : ${company.phone || '+91 98765 43210'}`, 20, 33);
-    doc.text(`Email : ${company.email || 'info@samtek.com'}`, 20, 37);
-
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(30, 41, 59);
-    doc.text(`Gate Pass No. : GP-${data.orderCode}`, 190, 25, { align: 'right' }); // Usually from gatePassData
-    doc.setFont('helvetica', 'normal');
-    const formattedDate = data.gatePassGeneratedAt ? new Date(data.gatePassGeneratedAt).toLocaleDateString() : new Date().toLocaleDateString();
-    doc.text(`Date : ${formattedDate}`, 190, 30, { align: 'right' });
-    doc.text(`Ref. : ${data.orderCode}`, 190, 35, { align: 'right' });
-
-    doc.setFontSize(14);
-    doc.setFont('helvetica', 'bold');
-    doc.text('GATE PASS', 105, 50, { align: 'center' });
-
-    addBorder(20, 60, 85, 45); 
-    addBorder(105, 60, 85, 45);
-
-    doc.setFontSize(8);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Consignee Details', 22, 65);
-    doc.text('Logistics & Vehicle Details', 107, 65);
-
-    doc.setDrawColor(230, 230, 230);
-    doc.line(22, 67, 102, 67); 
-    doc.line(107, 67, 187, 67);
-
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'bold');
-    doc.text(data.customerName, 22, 73);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`Mobile: ${data.customerMobile}`, 22, 78);
-
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'bold');
-    const vNo = data.vehicleNumber || data.vehicleNo || data.gatePass?.vehicleNumber || data.gatePass?.vehicleNo || 'N/A';
-    const dName = data.driverName || data.driver || data.gatePass?.driverName || data.gatePass?.driver || 'N/A';
-    const cNo = data.contactNumber || data.contactNo || data.gatePass?.contactNumber || data.gatePass?.contactNo || 'N/A';
-    doc.text(`Vehicle No: ${vNo}`, 107, 73);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`Driver Name: ${dName}`, 107, 78);
-    doc.text(`Contact: ${cNo}`, 107, 83);
-    doc.text(`Status: Verified for Dispatch`, 107, 88);
-
-    doc.autoTable({
-      startY: 115,
-      head: [['Sr.', 'Description of Goods', 'Qty', 'Unit', 'Status']],
-      body: [
-        ['1', `${data.machineName} (${data.machineCode})`, '1', 'Lot', 'Dispatched'],
-        ['', 'SN:', '', '', data.serialNumber],
-        ['', 'Invoiced Value', '', '', `INR ${data.totalAmount?.toLocaleString()}`],
-        ['', 'Payment Status', '', '', data.paymentStatus]
-      ],
-      theme: 'grid',
-      headStyles: {
-        fillColor: [248, 250, 252],
-        textColor: [30, 41, 59],
-        fontStyle: 'bold',
-        halign: 'center',
-        lineWidth: 0.1,
-        lineColor: [200, 200, 200]
-      },
-      styles: {
-        fontSize: 9,
-        cellPadding: 4,
-        textColor: [51, 65, 85],
-        lineWidth: 0.1,
-        lineColor: [200, 200, 200]
-      },
-      columnStyles: {
-        0: { halign: 'center', width: 10 },
-        2: { halign: 'center', width: 15 },
-        3: { halign: 'center', width: 15 },
-        4: { halign: 'right' }
-      }
-    });
-
-    const finalY = doc.lastAutoTable.finalY + 30;
-
-    addBorder(20, finalY - 5, 170, 30);
-    
-    // Add Samtek Stamp next to Authorized Signatory inside the border
+  const downloadGatePassPDF = async (data) => {
     try {
-      doc.addImage('/samtek_stamp.png', 'PNG', 148, finalY - 3, 26, 26);
-    } catch (e) {
-      console.error('Failed to add stamp to PDF:', e);
+      const doc = new jsPDF();
+      const company = settings?.company || {};
+
+      const addBorder = (x, y, w, h) => {
+        doc.setDrawColor(200, 200, 200);
+        doc.rect(x, y, w, h);
+      };
+
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(30, 41, 59);
+      doc.text(company.name || 'SAMTEK MACHINERY', 20, 20);
+
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(71, 85, 105);
+      doc.text(company.address || 'Industrial Area, Phase-1', 20, 25);
+      doc.text(`GST : ${company.gstNumber || '27ABCDE1234F1Z5'}`, 20, 29);
+      doc.text(`Phone : ${company.phone || '+91 98765 43210'}`, 20, 33);
+      doc.text(`Email : ${company.email || 'info@samtek.com'}`, 20, 37);
+
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(30, 41, 59);
+      doc.text(`Gate Pass No. : GP-${data.orderCode}`, 190, 25, { align: 'right' }); // Usually from gatePassData
+      doc.setFont('helvetica', 'normal');
+      const formattedDate = data.gatePassGeneratedAt ? new Date(data.gatePassGeneratedAt).toLocaleDateString() : new Date().toLocaleDateString();
+      doc.text(`Date : ${formattedDate}`, 190, 30, { align: 'right' });
+      doc.text(`Ref. : ${data.orderCode}`, 190, 35, { align: 'right' });
+
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.text('GATE PASS', 105, 50, { align: 'center' });
+
+      addBorder(20, 60, 85, 45); 
+      addBorder(105, 60, 85, 45);
+
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Consignee Details', 22, 65);
+      doc.text('Logistics & Vehicle Details', 107, 65);
+
+      doc.setDrawColor(230, 230, 230);
+      doc.line(22, 67, 102, 67); 
+      doc.line(107, 67, 187, 67);
+
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'bold');
+      doc.text(data.customerName, 22, 73);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Mobile: ${data.customerMobile}`, 22, 78);
+
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'bold');
+      const vNo = data.vehicleNumber || data.vehicleNo || data.gatePass?.vehicleNumber || data.gatePass?.vehicleNo || 'N/A';
+      const dName = data.driverName || data.driver || data.gatePass?.driverName || data.gatePass?.driver || 'N/A';
+      const cNo = data.contactNumber || data.contactNo || data.gatePass?.contactNumber || data.gatePass?.contactNo || 'N/A';
+      doc.text(`Vehicle No: ${vNo}`, 107, 73);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Driver Name: ${dName}`, 107, 78);
+      doc.text(`Contact: ${cNo}`, 107, 83);
+      doc.text(`Status: Verified for Dispatch`, 107, 88);
+
+      doc.autoTable({
+        startY: 115,
+        head: [['Sr.', 'Description of Goods', 'Qty', 'Unit', 'Status']],
+        body: [
+          ['1', `${data.machineName} (${data.machineCode})`, '1', 'Lot', 'Dispatched'],
+          ['', 'SN:', '', '', data.serialNumber],
+          ['', 'Invoiced Value', '', '', `INR ${data.totalAmount?.toLocaleString()}`],
+          ['', 'Payment Status', '', '', data.paymentStatus]
+        ],
+        theme: 'grid',
+        headStyles: {
+          fillColor: [248, 250, 252],
+          textColor: [30, 41, 59],
+          fontStyle: 'bold',
+          halign: 'center',
+          lineWidth: 0.1,
+          lineColor: [200, 200, 200]
+        },
+        styles: {
+          fontSize: 9,
+          cellPadding: 4,
+          textColor: [51, 65, 85],
+          lineWidth: 0.1,
+          lineColor: [200, 200, 200]
+        },
+        columnStyles: {
+          0: { halign: 'center', width: 10 },
+          2: { halign: 'center', width: 15 },
+          3: { halign: 'center', width: 15 },
+          4: { halign: 'right' }
+        }
+      });
+
+      const finalY = doc.lastAutoTable.finalY + 30;
+
+      addBorder(20, finalY - 5, 170, 30);
+      
+      // Load and add Samtek Stamp asynchronously to prevent blocking XHR calls
+      let stampBytes = null;
+      let detectedFormat = 'JPEG'; // Default fallback
+      try {
+        const response = await fetch('/samtek_stamp.png');
+        if (response.ok) {
+          const arrayBuffer = await response.arrayBuffer();
+          stampBytes = new Uint8Array(arrayBuffer);
+          
+          // Detect image format from magic bytes
+          if (stampBytes[0] === 0x89 && stampBytes[1] === 0x50 && stampBytes[2] === 0x4E && stampBytes[3] === 0x47) {
+            detectedFormat = 'PNG';
+          } else if (stampBytes[0] === 0xFF && stampBytes[1] === 0xD8) {
+            detectedFormat = 'JPEG';
+          }
+        } else {
+          console.warn(`Failed to fetch stamp image: Status ${response.status}`);
+        }
+      } catch (e) {
+        console.error('Network error fetching stamp image:', e);
+      }
+
+      if (stampBytes) {
+        try {
+          doc.addImage(stampBytes, detectedFormat, 148, finalY - 3, 26, 26);
+        } catch (e) {
+          console.error('Failed to parse or add stamp to PDF:', e);
+        }
+      }
+
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'bold');
+      doc.text(`For, ${company.name || 'SAMTEK MACHINERY'}`, 185, finalY + 5, { align: 'right' });
+      doc.text('Authorised Signatory', 185, finalY + 20, { align: 'right' });
+
+      doc.setFontSize(7);
+      doc.setFont('helvetica', 'italic');
+      doc.text('This is a computer-generated gate pass and does not require physical signature. E. & O. E.', 105, 285, { align: 'center' });
+
+      doc.save(`GatePass_${data.orderCode}.pdf`);
+      toast({
+        title: "Success",
+        description: "Gate Pass downloaded successfully!",
+      });
+    } catch (error) {
+      console.error("Failed to generate PDF:", error);
+      toast({
+        title: "Download Failed",
+        description: error.message || "An error occurred during PDF generation.",
+        variant: "destructive"
+      });
     }
-
-    doc.setFontSize(8);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`For, ${company.name || 'SAMTEK MACHINERY'}`, 185, finalY + 5, { align: 'right' });
-    doc.text('Authorised Signatory', 185, finalY + 20, { align: 'right' });
-
-    doc.setFontSize(7);
-    doc.setFont('helvetica', 'italic');
-    doc.text('This is a computer-generated gate pass and does not require physical signature. E. & O. E.', 105, 285, { align: 'center' });
-
-    doc.save(`GatePass_${data.orderCode}.pdf`);
   };
 
   return (

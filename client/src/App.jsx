@@ -45,6 +45,7 @@ import SuperAdminSales from "@/pages/super-admin/SuperAdminSales";
 import SuperAdminCustomers from "@/pages/super-admin/SuperAdminCustomers";
 import SuperAdminSettings from "@/pages/super-admin/SuperAdminSettings";
 import SuperAdminCompanies from "@/pages/super-admin/SuperAdminCompanies";
+import SuperAdminCompanyReport from "@/pages/super-admin/SuperAdminCompanyReport";
 import SuperAdminDispatches from "@/pages/super-admin/SuperAdminDispatches";
 import ProductionDashboard from "@/pages/production/ProductionDashboard";
 import ProductionModule from "@/components/production/ProductionModule";
@@ -205,6 +206,18 @@ import CategoryManagement from "@/pages/marketing/Categories";
 import MarketingReports from "@/pages/marketing/Reports";
 import AuditLogs from "@/pages/marketing/AuditLogs";
 import MarketingNotifications from "@/pages/marketing/Notifications";
+
+// MIS Admin Module Imports
+import MISDashboard from "@/pages/mis/MISDashboard";
+import MISSalesReport from "@/pages/mis/MISSalesReport";
+import MISFinanceReport from "@/pages/mis/MISFinanceReport";
+import MISProductionReport from "@/pages/mis/MISProductionReport";
+import MISInventoryReport from "@/pages/mis/MISInventoryReport";
+import MISComplaintReport from "@/pages/mis/MISComplaintReport";
+import MISHRMSReport from "@/pages/mis/MISHRMSReport";
+import MISQualityReport from "@/pages/mis/MISQualityReport";
+import MISSettings from "@/pages/mis/MISSettings";
+
 import { Route, Switch } from "wouter";
 
 function Router() {
@@ -800,6 +813,11 @@ function Router() {
           <SuperAdminCompanies />
         </ProtectedRoute>
       </Route>
+      <Route path="/super-admin/companies/:id/report">
+        <ProtectedRoute requiredRole="Super Admin">
+          <SuperAdminCompanyReport />
+        </ProtectedRoute>
+      </Route>
       <Route path="/super-admin/dispatches">
         <ProtectedRoute requiredRole="Super Admin">
           <SuperAdminDispatches />
@@ -1340,6 +1358,53 @@ function Router() {
       <Route path="/marketing/notifications">
         <ProtectedRoute requiredRole="Marketing Head">
           <MarketingProvider><MarketingNotifications /></MarketingProvider>
+        </ProtectedRoute>
+      </Route>
+
+      {/* MIS Admin Module Routes */}
+      <Route path="/mis/dashboard">
+        <ProtectedRoute requiredRole="MIS Admin">
+          <MISDashboard />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/mis/sales-report">
+        <ProtectedRoute requiredRole="MIS Admin">
+          <MISSalesReport />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/mis/finance-report">
+        <ProtectedRoute requiredRole="MIS Admin">
+          <MISFinanceReport />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/mis/production-report">
+        <ProtectedRoute requiredRole="MIS Admin">
+          <MISProductionReport />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/mis/inventory-report">
+        <ProtectedRoute requiredRole="MIS Admin">
+          <MISInventoryReport />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/mis/complaint-report">
+        <ProtectedRoute requiredRole="MIS Admin">
+          <MISComplaintReport />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/mis/hrms-report">
+        <ProtectedRoute requiredRole="MIS Admin">
+          <MISHRMSReport />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/mis/quality-report">
+        <ProtectedRoute requiredRole="MIS Admin">
+          <MISQualityReport />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/mis/settings">
+        <ProtectedRoute requiredRole="MIS Admin">
+          <MISSettings />
         </ProtectedRoute>
       </Route>
 

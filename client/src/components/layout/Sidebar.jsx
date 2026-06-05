@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link, useLocation } from 'wouter';
+import { Link, useLocation, useSearch } from 'wouter';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
 import { useSettings } from '@/hooks/useSettings';
@@ -24,8 +24,8 @@ const superAdminMenuItems = [
   { label: 'Super Admin Dashboard', path: '/super-admin-dashboard', icon: Shield, module: 'dashboard' },
   { label: 'Orders', path: '/super-admin/orders', icon: Receipt, module: 'orders' },
   { label: 'Sales', path: '/super-admin/sales', icon: TrendingUp, module: 'sales' },
-  { label: 'Dispatches', path: '/super-admin/dispatches', icon: Truck, module: 'dispatches' },
-  { label: 'Accounts', path: '/super-admin/accounts', icon: Calculator, module: 'accounts' },
+  // { label: 'Dispatches', path: '/super-admin/dispatches', icon: Truck, module: 'dispatches' },
+  // { label: 'Accounts', path: '/super-admin/accounts', icon: Calculator, module: 'accounts' },
   { label: 'Inventory', path: '/super-admin/inventory', icon: Package, module: 'inventory' },
   { label: 'Customers', path: '/super-admin/customers', icon: Users, module: 'customers' },
   { label: 'Companies', path: '/super-admin/companies', icon: Building2, module: 'companies' },
@@ -499,6 +499,18 @@ const qcMenuItems = [
   { label: 'Training', path: '/lms/training', icon: Pen, module: 'quality-control', feature: 'traineeDashboard' },
 ];
 
+const misAdminMenuItems = [
+  { label: 'Dashboard', path: '/mis/dashboard', icon: LayoutDashboard, module: 'mis' },
+  { label: 'Sales Reports', path: '/mis/sales-report', icon: TrendingUp, module: 'mis' },
+  { label: 'Finance Reports', path: '/mis/finance-report', icon: Calculator, module: 'mis' },
+  { label: 'Production Summary', path: '/mis/production-report', icon: Factory, module: 'mis' },
+  { label: 'Inventory Reports', path: '/mis/inventory-report', icon: Package, module: 'mis' },
+  { label: 'Complaint & Service', path: '/mis/complaint-report', icon: MessageSquare, module: 'mis' },
+  { label: 'HRMS Report', path: '/mis/hrms-report', icon: Users, module: 'mis' },
+  { label: 'Quality Reports', path: '/mis/quality-report', icon: PieChart, module: 'mis' },
+  { label: 'Settings', path: '/mis/settings', icon: Settings, module: 'mis' },
+];
+
 // 🔥 MISSING: Pure Trainee Menu Items
 const traineeMenuItems = [
   { label: 'Dashboard', path: '/lms/dashboard', icon: LayoutDashboard, module: 'lms' },
@@ -561,6 +573,8 @@ const getMenuItemsByRole = (role) => {
       return qcMenuItems;
     case 'Marketing Head':
       return marketingMenuItems;
+    case 'MIS Admin':
+      return misAdminMenuItems;
     default:
       return [];
   }
@@ -568,6 +582,8 @@ const getMenuItemsByRole = (role) => {
 
 export default function Sidebar({ isOpen, onClose }) {
   const [location] = useLocation();
+  const searchString = useSearch(); // query string e.g. "status=Pending"
+  const fullPath = searchString ? `${location}?${searchString}` : location;
   const { user, logout } = useAuth();
   const { settings } = useSettings();
   const { hasModuleAccess, hasFeatureAccess } = usePermissions();
@@ -694,7 +710,8 @@ export default function Sidebar({ isOpen, onClose }) {
     normalizedRole === 'Complaint Management Head' || normalizedRole === 'Complaint Management Employee' ||
     normalizedRole === 'QC Head' || normalizedRole === 'QC Employee' ||
     normalizedRole === 'Company Admin' ||
-    normalizedRole === 'Store Head' || normalizedRole === 'Store Employee') {
+    normalizedRole === 'Store Head' || normalizedRole === 'Store Employee' ||
+    normalizedRole === 'MIS Admin') {
     filteredMenuItems = roleMenuItems;
   } else {
     filteredMenuItems = roleMenuItems.filter(item => {
@@ -746,7 +763,7 @@ export default function Sidebar({ isOpen, onClose }) {
             <nav className="space-y-2">
               {filteredMenuItems.map((item) => {
                 const Icon = item.icon;
-                const isActive = location === item.path ||
+                const isActive = fullPath === item.path ||
                   (item.module === 'dashboard' && location === '/') ||
                   (item.module === 'dashboard' && location === '/super-admin-dashboard') ||
                   (item.module === 'rnd' && location === '/r&d-dashboard') ||
@@ -819,7 +836,7 @@ export default function Sidebar({ isOpen, onClose }) {
                           // 🔥 THE FIX: Bypass DB checks for LMS submodules so they render perfectly for Heads
                           .filter(sub => item.label === 'Training Management' || shouldBypassSubmoduleCheck || hasFeatureAccess(item.module, sub.feature, 'view'))
                           .map((submodule) => {
-                            const isSubActive = location === submodule.path;
+                            const isSubActive = fullPath === submodule.path;
                             return (
                               <Link key={submodule.path} href={submodule.path}>
                                 <Button

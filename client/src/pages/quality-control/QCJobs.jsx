@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Link } from 'wouter';
+import React, { useState, useEffect } from 'react';
+import { Link, useSearch } from 'wouter';
 import { useQC } from '@/contexts/QCContext';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -24,9 +24,18 @@ const sourceIcon = { Purchase: ShoppingCart, Production: Factory, Store: Package
 
 export default function QCJobs() {
   const { jobs, jobsLoading } = useQC();
+  const searchString = useSearch(); // e.g. "status=Pending"
+  const queryParams = new URLSearchParams(searchString);
+  const statusFromUrl = queryParams.get('status') || 'all';
+
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState(statusFromUrl);
   const [sourceFilter, setSourceFilter] = useState('all');
+
+  // Sync statusFilter when URL query param changes (e.g. sidebar navigation)
+  useEffect(() => {
+    setStatusFilter(statusFromUrl);
+  }, [statusFromUrl]);
 
   const statuses = ['all', 'Pending', 'In Progress', 'Approved', 'Rejected'];
   const sources = ['all', 'Purchase', 'Production', 'Store'];
@@ -51,8 +60,12 @@ export default function QCJobs() {
     <div className="p-6 space-y-6 bg-slate-50 min-h-screen">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">QC Jobs</h1>
-          <p className="text-slate-500 text-sm mt-0.5">All quality control inspection jobs</p>
+          <h1 className="text-2xl font-bold text-slate-900">
+            {statusFromUrl === 'all' ? 'QC Jobs' : statusFromUrl === 'Pending' ? 'Pending Inspection' : statusFromUrl}
+          </h1>
+          <p className="text-slate-500 text-sm mt-0.5">
+            {statusFromUrl === 'all' ? 'All quality control inspection jobs' : `Showing jobs with status: ${statusFromUrl}`}
+          </p>
         </div>
         <Link href="/qc/inward">
           <Button className="flex items-center gap-2">
