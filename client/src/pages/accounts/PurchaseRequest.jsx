@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,7 +9,8 @@ import { apiRequest } from '@/lib/queryClient';
 import { useAuth } from '@/hooks/useAuth';
 import { 
   Loader2, Plus, Eye, Send, Check, Mail, Clock, ShieldCheck, 
-  MapPin, Notebook, Info, FileText, ChevronRight, Edit2, RotateCw
+  MapPin, Notebook, Info, FileText, ChevronRight, Edit2, RotateCw,
+  Upload, PackageCheck, AlertCircle
 } from 'lucide-react';
 import { format } from "date-fns";
 import {
@@ -21,6 +22,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 export default function PurchaseRequest() {
   const { user } = useAuth();
@@ -52,6 +54,16 @@ export default function PurchaseRequest() {
   // Local Action Loading states
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
+
+  // ── Receive Modal state ─────────────────────────────────────────────────────
+  const [isReceiveModalOpen, setIsReceiveModalOpen]   = useState(false);
+  const [receiveRequest, setReceiveRequest]           = useState(null);
+  const [receiveSerialNo, setReceiveSerialNo]         = useState('');
+  const [receiveWarrantyMonths, setReceiveWarrantyMonths] = useState('');
+  const [receiveWarrantyCard, setReceiveWarrantyCard] = useState(null);   // File object
+  const [isMarkingReceived, setIsMarkingReceived]     = useState(false);
+  const warrantyFileRef = useRef(null);
+  // ───────────────────────────────────────────────────────────────────────────
 
   useEffect(() => {
     fetchPurchaseRequests();
@@ -135,6 +147,61 @@ export default function PurchaseRequest() {
       });
     }
   };
+
+  // ── Open the Receive modal ───────────────────────────────────────────────
+  const handleOpenReceiveModal = (request) => {
+    setReceiveRequest(request);
+    setReceiveSerialNo('');
+    setReceiveWarrantyMonths('');
+    setReceiveWarrantyCard(null);
+    if (warrantyFileRef.current) warrantyFileRef.current.value = '';
+    setIsReceiveModalOpen(true);
+  };
+
+  // ── Submit the Receive form (multipart) ─────────────────────────────────
+  const handleConfirmReceive = async (e) => {
+    e.preventDefault();
+
+    if (!receiveSerialNo.trim()) {
+      toast({ title: "Required", description: "Please enter the Serial Number.", variant: "destructive" });
+      return;
+    }
+    if (!receiveWarrantyMonths || Number(receiveWarrantyMonths) <= 0) {
+      toast({ title: "Required", description: "Please enter a valid Warranty Period in months.", variant: "destructive" });
+      return;
+    }
+    if (!receiveWarrantyCard) {
+      toast({ title: "Required", description: "Please upload the Warranty Card (image or PDF).", variant: "destructive" });
+      return;
+    }
+
+    setIsMarkingReceived(true);
+    try {
+      const formData = new FormData();
+      formData.append('status', 'Received');
+      formData.append('serialNumber', receiveSerialNo.trim());
+      formData.append('warrantyPeriod', receiveWarrantyMonths);
+      formData.append('warrantyCard', receiveWarrantyCard);
+
+      const data = await apiRequest('PATCH', `/api/purchase-requests/${receiveRequest._id}/status`, formData);
+
+      toast({
+        title: "Item Received",
+        description: "Item marked as received. Serial number, warranty and card saved to inventory.",
+      });
+      setIsReceiveModalOpen(false);
+      fetchPurchaseRequests();
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to mark item as received",
+        variant: "destructive"
+      });
+    } finally {
+      setIsMarkingReceived(false);
+    }
+  };
+  // ────────────────────────────────────────────────────────────────────────
 
   // Open Create PO Modal
   const handleOpenCreatePO = (request) => {
@@ -393,10 +460,10 @@ export default function PurchaseRequest() {
                                   
                                   {request.status === 'Ordered' && (
                                     <Button
-                                      onClick={() => handleStatusChange(request._id, 'Received')}
+                                      onClick={() => handleOpenReceiveModal(request)}
                                       className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold h-8 text-xs rounded-md shadow-sm"
                                     >
-                                      <Check className="w-3.5 h-3.5 mr-1" /> Mark Received
+                                      <PackageCheck className="w-3.5 h-3.5 mr-1" /> Mark Received
                                     </Button>
                                   )}
                                 </>
@@ -469,6 +536,128 @@ export default function PurchaseRequest() {
           )}
         </CardContent>
       </Card>
+
+      {/* ── Receive Item Modal ───────────────────────────────────────────────── */}
+      <Dialog open={isReceiveModalOpen} onOpenChange={setIsReceiveModalOpen}>
+        <DialogContent className="sm:max-w-[480px] rounded-xl border shadow-lg p-0 overflow-hidden">
+          <form onSubmit={handleConfirmReceive}>
+            <DialogHeader className="px-6 pt-6 pb-4 border-b bg-slate-50">
+              <DialogTitle className="flex items-center gap-2 text-slate-900 font-bold text-lg">
+                <PackageCheck className="w-5 h-5 text-emerald-600" />
+                Mark Item as Received
+              </DialogTitle>
+              <DialogDescription className="text-slate-500 text-sm mt-1">
+                Fill in all 3 details before confirming receipt. These will be saved to the inventory record.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="px-6 py-5 space-y-4 bg-white">
+              {/* Info banner */}
+              <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                <AlertCircle className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
+                <p className="text-xs text-amber-800 font-medium">
+                  All three fields are mandatory. Item will not be marked as Received until Serial Number, Warranty Period and Warranty Card are provided.
+                </p>
+              </div>
+
+              {receiveRequest && (
+                <div className="bg-slate-50 rounded-lg border border-slate-200 p-3">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Item</p>
+                  <p className="font-semibold text-slate-800 text-sm">{receiveRequest.productName}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">Req ID: {receiveRequest.requestId} · Qty: {receiveRequest.quantity}</p>
+                </div>
+              )}
+
+              {/* Serial Number */}
+              <div className="space-y-1.5">
+                <Label htmlFor="recv-serial" className="text-xs font-semibold text-slate-700 uppercase">
+                  Serial Number <span className="text-rose-500">*</span>
+                </Label>
+                <Input
+                  id="recv-serial"
+                  placeholder="e.g. SN-2024-XXXXXX"
+                  value={receiveSerialNo}
+                  onChange={(e) => setReceiveSerialNo(e.target.value)}
+                  className="border-slate-300 font-medium"
+                />
+              </div>
+
+              {/* Warranty Period */}
+              <div className="space-y-1.5">
+                <Label htmlFor="recv-warranty" className="text-xs font-semibold text-slate-700 uppercase">
+                  Warranty Period (Months) <span className="text-rose-500">*</span>
+                </Label>
+                <Input
+                  id="recv-warranty"
+                  type="number"
+                  min="0"
+                  placeholder="e.g. 12"
+                  value={receiveWarrantyMonths}
+                  onChange={(e) => setReceiveWarrantyMonths(e.target.value)}
+                  className="border-slate-300 font-medium"
+                />
+              </div>
+
+              {/* Warranty Card Upload */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-slate-700 uppercase">
+                  Warranty Card <span className="text-rose-500">*</span>
+                  <span className="ml-1 font-normal text-slate-400 normal-case">(JPG, PNG or PDF, max 10 MB)</span>
+                </Label>
+                <div
+                  className={`flex items-center gap-3 border-2 border-dashed rounded-lg p-3 cursor-pointer transition-colors ${
+                    receiveWarrantyCard
+                      ? 'border-emerald-400 bg-emerald-50'
+                      : 'border-slate-300 hover:border-blue-400 bg-slate-50'
+                  }`}
+                  onClick={() => warrantyFileRef.current?.click()}
+                >
+                  <Upload className={`w-5 h-5 shrink-0 ${receiveWarrantyCard ? 'text-emerald-500' : 'text-slate-400'}`} />
+                  <span className="text-sm font-medium text-slate-700 truncate">
+                    {receiveWarrantyCard
+                      ? receiveWarrantyCard.name
+                      : 'Click to upload warranty card'}
+                  </span>
+                  {receiveWarrantyCard && (
+                    <Check className="w-4 h-4 text-emerald-500 shrink-0 ml-auto" />
+                  )}
+                </div>
+                <input
+                  ref={warrantyFileRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,application/pdf"
+                  className="hidden"
+                  onChange={(e) => setReceiveWarrantyCard(e.target.files?.[0] || null)}
+                />
+              </div>
+            </div>
+
+            <div className="px-6 pt-4 pb-6 border-t bg-slate-50 flex justify-end gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsReceiveModalOpen(false)}
+                disabled={isMarkingReceived}
+                className="font-semibold rounded-md"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={isMarkingReceived}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-md shadow-sm"
+              >
+                {isMarkingReceived ? (
+                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving...</>
+                ) : (
+                  <><PackageCheck className="w-4 h-4 mr-2" /> Confirm Receipt</>
+                )}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+      {/* ──────────────────────────────────────────────────────────────────────── */}
 
       {/* PO Dialog (Create / Edit / View) */}
       <Dialog open={isPOModalOpen} onOpenChange={setIsPOModalOpen}>
