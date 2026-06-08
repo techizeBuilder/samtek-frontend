@@ -64,6 +64,24 @@ const LeavesEmployee = () => {
     },
   });
 
+  const { data: allRequests = [] } = useQuery({
+    queryKey: ["manager-all-leaves"],
+    queryFn: async () => {
+      const res = await axios.get(`${API_BASE}/leaves/manager`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      return res.data;
+    },
+  });
+
+  const todayDate = new Date();
+  todayDate.setHours(0, 0, 0, 0);
+
+  const pendingRequestsCount = allRequests.filter((req: any) => req.status === "PENDING").length;
+  const upcomingLeavesCount = allRequests.filter((req: any) => {
+    return req.status === "APPROVED" && new Date(req.fromDate) > todayDate;
+  }).length;
+
   const formatDate = (date: string) => {
     return new Date(date).toLocaleDateString("en-GB", {
       day: "2-digit",
@@ -104,13 +122,13 @@ const LeavesEmployee = () => {
         />
         <SummaryCard 
           title="Upcoming Leaves" 
-          value="5" 
+          value={upcomingLeavesCount} 
           icon={Calendar} 
           color="amber" 
         />
         <SummaryCard 
           title="Pending Requests" 
-          value="3" 
+          value={pendingRequestsCount} 
           icon={Clock} 
           color="rose" 
         />

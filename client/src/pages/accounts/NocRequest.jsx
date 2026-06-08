@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
+import { useAuthContext } from '@/contexts/AuthContext';
 import {
   Search,
   Eye,
@@ -33,13 +34,24 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { jsPDF } from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable';
 import { useSettings } from '@/hooks/useSettings';
 
 const NocRequest = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { settings, companyName, companyLogo } = useSettings();
+  const { settings } = useSettings();
+  const { user } = useAuthContext();
+
+  // Company info: use logged-in user's company, fallback to settings
+  const userCompany = user?.company || {};
+  const displayCompanyName = userCompany.name || settings?.company?.name || 'SAMTEK MACHINERY';
+  const displayAddress = userCompany.address
+    ? `${userCompany.address}, ${userCompany.city || ''}, ${userCompany.state || ''} - ${userCompany.locationPin || ''}`
+    : settings?.company?.address || 'Industrial Area, Phase-1';
+  const displayGST = userCompany.gst || settings?.company?.gstNumber || '27ABCDE1234F1Z5';
+  const displayPhone = userCompany.mobile || settings?.company?.phone || '+91 98765 43210';
+  const displayEmail = userCompany.email || settings?.company?.email || 'info@samtek.com';
   const [searchTerm, setSearchTerm] = useState('');
 
   // State for Gate Pass Modal
@@ -151,70 +163,106 @@ const NocRequest = () => {
   const downloadGatePassPDF = async (data) => {
     try {
       const doc = new jsPDF();
-      const company = settings?.company || {};
+
+      // Always use Samtek logo, but company name/address from logged-in user's company
+      const pdfCompanyName = displayCompanyName;
+      const pdfAddress = userCompany.address
+        ? `${userCompany.address}, ${userCompany.city || ''}, ${userCompany.state || ''} - ${userCompany.locationPin || ''}`
+        : settings?.company?.address || 'Industrial Area, Phase-1';
+      const pdfGST = displayGST;
+      const pdfPhone = displayPhone;
+      const pdfEmail = displayEmail;
 
       const addBorder = (x, y, w, h) => {
         doc.setDrawColor(200, 200, 200);
         doc.rect(x, y, w, h);
       };
 
-      doc.setFontSize(14);
+      // Load Samtek logo for PDF header
+      let logoBytes = null;
+      let logoFormat = 'WEBP';
+      try {
+        const logoResponse = await fetch('/logo Semtek.webp');
+        if (logoResponse.ok) {
+          const logoBuffer = await logoResponse.arrayBuffer();
+          logoBytes = new Uint8Array(logoBuffer);
+          logoFormat = 'WEBP';
+        }
+      } catch (e) {
+        console.warn('Could not load logo for PDF:', e);
+      }
+
+      // Add logo to PDF header (top-left)
+      if (logoBytes) {
+        try {
+          doc.addImage(logoBytes, logoFormat, 14, 8, 22, 22);
+        } catch (e) {
+          console.warn('Could not add logo to PDF:', e);
+        }
+      }
+
+      // Company name & address (right of logo)
+      doc.setFontSize(13);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(30, 41, 59);
-      doc.text(company.name || 'SAMTEK MACHINERY', 20, 20);
+      doc.text(pdfCompanyName, 40, 16);
 
       doc.setFontSize(8);
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(71, 85, 105);
-      doc.text(company.address || 'Industrial Area, Phase-1', 20, 25);
-      doc.text(`GST : ${company.gstNumber || '27ABCDE1234F1Z5'}`, 20, 29);
-      doc.text(`Phone : ${company.phone || '+91 98765 43210'}`, 20, 33);
-      doc.text(`Email : ${company.email || 'info@samtek.com'}`, 20, 37);
+      doc.text(pdfAddress, 40, 21);
+      doc.text(`GST : ${pdfGST}`, 40, 25);
+      doc.text(`Phone : ${pdfPhone}`, 40, 29);
+      doc.text(`Email : ${pdfEmail}`, 40, 33);
 
       doc.setFontSize(9);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(30, 41, 59);
-      doc.text(`Gate Pass No. : GP-${data.orderCode}`, 190, 25, { align: 'right' }); // Usually from gatePassData
+      doc.text(`Gate Pass No. : GP-${data.orderCode}`, 190, 16, { align: 'right' });
       doc.setFont('helvetica', 'normal');
       const formattedDate = data.gatePassGeneratedAt ? new Date(data.gatePassGeneratedAt).toLocaleDateString() : new Date().toLocaleDateString();
-      doc.text(`Date : ${formattedDate}`, 190, 30, { align: 'right' });
-      doc.text(`Ref. : ${data.orderCode}`, 190, 35, { align: 'right' });
+      doc.text(`Date : ${formattedDate}`, 190, 21, { align: 'right' });
+      doc.text(`Ref. : ${data.orderCode}`, 190, 26, { align: 'right' });
+
+      // Divider line below header
+      doc.setDrawColor(200, 200, 200);
+      doc.line(14, 37, 196, 37);
 
       doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
-      doc.text('GATE PASS', 105, 50, { align: 'center' });
+      doc.text('GATE PASS', 105, 48, { align: 'center' });
 
-      addBorder(20, 60, 85, 45); 
-      addBorder(105, 60, 85, 45);
+      addBorder(14, 55, 88, 45);
+      addBorder(106, 55, 80, 45);
 
       doc.setFontSize(8);
       doc.setFont('helvetica', 'bold');
-      doc.text('Consignee Details', 22, 65);
-      doc.text('Logistics & Vehicle Details', 107, 65);
+      doc.text('Consignee Details', 16, 60);
+      doc.text('Logistics & Vehicle Details', 108, 60);
 
       doc.setDrawColor(230, 230, 230);
-      doc.line(22, 67, 102, 67); 
-      doc.line(107, 67, 187, 67);
+      doc.line(16, 62, 100, 62);
+      doc.line(108, 62, 184, 62);
 
       doc.setFontSize(9);
       doc.setFont('helvetica', 'bold');
-      doc.text(data.customerName, 22, 73);
+      doc.text(data.customerName, 16, 68);
       doc.setFont('helvetica', 'normal');
-      doc.text(`Mobile: ${data.customerMobile}`, 22, 78);
+      doc.text(`Mobile: ${data.customerMobile}`, 16, 73);
 
       doc.setFontSize(9);
       doc.setFont('helvetica', 'bold');
       const vNo = data.vehicleNumber || data.vehicleNo || data.gatePass?.vehicleNumber || data.gatePass?.vehicleNo || 'N/A';
       const dName = data.driverName || data.driver || data.gatePass?.driverName || data.gatePass?.driver || 'N/A';
       const cNo = data.contactNumber || data.contactNo || data.gatePass?.contactNumber || data.gatePass?.contactNo || 'N/A';
-      doc.text(`Vehicle No: ${vNo}`, 107, 73);
+      doc.text(`Vehicle No: ${vNo}`, 108, 68);
       doc.setFont('helvetica', 'normal');
-      doc.text(`Driver Name: ${dName}`, 107, 78);
-      doc.text(`Contact: ${cNo}`, 107, 83);
-      doc.text(`Status: Verified for Dispatch`, 107, 88);
+      doc.text(`Driver Name: ${dName}`, 108, 73);
+      doc.text(`Contact: ${cNo}`, 108, 78);
+      doc.text(`Status: Verified for Dispatch`, 108, 83);
 
-      doc.autoTable({
-        startY: 115,
+      const tableResult = autoTable(doc, {
+        startY: 108,
         head: [['Sr.', 'Description of Goods', 'Qty', 'Unit', 'Status']],
         body: [
           ['1', `${data.machineName} (${data.machineCode})`, '1', 'Lot', 'Dispatched'],
@@ -246,20 +294,18 @@ const NocRequest = () => {
         }
       });
 
-      const finalY = doc.lastAutoTable.finalY + 30;
+      const finalY = (doc.lastAutoTable?.finalY ?? tableResult?.finalY ?? 130) + 30;
 
-      addBorder(20, finalY - 5, 170, 30);
-      
-      // Load and add Samtek Stamp asynchronously to prevent blocking XHR calls
+      addBorder(14, finalY - 5, 182, 30);
+
+      // Load and add Samtek Stamp
       let stampBytes = null;
-      let detectedFormat = 'JPEG'; // Default fallback
+      let detectedFormat = 'JPEG';
       try {
         const response = await fetch('/samtek_stamp.png');
         if (response.ok) {
           const arrayBuffer = await response.arrayBuffer();
           stampBytes = new Uint8Array(arrayBuffer);
-          
-          // Detect image format from magic bytes
           if (stampBytes[0] === 0x89 && stampBytes[1] === 0x50 && stampBytes[2] === 0x4E && stampBytes[3] === 0x47) {
             detectedFormat = 'PNG';
           } else if (stampBytes[0] === 0xFF && stampBytes[1] === 0xD8) {
@@ -274,7 +320,7 @@ const NocRequest = () => {
 
       if (stampBytes) {
         try {
-          doc.addImage(stampBytes, detectedFormat, 148, finalY - 3, 26, 26);
+          doc.addImage(stampBytes, detectedFormat, 152, finalY - 3, 26, 26);
         } catch (e) {
           console.error('Failed to parse or add stamp to PDF:', e);
         }
@@ -282,8 +328,8 @@ const NocRequest = () => {
 
       doc.setFontSize(8);
       doc.setFont('helvetica', 'bold');
-      doc.text(`For, ${company.name || 'SAMTEK MACHINERY'}`, 185, finalY + 5, { align: 'right' });
-      doc.text('Authorised Signatory', 185, finalY + 20, { align: 'right' });
+      doc.text(`For, ${pdfCompanyName}`, 192, finalY + 5, { align: 'right' });
+      doc.text('Authorised Signatory', 192, finalY + 20, { align: 'right' });
 
       doc.setFontSize(7);
       doc.setFont('helvetica', 'italic');
@@ -503,20 +549,23 @@ const NocRequest = () => {
             <div className="flex justify-between items-start border-b border-slate-100 pb-6">
               <div className="flex gap-5 items-center">
                 <img 
-                  src={companyLogo || "/logo Semtek.webp"} 
-                  alt="Logo" 
+                  src="/logo Semtek.webp"
+                  alt="Samtek Logo" 
                   className="w-24 h-24 object-contain transition-transform duration-300 hover:scale-105" 
                   onError={(e) => e.target.style.display = 'none'} 
                 />
                 <div>
                   <h2 className="text-2xl font-bold tracking-tight text-slate-900">
-                    {companyName || 'SAMTEK MACHINERY'}
+                    {displayCompanyName}
                   </h2>
                   <p className="text-xs text-slate-500 mt-1 max-w-[280px]">
-                    {settings?.company?.address || 'Industrial Area, Phase-1'}
+                    {displayAddress}
                   </p>
                   <p className="text-[11px] text-slate-400 mt-0.5">
-                    GST: {settings?.company?.gstNumber || '27ABCDE1234F1Z5'}
+                    GST: {displayGST}
+                  </p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Phone: {displayPhone}
                   </p>
                 </div>
               </div>

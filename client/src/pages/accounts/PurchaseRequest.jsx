@@ -469,15 +469,8 @@ export default function PurchaseRequest() {
                                 </>
                               ) : (
                                 <>
-                                  {/* Workflow trigger buttons */}
-                                  {!hasPO ? (
-                                    <Button
-                                      onClick={() => handleOpenCreatePO(request)}
-                                      className="bg-blue-600 hover:bg-blue-700 text-white font-semibold h-8 text-xs rounded-md shadow-sm"
-                                    >
-                                      <Plus className="w-3.5 h-3.5 mr-1" /> Create PO
-                                    </Button>
-                                  ) : (
+                                  {/* Accounts User: View PO + Send Email (no manual Create PO — PO auto-generates via RFQ/Vendor Bidding) */}
+                                  {hasPO ? (
                                     <>
                                       <Button
                                         onClick={() => handleOpenViewPO(request)}
@@ -497,7 +490,7 @@ export default function PurchaseRequest() {
                                           ) : (
                                             <Send className="w-3.5 h-3.5 mr-1" />
                                           )}
-                                          Send Email
+                                          Send to Vendor
                                         </Button>
                                       ) : (
                                         <Badge variant="success" className="bg-emerald-500 text-white hover:bg-emerald-600 font-bold h-8 text-xs px-2.5 rounded-lg flex items-center gap-1 border-0">
@@ -505,23 +498,18 @@ export default function PurchaseRequest() {
                                         </Badge>
                                       )}
                                     </>
+                                  ) : (
+                                    <span className="text-xs text-slate-400 font-medium italic">
+                                      Use RFQ Module →
+                                    </span>
                                   )}
 
-                                  {/* Simple manual override selector */}
-                                  <Select
-                                    value={request.status}
-                                    onValueChange={(val) => handleStatusChange(request._id, val)}
-                                  >
-                                    <SelectTrigger className="w-[100px] h-8 text-xs font-semibold">
-                                      <SelectValue placeholder="Override" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="Pending">Pending</SelectItem>
-                                      <SelectItem value="Approved">Approved</SelectItem>
-                                      <SelectItem value="Ordered">Ordered</SelectItem>
-                                      <SelectItem value="Received">Received</SelectItem>
-                                    </SelectContent>
-                                  </Select>
+                                  {/* Status badge showing current state */}
+                                  <Badge variant="outline" className={`font-black px-2 py-1 rounded-lg border text-xs ${
+                                    request.status === 'Ordered' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-slate-50 text-slate-500 border-slate-200'
+                                  }`}>
+                                    {request.status}
+                                  </Badge>
                                 </>
                               )}
                             </div>

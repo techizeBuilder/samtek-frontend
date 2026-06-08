@@ -170,6 +170,8 @@ const accountsMenuItems = [
     submodules: [
       { label: 'Vendor Master', path: '/accounts/purchases/vendors', feature: 'purchases' },
       { label: 'Purchase Request', path: '/accounts/purchases/requests', feature: 'purchases' },
+      { label: 'RFQ Management', path: '/accounts/purchases/rfq', feature: 'purchases' },
+      { label: 'Vendor Bids', path: '/accounts/purchases/vendor-bids', feature: 'purchases' },
       { label: 'Purchase Invoice', path: '/accounts/purchases/invoices', feature: 'purchases' },
       { label: 'Purchase Return', path: '/accounts/purchases/returns', feature: 'purchases' },
       { label: 'Vendor Payment', path: '/accounts/purchases/payments', feature: 'purchases' },

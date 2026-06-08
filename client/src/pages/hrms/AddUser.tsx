@@ -162,9 +162,9 @@ export default function AddUser() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    // Managers
+    // Fetch users with 'Manager' role (Title Case matches DB)
     axios
-      .get(`${API_BASE}/users?role=manager`, {
+      .get(`${API_BASE}/users?role=Manager&limit=100`, {
         headers: { Authorization: `Bearer ${token}` },
       })
       .then((res) => setManagers(res.data?.data?.users || res.data?.users || []))
@@ -272,6 +272,11 @@ export default function AddUser() {
     if (!formData.companyId) e.companyId = "Required";
     if (!formData.branchId) e.branchId = "Required";
     if (!formData.designationId) e.designationId = "Required";
+
+    // Reporting Manager is REQUIRED for all roles EXCEPT Manager (where it is optional)
+    if (formData.role !== 'Manager' && formData.role !== '' && !job.managerId) {
+      e.managerId = "Reporting Manager is required";
+    }
 
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -627,18 +632,28 @@ export default function AddUser() {
             {errors.role && <p className="text-sm text-red-500">{errors.role}</p>}
           </div>
 
+          {/* Reporting Manager — optional for Manager role, required for all other roles */}
           <div>
-            <Label>Reporting Manager</Label>
+            <Label>
+              Reporting Manager{' '}
+              {formData.role === 'Manager'
+                ? <span className="text-gray-400 text-xs font-normal">(Optional)</span>
+                : <span className="text-red-500">*</span>
+              }
+            </Label>
             <select
               value={job.managerId}
               onChange={(e) => setJob({ ...job, managerId: e.target.value })}
-              className="w-full h-10 border rounded-md px-3"
+              className={`w-full h-10 border rounded-md px-3 ${errors.managerId ? 'border-red-500' : ''}`}
             >
-              <option value="">Select Manager (Optional)</option>
+              <option value="">
+                {formData.role === 'Manager' ? 'Select Manager (Optional)' : 'Select Reporting Manager'}
+              </option>
               {managers?.map((m) => (
                 <option key={m._id} value={m._id}>{m.fullName || m.name}</option>
               ))}
             </select>
+            {errors.managerId && <p className="text-sm text-red-500">{errors.managerId}</p>}
           </div>
 
           <div>

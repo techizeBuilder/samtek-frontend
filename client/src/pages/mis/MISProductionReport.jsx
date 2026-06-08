@@ -7,8 +7,15 @@ const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Se
 const COLORS = ['#49A7F5', '#34D399', '#F59E0B', '#EF4444', '#8B5CF6', '#F97316'];
 
 const STATUS_COLORS = {
-  Delivered: '#34D399', Processing: '#49A7F5', Pending: '#F59E0B',
-  Cancelled: '#EF4444', Returned: '#8B5CF6'
+  completed: '#34D399', in_production: '#49A7F5', approved: '#06B6D4',
+  pending: '#F59E0B', pending_service_approval: '#F97316',
+  cancelled: '#EF4444', rejected: '#8B5CF6', rejected_by_service: '#EC4899'
+};
+
+const STATUS_LABELS = {
+  completed: 'Completed', in_production: 'In Production', approved: 'Approved',
+  pending: 'Pending', pending_service_approval: 'Awaiting Service Approval',
+  cancelled: 'Cancelled', rejected: 'Rejected', rejected_by_service: 'Rejected by Service'
 };
 
 export default function MISProductionReport() {
@@ -19,6 +26,8 @@ export default function MISProductionReport() {
   const [to, setTo] = useState('');
 
   const fetchData = async () => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
     try {
       setLoading(true); setError(null);
       const token = localStorage.getItem('token');
@@ -26,13 +35,22 @@ export default function MISProductionReport() {
       if (from) params.append('from', from);
       if (to) params.append('to', to);
       const res = await fetch(`${API_BASE}/mis/production-report?${params}`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
+        signal: controller.signal
       });
-      if (!res.ok) throw new Error('Failed to fetch production report');
+      if (!res.ok) throw new Error(`Server error: ${res.status}`);
       const json = await res.json();
       setData(json.data);
-    } catch (err) { setError(err.message); }
-    finally { setLoading(false); }
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        setError('Request timed out. Server is taking too long to respond. Please try again.');
+      } else {
+        setError(err.message);
+      }
+    } finally {
+      clearTimeout(timeoutId);
+      setLoading(false);
+    }
   };
 
   useEffect(() => { fetchData(); }, []);
@@ -42,7 +60,11 @@ export default function MISProductionReport() {
     orders: m.count
   })) || [];
 
-  const pieData = data?.ordersByStatus?.map(s => ({ name: s._id, value: s.count })) || [];
+  const pieData = data?.ordersByStatus?.map(s => ({
+    name: STATUS_LABELS[s._id] || s._id,
+    rawStatus: s._id,
+    value: s.count
+  })) || [];
 
   if (loading) return <div className="flex items-center justify-center h-64"><div className="w-10 h-10 border-4 border-[#49A7F5] border-t-transparent rounded-full animate-spin" /></div>;
 
@@ -103,7 +125,7 @@ export default function MISProductionReport() {
               <PieChart>
                 <Pie data={pieData} cx="50%" cy="50%" outerRadius={85} dataKey="value" nameKey="name"
                   label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`} labelLine={false}>
-                  {pieData.map((entry, i) => <Cell key={i} fill={STATUS_COLORS[entry.name] || COLORS[i % COLORS.length]} />)}
+                  {pieData.map((entry, i) => <Cell key={i} fill={STATUS_COLORS[entry.rawStatus] || COLORS[i % COLORS.length]} />)}
                 </Pie>
                 <Tooltip />
                 <Legend />
@@ -132,7 +154,9 @@ export default function MISProductionReport() {
                     <td className="px-5 py-3 font-mono text-xs text-gray-500">{o._id?.toString().slice(-8).toUpperCase()}</td>
                     <td className="px-5 py-3 text-gray-800">{o.customer?.name || 'N/A'}</td>
                     <td className="px-5 py-3">
-                      <span className="px-2 py-1 rounded-full text-xs font-medium" style={{ background: `${STATUS_COLORS[o.status] || '#6B7280'}20`, color: STATUS_COLORS[o.status] || '#6B7280' }}>{o.status}</span>
+                      <span className="px-2 py-1 rounded-full text-xs font-medium" style={{ background: `${STATUS_COLORS[o.status] || '#6B7280'}20`, color: STATUS_COLORS[o.status] || '#6B7280' }}>
+                        {STATUS_LABELS[o.status] || o.status}
+                      </span>
                     </td>
                     <td className="px-5 py-3 text-gray-500">{new Date(o.createdAt).toLocaleDateString('en-IN')}</td>
                   </tr>

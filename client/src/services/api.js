@@ -779,6 +779,18 @@ class APIService {
   async deletePartner(id) {
     return this.delete(`/accounts/partners/${id}`);
   }
+
+  // ============ ACCOUNTS DASHBOARD ====================
+  async getAccountsDashboardData(params = {}) {
+    const queryParams = new URLSearchParams();
+    Object.keys(params).forEach(key => {
+      if (params[key] !== undefined && params[key] !== '') {
+        queryParams.append(key, params[key]);
+      }
+    });
+    const qs = queryParams.toString();
+    return this.get(`/accounts/dashboard${qs ? `?${qs}` : ''}`);
+  }
 }
 
 export const api = new APIService();

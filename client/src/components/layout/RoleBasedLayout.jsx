@@ -17,17 +17,19 @@ const RoleBasedLayout = ({ children, requiredRole = null }) => {
     return <MainLayout>{children}</MainLayout>;
   }
 
-  // Check role restriction if specified - STRICT role checking
-  // Exception: Super User can access all pages regardless of role restriction
+  // Check role restriction if specified - Case-insensitive role checking
+  const userRoleLower = (user.role || '').toLowerCase().trim();
+  const reqRoleLower = typeof requiredRole === 'string' ? requiredRole.toLowerCase().trim() : '';
+
   const isAuthorized = !requiredRole || 
-    user.role === 'Super User' || 
-    user.role === requiredRole ||
-    (requiredRole === 'Sales' && (user.role === 'Sales Employee' || user.role === 'Sales Head')) ||
-    (requiredRole === 'Dispatch' && (user.role === 'Dispatch Employee' || user.role === 'Dispatch Head')) ||
-    (requiredRole === 'Production' && (user.role === 'Production Employee' || user.role === 'Production Head')) ||
-    (requiredRole === 'Packing' && (user.role === 'Packing Employee' || user.role === 'Packing Head')) ||
-    (requiredRole === 'Accounts' && (user.role === 'Account Employee' || user.role === 'Accounts Head')) ||
-    (requiredRole === 'Employee' && (user.role.endsWith('Employee') || user.role === 'Employee'));
+    userRoleLower === 'super user' || 
+    userRoleLower === reqRoleLower ||
+    (reqRoleLower === 'sales' && (userRoleLower === 'sales employee' || userRoleLower === 'sales head' || userRoleLower === 'sales person' || userRoleLower === 'salesman' || userRoleLower === 'sales')) ||
+    (reqRoleLower === 'dispatch' && (userRoleLower === 'dispatch employee' || userRoleLower === 'dispatch head' || userRoleLower === 'dispatch')) ||
+    (reqRoleLower === 'production' && (userRoleLower === 'production employee' || userRoleLower === 'production head' || userRoleLower === 'production')) ||
+    (reqRoleLower === 'packing' && (userRoleLower === 'packing employee' || userRoleLower === 'packing head' || userRoleLower === 'packing')) ||
+    (reqRoleLower === 'accounts' && (userRoleLower === 'account employee' || userRoleLower === 'accounts employee' || userRoleLower === 'accounts head' || userRoleLower === 'accounts')) ||
+    (reqRoleLower === 'employee' && (userRoleLower.endsWith('employee') || userRoleLower === 'employee'));
 
   if (!isAuthorized) {
     const Layout = MainLayout;

@@ -96,14 +96,6 @@ export default function RoleBasedDashboard() {
         case 'Store Employee':
           setLocation('/store-dashboard');
           return;
-        case 'Store Head':
-        case 'Store Employee':
-          setLocation('/store-dashboard');
-          return;
-        case 'Store Head':
-        case 'Store Employee':
-          setLocation('/store-dashboard');
-          return;
         default:
           // Super User and others stay on main dashboard
           break;

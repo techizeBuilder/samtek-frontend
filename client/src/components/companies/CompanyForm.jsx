@@ -32,12 +32,21 @@ import { Building2, MapPin, FileText } from 'lucide-react';
 const companySchema = z.object({
   unitName: z.string().min(1, 'Unit name is required'),
   name: z.string().min(1, 'Company name is required'),
-  legalName: z.string().optional(),
+  legalName: z.string().min(1, 'Legal name is required'),
   companyType: z.string().optional(),
-  mobile: z.string().min(10, 'Valid mobile number is required'),
-  email: z.string().email('Valid email is required'),
+  mobile: z
+    .string()
+    .min(1, 'Mobile number is required')
+    .regex(/^[6-9]\d{9}$/, 'Enter a valid 10-digit Indian mobile number'),
+  email: z
+    .string()
+    .min(1, 'Email is required')
+    .email('Enter a valid email address'),
   address: z.string().min(1, 'Address is required'),
-  locationPin: z.string().min(6, 'Valid PIN code is required'),
+  locationPin: z
+    .string()
+    .min(1, 'PIN code is required')
+    .regex(/^\d{6}$/, 'PIN code must be exactly 6 digits'),
   city: z.string().min(1, 'City is required'),
   state: z.string().min(1, 'State is required'),
   pan: z.string()
@@ -150,7 +159,7 @@ export default function CompanyForm({ isOpen, onClose, company, onSubmit, isLoad
                   name="legalName"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Legal Name</FormLabel>
+                      <FormLabel>Legal Name *</FormLabel>
                       <FormControl>
                         <Input placeholder="e.g., TechCorp Industries Private Limited" {...field} />
                       </FormControl>
@@ -191,7 +200,17 @@ export default function CompanyForm({ isOpen, onClose, company, onSubmit, isLoad
                     <FormItem>
                       <FormLabel>Mobile Number *</FormLabel>
                       <FormControl>
-                        <Input placeholder="+91-9876543210" {...field} />
+                        <Input
+                          placeholder="9876543210"
+                          type="tel"
+                          maxLength={10}
+                          {...field}
+                          onChange={(e) => {
+                            // Strip anything that isn't a digit
+                            const digits = e.target.value.replace(/\D/g, '').slice(0, 10);
+                            field.onChange(digits);
+                          }}
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

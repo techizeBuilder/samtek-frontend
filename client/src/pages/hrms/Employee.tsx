@@ -16,7 +16,8 @@ import {
   X,
   Search
 } from "lucide-react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
+import { useLocation, useSearch } from "wouter";
 import Loader from "@/pages/hrms/Loader";
 
 import config from "@/config/environment";
@@ -52,7 +53,10 @@ interface Employee {
 
 export default function Employee() {
   const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
+  // Use wouter's search/location hooks to avoid conflict with wouter routing
+  const search = useSearch();
+  const [location, setLocation] = useLocation();
+  const searchParams = new URLSearchParams(search);
 
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [companies, setCompanies] = useState<{ _id: string; name: string; unitName?: string }[]>([]);
@@ -95,9 +99,8 @@ export default function Employee() {
     emp: null,
   });
 
-  // 🔑 URL state
+  // 🔑 URL state — read directly from wouter's search string
   const page = Number(searchParams.get("page")) || 1;
-
   const companyFilter = searchParams.get("companyId") || "";
   const unitFilter = searchParams.get("unit") || "";
 
@@ -111,10 +114,8 @@ export default function Employee() {
   useEffect(() => {
     const currentCompany = searchParams.get("companyId") || "";
     if (companyFilter !== currentCompany) {
-      setSearchParams({
-        page: "1",
-        companyId: companyFilter
-      });
+      const params = new URLSearchParams({ page: "1", companyId: companyFilter });
+      setLocation(`/hrms/SuperAdmin/employees?${params.toString()}`);
     }
   }, [companyFilter]);
 
@@ -198,8 +199,12 @@ export default function Employee() {
     fetchCompanies();
   }, []);
 
+  // Navigate to page — use wouter setLocation so wouter stays in control of routing
   const handlePageChange = (p: number) => {
-    setSearchParams({ page: p.toString(), companyId: companyFilter });
+    const params = new URLSearchParams();
+    params.set("page", p.toString());
+    if (companyFilter) params.set("companyId", companyFilter);
+    setLocation(`/hrms/SuperAdmin/employees?${params.toString()}`);
   };
 
   const handleDelete = async () => {

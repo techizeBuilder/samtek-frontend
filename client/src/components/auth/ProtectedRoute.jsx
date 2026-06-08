@@ -17,22 +17,25 @@ export function ProtectedRoute({ children, requiredRole = null }) {
     return <Login />;
   }
 
-  // Check role restriction if specified - STRICT role checking
-  // Exception 1: Super Admin can access all pages regardless of role restriction
-  // Exception 2: Manager can access HR-Admin (HRMS) pages
-  const isSuperAdmin = user.role === 'Superadmin' || user.role === 'Super Admin';
-  const isHrAdmin = user.role === 'HR-Admin' || user.role === 'Hr Admin';
-  const isManager = user.role === 'Manager';
+  // Check role restriction if specified - Case-insensitive role checking
+  const userRoleLower = (user.role || '').toLowerCase().trim();
+  const reqRoleLower = typeof requiredRole === 'string' ? requiredRole.toLowerCase().trim() : '';
+
+  const isSuperAdmin = userRoleLower === 'superadmin' || userRoleLower === 'super admin';
+  const isHrAdmin = userRoleLower === 'hr-admin' || userRoleLower === 'hr admin';
+  const isManager = userRoleLower === 'manager';
   
   const isAuthorized = !requiredRole || 
     isSuperAdmin || 
-    (Array.isArray(requiredRole) ? requiredRole.includes(user.role) : user.role === requiredRole) ||
-    (requiredRole === 'HR-Admin' && (isHrAdmin || isManager)) ||
-    (requiredRole === 'Accounts' && (user.role === 'Account Employee' || user.role === 'Accounts Head')) ||
-    (requiredRole === 'Sales' && (user.role === 'Sales Employee' || user.role === 'Sales Head')) ||
-    (requiredRole === 'Dispatch' && (user.role === 'Dispatch Employee' || user.role === 'Dispatch Head')) ||
-    (requiredRole === 'Production' && (user.role === 'Production Employee' || user.role === 'Production Head')) ||
-    (requiredRole === 'Packing' && (user.role === 'Packing Employee' || user.role === 'Packing Head'));
+    (Array.isArray(requiredRole) 
+      ? requiredRole.map(r => r.toLowerCase().trim()).includes(userRoleLower) 
+      : userRoleLower === reqRoleLower) ||
+    (reqRoleLower === 'hr-admin' && (isHrAdmin || isManager)) ||
+    (reqRoleLower === 'accounts' && (userRoleLower === 'account employee' || userRoleLower === 'accounts employee' || userRoleLower === 'accounts head' || userRoleLower === 'accounts')) ||
+    (reqRoleLower === 'sales' && (userRoleLower === 'sales employee' || userRoleLower === 'sales head' || userRoleLower === 'sales person' || userRoleLower === 'salesman' || userRoleLower === 'sales')) ||
+    (reqRoleLower === 'dispatch' && (userRoleLower === 'dispatch employee' || userRoleLower === 'dispatch head' || userRoleLower === 'dispatch')) ||
+    (reqRoleLower === 'production' && (userRoleLower === 'production employee' || userRoleLower === 'production head' || userRoleLower === 'production')) ||
+    (reqRoleLower === 'packing' && (userRoleLower === 'packing employee' || userRoleLower === 'packing head' || userRoleLower === 'packing'));
 
   if (!isAuthorized) {
     return (

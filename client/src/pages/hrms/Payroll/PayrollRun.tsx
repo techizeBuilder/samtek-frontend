@@ -6,6 +6,7 @@ import { MoreVertical } from "lucide-react";
 import ViewPayrollModal from "./ViewPayrollModal";
 import Loader from "@/pages/hrms/Loader";
 import { toast } from "../../../hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
 const API_BASE = import.meta.env.VITE_API_URL;
 
 type PayrollStatus = "Draft" | "Processed" | "Paid" | "Rejected";
@@ -27,6 +28,8 @@ interface PayrollRow {
 
 
 const PayrollRun = () => {
+  const { user: authUser } = useAuth();
+  const companyId = authUser?.companyId;
   const [payroll, setPayroll] = useState<PayrollRow[]>([]);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [isPayrollRun, setIsPayrollRun] = useState(false);
@@ -52,6 +55,9 @@ const PayrollRun = () => {
       const [year, monthStr] = month.split("-");
       const monthNumber = Number(monthStr);
 
+      // Build company filter query param
+      const companyParam = companyId ? `?companyId=${companyId}` : "";
+
       const [
         usersRes,
         salaryRes,
@@ -59,8 +65,8 @@ const PayrollRun = () => {
         leaveRes,
         attendanceRes,
       ] = await Promise.all([
-        axios.get(`${API_BASE}/users`, { headers }),
-        axios.get(`${API_BASE}/salary-structures`, { headers }),
+        axios.get(`${API_BASE}/users${companyParam}`, { headers }),
+        axios.get(`${API_BASE}/salary-structures${companyParam}`, { headers }),
         axios.get(`${API_BASE}/leave-types`, { headers }),
         axios.get(`${API_BASE}/leaves/all`, { headers }),
         axios.get(

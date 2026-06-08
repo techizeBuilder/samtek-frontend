@@ -691,12 +691,14 @@ export default function RolePermissionManagement() {
           {
             name: 'accounts',
             dashboard: true,
-            features: [
-              { key: 'transactions', view: true, add: true, edit: true, delete: true },
-              { key: 'balanceSheet', view: true, add: true, edit: true, delete: true },
-              { key: 'reports', view: true, add: true, edit: true, delete: true },
-              { key: 'lms', label: 'LMS', view: true, add: false, edit: false, delete: false }
-            ]
+            features: (MODULES.find(m => m.name === 'accounts')?.features || []).map(f => ({
+              key: f.key,
+              label: f.label,
+              view: true,
+              add: true,
+              edit: true,
+              delete: true
+            }))
           }
         ];
       case 'Marketing Head':

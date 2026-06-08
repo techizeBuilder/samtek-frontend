@@ -6,21 +6,87 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { Plus, Search, Edit2, Trash2, Users, Building2, MapPin, Phone, Mail } from 'lucide-react';
+import {
+    Plus, Search, Edit2, MapPin, Phone, Mail,
+    Tag, X, PlusCircle
+} from 'lucide-react';
 import {
     Dialog,
     DialogContent,
     DialogHeader,
     DialogTitle,
-    DialogTrigger,
-    DialogFooter
 } from '@/components/ui/dialog';
 
+// ── Tag Input component ────────────────────────────────────────────────────────
+const TagInput = ({ label, icon: Icon, items, setItems, placeholder, colorClass }) => {
+    const [inputVal, setInputVal] = useState('');
+
+    const addItem = () => {
+        const trimmed = inputVal.trim();
+        if (trimmed && !items.includes(trimmed)) {
+            setItems([...items, trimmed]);
+        }
+        setInputVal('');
+    };
+
+    const removeItem = (idx) => setItems(items.filter((_, i) => i !== idx));
+
+    return (
+        <div className="col-span-2">
+            <label className="text-sm font-semibold text-slate-700 mb-2 flex items-center gap-1">
+                <Icon className="w-4 h-4" /> {label}
+            </label>
+
+            {/* existing tags */}
+            <div className="flex flex-wrap gap-2 mb-2 min-h-[32px]">
+                {items.map((item, idx) => (
+                    <span
+                        key={idx}
+                        className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium ${colorClass}`}
+                    >
+                        {item}
+                        <button
+                            type="button"
+                            onClick={() => removeItem(idx)}
+                            className="hover:opacity-70 ml-1"
+                        >
+                            <X className="w-3 h-3" />
+                        </button>
+                    </span>
+                ))}
+                {items.length === 0 && (
+                    <span className="text-xs text-slate-400 italic">No items added yet</span>
+                )}
+            </div>
+
+            {/* add row */}
+            <div className="flex gap-2">
+                <Input
+                    value={inputVal}
+                    onChange={(e) => setInputVal(e.target.value)}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter') { e.preventDefault(); addItem(); }
+                    }}
+                    placeholder={placeholder}
+                    className="flex-1 text-sm"
+                />
+                <Button type="button" variant="outline" size="sm" onClick={addItem} className="shrink-0">
+                    <PlusCircle className="w-4 h-4 mr-1" /> Add
+                </Button>
+            </div>
+        </div>
+    );
+};
+
+// ── Main Component ─────────────────────────────────────────────────────────────
 const VendorMaster = () => {
     const { toast } = useToast();
     const [searchTerm, setSearchTerm] = useState('');
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [editingVendor, setEditingVendor] = useState(null);
+
+    // dynamic array state for form
+    const [formCategories, setFormCategories] = useState([]);
 
     const { data, isLoading } = useQuery({
         queryKey: ['/api/suppliers'],
@@ -52,26 +118,56 @@ const VendorMaster = () => {
         }
     });
 
+    const openAdd = () => {
+        setEditingVendor(null);
+        setFormCategories([]);
+        setIsAddModalOpen(true);
+    };
+
+    const openEdit = (vendor) => {
+        setEditingVendor(vendor);
+        setFormCategories(vendor.vendorCategories || []);
+        setIsAddModalOpen(true);
+    };
+
     const handleSubmit = (e) => {
         e.preventDefault();
         const formData = new FormData(e.target);
-        const vendorData = Object.fromEntries(formData.entries());
+        const raw = Object.fromEntries(formData.entries());
+
+        const vendorData = {
+            ...raw,
+            address: {
+                street: raw['address.street'] || '',
+                city: raw['address.city'] || '',
+                state: raw['address.state'] || '',
+                zipCode: raw['address.zipCode'] || '',
+                country: raw['address.country'] || 'India',
+            },
+            vendorCategories: formCategories,
+        };
+        // Remove flat address keys
+        ['address.street', 'address.city', 'address.state', 'address.zipCode', 'address.country']
+            .forEach(k => delete vendorData[k]);
+
         mutation.mutate(vendorData);
     };
 
     return (
         <div className="p-8 bg-slate-50 min-h-screen">
+            {/* Header */}
             <div className="flex justify-between items-center mb-8">
                 <div>
                     <h1 className="text-3xl font-bold text-slate-900">Vendor Master</h1>
                     <p className="text-slate-500">Manage your raw material and service providers</p>
                 </div>
-                <Button onClick={() => { setEditingVendor(null); setIsAddModalOpen(true); }} className="bg-gradient-to-r from-blue-600 to-purple-600">
+                <Button onClick={openAdd} className="bg-gradient-to-r from-blue-600 to-purple-600">
                     <Plus className="w-4 h-4 mr-2" />
                     Add Vendor
                 </Button>
             </div>
 
+            {/* Search */}
             <Card className="mb-6 shadow-sm border-0">
                 <CardContent className="p-4">
                     <div className="relative">
@@ -86,56 +182,84 @@ const VendorMaster = () => {
                 </CardContent>
             </Card>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {filteredVendors.map((vendor) => (
-                    <Card key={vendor._id} className="hover:shadow-md transition-shadow border-0 shadow-sm">
-                        <CardHeader className="flex flex-row items-center justify-between pb-2">
-                            <CardTitle className="text-lg font-bold">{vendor.supplierName}</CardTitle>
-                            <Badge variant={vendor.status === 'active' ? 'success' : 'secondary'}>
-                                {vendor.status || 'Active'}
-                            </Badge>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="text-xs font-mono text-slate-400">{vendor.supplierCode}</div>
-                            <div className="space-y-2">
-                                <div className="flex items-center text-sm text-slate-600">
-                                    <Phone className="w-4 h-4 mr-2" /> {vendor.phone}
+            {/* Vendor Cards */}
+            {isLoading ? (
+                <div className="text-center text-slate-400 py-20">Loading vendors...</div>
+            ) : filteredVendors.length === 0 ? (
+                <div className="text-center text-slate-400 py-20">No vendors found. Add your first vendor.</div>
+            ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {filteredVendors.map((vendor) => (
+                        <Card key={vendor._id} className="hover:shadow-md transition-shadow border-0 shadow-sm">
+                            <CardHeader className="flex flex-row items-center justify-between pb-2">
+                                <CardTitle className="text-lg font-bold">{vendor.supplierName}</CardTitle>
+                                <Badge variant={vendor.status === 'active' ? 'success' : 'secondary'}>
+                                    {vendor.status || 'Active'}
+                                </Badge>
+                            </CardHeader>
+                            <CardContent className="space-y-3">
+                                <div className="text-xs font-mono text-slate-400">{vendor.supplierCode}</div>
+
+                                <div className="space-y-1.5">
+                                    <div className="flex items-center text-sm text-slate-600">
+                                        <Phone className="w-4 h-4 mr-2 shrink-0" /> {vendor.phone}
+                                    </div>
+                                    <div className="flex items-center text-sm text-slate-600">
+                                        <Mail className="w-4 h-4 mr-2 shrink-0" /> {vendor.email}
+                                    </div>
+                                    <div className="flex items-center text-sm text-slate-600">
+                                        <MapPin className="w-4 h-4 mr-2 shrink-0" />
+                                        {[vendor.address?.city, vendor.address?.state, vendor.address?.country]
+                                            .filter(Boolean).join(', ') || 'Location not set'}
+                                    </div>
                                 </div>
-                                <div className="flex items-center text-sm text-slate-600">
-                                    <Mail className="w-4 h-4 mr-2" /> {vendor.email}
-                                </div>
-                                <div className="flex items-center text-sm text-slate-600">
-                                    <MapPin className="w-4 h-4 mr-2" /> {vendor.address?.city}, {vendor.address?.state}
-                                </div>
-                            </div>
-                            <div className="pt-4 border-t flex justify-between items-center">
-                                <div className="text-sm">
-                                    <span className="text-slate-400">Opening Balance: </span>
-                                    <span className="font-bold">₹{vendor.openingBalance || 0}</span>
-                                </div>
-                                <div className="flex gap-2">
-                                    <Button variant="ghost" size="sm" onClick={() => { setEditingVendor(vendor); setIsAddModalOpen(true); }}>
+
+                                {/* Vendor Categories */}
+                                {vendor.vendorCategories?.length > 0 && (
+                                    <div>
+                                        <p className="text-xs font-semibold text-slate-400 uppercase flex items-center gap-1 mb-1">
+                                            <Tag className="w-3 h-3" /> Categories
+                                        </p>
+                                        <div className="flex flex-wrap gap-1">
+                                            {vendor.vendorCategories.map((cat, i) => (
+                                                <span key={i} className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-xs font-medium">
+                                                    {cat}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div className="pt-3 border-t flex justify-between items-center">
+                                    <div className="text-sm">
+                                        <span className="text-slate-400">Opening Balance: </span>
+                                        <span className="font-bold">₹{vendor.openingBalance || 0}</span>
+                                    </div>
+                                    <Button variant="ghost" size="sm" onClick={() => openEdit(vendor)}>
                                         <Edit2 className="w-4 h-4" />
                                     </Button>
                                 </div>
-                            </div>
-                        </CardContent>
-                    </Card>
-                ))}
-            </div>
+                            </CardContent>
+                        </Card>
+                    ))}
+                </div>
+            )}
 
-            <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
-                <DialogContent className="sm:max-w-[600px]">
+            {/* Add / Edit Modal */}
+            <Dialog open={isAddModalOpen} onOpenChange={(open) => { setIsAddModalOpen(open); if (!open) setEditingVendor(null); }}>
+                <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
                         <DialogTitle>{editingVendor ? 'Edit Vendor' : 'Add New Vendor'}</DialogTitle>
                     </DialogHeader>
+
                     <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-4 py-4">
+                        {/* Basic Info */}
                         <div className="col-span-2">
-                            <label className="text-sm font-medium">Vendor Name*</label>
+                            <label className="text-sm font-medium">Vendor Name *</label>
                             <Input name="supplierName" defaultValue={editingVendor?.supplierName} required />
                         </div>
                         <div>
-                            <label className="text-sm font-medium">Contact Person*</label>
+                            <label className="text-sm font-medium">Contact Person *</label>
                             <Input name="contactPerson" defaultValue={editingVendor?.contactPerson} required />
                         </div>
                         <div>
@@ -143,11 +267,11 @@ const VendorMaster = () => {
                             <Input name="gstNumber" defaultValue={editingVendor?.gstNumber} />
                         </div>
                         <div>
-                            <label className="text-sm font-medium">Phone*</label>
+                            <label className="text-sm font-medium">Phone *</label>
                             <Input name="phone" defaultValue={editingVendor?.phone} required />
                         </div>
                         <div>
-                            <label className="text-sm font-medium">Email*</label>
+                            <label className="text-sm font-medium">Email *</label>
                             <Input name="email" type="email" defaultValue={editingVendor?.email} required />
                         </div>
                         <div>
@@ -181,10 +305,60 @@ const VendorMaster = () => {
                                 <option value="inactive">Inactive</option>
                             </select>
                         </div>
+
+                        {/* ── Vendor Categories ── */}
+                        <div className="col-span-2 pt-2">
+                            <h3 className="text-sm font-semibold text-slate-700 mb-3 border-b pb-1 flex items-center gap-2">
+                                <Tag className="w-4 h-4 text-blue-500" /> Vendor Categories
+                                <span className="text-xs font-normal text-slate-400 ml-1">— What type of goods/services does this vendor supply?</span>
+                            </h3>
+                            <TagInput
+                                label="Categories"
+                                icon={Tag}
+                                items={formCategories}
+                                setItems={setFormCategories}
+                                placeholder='e.g. Raw Material, Services… then press Enter or Add'
+                                colorClass="bg-blue-100 text-blue-700"
+                            />
+                        </div>
+
+                        {/* Address Section */}
+                        <div className="col-span-2 pt-2">
+                            <h3 className="text-sm font-semibold text-slate-700 mb-3 border-b pb-1 flex items-center gap-2">
+                                <MapPin className="w-4 h-4" /> Address / Location
+                            </h3>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="col-span-2">
+                                    <label className="text-sm font-medium">Street / Area</label>
+                                    <Input
+                                        name="address.street"
+                                        placeholder="Street, Area, Locality"
+                                        defaultValue={editingVendor?.address?.street}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-sm font-medium">City</label>
+                                    <Input name="address.city" placeholder="City" defaultValue={editingVendor?.address?.city} />
+                                </div>
+                                <div>
+                                    <label className="text-sm font-medium">State</label>
+                                    <Input name="address.state" placeholder="State" defaultValue={editingVendor?.address?.state} />
+                                </div>
+                                <div>
+                                    <label className="text-sm font-medium">Pincode / Zip Code</label>
+                                    <Input name="address.zipCode" placeholder="Pincode" defaultValue={editingVendor?.address?.zipCode} />
+                                </div>
+                                <div>
+                                    <label className="text-sm font-medium">Country</label>
+                                    <Input name="address.country" placeholder="Country" defaultValue={editingVendor?.address?.country || 'India'} />
+                                </div>
+                            </div>
+                        </div>
+
                         <div className="col-span-2 pt-4 flex justify-end gap-2">
                             <Button type="button" variant="outline" onClick={() => setIsAddModalOpen(false)}>Cancel</Button>
-                            <Button type="submit" disabled={mutation.isLoading}>
-                                {mutation.isLoading ? 'Saving...' : 'Save Vendor'}
+                            <Button type="submit" disabled={mutation.isPending}>
+                                {mutation.isPending ? 'Saving...' : 'Save Vendor'}
                             </Button>
                         </div>
                     </form>

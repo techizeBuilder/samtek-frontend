@@ -4,11 +4,12 @@ import { config } from '../config/environment';
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
     let errorMessage = res.statusText;
+    let errorData: any = null;
     
     try {
       const contentType = res.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
-        const errorData = await res.json();
+        errorData = await res.json();
         // Extract clean error message from response
         if (errorData.message) {
           errorMessage = errorData.message;
@@ -26,9 +27,13 @@ async function throwIfResNotOk(res: Response) {
       console.warn('Could not parse error response:', parseError);
     }
     
-    // Create error with clean message (no status code)
+    // Create error with clean message AND preserve data field
     const error = new Error(errorMessage);
     (error as any).status = res.status;
+    if (errorData) {
+      (error as any).data = errorData.data || null;
+      (error as any).responseData = errorData;
+    }
     throw error;
   }
 }

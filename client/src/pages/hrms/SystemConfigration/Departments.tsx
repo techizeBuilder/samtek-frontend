@@ -11,9 +11,9 @@ const API_BASE = import.meta.env.VITE_API_URL;
 export interface Department {
   _id: string;
   name: string;
-  companyId: { _id: string; name: string };
-  branchId: { _id: string; name: string };
-  headEmployeeId?: { _id: string; name: string };
+  companyId: { _id: string; name: string; unitName?: string };
+  branchId?: { _id: string; name: string } | null;
+  headEmployeeId?: { _id: string; name: string; fullName?: string };
   status: "Active" | "Inactive";
   createdAt: string;
 }
@@ -101,8 +101,8 @@ export default function DepartmentPage() {
                 <td className="px-4 py-3">{i + 1}</td>
                 <td className="px-4 py-3 font-medium">{d.name}</td>
                 <td className="px-4 py-3">{d.companyId?.name || "-"}</td>
-                <td className="px-4 py-3">{d.branchId?.name || "-"}</td>
-                <td className="px-4 py-3">{d.headEmployeeId?.name || "-"}</td>
+                <td className="px-4 py-3">{(d.companyId as any)?.unitName || d.branchId?.name || "-"}</td>
+                <td className="px-4 py-3">{d.headEmployeeId?.fullName || d.headEmployeeId?.name || "-"}</td>
                 <td className="px-4 py-3">
                   {" "}
                   <span

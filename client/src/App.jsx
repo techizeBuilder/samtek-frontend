@@ -71,6 +71,9 @@ import BankAndCash from "@/pages/accounts/BankAndCash";
 import InterUnit from "@/pages/accounts/InterUnit";
 import AccountsReports from "@/pages/accounts/Reports";
 import AccountsSettings from "@/pages/accounts/Settings";
+import RFQManagement from "@/pages/accounts/RFQManagement";
+import VendorBids from "@/pages/accounts/VendorBids";
+import VendorBidForm from "@/pages/VendorBidForm";
 
 // Sales Account Module (New)
 import CustomerMaster from "@/pages/accounts/CustomerMaster";
@@ -232,6 +235,11 @@ function Router() {
       {/* ========================================== */}
       <Route path="/verify-ticket/:token">
         <CustomerVerificationPage />
+      </Route>
+
+      {/* PUBLIC: Vendor Bid Submission (no login required) */}
+      <Route path="/vendor-bid/:token">
+        <VendorBidForm />
       </Route>
 
       {/* task management routes for production deparment */}
@@ -1024,6 +1032,16 @@ function Router() {
       <Route path="/accounts/purchases/requests">
         <ProtectedRoute requiredRole="Accounts">
           <PurchaseRequest />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/accounts/purchases/rfq">
+        <ProtectedRoute requiredRole="Accounts">
+          <RFQManagement />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/accounts/purchases/vendor-bids">
+        <ProtectedRoute requiredRole="Accounts">
+          <VendorBids />
         </ProtectedRoute>
       </Route>
       <Route path="/accounts/purchases/invoices">
