@@ -1283,8 +1283,15 @@ function Router() {
           <EmployeeTasks />
         </ProtectedRoute>
       </Route>
+      
 
       {/*  my task routes for manager */}
+
+      <Route path="/hrms/Manager/task-management">
+        <ProtectedRoute requiredRole="Manager">
+          <HRMSTaskManagement />
+        </ProtectedRoute>
+      </Route>
 
       <Route path="/hrms/Manager/my-task">
         <ProtectedRoute requiredRole="Manager">
