@@ -1,5 +1,48 @@
 import Pusher from 'pusher-js';
 
+// Map every role to its Pusher channel name (must match backend)
+const getRoleChannel = (role) => {
+  const map = {
+    'Superadmin': 'notifications-superadmin',
+    'Super Admin': 'notifications-superadmin',
+    'Sales': 'notifications-sales',
+    'Sales Head': 'notifications-sales-head',
+    'Sales Employee': 'notifications-sales-employee',
+    'Accounts': 'notifications-accounts',
+    'Accounts Head': 'notifications-accounts-head',
+    'Account Employee': 'notifications-account-employee',
+    'Production': 'notifications-production',
+    'Production Head': 'notifications-production-head',
+    'Production Employee': 'notifications-production-employee',
+    'Packing': 'notifications-packing',
+    'Packing Head': 'notifications-packing-head',
+    'Packing Employee': 'notifications-packing-employee',
+    'Dispatch': 'notifications-dispatch',
+    'Dispatch Head': 'notifications-dispatch-head',
+    'Dispatch Employee': 'notifications-dispatch-employee',
+    'Store': 'notifications-store',
+    'Store Head': 'notifications-store-head',
+    'Store Employee': 'notifications-store-employee',
+    'QC': 'notifications-qc',
+    'QC Head': 'notifications-qc-head',
+    'QC Employee': 'notifications-qc-employee',
+    'Complaint Management Head': 'notifications-complaint-head',
+    'Complaint Management Employee': 'notifications-complaint-employee',
+    'HR-Admin': 'notifications-hr-admin',
+    'Manager': 'notifications-manager',
+    'Employee': 'notifications-employee',
+    'Company Admin': 'notifications-company-admin',
+    'Research & Development Head': 'notifications-rd-head',
+    'Research Development Employee': 'notifications-rd-employee',
+    'MIS Admin': 'notifications-mis-admin',
+    'Marketing': 'notifications-marketing',
+    'Unit Head': 'notifications-unit-head',
+    'Unit Manager': 'notifications-unit-manager',
+    'Manufacturing': 'notifications-manufacturing',
+  };
+  return map[role] || `notifications-${(role || '').toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')}`;
+};
+
 class PusherService {
   constructor() {
     this.pusher = null;
@@ -7,7 +50,6 @@ class PusherService {
     this.isConnected = false;
   }
 
-  // Initialize Pusher connection
   init(user) {
     if (this.pusher) {
       this.disconnect();
@@ -33,7 +75,6 @@ class PusherService {
       console.error('Pusher connection error:', error);
     });
 
-    // Subscribe to user-specific channel
     if (user) {
       this.subscribeToUserChannel(user);
     }
@@ -41,58 +82,49 @@ class PusherService {
     return this.pusher;
   }
 
-  // Subscribe to user-specific notifications
   subscribeToUserChannel(user) {
     if (!this.pusher || !user) return;
 
-    const userId = user.id;
+    const userId = user.id || user._id;
     const userRole = user.role;
 
-    // Subscribe to user-specific channel
-    const userChannel = this.pusher.subscribe(`user-${userId}`);
-    this.channels.set(`user-${userId}`, userChannel);
+    // 1. User-specific channel (for direct notifications)
+    const userChannelName = `user-${userId}`;
+    const userChannel = this.pusher.subscribe(userChannelName);
+    this.channels.set(userChannelName, userChannel);
 
-    // Subscribe to role-based channel
-    const roleChannelName = userRole === 'Super User' 
-      ? 'notifications-all' 
-      : `notifications-${userRole.toLowerCase().replace(' ', '-')}`;
-    
+    // 2. Role-specific channel
+    const roleChannelName = getRoleChannel(userRole);
     const roleChannel = this.pusher.subscribe(roleChannelName);
     this.channels.set(roleChannelName, roleChannel);
 
-    // Also subscribe to global notifications for all users
+    // 3. Always subscribe to global 'all' channel
     if (roleChannelName !== 'notifications-all') {
       const globalChannel = this.pusher.subscribe('notifications-all');
       this.channels.set('notifications-all', globalChannel);
     }
 
-    console.log(`Subscribed to channels: user-${userId}, ${roleChannelName}`);
+    console.log(`[Pusher] Subscribed to: ${userChannelName}, ${roleChannelName}, notifications-all`);
   }
 
-  // Bind notification event listener
   onNotification(callback) {
     if (!this.pusher) return;
-
     this.channels.forEach((channel) => {
       channel.bind('notification', callback);
     });
   }
 
-  // Unbind notification event listener
   offNotification(callback) {
     if (!this.pusher) return;
-
     this.channels.forEach((channel) => {
       channel.unbind('notification', callback);
     });
   }
 
-  // Get connection status
   getConnectionState() {
     return this.pusher?.connection?.state || 'disconnected';
   }
 
-  // Disconnect from Pusher
   disconnect() {
     if (this.pusher) {
       this.channels.forEach((channel, channelName) => {
@@ -105,31 +137,18 @@ class PusherService {
     }
   }
 
-  // Reconnect with retry logic
   reconnect(user, maxRetries = 3) {
     let retryCount = 0;
-    
     const attemptReconnect = () => {
-      if (retryCount >= maxRetries) {
-        console.error('Max reconnection attempts reached');
-        return;
-      }
-
-      console.log(`Attempting to reconnect... (${retryCount + 1}/${maxRetries})`);
-      
+      if (retryCount >= maxRetries) return;
       setTimeout(() => {
         this.init(user);
         retryCount++;
-        
-        // Check if connection was successful after a delay
         setTimeout(() => {
-          if (!this.isConnected) {
-            attemptReconnect();
-          }
+          if (!this.isConnected) attemptReconnect();
         }, 2000);
-      }, 1000 * Math.pow(2, retryCount)); // Exponential backoff
+      }, 1000 * Math.pow(2, retryCount));
     };
-
     attemptReconnect();
   }
 }

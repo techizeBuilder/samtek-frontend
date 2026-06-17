@@ -44,6 +44,7 @@ import SuperAdminOrders from "@/pages/super-admin/SuperAdminOrders";
 import SuperAdminSales from "@/pages/super-admin/SuperAdminSales";
 import SuperAdminCustomers from "@/pages/super-admin/SuperAdminCustomers";
 import SuperAdminSettings from "@/pages/super-admin/SuperAdminSettings";
+import SuperAdminApiSettings from "@/pages/super-admin/SuperAdminApiSettings";
 import SuperAdminCompanies from "@/pages/super-admin/SuperAdminCompanies";
 import SuperAdminCompanyReport from "@/pages/super-admin/SuperAdminCompanyReport";
 import SuperAdminDispatches from "@/pages/super-admin/SuperAdminDispatches";
@@ -98,6 +99,7 @@ import SuperAdminAccounts from "@/pages/super-admin/Accounts";
 // HRMS Module Imports
 import SalesOrderTracking from "@/pages/accounts/SalesOrderTracking";
 import NocRequest from "@/pages/accounts/NocRequest";
+import PackedOrders from "@/pages/accounts/PackedOrders";
 import HRMSDashboard from "@/pages/hrms/HRMSDashboard";
 import HRMSEmployees from "@/pages/hrms/Employee";
 import HRMSAttendance from "@/pages/hrms/AttendanceReport";
@@ -159,6 +161,7 @@ import CustomerHistoryDashboard from "@/pages/complaintsAndServices/CustomerHist
 import DeliveryConfirmation from "@/pages/complaintsAndServices/DeliveryConfirmation";
 import InstallationSchedule from "@/pages/complaintsAndServices/InstallationSchedule";
 import FeedbackRatings from "@/pages/complaintsAndServices/FeedbackRatings";
+import CustomerFeedbackForm from "@/pages/complaintsAndServices/CustomerFeedbackForm";
 
 // training management imports
 import Trainees from "@/pages/lms/Trainees";
@@ -235,6 +238,11 @@ function Router() {
       {/* ========================================== */}
       <Route path="/verify-ticket/:token">
         <CustomerVerificationPage />
+      </Route>
+
+      {/* PUBLIC: Customer Feedback Form via emailed link */}
+      <Route path="/feedback/:token">
+        <CustomerFeedbackForm />
       </Route>
 
       {/* PUBLIC: Vendor Bid Submission (no login required) */}
@@ -847,6 +855,11 @@ function Router() {
           <SuperAdminSettings />
         </ProtectedRoute>
       </Route>
+      <Route path="/super-admin/api-settings">
+        <ProtectedRoute requiredRole="Super Admin">
+          <SuperAdminApiSettings />
+        </ProtectedRoute>
+      </Route>
       <Route path="/profile">
         <ProtectedRoute>
           <Profile />
@@ -981,6 +994,11 @@ function Router() {
       <Route path="/accounts/sales/noc-request">
         <RoleBasedProtectedRoute allowedRoles={['Superadmin', 'Accounts']}>
           <NocRequest />
+        </RoleBasedProtectedRoute>
+      </Route>
+      <Route path="/accounts/sales/packed-orders">
+        <RoleBasedProtectedRoute allowedRoles={['Superadmin', 'Accounts']}>
+          <PackedOrders />
         </RoleBasedProtectedRoute>
       </Route>
       <Route path="/accounts/sales/customers">

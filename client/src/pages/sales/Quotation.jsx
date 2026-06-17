@@ -78,6 +78,41 @@ const Quotation = () => {
   const [buyerType, setBuyerType] = useState('Customer'); // Dealer or Customer
   const [selectedPriceListCategory, setSelectedPriceListCategory] = useState(null);
   const [isAddProductModalOpen, setIsAddProductModalOpen] = useState(false);
+
+  // ─── Terms & Conditions state ────────────────────────────────
+  const ALL_TERMS = [
+    { id: 1, heading: 'Jurisdiction', text: 'All disputes will be settled under Ghaziabad, Uttar Pradesh jurisdiction only.' },
+    { id: 2, heading: 'Prices & Packing', text: 'All prices are Ex-Works Ghaziabad, excluding packing, transport, insurance, and taxes (charged at actuals)' },
+    { id: 3, heading: 'Validity', text: 'Quotation valid for 30 days from the issue date. Prices may change thereafter.' },
+    { id: 4, heading: 'Payment Terms', text: '50% advance with order and balance before dispatch (or 100% advance under bank terms). Delayed payment attracts 30% yearly interest and voids warranty.' },
+    { id: 5, heading: 'Order Confirmation & Cancellation', text: 'Advance payment confirms acceptance of all terms. In case of cancellation, the advance is non-refundable.' },
+    { id: 6, heading: 'Delivery', text: 'Normal delivery time is 25–30 working days, depending on design and workload.' },
+    { id: 7, heading: 'Warranty', text: 'OEM warranty applies to bought-out parts (motors, sensors, drives, etc.). Wear-and-tear or mishandling is not covered.' },
+    { id: 8, heading: 'Product & Packaging', text: "Customer must share product and packing details. If delayed, SAMTEK may arrange the same at customer's cost." },
+    { id: 9, heading: 'Dispatch & Clearance', text: "Dispatch only after full payment. If goods aren't collected within 10 days, SAMTEK may return them at buyer's cost." },
+    { id: 10, heading: 'Inspection', text: "Inspection allowed at factory with 15 days' prior notice. Third-party inspection charges are borne by the customer." },
+    { id: 11, heading: 'Installation & Commissioning', text: '1. Engineer will be deputed after receiving written confirmation from the customer. 2. All travel, lodging, boarding, and local conveyance expenses shall be borne by the customer. 3. Transport charges will be extra and borne by the customer at actuals. 4. All rates are based on Ex-Factory terms. 5. Pulley sets, V-belts, and nuts & bolts are included in our supply. 6. Electrical cables, panels, PVC pipes, and electrical fittings are under the customer\'s scope. 7. The customer must ensure adequate power supply during installation. In case of power fluctuation or failure, backup arrangements (generator/inverter) must be provided by the customer.' },
+    { id: 12, heading: 'Transit & Short Shipment', text: 'Customer must insure goods before dispatch. SAMTEK is not liable for transit loss. If short shipment occurs due to SAMTEK, pending shipment cost will be borne by the company' },
+    { id: 13, heading: 'Not In Our Scope Of Supply', text: 'The following are not included in our scope: 1. Civil and foundation work required for machine installation. 2. Semi-skilled or unskilled manpower and material-handling equipment for plant installation. 3. Tools and tackles required for installation. The customer must ensure adequate power supply during installation. In case of power fluctuation or failure, backup arrangements (generator/inverter) must be provided by the customer' },
+  ];
+
+  const ALL_ADDITIONAL_NOTES = [
+    'The Semi-Skill and Unskilled Manpower, Along With Material Handling Equipment, Required For The Installation Of The Complete Plant.',
+    'The Civil & Foundation Work Required For Installation of The Machine.',
+    'Installation Charges Are Extra',
+    'Tools Will be Provided By The Customer.',
+    'Logging & Boarding Facilities Are To Be Provided By The Customer.',
+  ];
+
+  // Selected T&C: array of { id, heading, text } (user can add custom ones too)
+  const [selectedTerms, setSelectedTerms] = useState([]);
+  const [showTermsPicker, setShowTermsPicker] = useState(false);
+  const [termPickerChecked, setTermPickerChecked] = useState({});
+
+  // Selected Additional Notes: array of strings
+  const [selectedNotes, setSelectedNotes] = useState([]);
+  const [showNotesPicker, setShowNotesPicker] = useState(false);
+  const [notePickerChecked, setNotePickerChecked] = useState({});
   const [newProduct, setNewProduct] = useState({
     name: '',
     variant: '',
@@ -150,6 +185,27 @@ const Quotation = () => {
   });
 
   const leadData = leadResponse?.lead;
+
+  // ─── localStorage key for this lead's quotation state ────────
+  const quotationStateKey = leadId ? `quotation_state_${leadId}` : null;
+
+  // Restore saved quotation state immediately on mount (Update Quotation flow)
+  // Runs once when component mounts — if saved state exists, restore and skip select_type
+  useEffect(() => {
+    if (!quotationStateKey) return;
+    try {
+      const saved = localStorage.getItem(quotationStateKey);
+      if (!saved) return;
+      const state = JSON.parse(saved);
+      if (!state.selectedItems?.length) return; // nothing useful saved
+      setSelectedItems(state.selectedItems);
+      if (state.quotationType) setQuotationType(state.quotationType);
+      if (state.selectedTerms?.length) setSelectedTerms(state.selectedTerms);
+      if (state.selectedNotes?.length) setSelectedNotes(state.selectedNotes);
+      // Jump straight to product selection — skip "Select Type" screen
+      setStep('product_selection');
+    } catch (e) { /* ignore */ }
+  }, []); // intentionally empty — run only once on mount
 
   // Fetch Real Items from Sales-specific endpoint
   const { data: itemsResponse, isLoading: itemsLoading, refetch: refetchItems } = useQuery({
@@ -655,14 +711,16 @@ const Quotation = () => {
   const categories = [...new Set(productsList.map(p => p.category))];
 
   const handleAddItem = (product) => {
-    if (selectedItems.find(item => item._id === product._id)) {
-      toast({ title: "Already added", description: "Product is already in the list" });
+    // Toggle: if already selected, unselect it
+    const existing = selectedItems.find(item => item.id === product._id);
+    if (existing) {
+      setSelectedItems(selectedItems.filter(item => item.id !== product._id));
       return;
     }
     setSelectedItems([...selectedItems, {
       ...product,
       id: product._id,
-      price: product.salePrice || 0,
+      price: buyerType === 'Dealer' ? (product.dealerPrice || product.salePrice || 0) : (product.salePrice || 0),
       quantity: 1,
       gst: 18
     }]);
@@ -721,9 +779,9 @@ const Quotation = () => {
         }
       }
 
-      // 3. Capture high-quality canvas
+      // 3. Capture canvas (scale 1.5 = good quality, much smaller than scale 2)
       const canvas = await html2canvas(element, {
-        scale: 2,
+        scale: 1.5,
         useCORS: true,
         backgroundColor: "#ffffff",
         logging: false
@@ -732,7 +790,8 @@ const Quotation = () => {
       // 4. Cleanup spacers immediately after capture
       addedSpacers.forEach(s => s.remove());
 
-      const imgData = canvas.toDataURL('image/png');
+      // JPEG at 0.88 quality = sharp output, ~80% smaller than PNG
+      const imgData = canvas.toDataURL('image/jpeg', 0.88);
       const pdf = new jsPDF('p', 'mm', 'a4');
       const imgProps = pdf.getImageProperties(imgData);
       const pdfWidth = pdf.internal.pageSize.getWidth();
@@ -741,17 +800,26 @@ const Quotation = () => {
       let heightLeft = pdfHeight;
       let position = 0;
 
-      pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, pdfHeight);
+      pdf.addImage(imgData, 'JPEG', 0, position, pdfWidth, pdfHeight);
       heightLeft -= pageHeight;
 
       while (heightLeft > 0) {
         position = heightLeft - pdfHeight;
         pdf.addPage();
-        pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, pdfHeight);
+        pdf.addImage(imgData, 'JPEG', 0, position, pdfWidth, pdfHeight);
         heightLeft -= pageHeight;
       }
 
       pdf.save(`Quotation_${leadData?.leadCode || 'New'}.pdf`);
+      // Save state for Update Quotation restore
+      if (quotationStateKey) {
+        localStorage.setItem(quotationStateKey, JSON.stringify({
+          selectedItems,
+          quotationType,
+          selectedTerms,
+          selectedNotes
+        }));
+      }
       toast({ title: "Success", description: "PDF generated with intelligent page breaks." });
     } catch (error) {
       console.error("PDF Generation Error:", error);
@@ -863,6 +931,15 @@ const Quotation = () => {
       });
 
       if (res.data.success) {
+        // Save quotation state for future "Update Quotation" restores
+        if (quotationStateKey) {
+          localStorage.setItem(quotationStateKey, JSON.stringify({
+            selectedItems,
+            quotationType,
+            selectedTerms,
+            selectedNotes
+          }));
+        }
         toast({
           title: "Success!",
           description: `Quotation has been successfully sent to ${recipients}`,
@@ -1015,6 +1092,30 @@ const Quotation = () => {
       (searchCategory === 'All' || p.category === searchCategory)
     );
 
+    const allFilteredSelected = filteredProducts.length > 0 &&
+      filteredProducts.every(p => selectedItems.find(i => i.id === p._id));
+
+    const handleSelectAll = () => {
+      if (allFilteredSelected) {
+        // Deselect all filtered products
+        const filteredIds = new Set(filteredProducts.map(p => p._id));
+        setSelectedItems(selectedItems.filter(i => !filteredIds.has(i.id)));
+      } else {
+        // Select all filtered products that aren't already selected
+        const newItems = filteredProducts
+          .filter(p => !selectedItems.find(i => i.id === p._id))
+          .map(p => ({
+            ...p,
+            id: p._id,
+            quantity: 1,
+            price: quotationType === 'Dealer' ? (p.dealerPrice || p.salePrice || 0) : (p.salePrice || 0),
+            gst: p.gst || 18,
+            description: p.description || ''
+          }));
+        setSelectedItems([...selectedItems, ...newItems]);
+      }
+    };
+
     return (
       <div className="space-y-6">
         <div className="flex items-center justify-between">
@@ -1073,6 +1174,23 @@ const Quotation = () => {
                   </SelectContent>
                 </Select>
               </div>
+              <div className="space-y-2">
+                <Label>&nbsp;</Label>
+                <Button
+                  variant="outline"
+                  className={allFilteredSelected
+                    ? "w-full border-red-300 text-red-600 hover:bg-red-50"
+                    : "w-full border-blue-300 text-blue-600 hover:bg-blue-50"}
+                  onClick={handleSelectAll}
+                  disabled={filteredProducts.length === 0}
+                >
+                  {allFilteredSelected ? (
+                    <><X className="h-4 w-4 mr-2" /> Deselect All ({filteredProducts.length})</>
+                  ) : (
+                    <><CheckCircle2 className="h-4 w-4 mr-2" /> Select All ({filteredProducts.length})</>
+                  )}
+                </Button>
+              </div>
             </div>
 
             <div className="border rounded-lg overflow-hidden">
@@ -1119,8 +1237,9 @@ const Quotation = () => {
                         <Button
                           variant="ghost"
                           size="sm"
-                          className={selectedItems.find(i => i.id === p._id) ? "text-green-600" : "text-blue-600"}
+                          className={selectedItems.find(i => i.id === p._id) ? "text-green-600 hover:text-red-500" : "text-blue-600"}
                           onClick={() => handleAddItem(p)}
+                          title={selectedItems.find(i => i.id === p._id) ? "Click to unselect" : "Click to add"}
                         >
                           {selectedItems.find(i => i.id === p._id) ? <CheckCircle2 className="h-5 w-5" /> : <Plus className="h-5 w-5" />}
                         </Button>
@@ -1237,6 +1356,204 @@ const Quotation = () => {
           </div>
         </CardContent>
       </Card>
+
+      {/* ─── Terms & Conditions Selector ─────────────────────────── */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base font-bold">Terms &amp; Conditions</CardTitle>
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1 text-blue-600 border-blue-200 hover:bg-blue-50"
+              onClick={() => {
+                const init = {};
+                ALL_TERMS.forEach(t => { init[t.id] = false; });
+                setTermPickerChecked(init);
+                setShowTermsPicker(true);
+              }}
+            >
+              <Plus className="h-4 w-4" /> Add Terms &amp; Conditions
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {selectedTerms.length === 0 ? (
+            <p className="text-sm text-gray-400 italic">No terms selected. Click "Add Terms &amp; Conditions" to select.</p>
+          ) : (
+            selectedTerms.map((t, idx) => (
+              <div key={t.id} className="flex items-start gap-3 bg-gray-50 border border-gray-200 rounded-md p-3">
+                <span className="text-xs font-bold text-gray-500 mt-0.5 min-w-[20px]">{idx + 1}.</span>
+                <div className="flex-1 text-sm">
+                  <span className="font-bold text-gray-800">{t.heading}: </span>
+                  <span className="text-gray-600">{t.text}</span>
+                </div>
+                <button
+                  onClick={() => setSelectedTerms(prev => prev.filter(x => x.id !== t.id))}
+                  className="text-red-400 hover:text-red-600 ml-2 mt-0.5 flex-shrink-0"
+                  title="Remove"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            ))
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Terms Picker Modal */}
+      {showTermsPicker && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl mx-4 max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b">
+              <h3 className="text-lg font-bold">Select Terms &amp; Conditions</h3>
+              <button onClick={() => setShowTermsPicker(false)} className="text-gray-400 hover:text-gray-600"><X className="h-5 w-5" /></button>
+            </div>
+            <div className="overflow-y-auto flex-1 px-6 py-4 space-y-3">
+              <div className="flex items-center gap-2 mb-2">
+                <input
+                  type="checkbox"
+                  id="tc-select-all"
+                  checked={ALL_TERMS.every(t => termPickerChecked[t.id])}
+                  onChange={(e) => {
+                    const val = e.target.checked;
+                    const next = {};
+                    ALL_TERMS.forEach(t => { next[t.id] = val; });
+                    setTermPickerChecked(next);
+                  }}
+                  className="h-4 w-4 rounded border-gray-300 text-blue-600"
+                />
+                <label htmlFor="tc-select-all" className="text-sm font-semibold text-gray-700 cursor-pointer">Select All</label>
+              </div>
+              {ALL_TERMS.map(t => (
+                <div key={t.id} className="flex items-start gap-3 p-3 rounded-lg border border-gray-100 hover:bg-blue-50 cursor-pointer"
+                  onClick={() => setTermPickerChecked(prev => ({ ...prev, [t.id]: !prev[t.id] }))}
+                >
+                  <input
+                    type="checkbox"
+                    checked={!!termPickerChecked[t.id]}
+                    onChange={() => {}}
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600 mt-0.5 flex-shrink-0"
+                  />
+                  <div className="text-sm">
+                    <span className="font-bold text-gray-800">{t.heading}: </span>
+                    <span className="text-gray-600">{t.text}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="px-6 py-4 border-t flex justify-end gap-3">
+              <Button variant="outline" onClick={() => setShowTermsPicker(false)}>Cancel</Button>
+              <Button
+                className="bg-blue-600 hover:bg-blue-700"
+                onClick={() => {
+                  const toAdd = ALL_TERMS.filter(t => termPickerChecked[t.id] && !selectedTerms.find(x => x.id === t.id));
+                  setSelectedTerms(prev => [...prev, ...toAdd]);
+                  setShowTermsPicker(false);
+                }}
+              >
+                Add Selected Terms
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Additional Notes Selector ───────────────────────────── */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base font-bold">Additional Notes</CardTitle>
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1 text-blue-600 border-blue-200 hover:bg-blue-50"
+              onClick={() => {
+                const init = {};
+                ALL_ADDITIONAL_NOTES.forEach((_, i) => { init[i] = false; });
+                setNotePickerChecked(init);
+                setShowNotesPicker(true);
+              }}
+            >
+              <Plus className="h-4 w-4" /> Select Additional Charges
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {selectedNotes.length === 0 ? (
+            <p className="text-sm text-gray-400 italic">No notes selected. Click "Select Additional Charges" to add.</p>
+          ) : (
+            selectedNotes.map((note, idx) => (
+              <div key={idx} className="flex items-start gap-3 bg-gray-50 border border-gray-200 rounded-md p-3">
+                <span className="text-xs font-bold text-gray-500 mt-0.5 min-w-[20px]">{idx + 1}.</span>
+                <span className="flex-1 text-sm text-gray-700">{note}</span>
+                <button
+                  onClick={() => setSelectedNotes(prev => prev.filter((_, i) => i !== idx))}
+                  className="text-red-400 hover:text-red-600 ml-2 mt-0.5 flex-shrink-0"
+                  title="Remove"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            ))
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Notes Picker Modal */}
+      {showNotesPicker && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg mx-4 max-h-[70vh] flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b">
+              <h3 className="text-lg font-bold">Select Additional Charges</h3>
+              <button onClick={() => setShowNotesPicker(false)} className="text-gray-400 hover:text-gray-600"><X className="h-5 w-5" /></button>
+            </div>
+            <div className="overflow-y-auto flex-1 px-6 py-4 space-y-3">
+              <div className="flex items-center gap-2 mb-2">
+                <input
+                  type="checkbox"
+                  id="note-select-all"
+                  checked={ALL_ADDITIONAL_NOTES.every((_, i) => notePickerChecked[i])}
+                  onChange={(e) => {
+                    const val = e.target.checked;
+                    const next = {};
+                    ALL_ADDITIONAL_NOTES.forEach((_, i) => { next[i] = val; });
+                    setNotePickerChecked(next);
+                  }}
+                  className="h-4 w-4 rounded border-gray-300 text-blue-600"
+                />
+                <label htmlFor="note-select-all" className="text-sm font-semibold text-gray-700 cursor-pointer">Select All</label>
+              </div>
+              {ALL_ADDITIONAL_NOTES.map((note, i) => (
+                <div key={i} className="flex items-start gap-3 p-3 rounded-lg border border-gray-100 hover:bg-blue-50 cursor-pointer"
+                  onClick={() => setNotePickerChecked(prev => ({ ...prev, [i]: !prev[i] }))}
+                >
+                  <input
+                    type="checkbox"
+                    checked={!!notePickerChecked[i]}
+                    onChange={() => {}}
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600 mt-0.5 flex-shrink-0"
+                  />
+                  <span className="text-sm text-gray-700">{note}</span>
+                </div>
+              ))}
+            </div>
+            <div className="px-6 py-4 border-t flex justify-end gap-3">
+              <Button variant="outline" onClick={() => setShowNotesPicker(false)}>Cancel</Button>
+              <Button
+                className="bg-blue-600 hover:bg-blue-700"
+                onClick={() => {
+                  const toAdd = ALL_ADDITIONAL_NOTES.filter((_, i) => notePickerChecked[i] && !selectedNotes.includes(ALL_ADDITIONAL_NOTES[i]));
+                  setSelectedNotes(prev => [...prev, ...toAdd]);
+                  setShowNotesPicker(false);
+                }}
+              >
+                Add Selected Notes
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 
@@ -1418,22 +1735,32 @@ const Quotation = () => {
 
               {/* Conditions Sections */}
               <div className="space-y-4 pt-4 pb-10">
-                <div className="border border-gray-300 pdf-section">
-                  <div className="bg-blue-100 p-2 text-[10px] font-black border-b border-gray-300 uppercase tracking-widest text-blue-900">TERMS & CONDITIONS</div>
-                  <div className="p-4 text-[10px] text-gray-600 leading-relaxed italic">
-                    1. 18% GST Extra as applicable.<br />
-                    2. Payment: 50% Advance, balance before dispatch.<br />
-                    3. Delivery: Within 2-3 weeks from confirmed order.<br />
-                    4. Transport: Extra as per actual distance.
+                {/* Terms & Conditions — dynamic from builder */}
+                {selectedTerms.length > 0 && (
+                  <div className="border border-gray-300 pdf-section">
+                    <div className="bg-blue-100 p-2 text-[10px] font-black border-b border-gray-300 uppercase tracking-widest text-blue-900">TERMS &amp; CONDITIONS</div>
+                    <div className="p-4 text-[10px] text-gray-600 leading-relaxed">
+                      {selectedTerms.map((t, idx) => (
+                        <div key={t.id} className="mb-1">
+                          <span className="font-bold text-gray-800">{idx + 1}. {t.heading}: </span>
+                          <span className="italic">{t.text}</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
 
-                <div className="border border-gray-300 pdf-section">
-                  <div className="bg-blue-100 p-2 text-[10px] font-black border-b border-gray-300 uppercase tracking-widest text-blue-900">ADDITIONAL NOTE</div>
-                  <div className="p-4 text-[10px] text-gray-600 leading-relaxed italic">
-                    The machine is built with heavy-duty MS body and high-quality components. Warranty: 1 Year on machine body.
+                {/* Additional Notes — dynamic from builder */}
+                {selectedNotes.length > 0 && (
+                  <div className="border border-gray-300 pdf-section">
+                    <div className="bg-blue-100 p-2 text-[10px] font-black border-b border-gray-300 uppercase tracking-widest text-blue-900">ADDITIONAL NOTE</div>
+                    <div className="p-4 text-[10px] text-gray-600 leading-relaxed italic">
+                      {selectedNotes.map((note, idx) => (
+                        <div key={idx} className="mb-1">{idx + 1}. {note}</div>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
 
                 <div className="border border-gray-300 pdf-section">
                   <div className="bg-blue-100 p-2 text-[10px] font-black border-b border-gray-300 uppercase tracking-widest text-blue-900">BANK DETAILS</div>

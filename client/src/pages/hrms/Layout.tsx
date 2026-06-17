@@ -22,8 +22,6 @@ import {
   NotebookPen,
   ListChecks,
   Boxes,
-
-  // 🔽 missing icons added
   ShieldCheck,
   LogOut,
   Layers,
@@ -51,6 +49,7 @@ import { LogoutButton } from "@/components/ui/logout-button";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { CRMHeaderUserInfo } from "@/components/crm/CRMHeaderUserInfo";
+import { NotificationBell } from "@/components/notifications/NotificationBell";
 
 interface HRMSAdminLayoutProps {
   children: React.ReactNode;
@@ -380,6 +379,9 @@ function SuperAdminLayoutContent({ children }: HRMSAdminLayoutProps) {
                 <SidebarToggle className="text-gray-700 hover:bg-gray-100" />
               </div>
               <CRMHeaderUserInfo name={user?.name} role={user?.role} />
+            </div>
+            <div className="flex items-center gap-2">
+              <NotificationBell />
             </div>
           </div>
         </header>

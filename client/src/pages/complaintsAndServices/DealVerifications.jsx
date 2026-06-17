@@ -40,17 +40,22 @@ const PRIORITY_COLORS = {
 const getServiceStatus = (o) => {
   if (o.status === 'rejected_by_service') return 'rejected';
   if (o.status === 'pending_service_approval') return 'pending';
-  // If statusHistory has a service_verified entry, it was verified by service team
+  // Check serviceVerification sub-document (most reliable source)
+  if (o.serviceVerification?.status === 'verified') return 'verified';
+  if (o.serviceVerification?.status === 'rejected') return 'rejected';
+  // Check statusHistory for service_verified entry
   const wasServiceVerified = (o.statusHistory || []).some(
-    h => h.status === 'service_verified' || h.status === 'service_Confirm'
+    h => h.status === 'service_verified' || h.status === 'service_Confirm' || h.status === 'service_verified'
   );
   if (wasServiceVerified) return 'verified';
-  // Fallback: if status moved past pending_service_approval without rejection, treat as verified
-  return 'verified';
+  // Order never went through service approval flow → pending
+  return 'pending';
 };
 
 // Check if order is still awaiting service verification
-const isPendingVerification = (o) => o.status === 'pending_service_approval';
+const isPendingVerification = (o) => 
+  o.status === 'pending_service_approval' && 
+  (!o.serviceVerification?.status || o.serviceVerification?.status === 'pending');
 
 const STATUS_TABS = [
   { key: 'all',      label: 'All',      color: 'bg-blue-100 text-blue-800'    },
@@ -68,7 +73,9 @@ const DealVerifications = () => {
   /* ── data ── */
   const { data: ordersData, isLoading } = useQuery({
     queryKey: ['service-deal-verifications'],
-    queryFn: () => orderApi.getAll(),
+    queryFn: () => orderApi.getAll({ limit: 100, sortBy: 'createdAt', sortOrder: 'desc' }),
+    staleTime: 2 * 60 * 1000,        // 2 minutes — don't refetch on every tab switch
+    refetchOnWindowFocus: false,       // no refetch when user switches window
   });
   const allOrders = ordersData?.orders || [];
   const orders = activeTab === 'all'
@@ -85,8 +92,40 @@ const DealVerifications = () => {
   const [statusModal,  setStatusModal]  = useState({ open: false, order: null });
 
   const [verifyFormData, setVerifyFormData] = useState({
-    remarks: '', callRecordingUrl: '',
+    remarks: '',
+    callRecordingUrl: '',
+    salesChecklist: {
+      advancePayment: { checked: false, value: 0, verified: false },
+      installationCharge: { checked: false, value: '', verified: false },
+      warranty: { checked: false, value: '', verified: false },
+      boardingLodging: { checked: false, value: '', verified: false },
+      backupGenerator: { checked: false, value: '', verified: false },
+      operatorErrorClause: { checked: false, verified: false }
+    }
   });
+
+  const handleOpenVerifyModal = (order) => {
+    // Always use the latest version of the order from cache (not the stale card reference)
+    const latestOrder = queryClient.getQueryData(['service-deal-verifications'])?.orders?.find(
+      (o) => o._id === order._id
+    ) || order;
+
+    const checklist = latestOrder.salesChecklist || {
+      advancePayment: { checked: false, value: 0, verified: false },
+      installationCharge: { checked: false, value: '', verified: false },
+      warranty: { checked: false, value: '', verified: false },
+      boardingLodging: { checked: false, value: '', verified: false },
+      backupGenerator: { checked: false, value: '', verified: false },
+      operatorErrorClause: { checked: false, verified: false }
+    };
+    setVerifyFormData({
+      remarks: '',
+      callRecordingUrl: '',
+      salesChecklist: JSON.parse(JSON.stringify(checklist)) // Deep copy
+    });
+    setVerifyModal({ open: true, order: latestOrder });
+  };
+
   const [newNote,       setNewNote]       = useState('');
   const [selPriority,   setSelPriority]   = useState('Medium');
   const [selStatus,     setSelStatus]     = useState('pending');
@@ -114,6 +153,42 @@ const DealVerifications = () => {
     onError: (e) => toast({ title: 'Error', description: e?.message || 'Failed', variant: 'destructive' }),
   });
 
+  const [savingKey, setSavingKey] = useState(null); // tracks which checklist item is currently saving
+
+  // Silent auto-save: saves salesChecklist immediately on each toggle
+  // so progress is never lost if user closes modal without final submit
+  const autoSaveChecklistMutation = useMutation({
+    mutationFn: ({ id, salesChecklist, key }) => orderApi.update(id, { salesChecklist }).then(res => ({ res, key })),
+    onSuccess: ({ key }, variables) => {
+      setSavingKey(null);
+      // Update local form state ONLY after API confirms save
+      setVerifyFormData(p => ({ ...p, salesChecklist: variables.salesChecklist }));
+      // Directly patch the React Query cache so reopening modal shows saved state instantly
+      queryClient.setQueryData(['service-deal-verifications'], (old) => {
+        if (!old?.orders) return old;
+        return {
+          ...old,
+          orders: old.orders.map((o) =>
+            o._id === variables.id
+              ? { ...o, salesChecklist: variables.salesChecklist }
+              : o
+          ),
+        };
+      });
+    },
+    onError: (_, variables) => {
+      setSavingKey(null);
+      // On failure, revert to the last known good checklist from cache
+      const cachedOrder = queryClient.getQueryData(['service-deal-verifications'])?.orders?.find(
+        (o) => o._id === variables.id
+      );
+      if (cachedOrder?.salesChecklist) {
+        setVerifyFormData(p => ({ ...p, salesChecklist: JSON.parse(JSON.stringify(cachedOrder.salesChecklist)) }));
+      }
+      toast({ title: 'Save Failed', description: 'Could not save checklist. Change reverted.', variant: 'destructive' });
+    },
+  });
+
   /* ── contact helpers ── */
   const call      = (m) => m && window.open(`tel:${m}`);
   const whatsapp  = (m) => { if (m) { const n = m.replace(/\D/g, ''); window.open(`https://wa.me/${n.startsWith('91') ? n : '91' + n}`, '_blank'); } };
@@ -122,7 +197,15 @@ const DealVerifications = () => {
   /* ── handlers ── */
   const handleVerifySubmit = (status) => {
     if (!verifyModal.order) return;
-    verifyMutation.mutate({ id: verifyModal.order._id, data: { ...verifyFormData, status } });
+    verifyMutation.mutate({
+      id: verifyModal.order._id,
+      data: {
+        status,
+        remarks: verifyFormData.remarks,
+        callRecordingUrl: verifyFormData.callRecordingUrl,
+        salesChecklist: verifyFormData.salesChecklist
+      }
+    });
   };
 
   const handleSavePriority = () => {
@@ -369,7 +452,7 @@ const DealVerifications = () => {
                           <Button
                             variant="outline" size="sm"
                             className="h-8 px-2 text-xs bg-blue-50 text-blue-600 border-blue-100 shrink-0"
-                            onClick={() => { setVerifyFormData({ remarks: '', callRecordingUrl: '' }); setVerifyModal({ open: true, order }); }}
+                            onClick={() => handleOpenVerifyModal(order)}
                           >
                             <ShieldCheck className="h-3 w-3 mr-1" /> Verify <ChevronRight className="h-3 w-3 ml-0.5" />
                           </Button>
@@ -428,7 +511,7 @@ const DealVerifications = () => {
                       {isPending ? (
                         <Button variant="default" size="sm"
                           className="h-8 text-xs rounded-full bg-green-600 hover:bg-green-700"
-                          onClick={() => { setVerifyFormData({ remarks: '', callRecordingUrl: '' }); setVerifyModal({ open: true, order }); }}>
+                          onClick={() => handleOpenVerifyModal(order)}>
                           <ShieldCheck className="h-3 w-3 mr-1" /> Verify Lead
                         </Button>
                       ) : (
@@ -495,7 +578,7 @@ const DealVerifications = () => {
                           </Button>
                           {isPending ? (
                             <Button variant="ghost" size="icon" className="h-7 w-8 rounded-none hover:bg-purple-50 text-purple-600"
-                              title="Verify" onClick={() => { setVerifyFormData({ remarks: '', callRecordingUrl: '' }); setVerifyModal({ open: true, order }); }}>
+                              title="Verify" onClick={() => handleOpenVerifyModal(order)}>
                               <ShieldCheck className="h-3.5 w-3.5" />
                             </Button>
                           ) : (
@@ -526,23 +609,40 @@ const DealVerifications = () => {
           MODAL 1 – VERIFY
       ══════════════════════════════════════════════════════ */}
       <Dialog open={verifyModal.open} onOpenChange={(o) => !o && setVerifyModal({ open: false, order: null })}>
-        <DialogContent className="sm:max-w-[520px]">
+        <DialogContent className="sm:max-w-[620px] max-h-[90vh] overflow-y-auto rounded-xl">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <ShieldCheck className="h-5 w-5 text-blue-600" /> Verify Deal / Commitment Check
+            <DialogTitle className="flex items-center gap-2 text-xl font-bold">
+              <ShieldCheck className="h-6 w-6 text-blue-600" /> Verify Deal / Commitment Check
             </DialogTitle>
           </DialogHeader>
           {verifyModal.order && (() => {
             const c = verifyModal.order.customer || {};
+            
+            // Check list config
+            const checklistConfig = [
+              { key: 'advancePayment', label: '1. Advanced Payment', type: 'number', desc: 'How much advanced payment is paid?' },
+              { key: 'installationCharge', label: '2. Installation Charges', type: 'text', desc: 'How much installation charge was quoted?' },
+              { key: 'warranty', label: '3. Warranty Period', type: 'text', desc: 'What is the promised warranty period?' },
+              { key: 'boardingLodging', label: '4. Installation Team Stay/Food', type: 'text', desc: 'Arrangements for boarding/lodging crew?' },
+              { key: 'backupGenerator', label: '5. Backup Power / DG', type: 'text', desc: 'Is backup generator setup discussed?' },
+              { key: 'operatorErrorClause', label: '6. Operator Error Clause', type: 'boolean', desc: 'Customer agreed that operator mistake is not our fault?' }
+            ];
+
+            const checklist = verifyFormData.salesChecklist || {};
+            const allCheckedVerified = checklistConfig.every(cfg => {
+              const item = checklist[cfg.key] || { checked: false, verified: false };
+              return !item.checked || item.verified;
+            });
+
             return (
-              <div className="space-y-4 py-2">
+              <div className="space-y-5 py-2">
                 {/* Customer strip */}
-                <div className="p-3 bg-blue-50 rounded-lg border border-blue-100">
+                <div className="p-4 bg-blue-50 rounded-xl border border-blue-100 shadow-sm">
                   <div className="flex items-start justify-between">
                     <div>
-                      <p className="text-sm font-bold text-blue-800">{c.name || 'N/A'}</p>
-                      <p className="text-xs text-blue-600">Order: #{verifyModal.order.orderCode}</p>
-                      <p className="text-xs text-blue-600">Amount: {fmtAmt(verifyModal.order.totalAmount)}</p>
+                      <p className="text-base font-bold text-blue-900">{c.name || 'N/A'}</p>
+                      <p className="text-xs text-blue-700 font-semibold mt-1">Order: #{verifyModal.order.orderCode}</p>
+                      <p className="text-xs text-blue-700 font-semibold">Deal Value: {fmtAmt(verifyModal.order.totalAmount)}</p>
                     </div>
                     <div className="flex gap-1">
                       <Button variant="ghost" size="icon" className="h-8 w-8 text-blue-700 hover:bg-blue-100" title="Call"
@@ -559,7 +659,7 @@ const DealVerifications = () => {
                       </Button>
                     </div>
                   </div>
-                  <div className="mt-2 grid grid-cols-2 gap-1 text-xs text-blue-700">
+                  <div className="mt-3 grid grid-cols-2 gap-y-1 gap-x-4 text-xs text-blue-800">
                     <span>📞 {c.mobile || 'N/A'}</span>
                     <span>✉️ {c.email || 'N/A'}</span>
                     <span>📍 {[c.city, c.state].filter(Boolean).join(', ') || 'N/A'}</span>
@@ -567,43 +667,139 @@ const DealVerifications = () => {
                   </div>
                 </div>
 
-                {/* Products summary */}
-                {(verifyModal.order.products || []).length > 0 && (
-                  <div className="p-3 bg-gray-50 rounded-lg border border-gray-100">
-                    <p className="text-xs font-bold text-gray-600 mb-2 uppercase tracking-wide">Order Items</p>
-                    {verifyModal.order.products.map((p, i) => (
-                      <div key={i} className="flex justify-between text-xs text-gray-700 py-0.5">
-                        <span>{p.product?.name || p.product?.itemName || `Item ${i + 1}`} × {p.quantity}</span>
-                        <span className="font-semibold">{fmtAmt(p.total)}</span>
-                      </div>
-                    ))}
-                    <div className="border-t border-gray-200 mt-1 pt-1 flex justify-between text-xs font-bold">
-                      <span>Total</span><span>{fmtAmt(verifyModal.order.totalAmount)}</span>
-                    </div>
+                {/* 📋 SALES COMMITMENTS CHECKLIST */}
+                <div className="space-y-3">
+                  <h4 className="text-sm font-bold text-gray-700 uppercase tracking-wider flex items-center gap-1.5">
+                    Sales Commitments Checklist
+                  </h4>
+                  <p className="text-xs text-gray-500">
+                    Service team must verify each commitment marked by the Sales employee.
+                  </p>
+                  
+                  <div className="space-y-2.5 max-h-[300px] overflow-y-auto pr-1">
+                    {checklistConfig.map((cfg) => {
+                      const item = checklist[cfg.key] || { checked: false, value: '', verified: false };
+                      
+                      return (
+                        <div 
+                          key={cfg.key}
+                          className={cn(
+                            "p-3 rounded-lg border flex items-center justify-between transition-all shadow-xs",
+                            item.checked 
+                              ? (item.verified ? "bg-green-50/40 border-green-200" : "bg-orange-50/40 border-orange-200")
+                              : "bg-gray-50/40 border-gray-150"
+                          )}
+                        >
+                          <div className="flex-1 min-w-0 pr-3">
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-sm text-gray-800">{cfg.label}</span>
+                              {item.checked ? (
+                                <Badge className="bg-amber-100 text-amber-800 border-amber-200 text-[10px] h-5 px-1.5 font-bold">
+                                  Discussed
+                                </Badge>
+                              ) : (
+                                <span className="text-[11px] text-gray-400 font-medium">Not Discussed</span>
+                              )}
+                            </div>
+                            
+                            {item.checked ? (
+                              <p className="text-xs text-gray-600 mt-1 font-medium bg-white/70 p-1.5 rounded border border-gray-100 inline-block">
+                                Value declared by Sales: <strong className="text-blue-700">{cfg.type === 'number' ? `₹${item.value}` : (cfg.type === 'boolean' ? 'Agreed' : item.value || 'N/A')}</strong>
+                              </p>
+                            ) : (
+                              <p className="text-[11px] text-gray-400 mt-0.5">{cfg.desc}</p>
+                            )}
+                          </div>
+
+                          <div className="flex-shrink-0">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant={item.verified ? "default" : "outline"}
+                              disabled={savingKey === cfg.key}
+                              className={cn(
+                                "h-8 text-xs font-semibold px-3 rounded-full transition-all shadow-xs",
+                                item.verified 
+                                  ? "bg-green-600 hover:bg-green-700 text-white" 
+                                  : "border-orange-200 text-orange-700 bg-orange-50 hover:bg-orange-100"
+                              )}
+                              onClick={() => {
+                                const newChecklist = {
+                                  ...verifyFormData.salesChecklist,
+                                  [cfg.key]: {
+                                    ...verifyFormData.salesChecklist[cfg.key],
+                                    verified: !verifyFormData.salesChecklist[cfg.key].verified
+                                  }
+                                };
+                                // DO NOT update local state here — wait for API success (onSuccess updates it)
+                                if (verifyModal.order?._id) {
+                                  setSavingKey(cfg.key); // mark only this item as saving
+                                  autoSaveChecklistMutation.mutate({
+                                    id: verifyModal.order._id,
+                                    salesChecklist: newChecklist,
+                                    key: cfg.key
+                                  });
+                                }
+                              }}
+                            >
+                              {savingKey === cfg.key ? (
+                                <span className="flex items-center gap-1">
+                                  <span className="h-3 w-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                                  Saving...
+                                </span>
+                              ) : item.verified ? (
+                                <span className="flex items-center gap-1">
+                                  <CheckCircle2 className="h-3.5 w-3.5 text-white fill-green-700" />
+                                  Verified
+                                </span>
+                              ) : (
+                                "Verify"
+                              )}
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                )}
+                </div>
 
                 <div className="space-y-2">
-                  <Label>Call Recording URL (Optional)</Label>
+                  <Label className="text-xs font-bold text-gray-700">Call Recording URL (Optional)</Label>
                   <Input placeholder="https://..."
                     value={verifyFormData.callRecordingUrl}
                     onChange={(e) => setVerifyFormData(p => ({ ...p, callRecordingUrl: e.target.value }))} />
                 </div>
+                
                 <div className="space-y-2">
-                  <Label>Remarks</Label>
+                  <Label className="text-xs font-bold text-gray-700">Remarks</Label>
                   <Textarea placeholder="Enter conversation details..."
                     value={verifyFormData.remarks}
                     onChange={(e) => setVerifyFormData(p => ({ ...p, remarks: e.target.value }))} />
                 </div>
+
+                {!allCheckedVerified && (
+                  <p className="text-xs text-orange-600 bg-orange-50 border border-orange-150 p-2.5 rounded-lg flex items-start gap-1.5 shadow-xs">
+                    <AlertCircle className="h-4 w-4 text-orange-500 mt-0.5 flex-shrink-0" />
+                    <span>
+                      <strong>Verification Pending:</strong> Please verify all discussed commitments (marked in orange/Discussed) with the customer before approving this deal.
+                    </span>
+                  </p>
+                )}
+
                 <div className="flex gap-3 mt-4">
-                  <Button className="flex-1 bg-green-600 hover:bg-green-700"
+                  <Button 
+                    className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold"
                     onClick={() => handleVerifySubmit('verified')}
-                    disabled={verifyMutation.isPending}>
+                    disabled={verifyMutation.isPending || !allCheckedVerified}
+                  >
                     <CheckCircle2 className="h-4 w-4 mr-2" /> Approve Deal
                   </Button>
-                  <Button variant="destructive" className="flex-1"
+                  <Button 
+                    variant="destructive" 
+                    className="flex-1 font-bold"
                     onClick={() => handleVerifySubmit('rejected')}
-                    disabled={verifyMutation.isPending}>
+                    disabled={verifyMutation.isPending}
+                  >
                     <XCircle className="h-4 w-4 mr-2" /> Reject Deal
                   </Button>
                 </div>
@@ -714,7 +910,7 @@ const DealVerifications = () => {
 
                 <div className="flex gap-2 pt-2">
                   <Button className="flex-1 bg-green-600 hover:bg-green-700"
-                    onClick={() => { setDetailModal({ open: false, order: null }); setVerifyFormData({ remarks: '', callRecordingUrl: '' }); setVerifyModal({ open: true, order: o }); }}>
+                    onClick={() => { setDetailModal({ open: false, order: null }); handleOpenVerifyModal(o); }}>
                     <ShieldCheck className="h-4 w-4 mr-2" /> Verify This Deal
                   </Button>
                 </div>

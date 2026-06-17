@@ -1,5 +1,10 @@
 ﻿import React, { useState } from 'react';
-import { Bell, Volume2, VolumeX, Search, Filter, Check, Trash2, AlertCircle, Package, ShoppingCart, UserPlus, Loader2 } from 'lucide-react';
+import {
+  Bell, Volume2, VolumeX, Search, Check, Loader2,
+  AlertCircle, Package, ShoppingCart, UserPlus, Target,
+  CreditCard, Factory, Truck, Shield, MessageSquare,
+  ClipboardList, Users, Calendar, Clock, Receipt, Star
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -9,16 +14,32 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useNotifications } from '@/hooks/useNotifications';
 import { formatDistanceToNow, format } from 'date-fns';
 
-// Icon mapping for notification types
+// Icon mapping for all notification types
 const getNotificationIcon = (type) => {
   const iconMap = {
     'order': ShoppingCart,
     'inventory': Package,
+    'store': Package,
     'customer': UserPlus,
+    'lead': Target,
+    'payment': CreditCard,
+    'account': CreditCard,
+    'purchase': ShoppingCart,
+    'production': Factory,
+    'dispatch': Truck,
+    'qc': Shield,
+    'complaint': MessageSquare,
+    'task': ClipboardList,
+    'hrms': Users,
+    'leave': Calendar,
+    'attendance': Clock,
+    'payroll': Receipt,
+    'rd': ClipboardList,
+    'marketing': Star,
+    'mis': AlertCircle,
     'system': AlertCircle,
-    'general': Bell
+    'general': Bell,
   };
-  
   return iconMap[type] || Bell;
 };
 
@@ -134,13 +155,43 @@ export default function NotificationsPage() {
   });
 
   const handleNotificationClick = (notification) => {
-    // Handle navigation based on notification type and data
-    if (notification.data?.orderId) {
-      window.location.href = `/sales/orders?highlight=${notification.data.orderId}`;
-    } else if (notification.data?.customerId) {
-      window.location.href = `/sales/my-customers?highlight=${notification.data.customerId}`;
-    } else if (notification.data?.itemId) {
-      window.location.href = `/inventory?highlight=${notification.data.itemId}`;
+    const { type, data } = notification;
+    if (data?.orderId) {
+      window.location.href = `/sales/orders?highlight=${data.orderId}`;
+    } else if (type === 'lead' && data?.leadId) {
+      window.location.href = `/sales/leads?highlight=${data.leadId}`;
+    } else if (type === 'payment' && data?.leadId) {
+      window.location.href = `/accounts/lead-payments`;
+    } else if (type === 'payment') {
+      window.location.href = `/accounts/payment-verifications`;
+    } else if (type === 'account' && data?.orderCode) {
+      window.location.href = `/accounts/sales/packed-orders`;
+    } else if (type === 'purchase') {
+      window.location.href = `/accounts/purchases/requests`;
+    } else if (type === 'production') {
+      window.location.href = `/production/orders`;
+    } else if (type === 'store') {
+      window.location.href = `/store/orders`;
+    } else if (type === 'dispatch') {
+      window.location.href = `/dispatch/active`;
+    } else if (type === 'qc') {
+      window.location.href = `/qc/jobs`;
+    } else if (type === 'complaint') {
+      window.location.href = `/complaints/dashboard`;
+    } else if (type === 'task') {
+      window.location.href = `/complaints/dashboard`;
+    } else if (type === 'leave') {
+      window.location.href = `/hrms/SuperAdmin/leave-requests`;
+    } else if (type === 'attendance') {
+      window.location.href = `/hrms/SuperAdmin/attendance-requests`;
+    } else if (type === 'payroll') {
+      window.location.href = `/hrms/SuperAdmin/payroll/payslips`;
+    } else if (type === 'hrms') {
+      window.location.href = `/hrms/SuperAdmin/employees`;
+    } else if (data?.customerId) {
+      window.location.href = `/customers`;
+    } else if (data?.itemId) {
+      window.location.href = `/store/inventory`;
     }
   };
 
@@ -242,6 +293,19 @@ export default function NotificationsPage() {
                 <SelectContent>
                   <SelectItem value="all">All Types</SelectItem>
                   <SelectItem value="order">Orders</SelectItem>
+                  <SelectItem value="lead">Leads</SelectItem>
+                  <SelectItem value="payment">Payments</SelectItem>
+                  <SelectItem value="production">Production</SelectItem>
+                  <SelectItem value="store">Store</SelectItem>
+                  <SelectItem value="dispatch">Dispatch</SelectItem>
+                  <SelectItem value="qc">Quality Control</SelectItem>
+                  <SelectItem value="complaint">Complaints</SelectItem>
+                  <SelectItem value="hrms">HRMS</SelectItem>
+                  <SelectItem value="leave">Leave</SelectItem>
+                  <SelectItem value="attendance">Attendance</SelectItem>
+                  <SelectItem value="payroll">Payroll</SelectItem>
+                  <SelectItem value="task">Tasks</SelectItem>
+                  <SelectItem value="purchase">Purchase</SelectItem>
                   <SelectItem value="inventory">Inventory</SelectItem>
                   <SelectItem value="customer">Customers</SelectItem>
                   <SelectItem value="system">System</SelectItem>

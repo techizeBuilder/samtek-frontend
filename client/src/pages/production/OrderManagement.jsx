@@ -9,6 +9,8 @@ import {
   ChevronRight, FileCheck, Wrench, Send, Search, Filter
 } from 'lucide-react';
 import { useProduction as useProd } from '@/contexts/ProductionContext';
+import { apiRequest } from '@/lib/queryClient';
+import { showSuccessToast, showSmartToast } from '@/lib/toast-utils';
 
 const statusColor = {
   'Pending': 'bg-slate-100 text-slate-700 border-slate-200',
@@ -49,6 +51,7 @@ export default function OrderManagement() {
   const [demandOpen, setDemandOpen] = useState(false);
   const [form, setForm] = useState(emptyOrder);
   const [demandForm, setDemandForm] = useState(emptyDemand);
+  const [foundItem, setFoundItem] = useState(null);
 
   const statuses = ['All', 'Pending', 'BOM Pending', 'In Progress', 'Completed'];
   const sources = ['All', 'Store Orders', 'Rejected Items'];
@@ -80,11 +83,61 @@ export default function OrderManagement() {
     setAddOpen(false);
   };
 
-  const handleAddDemand = () => {
+  const handleCodeChange = async (codeVal) => {
+    setDemandForm(prev => ({ ...prev, materialCode: codeVal }));
+    
+    if (!codeVal.trim()) {
+      setFoundItem(null);
+      return;
+    }
+    
+    try {
+      const res = await apiRequest('GET', `/api/items/by-code?code=${encodeURIComponent(codeVal.trim())}`);
+      if (res.success && res.data) {
+        setFoundItem(res.data);
+        setDemandForm(prev => ({
+          ...prev,
+          materialName: res.data.name,
+          unit: res.data.unit || prev.unit
+        }));
+      } else {
+        setFoundItem(null);
+      }
+    } catch (err) {
+      setFoundItem(null);
+    }
+  };
+
+  const handleAddDemand = async () => {
     if (!demandForm.materialCode || !demandForm.materialName || !demandForm.quantity) return;
-    addMaterialDemand(detailOrder._id || detailOrder.id, { ...demandForm, quantity: Number(demandForm.quantity) });
-    setDemandForm(emptyDemand);
-    setDemandOpen(false);
+    
+    try {
+      // 1. Add material demand locally to production order
+      await addMaterialDemand(detailOrder._id || detailOrder.id, { 
+        ...demandForm, 
+        quantity: Number(demandForm.quantity) 
+      });
+
+      // 2. Raise a Purchase Request for the Store
+      await apiRequest('POST', '/api/purchase-requests', {
+        productName: demandForm.materialName,
+        quantity: Number(demandForm.quantity),
+        unit: demandForm.unit,
+        requestFromDepartment: 'Production',
+        source: 'Production',
+        priority: 'Medium',
+        materialCode: demandForm.materialCode,
+        storeOrderId: detailOrder._id || detailOrder.id
+      });
+
+      showSuccessToast('Demand Raised', `Material demand for "${demandForm.materialName}" sent to Store for approval.`);
+      setDemandForm(emptyDemand);
+      setFoundItem(null);
+      setDemandOpen(false);
+    } catch (error) {
+      console.error('Failed to raise material demand:', error);
+      showSmartToast(error, 'Raise Material Demand');
+    }
   };
 
   // Keep detailOrder in sync with updated orders state
@@ -361,7 +414,11 @@ export default function OrderManagement() {
                           Mark All Issued
                         </Button>
                       )}
-                      <Button size="sm" className="h-6 text-xs" variant="outline" onClick={() => setDemandOpen(true)}>
+                      <Button size="sm" className="h-6 text-xs" variant="outline" onClick={() => {
+                        setDemandForm(emptyDemand);
+                        setFoundItem(null);
+                        setDemandOpen(true);
+                      }}>
                         <Plus className="h-3 w-3 mr-1" /> Add Demand
                       </Button>
                     </div>
@@ -466,7 +523,7 @@ export default function OrderManagement() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-xs font-semibold text-slate-600 mb-1 block">Material Code *</label>
-                <Input placeholder="e.g. STL-010" value={demandForm.materialCode} onChange={e => setDemandForm(f => ({ ...f, materialCode: e.target.value }))} />
+                <Input placeholder="e.g. STL-010" value={demandForm.materialCode} onChange={e => handleCodeChange(e.target.value)} />
               </div>
               <div>
                 <label className="text-xs font-semibold text-slate-600 mb-1 block">Unit</label>
@@ -478,6 +535,15 @@ export default function OrderManagement() {
             <div>
               <label className="text-xs font-semibold text-slate-600 mb-1 block">Material Name *</label>
               <Input placeholder="e.g. MS Plate 12mm" value={demandForm.materialName} onChange={e => setDemandForm(f => ({ ...f, materialName: e.target.value }))} />
+              {foundItem ? (
+                <p className="text-xs text-emerald-600 font-medium mt-1">
+                  ✓ Found: {foundItem.name} ({foundItem.category})
+                </p>
+              ) : demandForm.materialCode.trim() ? (
+                <p className="text-xs text-amber-500 font-medium mt-1">
+                  ⚠ Code not matched. Enter name manually.
+                </p>
+              ) : null}
             </div>
             <div>
               <label className="text-xs font-semibold text-slate-600 mb-1 block">Quantity *</label>

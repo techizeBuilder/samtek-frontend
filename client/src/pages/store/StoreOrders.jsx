@@ -8,7 +8,10 @@ import {
   RefreshCw,
   CheckCircle2,
   PackageCheck,
-  Clock
+  Clock,
+  ScanSearch,
+  CheckCheck,
+  XCircle
 } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -49,6 +52,7 @@ const StoreOrders = () => {
   const [loadingItemId, setLoadingItemId] = useState(null);
   const [storeInfoLoading, setStoreInfoLoading] = useState(null); // saleId of the one being saved
   const [localStoreInfo, setLocalStoreInfo] = useState({}); // saleId -> { productType, isAvailableInInventory }
+  const [checkingInventory, setCheckingInventory] = useState(null); // itemId being auto-checked
 
   const { data: trackingData, isLoading, refetch } = useQuery({
     queryKey: ['/api/orders/get-tracking'],
@@ -154,6 +158,63 @@ const StoreOrders = () => {
     }
   };
 
+  // Auto-fetch productType and inventory status from Inventory for a row
+  const handleCheckInventory = async (item) => {
+    if (!item.products || item.products.length === 0) {
+      toast({ title: 'No Products', description: 'This order has no products linked to inventory.', variant: 'destructive' });
+      return;
+    }
+
+    setCheckingInventory(item._id);
+    try {
+      let overallAvailable = true;
+      let resolvedProductType = null;
+
+      for (const p of item.products) {
+        const productId = p.product?._id || p.product;
+        if (!productId) continue;
+
+        const requiredQty = p.quantity || 1;
+        const response = await apiRequest('GET', `/api/orders/check-inventory?itemId=${productId}&requiredQty=${requiredQty}`);
+        const data = response.data || response;
+
+        // If any product is not available → overall Not Available
+        if (data.isAvailableInInventory === 'Not Available') {
+          overallAvailable = false;
+        }
+
+        // Use the productType of the first product
+        if (!resolvedProductType) {
+          resolvedProductType = data.productType;
+        }
+      }
+
+      const finalAvailability = overallAvailable ? 'Available' : 'Not Available';
+      const updates = {
+        productType: resolvedProductType,
+        isAvailableInInventory: finalAvailability
+      };
+
+      // Update local state immediately so UI reflects it
+      setLocalStoreInfo(prev => ({
+        ...prev,
+        [item._id]: { ...(prev[item._id] || {}), ...updates }
+      }));
+
+      // Save to backend — triggers QC / Production / Purchase flow
+      await handleUpdateStoreInfo(item._id, updates);
+    } catch (error) {
+      console.error('Inventory check error:', error);
+      toast({
+        title: 'Check Failed',
+        description: error.response?.data?.message || 'Could not fetch inventory data.',
+        variant: 'destructive'
+      });
+    } finally {
+      setCheckingInventory(null);
+    }
+  };
+
   return (
     <div className="p-6 space-y-6 bg-slate-50 min-h-screen">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -190,12 +251,14 @@ const StoreOrders = () => {
             <TableHeader className="bg-slate-50">
               <TableRow>
                 <TableHead className="w-[160px]">Order & Date</TableHead>
-                <TableHead>Customer Details</TableHead>
                 <TableHead className="w-[120px]">Status</TableHead>
+                <TableHead>Product Name</TableHead>
+                <TableHead className="w-[80px] text-center">Qty</TableHead>
+                <TableHead>Specification</TableHead>
+                <TableHead className="w-[130px]">Delivery Date</TableHead>
                 <TableHead className="w-[180px]">Product Type</TableHead>
                 <TableHead className="w-[180px]">Inventory Status</TableHead>
-                <TableHead className="text-right">Value</TableHead>
-                <TableHead className="text-center w-[90px]">Actions</TableHead>
+                <TableHead className="text-center w-[160px]">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -206,23 +269,19 @@ const StoreOrders = () => {
                       <RefreshCw className="h-6 w-6 animate-spin text-blue-600" />
                       <p className="text-slate-500 text-sm">Loading orders...</p>
                     </div>
-                  </TableCell>
-                </TableRow>
+                  </TableCell>                </TableRow>
               ) : storeOrders.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-12 text-slate-500">
+                  <TableCell colSpan={9} className="text-center py-12 text-slate-500">
                     No approved orders found in store
                   </TableCell>
                 </TableRow>
               ) : storeOrders.map((item) => (
                 <TableRow key={item._id} className="hover:bg-slate-50/50">
+                  {/* Order & Date */}
                   <TableCell>
                     <div className="font-semibold text-slate-900">{item.orderCode}</div>
                     <div className="text-xs text-slate-500">{new Date(item.orderDate).toLocaleDateString()}</div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="font-medium text-slate-900">{item.customerName}</div>
-                    <div className="text-xs text-slate-500">{item.customerMobile}</div>
                   </TableCell>
                   {/* Status Column */}
                   <TableCell>
@@ -236,59 +295,123 @@ const StoreOrders = () => {
                       </span>
                     )}
                   </TableCell>
+                  {/* Product Name Column */}
+                  <TableCell>
+                    {item.products && item.products.length > 0 ? (
+                      <div className="space-y-0.5">
+                        {item.products.map((p, idx) => (
+                          <div key={idx} className="text-sm font-medium text-slate-800">
+                            {p.product?.name || '—'}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-slate-400 text-xs">—</span>
+                    )}
+                  </TableCell>
+                  {/* Qty Column */}
+                  <TableCell className="text-center">
+                    {item.products && item.products.length > 0 ? (
+                      <div className="space-y-0.5">
+                        {item.products.map((p, idx) => (
+                          <div key={idx}>
+                            <span className="bg-slate-100 text-slate-700 text-xs font-medium px-2 py-0.5 rounded">
+                              {p.quantity ?? '—'}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-slate-400 text-xs">—</span>
+                    )}
+                  </TableCell>
+                  {/* Specification Column */}
+                  <TableCell>
+                    {item.products && item.products.length > 0 ? (
+                      <div className="space-y-0.5">
+                        {item.products.map((p, idx) => (
+                          <div key={idx} className="text-xs text-slate-500">
+                            {p.product?.specification || '—'}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-slate-400 text-xs">—</span>
+                    )}
+                  </TableCell>
+                  {/* Delivery Date Column */}
+                  <TableCell>
+                    {item.requestedDeliveryDate ? (
+                      <span className="text-sm text-slate-700">
+                        {new Date(item.requestedDeliveryDate).toLocaleDateString('en-IN')}
+                      </span>
+                    ) : (
+                      <span className="text-slate-400 text-xs">—</span>
+                    )}
+                  </TableCell>
                   {/* Product Type Column */}
                   <TableCell>
-                    <div className="flex items-center gap-2">
-                      <Select
-                        value={localStoreInfo[item._id]?.productType ?? (item.productType || '')}
-                        onValueChange={(val) => handleUpdateStoreInfo(item._id, { productType: val })}
-                        disabled={storeInfoLoading === item._id}
-                      >
-                        <SelectTrigger className="h-8 text-xs w-[160px]">
-                          <SelectValue placeholder="Select type..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="In-house Manufactured">In-house Manufactured</SelectItem>
-                          <SelectItem value="Purchased (Trading Product)">Purchased (Trading Product)</SelectItem>
-                        </SelectContent>
-                      </Select>
+                    <div className="flex flex-col gap-1.5">
+                      {!(localStoreInfo[item._id]?.isAvailableInInventory ?? item.isAvailableInInventory) ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium w-fit bg-slate-100 text-slate-600 border border-slate-200">
+                          Not Checked
+                        </span>
+                      ) : (
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium w-fit ${
+                          (localStoreInfo[item._id]?.productType ?? item.productType) === 'In-house Manufactured'
+                            ? 'bg-violet-50 text-violet-700 border border-violet-200'
+                            : 'bg-blue-50 text-blue-700 border border-blue-200'
+                        }`}>
+                          {(localStoreInfo[item._id]?.productType ?? item.productType) === 'In-house Manufactured'
+                            ? '🏭 In-house'
+                            : '🛒 Purchased'}
+                        </span>
+                      )}
                     </div>
                   </TableCell>
                   {/* Inventory Availability Column */}
                   <TableCell>
-                    <div className="flex items-center gap-2">
-                      <Select
-                        value={localStoreInfo[item._id]?.isAvailableInInventory ?? (item.isAvailableInInventory || '')}
-                        onValueChange={(val) => handleUpdateStoreInfo(item._id, { isAvailableInInventory: val })}
-                        disabled={storeInfoLoading === item._id}
-                      >
-                        <SelectTrigger className={`h-8 text-xs w-[150px] ${(localStoreInfo[item._id]?.isAvailableInInventory ?? item.isAvailableInInventory) === 'Available'
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                            : (localStoreInfo[item._id]?.isAvailableInInventory ?? item.isAvailableInInventory) === 'Not Available'
-                              ? 'bg-rose-50 text-rose-700 border-rose-200'
-                              : ''
-                          }`}>
-                          <SelectValue placeholder="Availability..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Available">Available</SelectItem>
-                          <SelectItem value="Not Available">Not Available</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      {storeInfoLoading === item._id && (
-                        <RefreshCw className="w-3 h-3 animate-spin text-blue-500 shrink-0" />
+                    <div className="flex items-center gap-1.5">
+                      {!(localStoreInfo[item._id]?.isAvailableInInventory ?? item.isAvailableInInventory) ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium w-fit bg-slate-100 text-slate-600 border border-slate-200">
+                          Not Checked
+                        </span>
+                      ) : (
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium w-fit ${
+                          (localStoreInfo[item._id]?.isAvailableInInventory ?? item.isAvailableInInventory) === 'Available'
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                            : 'bg-rose-50 text-rose-700 border border-rose-200'
+                        }`}>
+                          {(localStoreInfo[item._id]?.isAvailableInInventory ?? item.isAvailableInInventory) === 'Available'
+                            ? <><CheckCheck className="w-3.5 h-3.5" /> Available</>
+                            : <><XCircle className="w-3.5 h-3.5" /> Not Available</>}
+                        </span>
                       )}
-                      {(localStoreInfo[item._id]?.isAvailableInInventory || item.isAvailableInInventory) && storeInfoLoading !== item._id && (
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                      {(storeInfoLoading === item._id || checkingInventory === item._id) && (
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin text-blue-500 shrink-0" />
                       )}
                     </div>
                   </TableCell>
-                  <TableCell className="text-right">
-                    <div className="font-semibold text-slate-900">₹{item.totalAmount.toLocaleString()}</div>
-                    <div className="text-[10px] text-slate-400">{item.paymentStatus}</div>
-                  </TableCell>
                   <TableCell>
                     <div className="flex justify-center gap-1">
+                      {/* Check Inventory Button */}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className={`h-8 px-2 text-xs gap-1 transition-colors ${
+                          checkingInventory === item._id
+                            ? 'text-blue-500 border-blue-300'
+                            : 'text-indigo-600 border-indigo-200 hover:bg-indigo-50'
+                        }`}
+                        onClick={() => handleCheckInventory(item)}
+                        disabled={checkingInventory === item._id || storeInfoLoading === item._id}
+                        title="Auto-fetch Product Type & Inventory Status from Inventory"
+                      >
+                        {checkingInventory === item._id
+                          ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          : <ScanSearch className="w-3.5 h-3.5" />}
+                        {checkingInventory === item._id ? 'Checking...' : 'Check Inv.'}
+                      </Button>
                       <Button
                         variant="ghost"
                         size="icon"
@@ -348,53 +471,89 @@ const StoreOrders = () => {
 
           {/* Body */}
           <div className="bg-white px-8 py-6 space-y-6 flex-1 overflow-y-auto">
-            {/* Customer & Order Info */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Customer</p>
-                <div className="bg-slate-50 border border-slate-100 rounded-lg p-4 space-y-1">
-                  <div className="font-semibold text-slate-900">{selectedOrderDetails?.customer?.name}</div>
-                  <div className="text-sm text-slate-500">{selectedOrderDetails?.customer?.mobile}</div>
-                  <div className="text-xs text-slate-400">{selectedOrderDetails?.customer?.address}{selectedOrderDetails?.customer?.city ? `, ${selectedOrderDetails.customer.city}` : ''}</div>
+
+            {/* Order Details */}
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Order Details</p>
+              <div className="bg-slate-50 border border-slate-100 rounded-lg p-4 grid grid-cols-2 gap-x-8 gap-y-3">
+                <div>
+                  <span className="text-xs text-slate-400">Order Code</span>
+                  <div className="text-sm font-semibold text-slate-800">{selectedOrderDetails?.orderCode || '—'}</div>
                 </div>
-              </div>
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Order Info</p>
-                <div className="bg-slate-50 border border-slate-100 rounded-lg p-4 space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-slate-500">Total Amount</span>
-                    <span className="text-lg font-bold text-slate-900">₹{selectedOrderDetails?.totalAmount?.toLocaleString()}</span>
+                <div>
+                  <span className="text-xs text-slate-400">Order Date</span>
+                  <div className="text-sm font-medium text-slate-700">
+                    {selectedOrderDetails?.orderDate ? new Date(selectedOrderDetails.orderDate).toLocaleDateString('en-IN') : '—'}
                   </div>
-                  <div className="text-center text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-md py-1.5 uppercase tracking-wide">
-                    Ready for Dispatch
+                </div>
+                <div>
+                  <span className="text-xs text-slate-400">Delivery Date</span>
+                  <div className="text-sm font-medium text-slate-700">
+                    {selectedOrderDetails?.requestedDeliveryDate
+                      ? new Date(selectedOrderDetails.requestedDeliveryDate).toLocaleDateString('en-IN')
+                      : '—'}
                   </div>
+                </div>
+                <div>
+                  <span className="text-xs text-slate-400">Priority</span>
+                  <div className="text-sm font-medium text-slate-700">{selectedOrderDetails?.priority || '—'}</div>
+                </div>
+                <div>
+                  <span className="text-xs text-slate-400">Status</span>
+                  <div className="text-sm font-medium text-slate-700 capitalize">{selectedOrderDetails?.status || '—'}</div>
+                </div>
+                <div>
+                  <span className="text-xs text-slate-400">Payment Status</span>
+                  <div className="text-sm font-medium text-slate-700">{selectedOrderDetails?.paymentStatus || '—'}</div>
                 </div>
               </div>
             </div>
 
-            {/* Items Table */}
+            {/* Product Details Table */}
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Items</p>
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Product Details</p>
               <div className="border border-slate-100 rounded-lg overflow-hidden">
                 <table className="w-full text-sm">
                   <thead className="bg-slate-50 border-b border-slate-100">
                     <tr>
-                      <th className="text-left px-4 py-3 font-semibold text-slate-500">Product</th>
+                      <th className="text-left px-4 py-3 font-semibold text-slate-500">#</th>
+                      <th className="text-left px-4 py-3 font-semibold text-slate-500">Product Name</th>
+                      <th className="text-left px-4 py-3 font-semibold text-slate-500">Specification</th>
                       <th className="text-center px-4 py-3 font-semibold text-slate-500">Qty</th>
-                      <th className="text-right px-4 py-3 font-semibold text-slate-500">Amount</th>
+                      <th className="text-right px-4 py-3 font-semibold text-slate-500">Price</th>
+                      <th className="text-right px-4 py-3 font-semibold text-slate-500">Total</th>
                     </tr>
                   </thead>
-                  <tbody className="bg-white divide-y divide-slate-50">
-                    {selectedOrderDetails?.products?.map((item, idx) => (
-                      <tr key={idx} className="hover:bg-slate-50/60">
-                        <td className="px-4 py-3 font-medium text-slate-800">{item.product?.name}</td>
-                        <td className="px-4 py-3 text-center">
-                          <span className="bg-slate-100 text-slate-700 text-xs font-medium px-2 py-0.5 rounded">{item.quantity}</span>
-                        </td>
-                        <td className="px-4 py-3 text-right font-semibold text-slate-900">₹{item.total?.toLocaleString()}</td>
+                  <tbody className="bg-white divide-y divide-slate-100">
+                    {selectedOrderDetails?.products?.length > 0 ? (
+                      selectedOrderDetails.products.map((p, idx) => (
+                        <tr key={idx} className="hover:bg-slate-50/60">
+                          <td className="px-4 py-3 text-slate-400 text-xs">{idx + 1}</td>
+                          <td className="px-4 py-3 font-medium text-slate-800">{p.product?.name || '—'}</td>
+                          <td className="px-4 py-3 text-xs text-slate-500">{p.product?.specification || '—'}</td>
+                          <td className="px-4 py-3 text-center">
+                            <span className="bg-slate-100 text-slate-700 text-xs font-medium px-2 py-0.5 rounded">{p.quantity}</span>
+                          </td>
+                          <td className="px-4 py-3 text-right text-slate-600">₹{p.price?.toLocaleString() || '—'}</td>
+                          <td className="px-4 py-3 text-right font-semibold text-slate-900">₹{p.total?.toLocaleString() || '—'}</td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={6} className="px-4 py-6 text-center text-slate-400 text-sm">No products found</td>
                       </tr>
-                    ))}
+                    )}
                   </tbody>
+                  {selectedOrderDetails?.products?.length > 0 && (
+                    <tfoot className="bg-slate-50 border-t border-slate-100">
+                      <tr>
+                        <td colSpan={5} className="px-4 py-3 text-right text-sm font-semibold text-slate-600">Total Amount</td>
+                        <td className="px-4 py-3 text-right text-base font-bold text-slate-900">
+                          ₹{selectedOrderDetails?.totalAmount?.toLocaleString()}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  )}
                 </table>
               </div>
             </div>

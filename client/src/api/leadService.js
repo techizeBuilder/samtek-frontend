@@ -88,13 +88,15 @@ export const leadApi = {
     });
   },
 
-  markAsWon: (id) => {
+  markAsWon: (id, salesChecklist) => {
     const token = localStorage.getItem('token');
     return apiRequest(`/leads/${id}/won`, {
       method: 'POST',
       headers: {
+        'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`
-      }
+      },
+      body: JSON.stringify({ salesChecklist })
     });
   },
 
@@ -129,5 +131,122 @@ export const leadApi = {
         'Authorization': `Bearer ${token}`
       }
     });
+  },
+
+  uploadLeadDocuments: async (id, files) => {
+    const token = localStorage.getItem('token');
+    const formData = new FormData();
+    if (files.po) formData.append('po', files.po);
+    if (files.paymentProof) formData.append('paymentProof', files.paymentProof);
+    if (files.quotation) formData.append('quotation', files.quotation);
+
+    const res = await fetch(`/api/leads/${id}/upload-documents`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`
+        // No Content-Type — browser sets multipart boundary automatically
+      },
+      body: formData
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ message: res.statusText }));
+      const error = new Error(err.message || 'Upload failed');
+      error.status = res.status;
+      throw error;
+    }
+    return res.json();
+  },
+
+  // ─── IndiaMART Sync ──────────────────────────────────────────
+  syncIndiamart: () => {
+    const token = localStorage.getItem('token');
+    return apiRequest('/leads/sync-indiamart', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+  },
+
+  // ─── IVR (Acefone) Sync ──────────────────────────────────────
+  syncIvr: () => {
+    const token = localStorage.getItem('token');
+    return apiRequest('/leads/sync-ivr', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+  },
+
+  // ─── API Settings ────────────────────────────────────────────
+  getApiSettings: () => {
+    const token = localStorage.getItem('token');
+    return apiRequest('/leads/api-settings', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+  },
+
+  saveApiSettings: (data) => {
+    const token = localStorage.getItem('token');
+    return apiRequest('/leads/api-settings', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(data)
+    });
+  },
+
+  // ─── Click-to-Call (Acefone) ─────────────────────────────────
+  clickToCall: (customerNumber) => {
+    const token = localStorage.getItem('token');
+    return apiRequest('/leads/click-to-call', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ customerNumber })
+    });
+  },
+
+  // ─── Call Logs ───────────────────────────────────────────────
+  getCallLogs: (leadId) => {
+    const token = localStorage.getItem('token');
+    return apiRequest(`/leads/${leadId}/call-logs`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+  },
+
+  // ─── Meeting Schedule ─────────────────────────────────────────
+  scheduleMeeting: (leadId, data) => {
+    const token = localStorage.getItem('token');
+    return apiRequest(`/leads/${leadId}/meeting`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(data)
+    });
+  },
+
+  updateMeeting: (leadId, data) => {
+    const token = localStorage.getItem('token');
+    return apiRequest(`/leads/${leadId}/meeting`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(data)
+    });
+  },
+
+  getMeeting: (leadId) => {
+    const token = localStorage.getItem('token');
+    return apiRequest(`/leads/${leadId}/meeting`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
   }
 };
+

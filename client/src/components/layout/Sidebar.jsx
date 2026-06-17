@@ -30,6 +30,7 @@ const superAdminMenuItems = [
   { label: 'Customers', path: '/super-admin/customers', icon: Users, module: 'customers' },
   { label: 'Companies', path: '/super-admin/companies', icon: Building2, module: 'companies' },
   { label: 'Role & Permissions', path: '/role-permission-management', icon: Shield, module: 'permissions' },
+  { label: 'API Settings', path: '/super-admin/api-settings', icon: Cog, module: 'settings' },
   { label: 'Settings', path: '/super-admin/settings', icon: Settings, module: 'settings' },
 ];
 
@@ -157,6 +158,7 @@ const accountsMenuItems = [
       { label: 'Customer Payment', path: '/accounts/sales/payments', feature: 'sales' },
       { label: 'Sales Order Tracking', path: '/accounts/sales/order-tracking', feature: 'sales' },
       { label: 'NOC Requests', path: '/accounts/sales/noc-request', feature: 'sales' },
+      { label: 'Packed Orders (Payment)', path: '/accounts/sales/packed-orders', feature: 'sales' },
       { label: 'Receivable Ageing', path: '/accounts/sales/ageing', feature: 'sales' },
       { label: 'Sales Reports', path: '/accounts/sales/reports', feature: 'sales' }
     ]

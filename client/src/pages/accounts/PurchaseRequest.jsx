@@ -148,6 +148,26 @@ export default function PurchaseRequest() {
     }
   };
 
+  const handleStoreApprove = async (id) => {
+    try {
+      const data = await apiRequest('PATCH', `/api/purchase-requests/${id}/store-approve`);
+      if (data.success) {
+        toast({
+          title: "Approved",
+          description: "Purchase request approved and forwarded to Purchase department successfully."
+        });
+        fetchPurchaseRequests();
+      }
+    } catch (error) {
+      console.error("Failed to approve request:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to approve request",
+        variant: "destructive"
+      });
+    }
+  };
+
   // ── Open the Receive modal ───────────────────────────────────────────────
   const handleOpenReceiveModal = (request) => {
     setReceiveRequest(request);
@@ -428,7 +448,14 @@ export default function PurchaseRequest() {
                           <TableCell className="font-bold text-slate-900 pl-6">{request.requestId}</TableCell>
                           <TableCell className="font-semibold text-slate-800">{request.productName}</TableCell>
                           <TableCell className="font-extrabold text-slate-900 text-center">{request.quantity}</TableCell>
-                          <TableCell className="font-medium text-slate-600">{request.requestFromDepartment}</TableCell>
+                          <TableCell className="font-medium text-slate-600">
+                            {request.requestFromDepartment}
+                            {request.source && request.source !== 'Store' && (
+                              <Badge variant="secondary" className="ml-1 text-[10px] bg-indigo-50 text-indigo-700 border-indigo-150">
+                                {request.source}
+                              </Badge>
+                            )}
+                          </TableCell>
                           <TableCell className="text-slate-500 font-medium">
                             {request.requestDate ? format(new Date(request.requestDate), 'dd MMM yyyy') : 'N/A'}
                           </TableCell>
@@ -438,33 +465,50 @@ export default function PurchaseRequest() {
                             </Badge>
                           </TableCell>
                           <TableCell className="text-center">
-                            <Badge variant="outline" className={`font-black px-2.5 py-1 rounded-lg border ${getStatusColor(request.status)}`}>
-                              {request.status}
-                            </Badge>
+                            {request.source && request.source !== 'Store' && !request.storeApproved ? (
+                              <Badge variant="outline" className="font-black px-2.5 py-1 rounded-lg border bg-amber-50 text-amber-700 border-amber-200">
+                                Pending Store Approval
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className={`font-black px-2.5 py-1 rounded-lg border ${getStatusColor(request.status)}`}>
+                                {request.status}
+                              </Badge>
+                            )}
                           </TableCell>
                           <TableCell className="text-center py-3">
                             <div className="flex items-center justify-center gap-2">
                               {isStoreUser ? (
                                 <>
-                                  {hasPO ? (
+                                  {request.source && request.source !== 'Store' && !request.storeApproved ? (
                                     <Button
-                                      onClick={() => handleOpenViewPO(request)}
-                                      variant="outline"
-                                      className="border-slate-200 text-slate-700 hover:bg-slate-100 font-semibold h-8 text-xs rounded-md"
-                                    >
-                                      <Eye className="w-3.5 h-3.5 mr-1" /> View PO
-                                    </Button>
-                                  ) : (
-                                    <span className="text-xs text-slate-400 font-medium">Awaiting PO</span>
-                                  )}
-                                  
-                                  {request.status === 'Ordered' && (
-                                    <Button
-                                      onClick={() => handleOpenReceiveModal(request)}
+                                      onClick={() => handleStoreApprove(request._id)}
                                       className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold h-8 text-xs rounded-md shadow-sm"
                                     >
-                                      <PackageCheck className="w-3.5 h-3.5 mr-1" /> Mark Received
+                                      <Check className="w-3.5 h-3.5 mr-1" /> Approve & Forward
                                     </Button>
+                                  ) : (
+                                    <>
+                                      {hasPO ? (
+                                        <Button
+                                          onClick={() => handleOpenViewPO(request)}
+                                          variant="outline"
+                                          className="border-slate-200 text-slate-700 hover:bg-slate-100 font-semibold h-8 text-xs rounded-md"
+                                        >
+                                          <Eye className="w-3.5 h-3.5 mr-1" /> View PO
+                                        </Button>
+                                      ) : (
+                                        <span className="text-xs text-slate-400 font-medium">Awaiting PO</span>
+                                      )}
+                                      
+                                      {request.status === 'Ordered' && (
+                                        <Button
+                                          onClick={() => handleOpenReceiveModal(request)}
+                                          className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold h-8 text-xs rounded-md shadow-sm"
+                                        >
+                                          <PackageCheck className="w-3.5 h-3.5 mr-1" /> Mark Received
+                                        </Button>
+                                      )}
+                                    </>
                                   )}
                                 </>
                               ) : (

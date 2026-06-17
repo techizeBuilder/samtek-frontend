@@ -798,17 +798,6 @@ const MyOrders = () => {
                         </Badge>
                       </div>
                       <div className="w-24 flex justify-center items-center gap-0.5">
-                        {order.status === 'pending' && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 w-7 p-0 text-green-600 hover:text-green-700 hover:bg-green-50"
-                            onClick={() => handleStatusUpdate(order._id, 'approved')}
-                            title="Approve & Finalize"
-                          >
-                            <Check className="h-4 w-4" />
-                          </Button>
-                        )}
                         <Button
                           variant="ghost"
                           size="sm"
@@ -901,17 +890,6 @@ const MyOrders = () => {
                     {(canPerformAction('sales', 'orders', 'edit') || canPerformAction('sales', 'myIndent', 'edit') || canPerformAction('orders', 'indent', 'edit') || canPerformAction('sales', 'orders', 'delete') || canPerformAction('sales', 'myIndent', 'delete') || canPerformAction('orders', 'indent', 'delete')) && (
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
-                          {order.status === 'pending' && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-8 w-8 p-0 text-green-600 hover:text-green-700 hover:bg-green-50"
-                              onClick={() => handleStatusUpdate(order._id, 'approved')}
-                              title="Approve & Finalize"
-                            >
-                              <Check className="h-4 w-4" />
-                            </Button>
-                          )}
                           <Button
                             variant="ghost"
                             size="sm"

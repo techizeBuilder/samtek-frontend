@@ -132,6 +132,7 @@ export default function AddUser() {
     name: "",
     email: "",
     mobile: "",
+    ivrNumber: "",
     gender: "",
     dob: "",
     joiningDate: "",
@@ -162,9 +163,9 @@ export default function AddUser() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    // Fetch users with 'Manager' role (Title Case matches DB)
+    // Managers
     axios
-      .get(`${API_BASE}/users?role=Manager&limit=100`, {
+      .get(`${API_BASE}/users?role=manager`, {
         headers: { Authorization: `Bearer ${token}` },
       })
       .then((res) => setManagers(res.data?.data?.users || res.data?.users || []))
@@ -273,11 +274,6 @@ export default function AddUser() {
     if (!formData.branchId) e.branchId = "Required";
     if (!formData.designationId) e.designationId = "Required";
 
-    // Reporting Manager is REQUIRED for all roles EXCEPT Manager (where it is optional)
-    if (formData.role !== 'Manager' && formData.role !== '' && !job.managerId) {
-      e.managerId = "Reporting Manager is required";
-    }
-
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -296,6 +292,7 @@ export default function AddUser() {
       data.append("fullName", formData.name);
       data.append("email", formData.email);
       data.append("mobile", formData.mobile);
+      if (formData.ivrNumber) data.append("ivrNumber", formData.ivrNumber);
       data.append("gender", formData.gender);
       data.append("dob", formData.dob);
       data.append("joiningDate", formData.joiningDate);
@@ -374,6 +371,7 @@ export default function AddUser() {
         name: "",
         email: "",
         mobile: "",
+        ivrNumber: "",
         gender: "",
         dob: "",
         joiningDate: "",
@@ -499,6 +497,18 @@ export default function AddUser() {
               {errors.mobile && <p className="text-sm text-red-500">{errors.mobile}</p>}
             </div>
 
+            <div>
+              <Label className="flex items-center gap-1">
+                Acefone IVR Extension
+                <span className="text-[10px] text-gray-400 font-normal">(for click-to-call)</span>
+              </Label>
+              <Input
+                placeholder="e.g. 0602105320010"
+                value={formData.ivrNumber}
+                onChange={(e) => setFormData({ ...formData, ivrNumber: e.target.value })}
+              />
+              <p className="text-xs text-gray-400 mt-0.5">PHP system ka ivr_number field — Acefone agent extension.</p>
+            </div>
             <div>
               <Label>Gender <span className="text-red-500">*</span></Label>
               <select
@@ -632,28 +642,18 @@ export default function AddUser() {
             {errors.role && <p className="text-sm text-red-500">{errors.role}</p>}
           </div>
 
-          {/* Reporting Manager — optional for Manager role, required for all other roles */}
           <div>
-            <Label>
-              Reporting Manager{' '}
-              {formData.role === 'Manager'
-                ? <span className="text-gray-400 text-xs font-normal">(Optional)</span>
-                : <span className="text-red-500">*</span>
-              }
-            </Label>
+            <Label>Reporting Manager</Label>
             <select
               value={job.managerId}
               onChange={(e) => setJob({ ...job, managerId: e.target.value })}
-              className={`w-full h-10 border rounded-md px-3 ${errors.managerId ? 'border-red-500' : ''}`}
+              className="w-full h-10 border rounded-md px-3"
             >
-              <option value="">
-                {formData.role === 'Manager' ? 'Select Manager (Optional)' : 'Select Reporting Manager'}
-              </option>
+              <option value="">Select Manager (Optional)</option>
               {managers?.map((m) => (
                 <option key={m._id} value={m._id}>{m.fullName || m.name}</option>
               ))}
             </select>
-            {errors.managerId && <p className="text-sm text-red-500">{errors.managerId}</p>}
           </div>
 
           <div>
@@ -683,6 +683,53 @@ export default function AddUser() {
           </div>
         </CardContent>
       </Card>
+
+      {/* ================= IVR / CALLING SETTINGS (SALES EMPLOYEE ONLY) ================= */}
+      {(formData.role === 'Sales Employee' || formData.role === 'Sales Head' || formData.role === 'Sales') && (
+        <Card className="max-w-4xl border border-emerald-200 bg-emerald-50/10">
+          <CardHeader className="pb-3 border-b border-emerald-100">
+            <CardTitle className="text-lg font-medium text-emerald-900 flex items-center gap-2">
+              <span className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-600">
+                📞
+              </span>
+              IVR / Calling Settings
+            </CardTitle>
+            <p className="text-xs text-emerald-700 mt-1">
+              Acefone IVR extension number — yeh field Sales Employee ke click-to-call ke liye zaroori hai.
+              Super Admin ne API Key aur Caller ID pehle se set ki hogi.
+            </p>
+          </CardHeader>
+          <CardContent className="pt-5 grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <Label className="text-emerald-900 flex items-center gap-1">
+                IVR Extension Number
+                <span className="text-red-500 text-xs ml-1">(Required for calling)</span>
+              </Label>
+              <Input
+                placeholder="e.g. 0602105320010"
+                value={formData.ivrNumber}
+                onChange={(e) => setFormData({ ...formData, ivrNumber: e.target.value })}
+                className="mt-1 border-emerald-300 focus:ring-emerald-500"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Acefone dashboard se milta hai. Is number pe Sales Employee ka phone ring hoga jab click-to-call kare.
+              </p>
+            </div>
+            <div>
+              <Label className="text-emerald-900">Personal Mobile</Label>
+              <Input
+                placeholder="Employee ka personal mobile number"
+                value={formData.mobile}
+                onChange={(e) => setFormData({ ...formData, mobile: e.target.value })}
+                className="mt-1 border-emerald-300 focus:ring-emerald-500"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Personal number — IVR alag hota hai. Customer ko Caller ID (company number) dikhti hai.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* ================= TECHNICIAN SETTINGS (CONDITIONAL) ================= */}
       {formData.role === 'Complaint Management Employee' && (

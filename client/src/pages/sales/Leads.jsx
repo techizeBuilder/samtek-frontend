@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'wouter';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { usePermissions } from '@/hooks/usePermissions';
 import { leadApi } from '@/api/leadService';
+import { orderApi } from '@/api/orderService';
 import {
   Card,
   CardContent,
@@ -48,6 +49,7 @@ import {
   X,
   History,
   CheckCircle2,
+  ShieldCheck,
   Clock,
   Briefcase,
   Globe,
@@ -58,18 +60,28 @@ import {
   Users,
   Mic,
   Volume2,
+  Upload,
   FileDown,
   Pencil,
   Star,
   ThumbsUp,
-  ThumbsDown
+  ThumbsDown,
+  Settings,
+  RefreshCw,
+  Play,
+  Square,
+  PhoneCall,
+  Handshake,
+  Download
 } from 'lucide-react';
+
 import { cn } from '@/lib/utils';
 
 const Leads = () => {
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const apiSettings = user?.company?.apiSettings || null;
   const { hasFeatureAccess } = usePermissions();
   const [location, setLocation] = useLocation();
 
@@ -86,6 +98,32 @@ const Leads = () => {
   const [isBuyerTypeModalOpen, setIsBuyerTypeModalOpen] = useState(false);
   const [isRecordingModalOpen, setIsRecordingModalOpen] = useState(false);
   const [selectedLead, setSelectedLead] = useState(null);
+
+  // Dialpad Modal State
+  const [isDialpadOpen, setIsDialpadOpen] = useState(false);
+  const [dialpadLead, setDialpadLead] = useState(null);
+  const [dialpadInput, setDialpadInput] = useState('');
+
+  // API Settings modal state (now just shows redirect info to Super Admin)
+  const [isApiSettingsModalOpen, setIsApiSettingsModalOpen] = useState(false);
+
+  // ─── Meeting Modal State ────────────────────────────────────────
+  const [isMeetingModalOpen, setIsMeetingModalOpen] = useState(false);
+  const [meetingLead, setMeetingLead] = useState(null);
+  const [meetingFormData, setMeetingFormData] = useState({
+    meetingType: 'Visit',
+    meetingDate: '',
+    startTime: '',
+    endTime: '',
+    assignedTo: '',
+    meetingWith: '',
+    purpose: 'Sales',
+    venue: '',
+    onlineMeetingUrl: '',
+    remarks: '',
+    sendInviteEmail: false
+  });
+  const existingMeetingRef = useRef(null); // ref for sync access in submit handler
 
   // Form State for Contact Person
   const [contactFormData, setContactFormData] = useState({
@@ -190,6 +228,24 @@ const Leads = () => {
     "Followup"
   ];
 
+  // Pipeline stages for the progress timeline (read-only display)
+  const PIPELINE_STAGES = [
+    "Call Not Picked",
+    "Contacted",
+    "Product Qualified",
+    "Budget Qualified",
+    "Bank Funding",
+    "Self Funding",
+    "Sent Marketing Data",
+    "Quatation Sent",
+    "Visit Scheduled",
+    "Visited",
+    "Deal Closing",
+    "Deal Won",
+    "Service Verified",
+    "Service Rejected"
+  ];
+
   const DISQUALIFY_REASONS = [
     "Payment Term Is Out Of Scope",
     "Freight Charged Are High",
@@ -248,7 +304,7 @@ const Leads = () => {
       ?.filter(Boolean) || [];
 
     const uniqueStages = [...new Set([...stagesFromHistory, lead.stage])];
-    return uniqueStages.filter(s => STAGES.includes(s));
+    return uniqueStages.filter(s => PIPELINE_STAGES.includes(s));
   };
 
   // Popup / Modal States
@@ -281,7 +337,8 @@ const Leads = () => {
 
   const handleOpenStageModal = (lead) => {
     setStageLead(lead);
-    setSelectedStage(lead.stage || 'N/A');
+    // Pre-select current stage (Hot/Warm/Cold/Pending/Star Lead/Followup)
+    setSelectedStage(lead.stage && STAGES.includes(lead.stage) ? lead.stage : '');
     setIsStageModalOpen(true);
   };
 
@@ -301,6 +358,40 @@ const Leads = () => {
     setHistoryLead(lead);
     setHistoryFilter('All');
     setIsHistoryModalOpen(true);
+  };
+
+  // ─── Meeting Handlers ──────────────────────────────────────────
+  const handleOpenMeetingModal = (lead) => {
+    const defaultAssignedTo = lead.assignedTo?._id || lead.assignedTo || user?._id || '';
+    existingMeetingRef.current = null;
+    setMeetingLead(lead);
+    setMeetingFormData({
+      meetingType: 'Visit',
+      meetingDate: '',
+      startTime: '',
+      endTime: '',
+      assignedTo: defaultAssignedTo,
+      meetingWith: lead.contactPerson || '',
+      purpose: 'Sales',
+      venue: '',
+      onlineMeetingUrl: '',
+      remarks: '',
+      sendInviteEmail: false
+    });
+    setIsMeetingModalOpen(true);
+  };
+
+  const handleMeetingSubmit = () => {
+    if (!meetingLead) return;
+    if (!meetingFormData.meetingDate || !meetingFormData.startTime) {
+      toast({ title: 'Required', description: 'Meeting date and start time are required', variant: 'destructive' });
+      return;
+    }
+    saveMeetingMutation.mutate({
+      leadId: meetingLead._id,
+      data: meetingFormData,
+      isUpdate: !!existingMeetingRef.current
+    });
   };
 
   const handleStatusSubmit = () => {
@@ -323,7 +414,9 @@ const Leads = () => {
   };
 
   const handleStageSubmit = () => {
-    if (!stageLead) return;
+    if (!stageLead || !selectedStage) return;
+    // Stage stores Hot/Warm/Cold/Pending/Star Lead/Followup in lead.stage field
+    // Never overwrite system status (Won, New, etc.)
     updateLeadMutation.mutate(
       {
         id: stageLead._id,
@@ -331,7 +424,6 @@ const Leads = () => {
       },
       {
         onSuccess: (data) => {
-          // Invalidate and refetch leads data for real-time sync
           queryClient.invalidateQueries({ queryKey: ['leads'] });
           queryClient.refetchQueries({ queryKey: ['leads'] });
           toast({ title: "Success", description: "Stage updated successfully" });
@@ -401,6 +493,81 @@ const Leads = () => {
     describeRequirements: ''
   });
 
+  // View Checklist Modal (for Sales Employee to see verification status)
+  const [isViewChecklistModalOpen, setIsViewChecklistModalOpen] = useState(false);
+  const [viewingChecklistOrder, setViewingChecklistOrder] = useState(null);
+  const [viewingChecklistLoading, setViewingChecklistLoading] = useState(false);
+
+  const handleViewChecklistStatus = async (lead) => {
+    setViewingChecklistLoading(true);
+    setIsViewChecklistModalOpen(true);
+    setViewingChecklistOrder(null);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`/api/orders/by-lead/${lead._id}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success && data.order) {
+        setViewingChecklistOrder(data.order);
+      } else {
+        toast({
+          title: "Not Found",
+          description: data.message || "No order associated with this deal was found.",
+          variant: "destructive"
+        });
+        setIsViewChecklistModalOpen(false);
+      }
+    } catch (e) {
+      toast({
+        title: "Error",
+        description: "Failed to fetch checklist details.",
+        variant: "destructive"
+      });
+      setIsViewChecklistModalOpen(false);
+    } finally {
+      setViewingChecklistLoading(false);
+    }
+  };
+
+  // Won Checklist Modal
+  const [isWonChecklistModalOpen, setIsWonChecklistModalOpen] = useState(false);
+  const [wonChecklistLead, setWonChecklistLead] = useState(null);
+  const [salesChecklist, setSalesChecklist] = useState({
+    advancePayment: { checked: true, value: 0 },
+    installationCharge: { checked: false, value: '' },
+    warranty: { checked: false, value: '' },
+    boardingLodging: { checked: false, value: '' },
+    backupGenerator: { checked: false, value: '' },
+    operatorErrorClause: { checked: false }
+  });
+
+  const handleOpenWonChecklistModal = (lead) => {
+    setWonChecklistLead(lead);
+    setSalesChecklist({
+      advancePayment: { checked: true, value: lead.advancedPaymentAmount || 0 },
+      installationCharge: { checked: false, value: '' },
+      warranty: { checked: false, value: '' },
+      boardingLodging: { checked: false, value: '' },
+      backupGenerator: { checked: false, value: '' },
+      operatorErrorClause: { checked: false }
+    });
+    setIsWonChecklistModalOpen(true);
+  };
+
+  const handleWonChecklistSubmit = () => {
+    if (!wonChecklistLead) return;
+    markAsWonMutation.mutate({
+      id: wonChecklistLead._id,
+      salesChecklist
+    }, {
+      onSuccess: () => {
+        setIsWonChecklistModalOpen(false);
+        setWonChecklistLead(null);
+      }
+    });
+  };
+
   const handleOpenClosureDealModal = (lead) => {
     setEditingLeadId(lead._id);
     setClosureDealFormData({
@@ -434,9 +601,13 @@ const Leads = () => {
     );
   };
 
-  // Tabs for status filtering
+  // Tabs for status filtering — Cruncher sees Unassigned Leads tab
+  const isCruncher = user?.designationId?.name === 'Cruncher' || user?.designation === 'Cruncher';
+  const isSalesHead = ['Sales Head', 'Manager', 'Super Admin', 'Superadmin'].includes(user?.role);
+
   const tabs = [
     'All Active Leads',
+    ...(isCruncher || isSalesHead ? ['Unassigned Leads'] : []),
     'New Leads',
     'Today\'s Follow-up',
     'Pending Follow-up',
@@ -452,7 +623,11 @@ const Leads = () => {
     queryFn: () => leadApi.getUsers(),
   });
 
-  const assignableUsers = usersData?.users || [];
+const assignableUsers = (usersData?.users || []).filter(
+  (user) =>
+    user.role === "Sales Head" ||
+    user.role === "Sales Employee"
+);
 
   // Fetch items for product selection
   const { data: itemsData, isLoading: itemsLoading } = useQuery({
@@ -477,6 +652,107 @@ const Leads = () => {
   });
 
   const leads = leadsData?.leads || [];
+
+  // Fetch Call Logs for the selected lead
+  const { data: callLogsData, isLoading: callLogsLoading } = useQuery({
+    queryKey: ['call-logs', selectedLead?._id],
+    queryFn: () => leadApi.getCallLogs(selectedLead?._id),
+    enabled: !!selectedLead?._id && isRecordingModalOpen
+  });
+
+  const callLogs = callLogsData?.callLogs || [];
+
+  // ─── Meeting Query (cached per lead) ─────────────────────────
+  const { data: meetingQueryData, isLoading: meetingFetching } = useQuery({
+    queryKey: ['meeting', meetingLead?._id],
+    queryFn: () => leadApi.getMeeting(meetingLead._id),
+    enabled: !!meetingLead?._id && isMeetingModalOpen,
+    staleTime: 30 * 1000, // 30s cache — instant on re-open
+  });
+
+  // Populate form when meeting data arrives
+  useEffect(() => {
+    if (!isMeetingModalOpen || !meetingLead) return;
+    const m = meetingQueryData?.meeting;
+    const defaultAssignedTo = meetingLead.assignedTo?._id || meetingLead.assignedTo || user?._id || '';
+    if (m) {
+      existingMeetingRef.current = m;
+      setMeetingFormData({
+        meetingType: m.meetingType || 'Visit',
+        meetingDate: m.meetingDate ? new Date(m.meetingDate).toISOString().split('T')[0] : '',
+        startTime: m.startTime || '',
+        endTime: m.endTime || '',
+        assignedTo: m.assignedTo?._id || m.assignedTo || defaultAssignedTo,
+        meetingWith: m.meetingWith || meetingLead.contactPerson || '',
+        purpose: m.purpose || 'Sales',
+        venue: m.venue || '',
+        onlineMeetingUrl: m.onlineMeetingUrl || '',
+        remarks: m.remarks || '',
+        sendInviteEmail: false
+      });
+    } else if (!meetingFetching) {
+      // Query done, no meeting exists — keep blank form
+      existingMeetingRef.current = null;
+    }
+  }, [meetingQueryData, meetingFetching, isMeetingModalOpen]);
+
+  // ─── Meeting Save/Update Mutation ─────────────────────────────
+  const saveMeetingMutation = useMutation({
+    mutationFn: ({ leadId, data, isUpdate }) =>
+      isUpdate ? leadApi.updateMeeting(leadId, data) : leadApi.scheduleMeeting(leadId, data),
+    onSuccess: (_, { isUpdate }) => {
+      toast({ title: 'Success', description: isUpdate ? 'Meeting updated successfully' : 'Meeting scheduled successfully' });
+      queryClient.invalidateQueries({ queryKey: ['meeting', meetingLead?._id] });
+      setIsMeetingModalOpen(false);
+    },
+    onError: (err) => {
+      toast({ title: 'Error', description: err?.message || 'Failed to save meeting', variant: 'destructive' });
+    }
+  });
+
+  // IndiaMart Sync Mutation
+  const syncIndiamartMutation = useMutation({
+    mutationFn: leadApi.syncIndiamart,
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+      toast({
+        title: "IndiaMart Sync Success",
+        description: res.message || "Leads synchronized successfully."
+      });
+    },
+    onError: (error) => {
+      const is400 = error?.status === 400 || error?.message?.includes('not configured') || error?.message?.includes('disabled');
+      toast({
+        title: "IndiaMart Sync Failed",
+        description: is400
+          ? "IndiaMART API configured nahi hai. Super Admin → API Settings se configure karein."
+          : error?.message || "Could not sync leads.",
+        variant: "destructive"
+      });
+    }
+  });
+
+  // IVR Sync Mutation — kept for manual sync if needed
+  const syncIvrMutation = useMutation({
+    mutationFn: leadApi.syncIvr,
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+      toast({
+        title: "IVR Sync Success",
+        description: res.message || "Leads synchronized successfully."
+      });
+    },
+    onError: (error) => {
+      const is400 = error?.status === 400 || error?.message?.includes('not configured') || error?.message?.includes('disabled');
+      toast({
+        title: "IVR Sync Failed",
+        description: is400
+          ? "Acefone IVR API configured nahi hai. Super Admin → API Settings se configure karein."
+          : error?.message || "Could not sync leads.",
+        variant: "destructive"
+      });
+    }
+  });
 
   // Mutations
   const createLeadMutation = useMutation({
@@ -512,7 +788,7 @@ const Leads = () => {
   });
 
   const markAsWonMutation = useMutation({
-    mutationFn: (id) => leadApi.markAsWon(id),
+    mutationFn: ({ id, salesChecklist }) => leadApi.markAsWon(id, salesChecklist),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leads'] });
       toast({ title: "Success", description: "Lead converted to Customer and Order created successfully!" });
@@ -541,11 +817,25 @@ const Leads = () => {
     }
   });
 
+  // Go to Account Modal States
+  const [isGoToAccountModalOpen, setIsGoToAccountModalOpen] = useState(false);
+  const [goToAccountLead, setGoToAccountLead] = useState(null);
+  const [goToAccountFiles, setGoToAccountFiles] = useState({ po: null, paymentProof: null, quotation: null });
+
+  const handleOpenGoToAccountModal = (lead) => {
+    setGoToAccountLead(lead);
+    setGoToAccountFiles({ po: null, paymentProof: null, quotation: null });
+    setIsGoToAccountModalOpen(true);
+  };
+
   const goToAccountMutation = useMutation({
     mutationFn: (id) => leadApi.sendToAccount(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leads'] });
       toast({ title: "Success", description: "Lead sent to Account successfully" });
+      setIsGoToAccountModalOpen(false);
+      setGoToAccountLead(null);
+      setGoToAccountFiles({ po: null, paymentProof: null, quotation: null });
     },
     onError: (error) => {
       toast({
@@ -556,7 +846,35 @@ const Leads = () => {
     }
   });
 
-  const handleEditBuyerClick = (lead) => {
+  const uploadLeadDocsMutation = useMutation({
+    mutationFn: ({ id, files }) => leadApi.uploadLeadDocuments(id, files),
+    onSuccess: (_, { id }) => {
+      // After docs uploaded, send lead to account
+      goToAccountMutation.mutate(id);
+    },
+    onError: (error) => {
+      toast({
+        title: "Upload Error",
+        description: error?.message || "Failed to upload documents",
+        variant: "destructive"
+      });
+    }
+  });
+
+  const handleGoToAccountSubmit = () => {
+    if (!goToAccountLead) return;
+    // Quotation and Payment Proof are required
+    if (!goToAccountFiles.quotation) {
+      toast({ title: "Required", description: "Please upload Quotation before sending to Account.", variant: "destructive" });
+      return;
+    }
+    if (!goToAccountFiles.paymentProof) {
+      toast({ title: "Required", description: "Please upload Payment Proof / Screenshot before sending to Account.", variant: "destructive" });
+      return;
+    }
+    // PO is optional — always upload (at least quotation + paymentProof are present)
+    uploadLeadDocsMutation.mutate({ id: goToAccountLead._id, files: goToAccountFiles });
+  };  const handleEditBuyerClick = (lead) => {
     setEditingLeadId(lead._id);
     setFormData({
       ...formData,
@@ -746,6 +1064,17 @@ const Leads = () => {
             Add Leads
           </Button>
 
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100 font-medium"
+            onClick={() => syncIndiamartMutation.mutate()}
+            disabled={syncIndiamartMutation.isPending}
+          >
+            <RefreshCw className={cn("h-4 w-4 mr-2", syncIndiamartMutation.isPending && "animate-spin")} />
+            Sync IndiaMart
+          </Button>
+
           <div className="flex items-center gap-2 ml-auto">
             <span className="text-sm text-gray-500">Show Result</span>
             <Select value={limit} onValueChange={setLimit}>
@@ -823,11 +1152,12 @@ const Leads = () => {
                 <div className="flex flex-col lg:flex-row p-4 gap-6">
                   {/* Left Section - Core Details */}
                   <div className="flex-1 flex flex-col">
-                    <div>
-                      <div className="flex flex-wrap gap-x-8 gap-y-2 text-sm mb-4">
+                    <div className="flex flex-wrap gap-x-8 gap-y-2 text-sm mb-4">
                       <div className="flex flex-col">
                         <span className="text-gray-500 text-xs">Lead ID</span>
-                        <span className="font-semibold text-blue-600">#{lead.leadCode}</span>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <span className="font-semibold text-blue-600">#{lead.leadCode}</span>
+                        </div>
                       </div>
                       <div className="flex flex-col">
                         <span className="text-gray-500 text-xs">Lead Date</span>
@@ -856,22 +1186,42 @@ const Leads = () => {
                       <div className="flex flex-col">
                         <span className="text-gray-500 text-xs">Quotation</span>
                         <div className="flex items-center h-5">
-                          {lead.quotation ? (
+                          {lead.hasQuotation ? (
                             <Button 
                               variant="ghost" 
                               size="sm" 
                               className="h-6 px-2 text-blue-600 hover:bg-blue-50 text-[10px] -ml-2"
-                              onClick={() => {
-                                const base64String = lead.quotation;
-                                if (base64String.startsWith('data:application/pdf')) {
-                                  const win = window.open();
-                                  win.document.write('<iframe src="' + base64String + '" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>');
-                                } else {
-                                  // Fallback for direct download if iframe method fails
-                                  const link = document.createElement('a');
-                                  link.href = lead.quotation;
-                                  link.download = `Quotation_${lead.leadCode}.pdf`;
-                                  link.click();
+                              onClick={async () => {
+                                // Open window FIRST (must be synchronous during click event)
+                                // so the browser doesn't block it as a popup
+                                const win = window.open('', '_blank');
+                                if (!win) {
+                                  toast({ title: "Popup Blocked", description: "Please allow popups for this site and try again.", variant: "destructive" });
+                                  return;
+                                }
+                                win.document.write(`<!DOCTYPE html><html><head><title>Loading Quotation...</title><style>body{display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;color:#555;background:#f9f9f9;}</style></head><body><p>⏳ Loading quotation, please wait...</p></body></html>`);
+                                try {
+                                  const token = localStorage.getItem('token');
+                                  const res = await fetch(`/api/leads/${lead._id}/quotation`, {
+                                    headers: { 'Authorization': `Bearer ${token}` }
+                                  });
+                                  if (!res.ok) throw new Error(`Server error: ${res.status}`);
+                                  const data = await res.json();
+                                  let base64String = data.quotation;
+                                  if (!base64String) throw new Error('No quotation data returned');
+                                  // Ensure it has the proper data URI prefix
+                                  if (!base64String.startsWith('data:')) {
+                                    base64String = `data:application/pdf;base64,${base64String}`;
+                                  }
+                                  win.document.open();
+                                  win.document.write(`<!DOCTYPE html><html><head><title>Quotation - ${lead.leadCode}</title><style>*{margin:0;padding:0;box-sizing:border-box}body,html{height:100%;overflow:hidden}</style></head><body><iframe src="${base64String}" frameborder="0" style="width:100%;height:100vh;border:none;display:block;"></iframe></body></html>`);
+                                  win.document.close();
+                                } catch (error) {
+                                  console.error("Failed to load quotation", error);
+                                  win.document.open();
+                                  win.document.write(`<!DOCTYPE html><html><body style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;color:red;"><p>❌ Failed to load quotation. Please close this tab and try again.</p></body></html>`);
+                                  win.document.close();
+                                  toast({ title: "Error", description: "Failed to load quotation. Please try again.", variant: "destructive" });
                                 }
                               }}
                             >
@@ -909,12 +1259,12 @@ const Leads = () => {
                         )} />
                       </button>
                       
-                      {/* Thumbs Up Button - Active when stage has been changed */}
+                      {/* Thumbs Up Button - Active when stage/status has been set */}
                       <button 
                         onClick={() => handleOpenStageModal(lead)} 
                         className={cn(
                           "transition-colors",
-                          lead.stage && lead.stage !== 'N/A' && lead.stage !== 'Call Not Picked'
+                          lead.stage && STAGES.includes(lead.stage)
                             ? "text-green-600 hover:text-green-700"
                             : "text-gray-400 hover:text-green-600"
                         )}
@@ -922,7 +1272,7 @@ const Leads = () => {
                       >
                         <ThumbsUp className={cn(
                           "h-5 w-5",
-                          lead.stage && lead.stage !== 'N/A' && lead.stage !== 'Call Not Picked'
+                          lead.stage && STAGES.includes(lead.stage)
                             ? "fill-green-600 text-green-600"
                             : "text-gray-400"
                         )} />
@@ -997,40 +1347,10 @@ const Leads = () => {
                       <p className="text-xs text-gray-500 mt-1 line-clamp-1">
                         {lead.describeRequirements || "I'm interested in buying this product. Kindly send us the details."}
                       </p>
-
-                      {/* Progress timeline chain */}
-                      {lead.stage && lead.stage !== 'N/A' && (
-                        <div className="mt-4 overflow-x-auto pb-2 scrollbar-thin">
-                          <div className="flex items-center min-w-max gap-0 py-2 px-1">
-                            {getVisitedStages(lead).map((stageName, index, arr) => {
-                              const isCurrent = stageName === lead.stage;
-                              return (
-                                <React.Fragment key={stageName}>
-                                  <div className="flex flex-col items-center">
-                                    <div className={cn(
-                                      "w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold shadow-sm",
-                                      isCurrent ? "bg-green-500 font-extrabold" : "bg-green-500"
-                                    )}>
-                                      {isCurrent ? "..." : "✓"}
-                                    </div>
-                                    <span className="text-[9px] font-semibold text-gray-500 uppercase mt-1.5 tracking-wide whitespace-nowrap">
-                                      {stageName}
-                                    </span>
-                                  </div>
-                                  {index < arr.length - 1 && (
-                                    <div className="h-[2px] bg-green-500 flex-1 min-w-[50px] max-w-[100px] -mt-5.5 mx-2" />
-                                  )}
-                                </React.Fragment>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
                     </div>
                   </div>
-                </div>
 
-                {/* Right Section - Contact & Icons */}
+                  {/* Right Section - Contact & Icons */}
                   <div className="lg:w-72 border-t lg:border-t-0 lg:border-l border-gray-100 pt-4 lg:pt-0 lg:pl-6 flex flex-col">
                     <div className="relative">
                       <div className="flex items-start justify-between">
@@ -1117,6 +1437,47 @@ const Leads = () => {
                   </div>
                 </div>
 
+                {/* Progress timeline — full width below left+right sections */}
+                {lead.stage && lead.stage !== 'N/A' && PIPELINE_STAGES.includes(lead.stage) && (
+                  <div className="px-4 pb-3 border-t border-gray-50 overflow-x-auto scrollbar-thin">
+                    <div className="flex items-center min-w-max gap-0 py-2 px-1">
+                      {getVisitedStages(lead).map((stageName, index, arr) => {
+                        const isCurrent = stageName === lead.stage;
+                        const isRejected = stageName === 'Service Rejected';
+                        const isVerified = stageName === 'Service Verified';
+                        return (
+                          <React.Fragment key={stageName}>
+                            <div className="flex flex-col items-center">
+                              <div className={cn(
+                                "w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold shadow-sm",
+                                isRejected ? "bg-red-500" :
+                                  isVerified ? "bg-teal-500" :
+                                    "bg-green-500"
+                              )}>
+                                {isCurrent ? "..." : isRejected ? "✗" : "✓"}
+                              </div>
+                              <span className={cn(
+                                "text-[9px] font-semibold uppercase mt-1.5 tracking-wide whitespace-nowrap",
+                                isRejected ? "text-red-500" :
+                                  isVerified ? "text-teal-600" :
+                                    "text-gray-500"
+                              )}>
+                                {stageName}
+                              </span>
+                            </div>
+                            {index < arr.length - 1 && (
+                              <div className={cn(
+                                "h-[2px] flex-1 min-w-[50px] max-w-[100px] mx-2",
+                                isRejected ? "bg-red-400" : "bg-green-500"
+                              )} style={{ marginTop: '-14px' }} />
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex flex-wrap gap-2 px-4 py-2 border-t border-gray-50 bg-white">
                   <Button variant="outline" size="sm" className="h-8 text-xs bg-gray-50">Email Reply</Button>
                   <div className="flex gap-2">
@@ -1128,14 +1489,14 @@ const Leads = () => {
                       className="h-8 text-xs rounded-full bg-blue-600"
                       onClick={() => setLocation(`/sales/quotation?lead_id=${lead._id}`)}
                     >
-                      {lead.quotation ? 'Update Quotation' : 'Send Quotation'}
+                      {lead.hasQuotation ? 'Update Quotation' : 'Send Quotation'}
                     </Button>
                     <Button 
                       variant="outline" 
                       size="sm" 
                       className="h-8 text-xs rounded-full bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100"
                       onClick={() => {
-                        if (!lead.quotation) {
+                        if (!lead.hasQuotation) {
                           toast({ title: "Required", description: "Please send a quotation first.", variant: "destructive" });
                           return;
                         }
@@ -1153,8 +1514,8 @@ const Leads = () => {
                       variant="outline" 
                       size="sm" 
                       className="h-8 text-xs rounded-full bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100"
-                      onClick={() => goToAccountMutation.mutate(lead._id)}
-                      disabled={lead.sentToAccount || goToAccountMutation.isPending}
+                      onClick={() => handleOpenGoToAccountModal(lead)}
+                      disabled={lead.sentToAccount || goToAccountMutation.isPending || uploadLeadDocsMutation.isPending}
                     >
                       <Briefcase className="h-3 w-3 mr-1" />
                       {lead.sentToAccount ? 'Sent to Account' : 'Go to Account'}
@@ -1171,7 +1532,7 @@ const Leads = () => {
                       )}
                       onClick={() => {
                         if (lead.status !== 'Won') {
-                          if (!lead.quotation) {
+                          if (!lead.hasQuotation) {
                             toast({
                               title: "Quotation Required",
                               description: "Please send a quotation before marking the deal as Won.",
@@ -1179,24 +1540,37 @@ const Leads = () => {
                             });
                             return;
                           }
-                          markAsWonMutation.mutate(lead._id);
+                          handleOpenWonChecklistModal(lead);
                         }
                       }}
-                      disabled={(markAsWonMutation.isPending && markAsWonMutation.variables === lead._id) || lead.status === 'Won'}
+                      disabled={(markAsWonMutation.isPending && markAsWonMutation.variables?.id === lead._id) || lead.status === 'Won'}
                     >
                       {lead.status === 'Won' ? (
                         <span className="flex items-center gap-1">
                           <CheckCircle2 className="h-3 w-3" /> Deal Won
                         </span>
                       ) : (
-                        (markAsWonMutation.isPending && markAsWonMutation.variables === lead._id) ? 'Processing...' : 'Deal Won'
+                        (markAsWonMutation.isPending && markAsWonMutation.variables?.id === lead._id) ? 'Processing...' : 'Deal Won'
                       )}
                     </Button>
+
+                    {(lead.status === 'Won' || lead.stage === 'Service Verified') && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 px-2 text-[10px] rounded-full bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100 font-semibold"
+                        onClick={() => handleViewChecklistStatus(lead)}
+                        title="View Checklist Status"
+                      >
+                        <ShieldCheck className="h-3 w-3 mr-1" />
+                        Checklist
+                      </Button>
+                    )}
                   </div>
                 </div>
 
                 {/* Bottom Bar - Stats */}
-                <div className="bg-gray-50 p-2 border-t border-gray-100 grid grid-cols-2 md:grid-cols-7 gap-2">
+                <div className="bg-gray-50 p-2 border-t border-gray-100 grid grid-cols-2 md:grid-cols-8 gap-2">
                   <div className="flex flex-col">
                     <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Next Follow-up</span>
                     <div className="flex items-center gap-1 text-xs text-gray-700">
@@ -1206,22 +1580,67 @@ const Leads = () => {
                   </div>
                   <div className="flex flex-col">
                     <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Assigned to</span>
-                    <span className="text-xs text-gray-700">{lead.assignedTo?.fullName || 'Unassigned'}</span>
+                    {/* Cruncher / Sales Head: inline quick-assign dropdown */}
+                    {(isCruncher || isSalesHead) ? (
+                      <select
+                        className="text-xs border border-gray-200 rounded px-1 py-0.5 mt-0.5 bg-white text-gray-700 cursor-pointer hover:border-blue-400 focus:outline-none focus:border-blue-500 max-w-[130px]"
+                        value={lead.assignedTo?._id || lead.assignedTo || ''}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          updateLeadMutation.mutate(
+                            { id: lead._id, data: { assignedTo: val || null } },
+                            {
+                              onSuccess: () => {
+                                queryClient.invalidateQueries({ queryKey: ['leads'] });
+                                toast({ title: 'Assigned', description: val ? 'Lead assigned successfully' : 'Lead unassigned' });
+                              }
+                            }
+                          );
+                        }}
+                      >
+                        <option value="">— Unassigned —</option>
+                        {assignableUsers.map(u => (
+                          <option key={u._id} value={u._id}>{u.fullName || u.username}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className={`text-xs font-medium mt-0.5 ${lead.assignedTo ? 'text-gray-700' : 'text-amber-600'}`}>
+                        {lead.assignedTo?.fullName || '⚠ Unassigned'}
+                      </span>
+                    )}
                   </div>
                   <div className="flex flex-col">
                     <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Stage</span>
                     <span className={cn(
                       "text-xs font-semibold mt-0.5 px-2 py-0.5 rounded-full w-fit",
-                      lead.status?.toLowerCase() === 'hot' ? "bg-red-100 text-red-700" :
-                        lead.status?.toLowerCase() === 'warm' ? "bg-orange-100 text-orange-700" :
-                          "bg-blue-100 text-blue-700"
+                      lead.stage?.toLowerCase() === 'hot' ? "bg-red-100 text-red-700" :
+                        lead.stage?.toLowerCase() === 'warm' ? "bg-orange-100 text-orange-700" :
+                          lead.stage?.toLowerCase() === 'cold' ? "bg-sky-100 text-sky-700" :
+                            lead.stage?.toLowerCase() === 'star lead' ? "bg-yellow-100 text-yellow-700" :
+                              lead.stage?.toLowerCase() === 'followup' ? "bg-violet-100 text-violet-700" :
+                                lead.stage?.toLowerCase() === 'pending' ? "bg-amber-100 text-amber-700" :
+                                  lead.stage === 'Service Verified' ? "bg-teal-100 text-teal-700" :
+                                    lead.stage === 'Service Rejected' ? "bg-red-100 text-red-700" :
+                                      "bg-gray-100 text-gray-700"
                     )}>
-                      {lead.status}
+                      {lead.stage || 'N/A'}
                     </span>
                   </div>
                   <div className="flex flex-col">
                     <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Status</span>
-                    <span className="text-xs text-gray-700 font-medium">{lead.status}</span>
+                    <span className={cn(
+                      "text-xs font-semibold mt-0.5 px-2 py-0.5 rounded-full w-fit",
+                      lead.status?.toLowerCase() === 'hot' ? "bg-red-100 text-red-700" :
+                        lead.status?.toLowerCase() === 'warm' ? "bg-orange-100 text-orange-700" :
+                          lead.status?.toLowerCase() === 'cold' ? "bg-sky-100 text-sky-700" :
+                            lead.status?.toLowerCase() === 'star lead' ? "bg-yellow-100 text-yellow-700" :
+                              lead.status?.toLowerCase() === 'followup' ? "bg-violet-100 text-violet-700" :
+                                lead.status?.toLowerCase() === 'pending' ? "bg-amber-100 text-amber-700" :
+                                  lead.status?.toLowerCase() === 'won' ? "bg-green-100 text-green-700" :
+                                    "bg-blue-100 text-blue-700"
+                    )}>
+                      {lead.status || 'New'}
+                    </span>
                   </div>
                   <div className="flex flex-col">
                     <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Source</span>
@@ -1232,17 +1651,45 @@ const Leads = () => {
                     <div className="flex items-center">
                       <span className="text-xs text-gray-700 font-medium whitespace-nowrap">{lead.observer?.fullName || 'N/A'}</span>
                       <div className="flex items-center bg-white border border-gray-200 rounded shadow-sm overflow-hidden ml-auto">
-                        <Button variant="ghost" size="icon" className="h-7 w-8 border-r border-gray-100 rounded-none hover:bg-blue-50 text-blue-600">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-8 border-r border-gray-100 rounded-none hover:bg-blue-50 text-blue-600"
+                          onClick={() => {
+                            setDialpadLead(lead);
+                            setDialpadInput(lead.mobile || '');
+                            setIsDialpadOpen(true);
+                          }}
+                          title="Call Lead"
+                        >
                           <Phone className="h-3.5 w-3.5" />
                         </Button>
-                        <Button variant="ghost" size="icon" className="h-7 w-8 border-r border-gray-100 rounded-none hover:bg-green-50 text-green-600">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-8 border-r border-gray-100 rounded-none hover:bg-green-50 text-green-600"
+                          onClick={() => window.open(`https://wa.me/${lead.mobile?.replace(/\D/g, '')}`)}
+                          title="WhatsApp Message"
+                        >
                           <MessageSquare className="h-3.5 w-3.5" />
                         </Button>
-                        <Button variant="ghost" size="icon" className="h-7 w-8 border-r border-gray-100 rounded-none hover:bg-blue-50 text-blue-700">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-8 border-r border-gray-100 rounded-none hover:bg-blue-50 text-blue-700"
+                          onClick={() => window.open(`mailto:${lead.email}`)}
+                          title="Send Email"
+                        >
                           <Mail className="h-3.5 w-3.5" />
                         </Button>
-                        <Button variant="ghost" size="icon" className="h-7 w-8 rounded-none hover:bg-purple-50 text-purple-600">
-                          <CheckCircle2 className="h-3.5 w-3.5" />
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-8 rounded-none hover:bg-purple-50 text-purple-600"
+                          title="Schedule Meeting"
+                          onClick={() => handleOpenMeetingModal(lead)}
+                        >
+                          <Handshake className="h-3.5 w-3.5" />
                         </Button>
                       </div>
                     </div>
@@ -1731,6 +2178,7 @@ const Leads = () => {
       {/* Edit Buyer Details Modal */}
       <Dialog open={isEditBuyerModalOpen} onOpenChange={setIsEditBuyerModalOpen}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto p-0 border-none shadow-xl">
+          <DialogTitle className="sr-only">Edit Buyer Details</DialogTitle>
           <div className="bg-white p-6 border-b border-gray-100 flex justify-between items-center sticky top-0 z-10">
             <div>
               <h2 className="text-xl font-bold text-gray-800">Edit Buyer Details</h2>
@@ -1890,6 +2338,7 @@ const Leads = () => {
       {/* Edit Lead Title & Description Modal */}
       <Dialog open={isEditReqModalOpen} onOpenChange={setIsEditReqModalOpen}>
         <DialogContent className="max-w-md p-0 border-none shadow-xl overflow-hidden rounded-xl">
+          <DialogTitle className="sr-only">Edit Lead Title & Description</DialogTitle>
           <div className="bg-white p-5 border-b flex justify-between items-center">
             <h2 className="text-lg font-bold text-gray-800">Edit Lead Title & Description</h2>
             <button onClick={() => setIsEditReqModalOpen(false)} className="hover:bg-gray-100 p-1.5 rounded-full transition-colors text-gray-400">
@@ -2381,20 +2830,460 @@ const Leads = () => {
 
       {/* Recordings Modal */}
       <Dialog open={isRecordingModalOpen} onOpenChange={setIsRecordingModalOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-xl">
           <DialogHeader>
-            <DialogTitle className="text-xl font-bold flex items-center gap-2">
-              <Mic className="h-5 w-5 text-blue-600" />
-              Recordings
+            <DialogTitle className="text-xl font-bold flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                <Mic className="h-5 w-5 text-blue-600" />
+                Call Logs & Recordings
+              </span>
+              {selectedLead && (
+                <span className="text-xs text-gray-500 font-normal">
+                  Lead: #{selectedLead.leadCode} ({selectedLead.contactPerson})
+                </span>
+              )}
             </DialogTitle>
+            <DialogDescription>
+              View Acefone IVR calls linked with this lead's mobile number ({selectedLead?.mobile}).
+            </DialogDescription>
           </DialogHeader>
-          <div className="py-12 text-center space-y-4">
-            <Volume2 className="h-12 w-12 mx-auto text-gray-300" />
-            <p className="text-gray-500 font-medium">No Recordings Found!</p>
-            <p className="text-xs text-gray-400">Call recordings will appear here once available.</p>
-          </div>
+
+          {callLogsLoading ? (
+            <div className="py-12 text-center space-y-4">
+              <RefreshCw className="h-8 w-8 mx-auto text-blue-500 animate-spin" />
+              <p className="text-sm text-gray-500">Fetching call logs...</p>
+            </div>
+          ) : callLogs.length === 0 ? (
+            <div className="py-12 text-center space-y-4">
+              <Volume2 className="h-12 w-12 mx-auto text-gray-300" />
+              <p className="text-gray-500 font-medium">No Call Logs Found!</p>
+              <p className="text-xs text-gray-400">Calls received or made through Acefone will show up here.</p>
+            </div>
+          ) : (
+            <div className="max-h-[400px] overflow-y-auto pr-1 space-y-4 my-2">
+              {callLogs.map((log) => (
+                <div key={log._id} className="p-4 border rounded-xl bg-gray-50 hover:bg-gray-100/50 transition-colors border-gray-100 space-y-2">
+                  <div className="flex justify-between items-start">
+                    <div className="flex items-center gap-2">
+                      {log.direction === 'inbound' ? (
+                        <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-100 font-medium rounded-full text-[10px] flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Inbound Call
+                        </Badge>
+                      ) : (
+                        <Badge className="bg-blue-50 text-blue-700 border border-blue-100 font-medium rounded-full text-[10px] flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span> Outbound Call
+                        </Badge>
+                      )}
+                      <span className="text-xs text-gray-500">
+                        {new Date(log.callDate || log.createdAt).toLocaleString('en-IN', {
+                          day: '2-digit', month: 'short', year: 'numeric',
+                          hour: '2-digit', minute: '2-digit'
+                        })}
+                      </span>
+                    </div>
+                    <Badge variant="outline" className={cn(
+                      "font-semibold text-[10px] rounded-full",
+                      log.status?.toLowerCase() === 'answered' ? "bg-green-50 text-green-700 border-green-200" : "bg-red-50 text-red-700 border-red-200"
+                    )}>
+                      {log.status || 'Completed'}
+                    </Badge>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-xs text-gray-600 pt-1">
+                    <div>
+                      <span className="text-gray-400">Agent:</span> <span className="font-medium">{log.agentName || 'System'}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-400">Duration:</span> <span className="font-medium">{Math.floor(log.callDuration / 60)}m {Math.round(log.callDuration % 60)}s</span>
+                    </div>
+                  </div>
+
+                  {log.recordingUrl ? (
+                    <div className="pt-2">
+                      <p className="text-[10px] text-gray-400 mb-1 flex items-center gap-1">
+                        <Play className="h-3 w-3 text-blue-500" /> Play Recording
+                      </p>
+                      <audio src={log.recordingUrl} controls className="w-full h-8 rounded bg-white" />
+                    </div>
+                  ) : (
+                    <p className="text-[10px] text-gray-400 italic pt-1">No recording file for this call.</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
           <div className="flex justify-end mt-4">
             <Button onClick={() => setIsRecordingModalOpen(false)}>Close</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Dialpad Modal ─────────────────────────────────── */}
+      <Dialog open={isDialpadOpen} onOpenChange={(open) => { setIsDialpadOpen(open); if (!open) setDialpadInput(''); }}>
+        <DialogContent className="max-w-xs p-0 overflow-hidden rounded-2xl shadow-2xl">
+          <DialogTitle className="sr-only">Dialpad</DialogTitle>
+
+          {/* Header — contact info */}
+          <div className="bg-gradient-to-b from-blue-600 to-blue-700 px-5 pt-5 pb-4 text-white text-center">
+            <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center mx-auto mb-2">
+              <Phone className="h-5 w-5 text-white" />
+            </div>
+            <p className="font-bold text-base leading-tight">{dialpadLead?.contactPerson || 'Unknown'}</p>
+            <p className="text-blue-200 text-xs mt-0.5">{dialpadLead?.companyName}</p>
+            {/* IVR mode badge */}
+            {apiSettings?.ivr?.enabled && (
+              <span className="inline-block mt-1.5 bg-emerald-500/30 text-emerald-100 text-[10px] font-semibold px-2 py-0.5 rounded-full">
+                📞 Acefone Click-to-Call
+              </span>
+            )}
+            {/* Editable number display */}
+            <div className="mt-3 bg-white/10 rounded-xl px-3 py-2 flex items-center justify-between gap-2">
+              <span className="text-lg font-mono tracking-widest flex-1 text-center">{dialpadInput || '—'}</span>
+              {dialpadInput.length > 0 && (
+                <button
+                  onClick={() => setDialpadInput(prev => prev.slice(0, -1))}
+                  className="text-white/70 hover:text-white transition-colors"
+                >
+                  ⌫
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Dialpad keys */}
+          <div className="bg-white px-4 pt-3 pb-2">
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                ['1', ''], ['2', 'ABC'], ['3', 'DEF'],
+                ['4', 'GHI'], ['5', 'JKL'], ['6', 'MNO'],
+                ['7', 'PQRS'], ['8', 'TUV'], ['9', 'WXYZ'],
+                ['*', ''], ['0', '+'], ['#', ''],
+              ].map(([digit, sub]) => (
+                <button
+                  key={digit}
+                  onClick={() => setDialpadInput(prev => (prev + digit).slice(0, 15))}
+                  className="flex flex-col items-center justify-center h-14 rounded-xl bg-gray-50 hover:bg-blue-50 active:bg-blue-100 transition-colors border border-gray-100"
+                >
+                  <span className="text-lg font-semibold text-gray-800 leading-none">{digit}</span>
+                  {sub && <span className="text-[9px] text-gray-400 mt-0.5 tracking-widest">{sub}</span>}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Call / Close */}
+          <div className="px-4 pb-4 bg-white flex items-center gap-3">
+            <button
+              onClick={() => { setIsDialpadOpen(false); setDialpadInput(''); }}
+              className="flex-1 h-12 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 font-semibold text-sm transition-colors"
+            >
+              Cancel
+            </button>
+
+            {apiSettings?.ivr?.enabled ? (
+              /* ── Acefone Click-to-Call ── */
+              <button
+                className="flex-1 h-12 rounded-full bg-emerald-500 hover:bg-emerald-600 flex items-center justify-center gap-2 text-white font-semibold text-sm transition-colors disabled:opacity-60"
+                disabled={!dialpadInput}
+                onClick={async () => {
+                  try {
+                    await leadApi.clickToCall(dialpadInput);
+                    toast({ title: "📞 Call Initiated", description: "Aapke phone pe pehle ring aayegi, phir customer se connect hoga." });
+                    setIsDialpadOpen(false);
+                  } catch (err) {
+                    toast({ title: "Call Failed", description: err?.message || "Acefone se call nahi ho paya.", variant: "destructive" });
+                  }
+                }}
+              >
+                <Phone className="h-4 w-4" />
+                Call via IVR
+              </button>
+            ) : (
+              /* ── Normal tel: link ── */
+              <a
+                href={`tel:${dialpadInput}`}
+                className="flex-1 h-12 rounded-full bg-green-500 hover:bg-green-600 flex items-center justify-center gap-2 text-white font-semibold text-sm transition-colors"
+                onClick={() => setTimeout(() => setIsDialpadOpen(false), 300)}
+              >
+                <Phone className="h-4 w-4" />
+                Call
+              </a>
+            )}
+          </div>
+
+          {/* Info line */}
+          {!apiSettings?.ivr?.enabled && (
+            <p className="text-center text-[10px] text-gray-400 pb-3 -mt-1">
+              Acefone IVR enable karo desktop calling ke liye
+            </p>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Schedule Meeting Modal ──────────────────────────────── */}
+      <Dialog open={isMeetingModalOpen} onOpenChange={setIsMeetingModalOpen}>
+        <DialogContent className="max-w-lg p-0 overflow-hidden rounded-xl border border-gray-100 shadow-xl">
+          {/* Header */}
+          <div className="px-6 py-4 border-b flex justify-between items-center bg-white sticky top-0 z-10">
+            <DialogTitle className="text-lg font-bold text-gray-800 flex items-center gap-2">
+              <Handshake className="h-5 w-5 text-purple-600" />
+              {existingMeetingRef.current ? 'Update Meeting' : 'Schedule New Meeting'}
+            </DialogTitle>
+            <button
+              onClick={() => setIsMeetingModalOpen(false)}
+              className="hover:bg-gray-100 p-1.5 rounded-full transition-colors text-gray-400"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+
+          {/* Body */}
+          <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+            {meetingFetching ? (
+              // Skeleton loader — only on first fetch (cached after that)
+              <div className="space-y-4 animate-pulse">
+                <div className="h-8 bg-gray-100 rounded-md w-1/2" />
+                <div className="h-10 bg-gray-100 rounded-md" />
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="h-10 bg-gray-100 rounded-md" />
+                  <div className="h-10 bg-gray-100 rounded-md" />
+                </div>
+                <div className="h-10 bg-gray-100 rounded-md" />
+                <div className="h-10 bg-gray-100 rounded-md" />
+                <div className="h-10 bg-gray-100 rounded-md" />
+                <div className="h-10 bg-gray-100 rounded-md" />
+              </div>
+            ) : (
+            <>
+                {/* Meeting Type Tabs */}
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Website</Label>
+                  <div className="flex gap-2 mt-1">
+                    <button
+                      onClick={() => setMeetingFormData(p => ({ ...p, meetingType: 'Visit' }))}
+                      className={cn(
+                        'px-5 py-1.5 rounded-md text-sm font-semibold border transition-all',
+                        meetingFormData.meetingType === 'Visit'
+                          ? 'bg-blue-600 text-white border-blue-600 shadow'
+                          : 'bg-white text-gray-600 border-gray-200 hover:border-blue-400'
+                      )}
+                    >
+                      Visit
+                    </button>
+                    <button
+                      onClick={() => setMeetingFormData(p => ({ ...p, meetingType: 'Online' }))}
+                      className={cn(
+                        'px-5 py-1.5 rounded-md text-sm font-semibold border transition-all',
+                        meetingFormData.meetingType === 'Online'
+                          ? 'bg-blue-600 text-white border-blue-600 shadow'
+                          : 'bg-white text-gray-600 border-gray-200 hover:border-blue-400'
+                      )}
+                    >
+                      Online
+                    </button>
+                  </div>
+                </div>
+
+                {/* Meeting Date */}
+                <div className="space-y-1.5">
+                  <Label className="text-sm font-semibold text-gray-700">Meeting Date</Label>
+                  <div
+                    className="relative w-full border border-gray-300 rounded-md px-3 py-2 text-sm cursor-pointer hover:border-blue-400 focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500"
+                    onClick={() => document.getElementById('meeting-date-picker').showPicker?.()}
+                  >
+                    <span className={meetingFormData.meetingDate ? 'text-gray-700' : 'text-gray-400'}>
+                      {meetingFormData.meetingDate
+                        ? (() => { const [y,m,d] = meetingFormData.meetingDate.split('-'); return `${d}-${m}-${y}`; })()
+                        : 'dd-mm-yyyy'}
+                    </span>
+                    <Calendar className="absolute right-3 top-2.5 h-4 w-4 text-gray-400 pointer-events-none" />
+                    <input
+                      id="meeting-date-picker"
+                      type="date"
+                      className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
+                      value={meetingFormData.meetingDate}
+                      onChange={(e) => setMeetingFormData(p => ({ ...p, meetingDate: e.target.value }))}
+                    />
+                  </div>
+                </div>
+
+                {/* Start Time / End Time */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-sm font-semibold text-gray-700">Start Time</Label>
+                    <div
+                      className="relative w-full border border-gray-300 rounded-md px-3 py-2 text-sm cursor-pointer hover:border-blue-400 focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500"
+                      onClick={() => document.getElementById('meeting-start-time').showPicker?.()}
+                    >
+                      <span className={meetingFormData.startTime ? 'text-gray-700' : 'text-gray-400'}>
+                        {meetingFormData.startTime || '--:--'}
+                      </span>
+                      <input
+                        id="meeting-start-time"
+                        type="time"
+                        className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
+                        value={meetingFormData.startTime}
+                        onChange={(e) => setMeetingFormData(p => ({ ...p, startTime: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-sm font-semibold text-gray-700">End Time</Label>
+                    <div
+                      className="relative w-full border border-gray-300 rounded-md px-3 py-2 text-sm cursor-pointer hover:border-blue-400 focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500"
+                      onClick={() => document.getElementById('meeting-end-time').showPicker?.()}
+                    >
+                      <span className={meetingFormData.endTime ? 'text-gray-700' : 'text-gray-400'}>
+                        {meetingFormData.endTime || '--:--'}
+                      </span>
+                      <input
+                        id="meeting-end-time"
+                        type="time"
+                        className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
+                        value={meetingFormData.endTime}
+                        onChange={(e) => setMeetingFormData(p => ({ ...p, endTime: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Meeting Assigned To (Sales Employee dropdown) */}
+                <div className="space-y-1.5">
+                  <Label className="text-sm font-semibold text-gray-700">Meeting Assigned To</Label>
+                  <select
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-700 bg-white"
+                    value={meetingFormData.assignedTo}
+                    onChange={(e) => setMeetingFormData(p => ({ ...p, assignedTo: e.target.value }))}
+                  >
+                    <option value="">— Select Sales Employee —</option>
+                    {(assignableUsers || []).map(u => (
+                      <option key={u._id} value={u._id}>{u.fullName || u.username}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Meeting With (Contact Person — read only) */}
+                <div className="space-y-1.5">
+                  <Label className="text-sm font-semibold text-gray-700">Meeting With</Label>
+                  <Input
+                    value={meetingFormData.meetingWith}
+                    readOnly
+                    className="bg-gray-50 text-gray-700 border-gray-200"
+                  />
+                </div>
+
+                {/* Purpose */}
+                <div className="space-y-1.5">
+                  <Label className="text-sm font-semibold text-gray-700">Purpose</Label>
+                  <select
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-700 bg-white"
+                    value={meetingFormData.purpose}
+                    onChange={(e) => setMeetingFormData(p => ({ ...p, purpose: e.target.value }))}
+                  >
+                    <option value="Sales">Sales</option>
+                  </select>
+                </div>
+
+                {/* Venue (Visit only) or Online Meeting URL (Online only) */}
+                {meetingFormData.meetingType === 'Visit' ? (
+                  <div className="space-y-1.5">
+                    <Label className="text-sm font-semibold text-gray-700">Venue</Label>
+                    <Input
+                      placeholder="Enter meeting venue / location"
+                      value={meetingFormData.venue}
+                      onChange={(e) => setMeetingFormData(p => ({ ...p, venue: e.target.value }))}
+                    />
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    <Label className="text-sm font-semibold text-gray-700">Online Meeting URL</Label>
+                    <Input
+                      placeholder="https://meet.google.com/... or Zoom link"
+                      value={meetingFormData.onlineMeetingUrl}
+                      onChange={(e) => setMeetingFormData(p => ({ ...p, onlineMeetingUrl: e.target.value }))}
+                    />
+                  </div>
+                )}
+
+                {/* Remarks */}
+                <div className="space-y-1.5">
+                  <Label className="text-sm font-semibold text-gray-700">Remarks</Label>
+                  <textarea
+                    className="w-full min-h-[72px] border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                    placeholder="Any additional notes..."
+                    value={meetingFormData.remarks}
+                    onChange={(e) => setMeetingFormData(p => ({ ...p, remarks: e.target.value }))}
+                  />
+                </div>
+
+                {/* Send Invite on Email */}
+                <div className="flex items-center gap-2.5 pt-1">
+                  <input
+                    type="checkbox"
+                    id="sendInviteEmail"
+                    checked={meetingFormData.sendInviteEmail}
+                    onChange={(e) => setMeetingFormData(p => ({ ...p, sendInviteEmail: e.target.checked }))}
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                  />
+                  <label htmlFor="sendInviteEmail" className="text-sm text-gray-700 cursor-pointer">
+                    Send Invite on Email
+                    {meetingLead?.email && (
+                      <span className="ml-1 text-xs text-gray-400">({meetingLead.email})</span>
+                    )}
+                  </label>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="px-6 pb-6 pt-3 bg-white border-t flex justify-end">
+            <Button
+              className="bg-blue-600 hover:bg-blue-700 px-8 py-2.5 text-sm font-bold rounded-lg shadow-md transition-all flex items-center gap-2"
+              onClick={handleMeetingSubmit}
+              disabled={saveMeetingMutation.isPending || meetingFetching}
+            >
+              {saveMeetingMutation.isPending ? (
+                <>
+                  <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  {existingMeetingRef.current ? 'Updating...' : 'Saving...'}
+                </>
+              ) : existingMeetingRef.current ? (
+                <>
+                  <CheckCircle2 className="h-4 w-4" />
+                  Update
+                </>
+              ) : (
+                <>
+                  <Handshake className="h-4 w-4" />
+                  Save
+                </>
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* API Settings moved to Super Admin → API Settings page */}
+      <Dialog open={isApiSettingsModalOpen} onOpenChange={setIsApiSettingsModalOpen}>
+        <DialogContent className="max-w-md rounded-xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Settings className="h-5 w-5 text-blue-600" />
+              API Settings
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-4 text-center space-y-3">
+            <p className="text-gray-600 text-sm">
+              API Settings (IndiaMART, Acefone IVR, Website Webhook) are now managed by <strong>Super Admin</strong>.
+            </p>
+            <p className="text-gray-500 text-xs">
+              Super Admin → API Settings se API Key, Caller ID, aur IndiaMART Seller Mobile configure karein.
+            </p>
+          </div>
+          <div className="flex justify-end">
+            <Button variant="outline" onClick={() => setIsApiSettingsModalOpen(false)}>Close</Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -2745,6 +3634,526 @@ const Leads = () => {
 
           <div className="px-6 py-4 border-t bg-white flex justify-end">
             <Button variant="outline" onClick={() => setIsHistoryModalOpen(false)} className="px-6">
+              Close
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Go to Account: Document Upload Modal ─────────────────────── */}
+      <Dialog open={isGoToAccountModalOpen} onOpenChange={(open) => {
+        if (!open) {
+          setIsGoToAccountModalOpen(false);
+          setGoToAccountLead(null);
+          setGoToAccountFiles({ po: null, paymentProof: null, quotation: null });
+        }
+      }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader className="pb-2">
+            <DialogTitle className="text-lg font-bold flex items-center gap-2">
+              <Briefcase className="h-5 w-5 text-blue-600" />
+              Go to Account — Upload Documents
+            </DialogTitle>
+            <DialogDescription className="text-gray-500 text-sm">
+              Uploading documents for{' '}
+              <span className="font-semibold text-gray-700">{goToAccountLead?.companyName}</span>.
+              {' '}Quotation and Payment Proof are required.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+
+            {/* Quotation Upload — REQUIRED */}
+            <div className="space-y-1.5">
+              <Label className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
+                <FileText className="h-4 w-4 text-purple-500" />
+                Quotation
+                <span className="text-[11px] font-bold text-red-500 ml-1">* Required</span>
+                <span className="text-xs font-normal text-gray-400 ml-1">PDF, Image, DOC</span>
+              </Label>
+              <div className={`border-2 border-dashed rounded-lg p-3 transition-colors ${
+                goToAccountFiles.quotation
+                  ? 'border-purple-400 bg-purple-50'
+                  : 'border-red-200 hover:border-purple-400 bg-red-50/30'
+              }`}>
+                {goToAccountFiles.quotation ? (
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <FileDown className="h-4 w-4 text-purple-600" />
+                      <span className="text-sm text-purple-700 font-medium truncate max-w-[220px]">{goToAccountFiles.quotation.name}</span>
+                    </div>
+                    <button onClick={() => setGoToAccountFiles(p => ({ ...p, quotation: null }))} className="text-gray-400 hover:text-red-500 transition-colors">
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <label className="cursor-pointer flex items-center gap-2 text-sm text-gray-500">
+                    <Upload className="h-4 w-4 text-purple-400" />
+                    <span>Click to upload Quotation <span className="text-red-400 font-semibold">(required)</span></span>
+                    <input
+                      type="file"
+                      className="hidden"
+                      accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.webp"
+                      onChange={(e) => e.target.files?.[0] && setGoToAccountFiles(p => ({ ...p, quotation: e.target.files[0] }))}
+                    />
+                  </label>
+                )}
+              </div>
+            </div>
+
+            {/* Payment Proof Upload — REQUIRED */}
+            <div className="space-y-1.5">
+              <Label className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
+                <FileText className="h-4 w-4 text-green-500" />
+                Payment Proof / Screenshot
+                <span className="text-[11px] font-bold text-red-500 ml-1">* Required</span>
+                <span className="text-xs font-normal text-gray-400 ml-1">Image, PDF</span>
+              </Label>
+              <div className={`border-2 border-dashed rounded-lg p-3 transition-colors ${
+                goToAccountFiles.paymentProof
+                  ? 'border-green-400 bg-green-50'
+                  : 'border-red-200 hover:border-green-400 bg-red-50/30'
+              }`}>
+                {goToAccountFiles.paymentProof ? (
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <FileDown className="h-4 w-4 text-green-600" />
+                      <span className="text-sm text-green-700 font-medium truncate max-w-[220px]">{goToAccountFiles.paymentProof.name}</span>
+                    </div>
+                    <button onClick={() => setGoToAccountFiles(p => ({ ...p, paymentProof: null }))} className="text-gray-400 hover:text-red-500 transition-colors">
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <label className="cursor-pointer flex items-center gap-2 text-sm text-gray-500">
+                    <Upload className="h-4 w-4 text-green-400" />
+                    <span>Click to upload Payment Proof <span className="text-red-400 font-semibold">(required)</span></span>
+                    <input
+                      type="file"
+                      className="hidden"
+                      accept=".pdf,.jpg,.jpeg,.png,.webp"
+                      onChange={(e) => e.target.files?.[0] && setGoToAccountFiles(p => ({ ...p, paymentProof: e.target.files[0] }))}
+                    />
+                  </label>
+                )}
+              </div>
+            </div>
+
+            {/* PO Upload — OPTIONAL */}
+            <div className="space-y-1.5">
+              <Label className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
+                <FileText className="h-4 w-4 text-blue-500" />
+                Purchase Order (PO)
+                <span className="text-[11px] font-normal text-gray-400 ml-1">Optional · PDF, Image, DOC</span>
+              </Label>
+              <div className={`border-2 border-dashed rounded-lg p-3 transition-colors ${
+                goToAccountFiles.po
+                  ? 'border-blue-400 bg-blue-50'
+                  : 'border-gray-200 hover:border-blue-300'
+              }`}>
+                {goToAccountFiles.po ? (
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <FileDown className="h-4 w-4 text-blue-600" />
+                      <span className="text-sm text-blue-700 font-medium truncate max-w-[220px]">{goToAccountFiles.po.name}</span>
+                    </div>
+                    <button onClick={() => setGoToAccountFiles(p => ({ ...p, po: null }))} className="text-gray-400 hover:text-red-500 transition-colors">
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <label className="cursor-pointer flex items-center gap-2 text-sm text-gray-500">
+                    <Upload className="h-4 w-4" />
+                    <span>Click to upload PO (optional)</span>
+                    <input
+                      type="file"
+                      className="hidden"
+                      accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.webp"
+                      onChange={(e) => e.target.files?.[0] && setGoToAccountFiles(p => ({ ...p, po: e.target.files[0] }))}
+                    />
+                  </label>
+                )}
+              </div>
+            </div>
+
+            <p className="text-xs text-gray-500 bg-amber-50 rounded p-2 border border-amber-100 flex items-start gap-1.5">
+              <AlertTriangle className="h-3.5 w-3.5 text-amber-500 mt-0.5 flex-shrink-0" />
+              <span>Quotation and Payment Proof are <strong>mandatory</strong> before sending to Account. PO is optional. Uploaded documents will be visible in Lead Payments section.</span>
+            </p>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-4 border-t">
+            <Button
+              variant="outline"
+              className="px-5"
+              onClick={() => {
+                setIsGoToAccountModalOpen(false);
+                setGoToAccountLead(null);
+                setGoToAccountFiles({ po: null, paymentProof: null, quotation: null });
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="px-5 bg-blue-600 hover:bg-blue-700"
+              onClick={handleGoToAccountSubmit}
+              disabled={goToAccountMutation.isPending || uploadLeadDocsMutation.isPending}
+            >
+              {(goToAccountMutation.isPending || uploadLeadDocsMutation.isPending) ? (
+                <span className="flex items-center gap-2">
+                  <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  {uploadLeadDocsMutation.isPending ? 'Uploading...' : 'Sending...'}
+                </span>
+              ) : (
+                <span className="flex items-center gap-1.5">
+                  <Briefcase className="h-4 w-4" />
+                  Send to Account
+                </span>
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* 📋 DEAL WON CHECKLIST DIALOG */}
+      <Dialog open={isWonChecklistModalOpen} onOpenChange={setIsWonChecklistModalOpen}>
+        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto rounded-xl shadow-2xl p-6">
+          <DialogHeader className="pb-3 border-b">
+            <DialogTitle className="text-xl font-bold flex items-center gap-2 text-green-700">
+              <CheckCircle2 className="h-6 w-6 text-green-600" />
+              Deal Won Checklist & Commitments
+            </DialogTitle>
+            <DialogDescription className="text-gray-500 text-sm mt-1">
+              Please declare the commitments discussed with the customer. The Service team will verify each marked point.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {/* 1. Advanced Payment */}
+            <div className="p-3 border rounded-lg bg-gray-50 hover:bg-gray-50/75 transition-all space-y-2">
+              <div className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  id="chk-adv"
+                  checked={salesChecklist.advancePayment.checked}
+                  onChange={(e) => setSalesChecklist(p => ({
+                    ...p,
+                    advancePayment: { ...p.advancePayment, checked: e.target.checked }
+                  }))}
+                  className="h-4.5 w-4.5 rounded border-gray-300 text-green-600 focus:ring-green-500"
+                />
+                <Label htmlFor="chk-adv" className="font-semibold text-gray-800 cursor-pointer flex-1">
+                  1. Advanced Payment Received/Discussed?
+                </Label>
+              </div>
+              {salesChecklist.advancePayment.checked && (
+                <div className="pl-7 space-y-1">
+                  <span className="text-xs text-gray-500">Advanced Amount (INR)</span>
+                  <Input
+                    type="number"
+                    value={salesChecklist.advancePayment.value}
+                    onChange={(e) => setSalesChecklist(p => ({
+                      ...p,
+                      advancePayment: { ...p.advancePayment, value: Number(e.target.value) }
+                    }))}
+                    className="h-9 border-gray-300 focus:ring-green-500"
+                    placeholder="Enter amount"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* 2. Installation Charges */}
+            <div className="p-3 border rounded-lg bg-gray-50 hover:bg-gray-50/75 transition-all space-y-2">
+              <div className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  id="chk-inst"
+                  checked={salesChecklist.installationCharge.checked}
+                  onChange={(e) => setSalesChecklist(p => ({
+                    ...p,
+                    installationCharge: { ...p.installationCharge, checked: e.target.checked }
+                  }))}
+                  className="h-4.5 w-4.5 rounded border-gray-300 text-green-600 focus:ring-green-500"
+                />
+                <Label htmlFor="chk-inst" className="font-semibold text-gray-800 cursor-pointer flex-1">
+                  2. Installation Charges Discussed?
+                </Label>
+              </div>
+              {salesChecklist.installationCharge.checked && (
+                <div className="pl-7 space-y-1">
+                  <span className="text-xs text-gray-500">How much installation charge is agreed?</span>
+                  <Input
+                    type="text"
+                    value={salesChecklist.installationCharge.value}
+                    onChange={(e) => setSalesChecklist(p => ({
+                      ...p,
+                      installationCharge: { ...p.installationCharge, value: e.target.value }
+                    }))}
+                    className="h-9 border-gray-300 focus:ring-green-500"
+                    placeholder="e.g. ₹15,000 / Extra at actual / Included in Deal"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* 3. Warranty Period */}
+            <div className="p-3 border rounded-lg bg-gray-50 hover:bg-gray-50/75 transition-all space-y-2">
+              <div className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  id="chk-war"
+                  checked={salesChecklist.warranty.checked}
+                  onChange={(e) => setSalesChecklist(p => ({
+                    ...p,
+                    warranty: { ...p.warranty, checked: e.target.checked }
+                  }))}
+                  className="h-4.5 w-4.5 rounded border-gray-300 text-green-600 focus:ring-green-500"
+                />
+                <Label htmlFor="chk-war" className="font-semibold text-gray-800 cursor-pointer flex-1">
+                  3. Warranty Committed?
+                </Label>
+              </div>
+              {salesChecklist.warranty.checked && (
+                <div className="pl-7 space-y-1">
+                  <span className="text-xs text-gray-500">Warranty duration & details</span>
+                  <Input
+                    type="text"
+                    value={salesChecklist.warranty.value}
+                    onChange={(e) => setSalesChecklist(p => ({
+                      ...p,
+                      warranty: { ...p.warranty, value: e.target.value }
+                    }))}
+                    className="h-9 border-gray-300 focus:ring-green-500"
+                    placeholder="e.g. 1 Year / 6 months / 2 Years on motor"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* 4. Boarding/Lodging */}
+            <div className="p-3 border rounded-lg bg-gray-50 hover:bg-gray-50/75 transition-all space-y-2">
+              <div className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  id="chk-board"
+                  checked={salesChecklist.boardingLodging.checked}
+                  onChange={(e) => setSalesChecklist(p => ({
+                    ...p,
+                    boardingLodging: { ...p.boardingLodging, checked: e.target.checked }
+                  }))}
+                  className="h-4.5 w-4.5 rounded border-gray-300 text-green-600 focus:ring-green-500"
+                />
+                <Label htmlFor="chk-board" className="font-semibold text-gray-800 cursor-pointer flex-1">
+                  4. Installation Crew Stay/Food Arranged?
+                </Label>
+              </div>
+              {salesChecklist.boardingLodging.checked && (
+                <div className="pl-7 space-y-1">
+                  <span className="text-xs text-gray-500">Boarding & Lodging arrangement details</span>
+                  <Input
+                    type="text"
+                    value={salesChecklist.boardingLodging.value}
+                    onChange={(e) => setSalesChecklist(p => ({
+                      ...p,
+                      boardingLodging: { ...p.boardingLodging, value: e.target.value }
+                    }))}
+                    className="h-9 border-gray-300 focus:ring-green-500"
+                    placeholder="e.g. Under Customer Scope / Hotel by customer"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* 5. Backup Power / Generator */}
+            <div className="p-3 border rounded-lg bg-gray-50 hover:bg-gray-50/75 transition-all space-y-2">
+              <div className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  id="chk-gen"
+                  checked={salesChecklist.backupGenerator.checked}
+                  onChange={(e) => setSalesChecklist(p => ({
+                    ...p,
+                    backupGenerator: { ...p.backupGenerator, checked: e.target.checked }
+                  }))}
+                  className="h-4.5 w-4.5 rounded border-gray-300 text-green-600 focus:ring-green-500"
+                />
+                <Label htmlFor="chk-gen" className="font-semibold text-gray-800 cursor-pointer flex-1">
+                  5. Backup Power Support / DG Discussed?
+                </Label>
+              </div>
+              {salesChecklist.backupGenerator.checked && (
+                <div className="pl-7 space-y-1">
+                  <span className="text-xs text-gray-500">Generator / Power fluctuation arrangement details</span>
+                  <Input
+                    type="text"
+                    value={salesChecklist.backupGenerator.value}
+                    onChange={(e) => setSalesChecklist(p => ({
+                      ...p,
+                      backupGenerator: { ...p.backupGenerator, value: e.target.value }
+                    }))}
+                    className="h-9 border-gray-300 focus:ring-green-500"
+                    placeholder="e.g. Customer will provide generator for backup"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* 6. Operator Error Clause */}
+            <div className="p-3 border rounded-lg bg-gray-50 hover:bg-gray-50/75 transition-all flex items-center gap-3">
+              <input
+                type="checkbox"
+                id="chk-oper"
+                checked={salesChecklist.operatorErrorClause.checked}
+                onChange={(e) => setSalesChecklist(p => ({
+                  ...p,
+                  operatorErrorClause: { ...p.operatorErrorClause, checked: e.target.checked }
+                }))}
+                className="h-4.5 w-4.5 rounded border-gray-300 text-green-600 focus:ring-green-500"
+              />
+              <Label htmlFor="chk-oper" className="font-semibold text-gray-800 cursor-pointer flex-1">
+                6. Customer agreed that damage due to operator mistake is NOT our fault?
+              </Label>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-4 border-t">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsWonChecklistModalOpen(false);
+                setWonChecklistLead(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="bg-green-600 hover:bg-green-700 text-white font-medium"
+              onClick={handleWonChecklistSubmit}
+              disabled={markAsWonMutation.isPending}
+            >
+              {markAsWonMutation.isPending ? 'Saving...' : 'Save & Mark as Won'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* 📋 VIEW CHECKLIST STATUS DIALOG FOR SALES EMPLOYEE */}
+      <Dialog open={isViewChecklistModalOpen} onOpenChange={setIsViewChecklistModalOpen}>
+        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto rounded-xl p-6">
+          <DialogHeader className="pb-3 border-b">
+            <DialogTitle className="text-xl font-bold flex items-center gap-2 text-blue-700">
+              <ShieldCheck className="h-6 w-6 text-blue-600" />
+              Sales Commitments Verification Status
+            </DialogTitle>
+            <DialogDescription className="text-sm text-gray-500">
+              Current verification status of commitments by the Service Team.
+            </DialogDescription>
+          </DialogHeader>
+
+          {viewingChecklistLoading ? (
+            <div className="flex justify-center py-12">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+            </div>
+          ) : viewingChecklistOrder ? (() => {
+            const checklist = viewingChecklistOrder.salesChecklist || {};
+            const checklistConfig = [
+              { key: 'advancePayment', label: '1. Advanced Payment', type: 'number' },
+              { key: 'installationCharge', label: '2. Installation Charges', type: 'text' },
+              { key: 'warranty', label: '3. Warranty Period', type: 'text' },
+              { key: 'boardingLodging', label: '4. Installation Team Stay/Food', type: 'text' },
+              { key: 'backupGenerator', label: '5. Backup Power / DG', type: 'text' },
+              { key: 'operatorErrorClause', label: '6. Operator Error Clause', type: 'boolean' }
+            ];
+
+            return (
+              <div className="space-y-4 py-3">
+                {/* Service Verification Header info */}
+                <div className="p-3 bg-blue-50 rounded-lg border border-blue-100 flex items-center justify-between">
+                  <div>
+                    <span className="text-xs text-blue-500 font-bold uppercase tracking-wider">Service Verification Status</span>
+                    <p className="font-bold text-sm text-blue-900 mt-0.5 capitalize">
+                      {viewingChecklistOrder.serviceVerification?.status || 'Pending'}
+                    </p>
+                  </div>
+                  <Badge className={cn(
+                    "font-bold px-2 py-0.5 rounded text-xs text-white",
+                    viewingChecklistOrder.serviceVerification?.status === 'verified' ? "bg-green-600" :
+                    viewingChecklistOrder.serviceVerification?.status === 'rejected' ? "bg-red-600" :
+                    "bg-yellow-600"
+                  )}>
+                    {viewingChecklistOrder.serviceVerification?.status === 'verified' ? 'Approved by Service' :
+                     viewingChecklistOrder.serviceVerification?.status === 'rejected' ? 'Rejected by Service' :
+                     'Pending Service Check'}
+                  </Badge>
+                </div>
+
+                {/* Checklist items list */}
+                <div className="space-y-3">
+                  {checklistConfig.map((cfg) => {
+                    const item = checklist[cfg.key] || { checked: false, value: '', verified: false };
+                    return (
+                      <div 
+                        key={cfg.key} 
+                        className={cn(
+                          "p-3 rounded-lg border flex items-center justify-between transition-all",
+                          item.checked 
+                            ? (item.verified ? "bg-green-50/40 border-green-200" : "bg-orange-50/40 border-orange-200")
+                            : "bg-gray-50/40 border-gray-150 opacity-60"
+                        )}
+                      >
+                        <div>
+                          <p className="font-semibold text-sm text-gray-800">{cfg.label}</p>
+                          {item.checked ? (
+                            <p className="text-xs text-gray-600 mt-1">
+                              Agreed: <strong className="text-blue-700">{cfg.type === 'number' ? `₹${item.value}` : (cfg.type === 'boolean' ? 'Agreed' : item.value || 'N/A')}</strong>
+                            </p>
+                          ) : (
+                            <p className="text-xs text-gray-400 mt-0.5">Not discussed with customer</p>
+                          )}
+                        </div>
+
+                        <div>
+                          {item.checked ? (
+                            item.verified ? (
+                              <Badge className="bg-green-100 text-green-800 border-green-200 font-bold flex items-center gap-1">
+                                <CheckCircle2 className="h-3 w-3 text-green-600" />
+                                Verified
+                              </Badge>
+                            ) : (
+                              <Badge className="bg-orange-100 text-orange-800 border-orange-200 font-bold flex items-center gap-1">
+                                <Clock className="h-3 w-3 text-orange-600 animate-pulse" />
+                                Pending Check
+                              </Badge>
+                            )
+                          ) : (
+                            <span className="text-xs text-gray-400 font-medium">N/A</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {viewingChecklistOrder.serviceVerification?.remarks && (
+                  <div className="p-3 bg-gray-50 rounded-lg border text-xs text-gray-600 space-y-1">
+                    <span className="font-bold text-gray-700">Service Team Remarks:</span>
+                    <p className="italic">"{viewingChecklistOrder.serviceVerification.remarks}"</p>
+                  </div>
+                )}
+              </div>
+            );
+          })() : (
+            <div className="text-center py-8 text-gray-455">
+              No order data found.
+            </div>
+          )}
+
+          <div className="flex justify-end pt-4 border-t">
+            <Button
+              className="px-5 bg-blue-600 hover:bg-blue-700 text-white"
+              onClick={() => setIsViewChecklistModalOpen(false)}
+            >
               Close
             </Button>
           </div>

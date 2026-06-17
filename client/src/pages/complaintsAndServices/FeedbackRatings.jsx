@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { Star, CheckCircle, User, Package, Phone, MessageCircle, Mail } from 'lucide-react';
+import { Star, CheckCircle, User, Package, Phone, MessageCircle, Mail, BadgeCheck, Link2 } from 'lucide-react';
 
 export default function FeedbackRatings() {
   const { toast } = useToast();
@@ -255,6 +255,22 @@ function FeedbackList({ list, handleSelectOrder, handleWhatsApp, handleCall, han
                 Tech: {order.installation?.technicianName || 'Unknown'}
               </div>
             </div>
+
+            {/* Show if feedback was submitted by customer via form */}
+            {order.feedback?.submittedViaForm && (
+              <div className="flex items-center gap-1.5 text-xs text-emerald-600 bg-emerald-50 rounded-full px-3 py-1 mb-2 w-fit">
+                <BadgeCheck className="w-3.5 h-3.5" />
+                Submitted by customer
+              </div>
+            )}
+
+            {/* Show if feedback link was sent (pending feedback) */}
+            {!order.feedback?.rating && order.feedback?.feedbackToken && (
+              <div className="flex items-center gap-1.5 text-xs text-blue-600 bg-blue-50 rounded-full px-3 py-1 mb-2 w-fit">
+                <Link2 className="w-3.5 h-3.5" />
+                Feedback link sent
+              </div>
+            )}
 
             {order.feedback?.comments && (
               <p className="text-xs text-slate-500 mt-3 italic border-t pt-2">"{order.feedback.comments}"</p>

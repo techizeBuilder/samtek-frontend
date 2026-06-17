@@ -45,7 +45,10 @@ import {
   DollarSign,
   Users,
   Calendar,
-  CreditCard
+  CreditCard,
+  FileText,
+  Download,
+  ExternalLink
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -138,6 +141,20 @@ const LeadPayments = () => {
   const leads = leadsData?.leads || [];
   const payments = paymentsData?.payments || [];
   const bankAccounts = bankAccountsData?.bankAccounts || [];
+
+  // Fetch lead documents when viewing a payment
+  const { data: selectedLeadData } = useQuery({
+    queryKey: ['lead-for-view-payment', selectedPayment?.leadId?._id || selectedPayment?.leadId],
+    queryFn: () => {
+      const leadId = selectedPayment?.leadId?._id || selectedPayment?.leadId;
+      const token = localStorage.getItem('token');
+      return apiRequest(`/leads/${leadId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+    },
+    enabled: isViewPaymentModalOpen && !!(selectedPayment?.leadId?._id || selectedPayment?.leadId)
+  });
+  const selectedLeadDocs = selectedLeadData?.lead?.leadDocuments || [];
 
   // Mutations
   const addPaymentMutation = useMutation({
@@ -328,6 +345,50 @@ const LeadPayments = () => {
                         </Button>
                       </div>
                     </div>
+
+                    {/* Lead Documents Section */}
+                    {lead.leadDocuments && lead.leadDocuments.length > 0 && (
+                      <div className="mt-3 pt-3 border-t border-gray-100">
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-1">
+                          <FileText className="h-3.5 w-3.5" />
+                          Uploaded Documents
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          {lead.leadDocuments.map((doc, idx) => {
+                            const docColorMap = {
+                              'Purchase Order': 'bg-blue-50 text-blue-700 border-blue-200',
+                              'Payment Proof': 'bg-green-50 text-green-700 border-green-200',
+                              'Quotation': 'bg-purple-50 text-purple-700 border-purple-200'
+                            };
+                            const colorClass = docColorMap[doc.docType] || 'bg-gray-50 text-gray-700 border-gray-200';
+                            return (
+                              <div key={idx} className={`flex items-center gap-1.5 text-xs border rounded-md px-2 py-1 ${colorClass}`}>
+                                <FileText className="h-3 w-3 flex-shrink-0" />
+                                <span className="font-medium">{doc.docType}</span>
+                                <span className="text-gray-400 max-w-[120px] truncate">({doc.originalName})</span>
+                                <a
+                                  href={doc.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="ml-1 hover:opacity-70 transition-opacity"
+                                  title="View"
+                                >
+                                  <ExternalLink className="h-3 w-3" />
+                                </a>
+                                <a
+                                  href={doc.url}
+                                  download={doc.originalName}
+                                  className="hover:opacity-70 transition-opacity"
+                                  title="Download"
+                                >
+                                  <Download className="h-3 w-3" />
+                                </a>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -663,6 +724,56 @@ const LeadPayments = () => {
                 <div className="space-y-2 bg-slate-50 p-4 rounded-lg border border-slate-100">
                   <Label className="text-xs text-slate-400">Remarks</Label>
                   <p className="text-sm text-slate-700 whitespace-pre-wrap">{selectedPayment.remarks}</p>
+                </div>
+              )}
+
+              {/* Lead Documents linked to this payment's lead */}
+              {selectedLeadDocs && selectedLeadDocs.length > 0 && (
+                <div className="space-y-3 bg-slate-50 p-4 rounded-lg border border-slate-100">
+                  <Label className="text-xs text-slate-400 uppercase font-semibold tracking-wider flex items-center gap-1">
+                    <FileText className="h-3.5 w-3.5" />
+                    Lead Documents
+                  </Label>
+                  <div className="space-y-2">
+                    {selectedLeadDocs.map((doc, idx) => {
+                      const docColorMap = {
+                        'Purchase Order': 'border-blue-200 bg-blue-50 text-blue-700',
+                        'Payment Proof': 'border-green-200 bg-green-50 text-green-700',
+                        'Quotation': 'border-purple-200 bg-purple-50 text-purple-700'
+                      };
+                      const colorClass = docColorMap[doc.docType] || 'border-gray-200 bg-gray-50 text-gray-700';
+                      return (
+                        <div key={idx} className={`flex items-center justify-between rounded-md border px-3 py-2 ${colorClass}`}>
+                          <div className="flex items-center gap-2">
+                            <FileText className="h-4 w-4 flex-shrink-0" />
+                            <div>
+                              <p className="text-sm font-semibold">{doc.docType}</p>
+                              <p className="text-xs opacity-70 truncate max-w-[200px]">{doc.originalName}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <a
+                              href={doc.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-1 text-xs font-medium px-2 py-1 rounded border border-current hover:opacity-70 transition-opacity"
+                            >
+                              <ExternalLink className="h-3 w-3" />
+                              View
+                            </a>
+                            <a
+                              href={doc.url}
+                              download={doc.originalName}
+                              className="flex items-center gap-1 text-xs font-medium px-2 py-1 rounded border border-current hover:opacity-70 transition-opacity"
+                            >
+                              <Download className="h-3 w-3" />
+                              Download
+                            </a>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </div>
