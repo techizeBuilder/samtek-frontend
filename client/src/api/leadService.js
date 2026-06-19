@@ -158,6 +158,29 @@ export const leadApi = {
     return res.json();
   },
 
+  addLeadDocument: async (id, docType, file) => {
+    const token = localStorage.getItem('token');
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('docType', docType);
+
+    const res = await fetch(`/api/leads/${id}/add-document`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      },
+      body: formData
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ message: res.statusText }));
+      const error = new Error(err.message || 'Upload failed');
+      error.status = res.status;
+      throw error;
+    }
+    return res.json();
+  },
+
   // ─── IndiaMART Sync ──────────────────────────────────────────
   syncIndiamart: () => {
     const token = localStorage.getItem('token');

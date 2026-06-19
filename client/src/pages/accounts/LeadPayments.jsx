@@ -212,6 +212,20 @@ const LeadPayments = () => {
       return;
     }
 
+    // Transaction ID required for non-Cash and non-Cheque payment methods
+    const txnNotRequired = ['Cash', 'Cheque'];
+    if (
+      !txnNotRequired.includes(paymentFormData.paymentMethod) &&
+      !paymentFormData.transactionId.trim()
+    ) {
+      toast({
+        title: "Required",
+        description: `Transaction ID / Reference is required for ${paymentFormData.paymentMethod} payments`,
+        variant: "destructive"
+      });
+      return;
+    }
+
     addPaymentMutation.mutate({
       ...paymentFormData,
       amount: parseFloat(paymentFormData.amount)
@@ -589,10 +603,22 @@ const LeadPayments = () => {
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="transactionId" className="text-sm font-medium">Transaction ID / Reference</Label>
+              <Label htmlFor="transactionId" className="text-sm font-medium">
+                Transaction ID / Reference
+                {!['Cash', 'Cheque'].includes(paymentFormData.paymentMethod) && (
+                  <span className="text-red-500 ml-1">*</span>
+                )}
+                {['Cash', 'Cheque'].includes(paymentFormData.paymentMethod) && (
+                  <span className="text-gray-400 text-xs ml-1">(Optional)</span>
+                )}
+              </Label>
               <Input
                 id="transactionId"
-                placeholder="Enter transaction ID or reference"
+                placeholder={
+                  ['Cash', 'Cheque'].includes(paymentFormData.paymentMethod)
+                    ? 'Enter reference (optional)'
+                    : `Enter ${paymentFormData.paymentMethod} transaction ID / reference`
+                }
                 className="h-10"
                 value={paymentFormData.transactionId}
                 onChange={(e) => setPaymentFormData(prev => ({ ...prev, transactionId: e.target.value }))}

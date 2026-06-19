@@ -10,7 +10,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { 
   Loader2, Plus, Eye, Send, Check, Mail, Clock, ShieldCheck, 
   MapPin, Notebook, Info, FileText, ChevronRight, Edit2, RotateCw,
-  Upload, PackageCheck, AlertCircle
+  Upload, PackageCheck, AlertCircle, X, Search, Package, CheckCircle2, AlertTriangle
 } from 'lucide-react';
 import { format } from "date-fns";
 import {
@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 
 export default function PurchaseRequest() {
   const { user } = useAuth();
@@ -64,6 +65,20 @@ export default function PurchaseRequest() {
   const [isMarkingReceived, setIsMarkingReceived]     = useState(false);
   const warrantyFileRef = useRef(null);
   // ───────────────────────────────────────────────────────────────────────────
+
+  // ── Reject Modal state ──────────────────────────────────────────────────────
+  const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
+  const [rejectRequest, setRejectRequest]         = useState(null);
+  const [rejectReason, setRejectReason]           = useState('');
+  const [isRejecting, setIsRejecting]             = useState(false);
+  // ───────────────────────────────────────────────────────────────────────────
+
+  // ── Check Inventory Modal state ─────────────────────────────────────────────
+  const [isInvCheckOpen, setIsInvCheckOpen]       = useState(false);
+  const [invCheckRequest, setInvCheckRequest]     = useState(null);
+  const [invCheckResult, setInvCheckResult]       = useState(null);
+  const [isCheckingInv, setIsCheckingInv]         = useState(false);
+  // ─────────────────────────────────────────────────────────────────────────────
 
   useEffect(() => {
     fetchPurchaseRequests();
@@ -167,6 +182,56 @@ export default function PurchaseRequest() {
       });
     }
   };
+
+  const handleOpenRejectModal = (request) => {
+    setRejectRequest(request);
+    setRejectReason('');
+    setIsRejectModalOpen(true);
+  };
+
+  const handleConfirmReject = async () => {
+    if (!rejectRequest) return;
+    setIsRejecting(true);
+    try {
+      const data = await apiRequest('PATCH', `/api/purchase-requests/${rejectRequest._id}/store-reject`, {
+        reason: rejectReason.trim() || 'Rejected by Store'
+      });
+      if (data.success) {
+        toast({
+          title: "Rejected",
+          description: "Purchase request has been rejected."
+        });
+        setIsRejectModalOpen(false);
+        fetchPurchaseRequests();
+      }
+    } catch (error) {
+      console.error("Failed to reject request:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to reject request",
+        variant: "destructive"
+      });
+    } finally {
+      setIsRejecting(false);
+    }
+  };
+
+  // ── Check Inventory handler ─────────────────────────────────────────────
+  const handleCheckInventory = async (request) => {
+    setInvCheckRequest(request);
+    setInvCheckResult(null);
+    setIsInvCheckOpen(true);
+    setIsCheckingInv(true);
+    try {
+      const data = await apiRequest('GET', `/api/purchase-requests/${request._id}/check-inventory`);
+      setInvCheckResult(data);
+    } catch (error) {
+      setInvCheckResult({ success: false, found: false, message: error.message || 'Failed to check inventory' });
+    } finally {
+      setIsCheckingInv(false);
+    }
+  };
+  // ─────────────────────────────────────────────────────────────────────────
 
   // ── Open the Receive modal ───────────────────────────────────────────────
   const handleOpenReceiveModal = (request) => {
@@ -382,6 +447,7 @@ export default function PurchaseRequest() {
       case 'Approved': return 'bg-sky-100 text-sky-800 border-sky-300';
       case 'Ordered': return 'bg-indigo-100 text-indigo-800 border-indigo-300';
       case 'Received': return 'bg-emerald-100 text-emerald-800 border-emerald-300';
+      case 'Rejected': return 'bg-red-100 text-red-800 border-red-300';
       default: return 'bg-gray-100 text-gray-800 border-gray-300';
     }
   };
@@ -465,7 +531,11 @@ export default function PurchaseRequest() {
                             </Badge>
                           </TableCell>
                           <TableCell className="text-center">
-                            {request.source && request.source !== 'Store' && !request.storeApproved ? (
+                            {request.status === 'Rejected' ? (
+                              <Badge variant="outline" className="font-black px-2.5 py-1 rounded-lg border bg-red-50 text-red-700 border-red-300">
+                                Rejected
+                              </Badge>
+                            ) : request.source && request.source !== 'Store' && !request.storeApproved ? (
                               <Badge variant="outline" className="font-black px-2.5 py-1 rounded-lg border bg-amber-50 text-amber-700 border-amber-200">
                                 Pending Store Approval
                               </Badge>
@@ -479,13 +549,35 @@ export default function PurchaseRequest() {
                             <div className="flex items-center justify-center gap-2">
                               {isStoreUser ? (
                                 <>
-                                  {request.source && request.source !== 'Store' && !request.storeApproved ? (
-                                    <Button
-                                      onClick={() => handleStoreApprove(request._id)}
-                                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold h-8 text-xs rounded-md shadow-sm"
-                                    >
-                                      <Check className="w-3.5 h-3.5 mr-1" /> Approve & Forward
-                                    </Button>
+                                  {request.source && request.source !== 'Store' && !request.storeApproved && request.status !== 'Rejected' ? (
+                                    <div className="flex items-center gap-2">
+                                      <Button
+                                        onClick={() => handleCheckInventory(request)}
+                                        variant="outline"
+                                        className="border-violet-200 text-violet-700 hover:bg-violet-50 font-semibold h-8 text-xs rounded-md"
+                                      >
+                                        <Search className="w-3.5 h-3.5 mr-1" /> Check Inventory
+                                      </Button>
+                                      <Button
+                                        onClick={() => handleStoreApprove(request._id)}
+                                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold h-8 text-xs rounded-md shadow-sm"
+                                      >
+                                        <Check className="w-3.5 h-3.5 mr-1" /> Approve & Forward
+                                      </Button>
+                                      <Button
+                                        onClick={() => handleOpenRejectModal(request)}
+                                        variant="outline"
+                                        className="border-red-300 text-red-600 hover:bg-red-50 font-semibold h-8 text-xs rounded-md"
+                                      >
+                                        <X className="w-3.5 h-3.5 mr-1" /> Reject
+                                      </Button>
+                                    </div>
+                                  ) : request.status === 'Rejected' ? (
+                                    <div className="flex items-center gap-1.5">
+                                      <Badge variant="outline" className="font-bold px-2.5 py-1 rounded-lg border bg-red-50 text-red-700 border-red-200">
+                                        <X className="w-3 h-3 mr-1" /> Rejected
+                                      </Badge>
+                                    </div>
                                   ) : (
                                     <>
                                       {hasPO ? (
@@ -953,6 +1045,201 @@ export default function PurchaseRequest() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* ── Check Inventory Modal ────────────────────────────────────────────── */}
+      <Dialog open={isInvCheckOpen} onOpenChange={setIsInvCheckOpen}>
+        <DialogContent className="sm:max-w-[500px] rounded-xl border shadow-lg p-0 overflow-hidden">
+          <DialogHeader className="px-6 pt-6 pb-4 border-b bg-violet-50">
+            <DialogTitle className="flex items-center gap-2 text-violet-900 font-bold text-lg">
+              <Search className="w-5 h-5 text-violet-600" />
+              Inventory Check
+            </DialogTitle>
+            <DialogDescription className="text-violet-700 text-sm mt-1">
+              {invCheckRequest && (
+                <span>
+                  Checking stock for: <strong>{invCheckRequest.productName}</strong>
+                  {invCheckRequest.materialCode && (
+                    <span className="ml-1 font-mono text-xs bg-violet-100 px-1.5 py-0.5 rounded">
+                      Code: {invCheckRequest.materialCode}
+                    </span>
+                  )}
+                </span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="px-6 py-5 space-y-4 bg-white min-h-[180px]">
+            {isCheckingInv ? (
+              <div className="flex flex-col items-center justify-center py-10 gap-3 text-slate-400">
+                <Loader2 className="w-8 h-8 animate-spin text-violet-500" />
+                <p className="text-sm font-medium">Searching inventory...</p>
+              </div>
+            ) : invCheckResult ? (
+              <>
+                {/* Overall status banner */}
+                {invCheckResult.found ? (
+                  <div className={`flex items-start gap-3 rounded-lg p-3 border ${
+                    invCheckResult.canFulfill
+                      ? 'bg-emerald-50 border-emerald-200'
+                      : 'bg-amber-50 border-amber-200'
+                  }`}>
+                    {invCheckResult.canFulfill ? (
+                      <CheckCircle2 className="w-5 h-5 text-emerald-500 mt-0.5 shrink-0" />
+                    ) : (
+                      <AlertTriangle className="w-5 h-5 text-amber-500 mt-0.5 shrink-0" />
+                    )}
+                    <p className={`text-sm font-semibold ${
+                      invCheckResult.canFulfill ? 'text-emerald-800' : 'text-amber-800'
+                    }`}>
+                      {invCheckResult.message}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="flex items-start gap-3 rounded-lg p-3 border bg-red-50 border-red-200">
+                    <AlertCircle className="w-5 h-5 text-red-500 mt-0.5 shrink-0" />
+                    <p className="text-sm font-semibold text-red-800">{invCheckResult.message}</p>
+                  </div>
+                )}
+
+                {/* Item details table */}
+                {invCheckResult.items && invCheckResult.items.length > 0 && (
+                  <div className="rounded-xl border border-slate-100 overflow-hidden">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="bg-slate-50 border-b border-slate-100">
+                          <th className="text-left px-3 py-2 font-semibold text-slate-600">Item</th>
+                          <th className="text-left px-3 py-2 font-semibold text-slate-600">Code</th>
+                          <th className="text-center px-3 py-2 font-semibold text-slate-600">In Stock</th>
+                          <th className="text-center px-3 py-2 font-semibold text-slate-600">Required</th>
+                          <th className="text-center px-3 py-2 font-semibold text-slate-600">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {invCheckResult.items.map((item) => (
+                          <tr key={item._id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/50">
+                            <td className="px-3 py-2.5 font-medium text-slate-800">{item.name}</td>
+                            <td className="px-3 py-2.5 font-mono text-slate-500">{item.code || '—'}</td>
+                            <td className="px-3 py-2.5 text-center">
+                              <span className={`font-bold ${
+                                item.currentQty === 0 ? 'text-red-600' :
+                                item.currentQty < item.requestedQty ? 'text-amber-600' :
+                                'text-emerald-600'
+                              }`}>
+                                {item.currentQty} {item.unit}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2.5 text-center font-medium text-slate-700">
+                              {item.requestedQty} {item.unit}
+                            </td>
+                            <td className="px-3 py-2.5 text-center">
+                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                                item.status === 'sufficient'
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                  : item.status === 'low'
+                                  ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                  : 'bg-red-50 text-red-700 border-red-200'
+                              }`}>
+                                {item.status === 'sufficient' && <CheckCircle2 className="w-3 h-3" />}
+                                {item.status === 'low' && <AlertTriangle className="w-3 h-3" />}
+                                {item.status === 'out_of_stock' && <AlertCircle className="w-3 h-3" />}
+                                {item.statusLabel}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
+            ) : null}
+          </div>
+
+          <DialogFooter className="px-6 py-4 border-t bg-slate-50 flex gap-2 justify-end">
+            <Button
+              variant="outline"
+              onClick={() => setIsInvCheckOpen(false)}
+              className="font-semibold rounded-md"
+            >
+              Close
+            </Button>
+            {invCheckResult && !isCheckingInv && (
+              <Button
+                variant="outline"
+                onClick={() => handleCheckInventory(invCheckRequest)}
+                className="border-violet-200 text-violet-700 hover:bg-violet-50 font-semibold rounded-md"
+              >
+                <Search className="w-3.5 h-3.5 mr-1.5" /> Re-check
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* ─────────────────────────────────────────────────────────────────────── */}
+
+      {/* ── Reject Request Modal ─────────────────────────────────────────────── */}
+      <Dialog open={isRejectModalOpen} onOpenChange={setIsRejectModalOpen}>
+        <DialogContent className="sm:max-w-[420px] rounded-xl border shadow-lg p-0 overflow-hidden">
+          <DialogHeader className="px-6 pt-6 pb-4 border-b bg-red-50">
+            <DialogTitle className="flex items-center gap-2 text-red-900 font-bold text-lg">
+              <X className="w-5 h-5 text-red-600" />
+              Reject Purchase Request
+            </DialogTitle>
+            <DialogDescription className="text-red-700 text-sm mt-1">
+              {rejectRequest && (
+                <span>
+                  <strong>{rejectRequest.requestId}</strong> — {rejectRequest.productName} (Qty: {rejectRequest.quantity})
+                </span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="px-6 py-5 space-y-4 bg-white">
+            <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg p-3">
+              <AlertCircle className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
+              <p className="text-xs text-amber-800 font-medium">
+                Yeh request reject ho jaayegi aur Production department ko visible rahegi rejected status ke saath.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold text-slate-700 uppercase">
+                Rejection Reason <span className="text-slate-400 font-normal normal-case">(optional)</span>
+              </Label>
+              <textarea
+                rows={3}
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                placeholder="e.g. Item already available in stock, duplicate request..."
+                className="w-full border rounded-md p-2.5 bg-white text-slate-800 border-slate-300 focus:outline-none focus:ring-2 focus:ring-red-400 font-medium text-sm resize-none"
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="px-6 py-4 border-t bg-slate-50 flex gap-2 justify-end">
+            <Button
+              variant="outline"
+              onClick={() => setIsRejectModalOpen(false)}
+              disabled={isRejecting}
+              className="font-semibold rounded-md"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleConfirmReject}
+              disabled={isRejecting}
+              className="bg-red-600 hover:bg-red-700 text-white font-semibold rounded-md shadow-sm"
+            >
+              {isRejecting ? (
+                <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> Rejecting...</>
+              ) : (
+                <><X className="w-3.5 h-3.5 mr-1.5" /> Confirm Reject</>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* ─────────────────────────────────────────────────────────────────────── */}
     </div>
   );
 }

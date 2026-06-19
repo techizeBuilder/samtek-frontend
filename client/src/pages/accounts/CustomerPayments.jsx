@@ -52,7 +52,9 @@ const CustomerPayments = () => {
 
     const { data: bankAccountsResponse } = useQuery({
         queryKey: ['/api/accounts/bank-cash/summary'],
-        queryFn: () => apiRequest('GET', '/api/accounts/bank-cash/summary')
+        queryFn: () => apiRequest('GET', '/api/accounts/bank-cash/summary'),
+        staleTime: 0,
+        refetchOnMount: true,
     });
     const bankAccounts = bankAccountsResponse?.data?.accounts || [];
 
@@ -373,7 +375,7 @@ const CustomerPayments = () => {
                                     >
                                         <option value="">-- Choose Account --</option>
                                         {bankAccounts?.map(acc => (
-                                            <option key={acc.id} value={acc.id}>{acc.name} (₹{acc.balance.toLocaleString()})</option>
+                                            <option key={acc.id} value={acc.id}>{acc.name} (₹{(acc.balance ?? 0).toLocaleString()})</option>
                                         ))}
                                     </select>
                                 </div>

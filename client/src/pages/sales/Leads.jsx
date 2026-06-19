@@ -861,6 +861,27 @@ const assignableUsers = (usersData?.users || []).filter(
     }
   });
 
+  // Mutation for adding a single document in Manage Document List modal
+  const addDocumentMutation = useMutation({
+    mutationFn: ({ id, docType, file }) => leadApi.addLeadDocument(id, docType, file),
+    onSuccess: (data) => {
+      // Update selectedLead state with new documents list so UI refreshes immediately
+      setSelectedLead(prev => ({ ...prev, documents: data.documents }));
+      // Also invalidate leads query so the data is fresh on next open
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+      setDocType('');
+      setDocFile(null);
+      toast({ title: 'Success', description: 'Document uploaded successfully' });
+    },
+    onError: (error) => {
+      toast({
+        title: 'Upload Error',
+        description: error?.message || 'Failed to upload document',
+        variant: 'destructive'
+      });
+    }
+  });
+
   const handleGoToAccountSubmit = () => {
     if (!goToAccountLead) return;
     // Quotation and Payment Proof are required
@@ -2032,7 +2053,7 @@ const assignableUsers = (usersData?.users || []).filter(
                   </div>
 
                   {/* Phone Fields */}
-                  <div className="grid grid-cols-3 gap-2">
+                  {/* <div className="grid grid-cols-3 gap-2">
                     <div className="space-y-2">
                       <Label className="font-bold">Phone</Label>
                       <Input value="+91" disabled className="bg-gray-100 border-gray-300" />
@@ -2045,10 +2066,10 @@ const assignableUsers = (usersData?.users || []).filter(
                       <Label className="font-bold">Phone</Label>
                       <Input name="phone.number" placeholder="Phone" value={formData.phone.number} onChange={handleInputChange} className="border-gray-300" />
                     </div>
-                  </div>
+                  </div> */}
 
                   {/* Alt Phone Fields */}
-                  <div className="grid grid-cols-3 gap-2">
+                  {/* <div className="grid grid-cols-3 gap-2">
                     <div className="space-y-2">
                       <Label className="font-bold">Alternate Phone</Label>
                       <Input value="+91" disabled className="bg-gray-100 border-gray-300" />
@@ -2061,7 +2082,7 @@ const assignableUsers = (usersData?.users || []).filter(
                       <Label className="font-bold">Alt. Phone</Label>
                       <Input name="alternatePhone.number" placeholder="Alt. Phone" value={formData.alternatePhone.number} onChange={handleInputChange} className="border-gray-300" />
                     </div>
-                  </div>
+                  </div> */}
 
                   <div className="space-y-2">
                     <Label className="font-bold">Email</Label>
@@ -2578,26 +2599,25 @@ const assignableUsers = (usersData?.users || []).filter(
               </div>
               <Button 
                 className="bg-blue-600 hover:bg-blue-700 md:col-span-2 w-fit"
+                disabled={addDocumentMutation.isPending}
                 onClick={() => {
                   if (!docType || !docFile) {
                     toast({ title: "Required", description: "Please select type and file", variant: "destructive" });
                     return;
                   }
-                  const newDoc = {
-                    type: docType,
-                    name: docFile.name,
-                    url: '#', // In real app, upload to S3/Cloudinary first
-                    uploadedAt: new Date().toISOString()
-                  };
-                  updateLeadMutation.mutate({
+                  addDocumentMutation.mutate({
                     id: selectedLead._id,
-                    data: { documents: [...(selectedLead.documents || []), newDoc] }
+                    docType,
+                    file: docFile
                   });
-                  setDocType('');
-                  setDocFile(null);
                 }}
               >
-                Save Document
+                {addDocumentMutation.isPending ? (
+                  <span className="flex items-center gap-2">
+                    <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Uploading...
+                  </span>
+                ) : 'Save Document'}
               </Button>
             </div>
 
@@ -2617,7 +2637,34 @@ const assignableUsers = (usersData?.users || []).filter(
                         <td className="px-4 py-2 font-medium">{doc.type}</td>
                         <td className="px-4 py-2 text-gray-500">{new Date(doc.uploadedAt).toLocaleString()}</td>
                         <td className="px-4 py-2 text-center">
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-blue-600">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-blue-600"
+                            title="Download document"
+                            onClick={() => {
+                              if (!doc.url || doc.url === '#') {
+                                toast({ title: 'Not Available', description: 'Yeh document purana hai aur download ke liye available nahi hai. Naya document upload karein.', variant: 'destructive' });
+                                return;
+                              }
+                              // Normalize URL — strip full origin if present, keep only /uploads/... path
+                              let relativeUrl = doc.url;
+                              try {
+                                const parsed = new URL(doc.url);
+                                relativeUrl = parsed.pathname;
+                              } catch {
+                                // Already a relative path like /uploads/...
+                              }
+                              // Static files are served without auth — use direct anchor download
+                              const a = document.createElement('a');
+                              a.href = relativeUrl;
+                              a.download = doc.name || `document-${doc.type}`;
+                              a.target = '_blank';
+                              document.body.appendChild(a);
+                              a.click();
+                              a.remove();
+                            }}
+                          >
                             <FileDown className="h-4 w-4" />
                           </Button>
                         </td>
@@ -3850,12 +3897,32 @@ const assignableUsers = (usersData?.users || []).filter(
                 <div className="pl-7 space-y-1">
                   <span className="text-xs text-gray-500">Advanced Amount (INR)</span>
                   <Input
-                    type="number"
-                    value={salesChecklist.advancePayment.value}
-                    onChange={(e) => setSalesChecklist(p => ({
-                      ...p,
-                      advancePayment: { ...p.advancePayment, value: Number(e.target.value) }
-                    }))}
+                    type="text"
+                    inputMode="numeric"
+                    value={salesChecklist.advancePayment.value === 0 || salesChecklist.advancePayment.value === "0" ? "0" : salesChecklist.advancePayment.value}
+                    onFocus={(e) => {
+                      if (e.target.value === "0" || e.target.value === 0) {
+                        setSalesChecklist(p => ({
+                          ...p,
+                          advancePayment: { ...p.advancePayment, value: "" }
+                        }));
+                      }
+                    }}
+                    onBlur={(e) => {
+                      if (e.target.value === "") {
+                        setSalesChecklist(p => ({
+                          ...p,
+                          advancePayment: { ...p.advancePayment, value: 0 }
+                        }));
+                      }
+                    }}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/[^0-9]/g, "");
+                      setSalesChecklist(p => ({
+                        ...p,
+                        advancePayment: { ...p.advancePayment, value: val === "" ? "" : Number(val) }
+                      }));
+                    }}
                     className="h-9 border-gray-300 focus:ring-green-500"
                     placeholder="Enter amount"
                   />

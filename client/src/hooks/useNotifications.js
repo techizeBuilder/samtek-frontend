@@ -146,6 +146,7 @@ export const useNotifications = (params = {}) => {
   // Initialize Pusher connection
   useEffect(() => {
     if (user) {
+      // Re-init Pusher whenever user changes (handles companyId availability after refresh)
       pusherService.init(user);
       pusherService.onNotification(handleRealtimeNotification);
 
@@ -154,7 +155,7 @@ export const useNotifications = (params = {}) => {
         pusherService.disconnect();
       };
     }
-  }, [user, handleRealtimeNotification]);
+  }, [user?.id || user?._id, user?.companyId, handleRealtimeNotification]);
 
   // Update local state when queries resolve
   useEffect(() => {

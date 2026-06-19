@@ -54,6 +54,12 @@ const BankAndCash = () => {
     accountNumber: ''
   });
 
+  const [accountFormErrors, setAccountFormErrors] = useState({
+    name: '',
+    balance: '',
+    accountNumber: ''
+  });
+
   const [txnForm, setTxnForm] = useState({
     type: 'Receipt',
     mode: 'Bank Transfer',
@@ -92,12 +98,27 @@ const BankAndCash = () => {
   };
 
   const handleAccountSubmit = async () => {
-    try {
-      if (!accountForm.name || !accountForm.balance) {
-        toast({ title: 'Validation Error', description: 'Name and balance are required', variant: 'destructive' });
-        return;
-      }
+    // Inline field validation
+    const errors = { name: '', balance: '', accountNumber: '' };
+    let hasError = false;
 
+    if (!accountForm.name.trim()) {
+      errors.name = 'Account name is required';
+      hasError = true;
+    }
+    if (!accountForm.balance) {
+      errors.balance = 'Opening balance is required';
+      hasError = true;
+    }
+    if (accountForm.type === 'Bank' && !accountForm.accountNumber.trim()) {
+      errors.accountNumber = 'Account number is required for Bank accounts';
+      hasError = true;
+    }
+
+    setAccountFormErrors(errors);
+    if (hasError) return;
+
+    try {
       const accountData = {
         accountName: accountForm.name,
         accountType: 'Asset',
@@ -130,6 +151,7 @@ const BankAndCash = () => {
 
   const resetAccountForm = () => {
     setAccountForm({ name: '', type: 'Bank', balance: '', bankName: '', accountNumber: '' });
+    setAccountFormErrors({ name: '', balance: '', accountNumber: '' });
     setSelectedAccount(null);
     setIsEditing(false);
   };
@@ -252,19 +274,30 @@ const BankAndCash = () => {
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
                   <div className="grid gap-2">
-                    <Label htmlFor="name">Account Name</Label>
+                    <Label htmlFor="name">Account Name <span className="text-red-500">*</span></Label>
                     <Input
                       id="name"
                       placeholder="e.g. SBI Current A/c"
                       value={accountForm.name}
-                      onChange={(e) => setAccountForm({ ...accountForm, name: e.target.value })}
+                      className={accountFormErrors.name ? 'border-red-500 focus-visible:ring-red-500' : ''}
+                      onChange={(e) => {
+                        setAccountForm({ ...accountForm, name: e.target.value });
+                        if (e.target.value.trim()) setAccountFormErrors(prev => ({ ...prev, name: '' }));
+                      }}
                     />
+                    {accountFormErrors.name && (
+                      <p className="text-xs text-red-500">{accountFormErrors.name}</p>
+                    )}
                   </div>
                   <div className="grid gap-2">
                     <Label htmlFor="type">Account Type</Label>
                     <Select
                       value={accountForm.type}
-                      onValueChange={(val) => setAccountForm({ ...accountForm, type: val })}
+                      onValueChange={(val) => {
+                        setAccountForm({ ...accountForm, type: val });
+                        // Clear accountNumber error if switching away from Bank
+                        if (val !== 'Bank') setAccountFormErrors(prev => ({ ...prev, accountNumber: '' }));
+                      }}
                     >
                       <SelectTrigger>
                         <SelectValue />
@@ -277,14 +310,21 @@ const BankAndCash = () => {
                     </Select>
                   </div>
                   <div className="grid gap-2">
-                    <Label htmlFor="openingBalance">Opening Balance</Label>
+                    <Label htmlFor="openingBalance">Opening Balance <span className="text-red-500">*</span></Label>
                     <Input
                       id="openingBalance"
                       type="number"
                       placeholder="0.00"
                       value={accountForm.balance}
-                      onChange={(e) => setAccountForm({ ...accountForm, balance: e.target.value })}
+                      className={accountFormErrors.balance ? 'border-red-500 focus-visible:ring-red-500' : ''}
+                      onChange={(e) => {
+                        setAccountForm({ ...accountForm, balance: e.target.value });
+                        if (e.target.value) setAccountFormErrors(prev => ({ ...prev, balance: '' }));
+                      }}
                     />
+                    {accountFormErrors.balance && (
+                      <p className="text-xs text-red-500">{accountFormErrors.balance}</p>
+                    )}
                   </div>
                   {accountForm.type === 'Bank' && (
                     <div className="grid gap-2">
@@ -296,10 +336,19 @@ const BankAndCash = () => {
                         onChange={(e) => setAccountForm({ ...accountForm, bankName: e.target.value })}
                       />
                       <Input
-                        placeholder="Account Number"
+                        placeholder="Account Number *"
+                        inputMode="numeric"
                         value={accountForm.accountNumber}
-                        onChange={(e) => setAccountForm({ ...accountForm, accountNumber: e.target.value })}
+                        className={accountFormErrors.accountNumber ? 'border-red-500 focus-visible:ring-red-500' : ''}
+                        onChange={(e) => {
+                          const val = e.target.value.replace(/\D/g, '');
+                          setAccountForm({ ...accountForm, accountNumber: val });
+                          if (val.trim()) setAccountFormErrors(prev => ({ ...prev, accountNumber: '' }));
+                        }}
                       />
+                      {accountFormErrors.accountNumber && (
+                        <p className="text-xs text-red-500">{accountFormErrors.accountNumber}</p>
+                      )}
                     </div>
                   )}
                 </div>

@@ -311,6 +311,7 @@ export default function SuperAdminSales() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Sales Person</TableHead>
+                  <TableHead>Company</TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead className="text-center">Status</TableHead>
                   <TableHead className="text-center">Total Orders</TableHead>
@@ -321,7 +322,7 @@ export default function SuperAdminSales() {
               <TableBody>
                 {salesPersons.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-gray-500 py-8">
+                    <TableCell colSpan={7} className="text-center text-gray-500 py-8">
                       No sales persons found
                     </TableCell>
                   </TableRow>
@@ -333,6 +334,11 @@ export default function SuperAdminSales() {
                           <p className="font-medium">{person.fullName || person.username}</p>
                           <p className="text-sm text-muted-foreground">ID: {person._id.slice(-6)}</p>
                         </div>
+                      </TableCell>
+                      <TableCell>
+                        <p className="text-sm font-medium">
+                          {person.companyId?.name || person.companyId?.unitName || '—'}
+                        </p>
                       </TableCell>
                       <TableCell>
                         <p className="text-sm">{person.email}</p>

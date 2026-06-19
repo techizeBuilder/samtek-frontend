@@ -279,8 +279,7 @@ export default function SuperAdminOrders() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Order Code</TableHead>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>Sales Person</TableHead>
+                  <TableHead>Company</TableHead>
                   <TableHead>Date</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Amount</TableHead>
@@ -290,7 +289,7 @@ export default function SuperAdminOrders() {
               <TableBody>
                 {orders.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center text-gray-500 py-8">
+                    <TableCell colSpan={6} className="text-center text-gray-500 py-8">
                       No orders found
                     </TableCell>
                   </TableRow>
@@ -302,14 +301,10 @@ export default function SuperAdminOrders() {
                       </TableCell>
                       <TableCell>
                         <div>
-                          <p className="font-medium">{order.customer?.name || 'Unknown'}</p>
-                          <p className="text-sm text-muted-foreground">
-                            {order.customer?.contactPerson}
+                          <p className="font-medium">
+                            {order.companyId?.name || order.companyId?.unitName || 'N/A'}
                           </p>
                         </div>
-                      </TableCell>
-                      <TableCell>
-                        {order.salesPerson?.fullName || order.salesPerson?.username || 'Unassigned'}
                       </TableCell>
                       <TableCell>{formatDate(order.createdAt)}</TableCell>
                       <TableCell>

@@ -53,6 +53,8 @@ interface Employee {
 
 export default function Employee() {
   const navigate = useNavigate();
+  const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
+  const isCompanyAdmin = currentUser?.role === "Company Admin";
   // Use wouter's search/location hooks to avoid conflict with wouter routing
   const search = useSearch();
   const [location, setLocation] = useLocation();
@@ -308,13 +310,15 @@ export default function Employee() {
 
         {/* View Toggles & Filters */}
         <div className="flex items-center gap-4">
-          <button
-            onClick={() => navigate("/hrms/SuperAdmin/addUser")}
-            className="flex items-center gap-2 bg-[#49A7F5] hover:bg-[#3D96E1] text-white px-4 py-2 rounded-lg transition-all font-medium shadow-sm mr-2 active:scale-95"
-          >
-            <Users size={18} />
-            Add User
-          </button>
+          {!isCompanyAdmin && (
+            <button
+              onClick={() => navigate("/hrms/SuperAdmin/addUser")}
+              className="flex items-center gap-2 bg-[#49A7F5] hover:bg-[#3D96E1] text-white px-4 py-2 rounded-lg transition-all font-medium shadow-sm mr-2 active:scale-95"
+            >
+              <Users size={18} />
+              Add User
+            </button>
+          )}
           {/* Company Filter */}
           {/* <div className="relative min-w-[200px]">
             <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />

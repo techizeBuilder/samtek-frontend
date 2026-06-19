@@ -165,7 +165,7 @@ export default function AddUser() {
   useEffect(() => {
     // Managers
     axios
-      .get(`${API_BASE}/users?role=manager`, {
+      .get(`${API_BASE}/users?role=Manager`, {
         headers: { Authorization: `Bearer ${token}` },
       })
       .then((res) => setManagers(res.data?.data?.users || res.data?.users || []))
@@ -255,24 +255,50 @@ export default function AddUser() {
   const validate = () => {
     const e: any = {};
 
-    Object.entries(formData).forEach(([k, v]) => {
-      // 🔥 THE FIX: Explicitly ignore these keys from the falsy validation!
-      if (
-        !v &&
-        k !== "mobile" &&
-        k !== "dob" &&
-        k !== "joiningDate" &&
-        k !== "isTrainee" &&
-        k !== "serviceZone" &&
-        k !== "technicianSkills"
-      ) {
-        e[k] = "Required";
-      }
-    });
-
+    // Required text fields
+    if (!formData.name.trim()) e.name = "Required";
+    if (!formData.gender) e.gender = "Required";
+    if (!formData.password) e.password = "Required";
+    if (!formData.role) e.role = "Required";
     if (!formData.companyId) e.companyId = "Required";
     if (!formData.branchId) e.branchId = "Required";
     if (!formData.designationId) e.designationId = "Required";
+
+    // Email — must be valid format
+    if (!formData.email.trim()) {
+      e.email = "Required";
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) {
+      e.email = "Enter a valid email address (e.g. name@domain.com)";
+    }
+
+    // Mobile — exactly 10 digits
+    if (!formData.mobile.trim()) {
+      e.mobile = "Required";
+    } else if (!/^\d{10}$/.test(formData.mobile.trim())) {
+      e.mobile = "Mobile must be exactly 10 digits";
+    }
+
+    // IVR Extension — required for Sales Employee, digits only if provided
+    if (formData.role === "Sales Employee") {
+      if (!formData.ivrNumber.trim()) {
+        e.ivrNumber = "IVR Extension is required for Sales Employee";
+      } else if (!/^\d+$/.test(formData.ivrNumber.trim())) {
+        e.ivrNumber = "IVR Extension must contain only digits";
+      }
+    } else if (formData.ivrNumber && !/^\d+$/.test(formData.ivrNumber.trim())) {
+      e.ivrNumber = "IVR Extension must contain only digits";
+    }
+
+    // DOB — required
+    if (!formData.dob) e.dob = "Required";
+
+    // Joining Date — required
+    if (!formData.joiningDate) e.joiningDate = "Required";
+
+    // Reporting Manager — required for all roles except Manager
+    if (formData.role !== "Manager" && !job.managerId) {
+      e.managerId = "Required";
+    }
 
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -480,8 +506,10 @@ export default function AddUser() {
             <div>
               <Label>Email <span className="text-red-500">*</span></Label>
               <Input
+                type="email"
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                placeholder="name@domain.com"
                 className={errors.email ? "border-red-500" : ""}
               />
               {errors.email && <p className="text-sm text-red-500">{errors.email}</p>}
@@ -491,7 +519,13 @@ export default function AddUser() {
               <Label>Mobile <span className="text-red-500">*</span></Label>
               <Input
                 value={formData.mobile}
-                onChange={(e) => setFormData({ ...formData, mobile: e.target.value })}
+                onChange={(e) => {
+                  const val = e.target.value.replace(/\D/g, "").slice(0, 10);
+                  setFormData({ ...formData, mobile: val });
+                }}
+                placeholder="10-digit mobile number"
+                maxLength={10}
+                inputMode="numeric"
                 className={errors.mobile ? "border-red-500" : ""}
               />
               {errors.mobile && <p className="text-sm text-red-500">{errors.mobile}</p>}
@@ -500,13 +534,23 @@ export default function AddUser() {
             <div>
               <Label className="flex items-center gap-1">
                 Acefone IVR Extension
-                <span className="text-[10px] text-gray-400 font-normal">(for click-to-call)</span>
+                {formData.role === "Sales Employee"
+                  ? <span className="text-red-500"> *</span>
+                  : <span className="text-[10px] text-gray-400 font-normal">(optional)</span>
+                }
               </Label>
               <Input
                 placeholder="e.g. 0602105320010"
                 value={formData.ivrNumber}
-                onChange={(e) => setFormData({ ...formData, ivrNumber: e.target.value })}
+                onChange={(e) => {
+                  const val = e.target.value.replace(/\D/g, "").slice(0, 15);
+                  setFormData({ ...formData, ivrNumber: val });
+                }}
+                inputMode="numeric"
+                maxLength={15}
+                className={errors.ivrNumber ? "border-red-500" : ""}
               />
+              {errors.ivrNumber && <p className="text-sm text-red-500">{errors.ivrNumber}</p>}
               <p className="text-xs text-gray-400 mt-0.5">PHP system ka ivr_number field — Acefone agent extension.</p>
             </div>
             <div>
@@ -643,17 +687,24 @@ export default function AddUser() {
           </div>
 
           <div>
-            <Label>Reporting Manager</Label>
+            <Label>
+              Reporting Manager
+              {formData.role !== "Manager" && <span className="text-red-500"> *</span>}
+              {formData.role === "Manager" && <span className="text-gray-400 text-xs font-normal"> (Optional)</span>}
+            </Label>
             <select
               value={job.managerId}
               onChange={(e) => setJob({ ...job, managerId: e.target.value })}
-              className="w-full h-10 border rounded-md px-3"
+              className={`w-full h-10 border rounded-md px-3 ${errors.managerId ? "border-red-500" : ""}`}
             >
-              <option value="">Select Manager (Optional)</option>
+              <option value="">
+                {formData.role === "Manager" ? "Select Manager (Optional)" : "Select Manager"}
+              </option>
               {managers?.map((m) => (
                 <option key={m._id} value={m._id}>{m.fullName || m.name}</option>
               ))}
             </select>
+            {errors.managerId && <p className="text-sm text-red-500">{errors.managerId}</p>}
           </div>
 
           <div>
@@ -708,7 +759,12 @@ export default function AddUser() {
               <Input
                 placeholder="e.g. 0602105320010"
                 value={formData.ivrNumber}
-                onChange={(e) => setFormData({ ...formData, ivrNumber: e.target.value })}
+                onChange={(e) => {
+                  const val = e.target.value.replace(/\D/g, "").slice(0, 15);
+                  setFormData({ ...formData, ivrNumber: val });
+                }}
+                inputMode="numeric"
+                maxLength={15}
                 className="mt-1 border-emerald-300 focus:ring-emerald-500"
               />
               <p className="text-xs text-gray-500 mt-1">
@@ -720,7 +776,12 @@ export default function AddUser() {
               <Input
                 placeholder="Employee ka personal mobile number"
                 value={formData.mobile}
-                onChange={(e) => setFormData({ ...formData, mobile: e.target.value })}
+                onChange={(e) => {
+                  const val = e.target.value.replace(/\D/g, "").slice(0, 10);
+                  setFormData({ ...formData, mobile: val });
+                }}
+                inputMode="numeric"
+                maxLength={10}
                 className="mt-1 border-emerald-300 focus:ring-emerald-500"
               />
               <p className="text-xs text-gray-500 mt-1">
