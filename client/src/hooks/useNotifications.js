@@ -124,7 +124,35 @@ export const useNotifications = (params = {}) => {
   // Handle real-time notifications
   const handleRealtimeNotification = useCallback((notification) => {
     console.log('Received real-time notification:', notification);
-    
+
+    // ✅ CLIENT-SIDE GUARD: Company isolation check
+    // Agar notification kisi specific company ke liye hai aur user ki company alag hai,
+    // toh ye notification ignore karo (backend fix ka backup)
+    if (user && notification.targetCompanyId) {
+      const userCompanyId = user.companyId?._id?.toString()
+        || user.companyId?.toString()
+        || user.company?.id?.toString()
+        || null;
+      if (userCompanyId && notification.targetCompanyId !== userCompanyId) {
+        console.warn('[Notification Guard] Blocked notification from different company:', notification.targetCompanyId, '!= user company:', userCompanyId);
+        return; // Ignore karo
+      }
+    }
+
+    // ✅ CLIENT-SIDE GUARD: Role isolation check
+    // Agar notification kisi specific role ke liye hai aur user ka role alag hai,
+    // aur ye personal (targetUserId) nahi hai, toh ignore karo
+    if (user && notification.targetRole && notification.targetRole !== 'all' && notification.targetRole !== null) {
+      const userId = user.id || user._id;
+      const isPersonal = notification.targetUserId &&
+        (notification.targetUserId === userId?.toString() || notification.targetUserId?.toString() === userId?.toString());
+      const isRoleMatch = notification.targetRole === user.role;
+      if (!isPersonal && !isRoleMatch) {
+        console.warn('[Notification Guard] Blocked notification for role:', notification.targetRole, '!= user role:', user.role);
+        return; // Ignore karo
+      }
+    }
+
     // Play sound
     playSound();
     
@@ -141,7 +169,7 @@ export const useNotifications = (params = {}) => {
     
     // Invalidate queries to refresh data
     queryClient.invalidateQueries({ queryKey: ['notifications'] });
-  }, [playSound, queryClient]);
+  }, [user, playSound, queryClient]);
 
   // Initialize Pusher connection
   useEffect(() => {

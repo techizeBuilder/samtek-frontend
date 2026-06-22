@@ -107,6 +107,10 @@ export default function QCInspection() {
   const job = data?.data;
 
   const handleStart = async () => {
+    if (!inspectorName.trim()) {
+      toast({ title: 'Inspector name is required', description: 'Please enter the inspector name before starting inspection.', variant: 'destructive' });
+      return;
+    }
     setLoading(true);
     try {
       await startInspection(id, { inspector: inspectorName });
@@ -148,6 +152,10 @@ export default function QCInspection() {
 
   const handleDecision = async () => {
     if (!decision) { toast({ title: 'Select Pass or Fail', variant: 'destructive' }); return; }
+    if (cl.length > 0 && pendingCount > 0) {
+      toast({ title: 'Checklist incomplete', description: `${pendingCount} checklist item${pendingCount > 1 ? 's' : ''} still pending. Please inspect all items before submitting a decision.`, variant: 'destructive' });
+      return;
+    }
     if (decision === 'Fail' && !failReason.trim()) { toast({ title: 'Fail reason is required', variant: 'destructive' }); return; }
     setLoading(true);
     try {
@@ -318,7 +326,7 @@ export default function QCInspection() {
               <Button
                 className="w-full"
                 onClick={handleDecision}
-                disabled={loading || !decision}
+                disabled={loading || !decision || (cl.length > 0 && pendingCount > 0)}
               >
                 <Send className="h-4 w-4 mr-2" />
                 {loading ? 'Submitting...' : `Submit ${decision || 'Decision'}`}

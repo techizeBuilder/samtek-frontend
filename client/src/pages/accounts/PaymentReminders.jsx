@@ -17,6 +17,9 @@ const PaymentReminders = () => {
     const { toast } = useToast();
     const [activeTab, setActiveTab] = useState('overdue'); // 'overdue' | 'pending' | 'settings'
     const [sendingId, setSendingId] = useState(null);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [overdueFilter, setOverdueFilter] = useState('all'); // 'all' | 'warning' | 'critical'
+    const [pendingStatusFilter, setPendingStatusFilter] = useState('all'); // 'all' | 'Pending' | 'Partially Paid'
 
     // ── Fetch Overdue & Pending Invoices ──────────────────────────────────────
     const { data: overdueRes, isLoading: overdueLoading, refetch } = useQuery({
@@ -64,6 +67,22 @@ const PaymentReminders = () => {
     const overdue = overdueData?.overdue || [];
     const pending = overdueData?.pending || [];
     const summary = overdueData?.summary || {};
+
+    const filteredOverdue = overdue.filter(inv => {
+        const matchSearch = !searchQuery ||
+            inv.invoiceNumber?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            inv.customer?.name?.toLowerCase().includes(searchQuery.toLowerCase());
+        const matchOverdue = overdueFilter === 'all' || inv.overdueLevel === overdueFilter;
+        return matchSearch && matchOverdue;
+    });
+
+    const filteredPending = pending.filter(inv => {
+        const matchSearch = !searchQuery ||
+            inv.invoiceNumber?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            inv.customer?.name?.toLowerCase().includes(searchQuery.toLowerCase());
+        const matchStatus = pendingStatusFilter === 'all' || inv.paymentStatus === pendingStatusFilter;
+        return matchSearch && matchStatus;
+    });
 
     const getOverdueColor = (days) => {
         if (days > 60) return 'bg-red-100 text-red-800 border-red-200';
@@ -153,6 +172,57 @@ const PaymentReminders = () => {
                 ))}
             </div>
 
+            {/* Search and Filters Bar */}
+            {activeTab !== 'settings' && (
+                <div className="flex flex-col sm:flex-row gap-3 bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
+                    <div className="flex-1">
+                        <Input
+                            placeholder="Search by invoice number or customer name..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="bg-white"
+                        />
+                    </div>
+                    <div className="flex gap-2">
+                        {activeTab === 'overdue' && (
+                            <select
+                                value={overdueFilter}
+                                onChange={(e) => setOverdueFilter(e.target.value)}
+                                className="bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                                <option value="all">All Overdue Levels</option>
+                                <option value="warning">Warning (1-30 days)</option>
+                                <option value="critical">Critical (30 days)</option>
+                            </select>
+                        )}
+                        {activeTab === 'pending' && (
+                            <select
+                                value={pendingStatusFilter}
+                                onChange={(e) => setPendingStatusFilter(e.target.value)}
+                                className="bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                                <option value="all">All Statuses</option>
+                                <option value="Pending">Pending</option>
+                                <option value="Partially Paid">Partially Paid</option>
+                            </select>
+                        )}
+                        {(searchQuery || overdueFilter !== 'all' || pendingStatusFilter !== 'all') && (
+                            <Button
+                                variant="ghost"
+                                onClick={() => {
+                                    setSearchQuery('');
+                                    setOverdueFilter('all');
+                                    setPendingStatusFilter('all');
+                                }}
+                                className="text-slate-500 hover:text-slate-700 text-sm font-semibold"
+                            >
+                                Clear
+                            </Button>
+                        )}
+                    </div>
+                </div>
+            )}
+
             {/* ── OVERDUE TAB ── */}
             {activeTab === 'overdue' && (
                 <Card className="border-0 shadow-sm">
@@ -173,6 +243,10 @@ const PaymentReminders = () => {
                                 <CheckCircle2 className="w-12 h-12 text-green-400 mx-auto mb-3" />
                                 <p className="text-slate-500 font-medium">No overdue invoices! 🎉</p>
                             </div>
+                        ) : filteredOverdue.length === 0 ? (
+                            <div className="p-12 text-center text-slate-500 font-medium">
+                                No invoices match your search/filter criteria.
+                            </div>
                         ) : (
                             <div className="overflow-x-auto">
                                 <table className="w-full text-sm">
@@ -189,7 +263,7 @@ const PaymentReminders = () => {
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">
-                                        {overdue.map((inv) => (
+                                        {filteredOverdue.map((inv) => (
                                             <tr key={inv._id} className="hover:bg-red-50/30">
                                                 <td className="px-6 py-4">
                                                     <span className="font-bold text-slate-900">{inv.invoiceNumber}</span>
@@ -246,6 +320,10 @@ const PaymentReminders = () => {
                                 <CheckCircle2 className="w-12 h-12 text-green-400 mx-auto mb-3" />
                                 <p className="text-slate-500 font-medium">No pending invoices!</p>
                             </div>
+                        ) : filteredPending.length === 0 ? (
+                            <div className="p-12 text-center text-slate-500 font-medium">
+                                No invoices match your search/filter criteria.
+                            </div>
                         ) : (
                             <div className="overflow-x-auto">
                                 <table className="w-full text-sm">
@@ -261,7 +339,7 @@ const PaymentReminders = () => {
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">
-                                        {pending.map((inv) => (
+                                        {filteredPending.map((inv) => (
                                             <tr key={inv._id} className="hover:bg-amber-50/20">
                                                 <td className="px-6 py-4 font-bold text-slate-900">{inv.invoiceNumber}</td>
                                                 <td className="px-6 py-4">

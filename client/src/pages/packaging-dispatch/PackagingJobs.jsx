@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { ClipboardList, Play, CheckCircle2, Clock, Package, X, ChevronDown, ChevronUp } from 'lucide-react';
+import { ClipboardList, Play, CheckCircle2, Clock, Package, X, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
 
 const statusColor = {
   Pending: 'bg-slate-100 text-slate-600',
@@ -30,6 +30,7 @@ function JobCard({ job }) {
   const [expanded, setExpanded] = useState(false);
   const [photoUrl, setPhotoUrl] = useState('');
   const [loading, setLoading] = useState(false);
+  const [updatingKeys, setUpdatingKeys] = useState({});
 
   const cl = job.checklist || {};
   const allChecked = checklistItems.every(item => cl[item.key]);
@@ -48,10 +49,13 @@ function JobCard({ job }) {
   };
 
   const handleChecklistChange = async (key, checked) => {
+    setUpdatingKeys(prev => ({ ...prev, [key]: true }));
     try {
       await updateChecklist(job._id, { ...cl, [key]: checked });
     } catch (e) {
       toast({ title: 'Error', description: e.message, variant: 'destructive' });
+    } finally {
+      setUpdatingKeys(prev => ({ ...prev, [key]: false }));
     }
   };
 
@@ -102,23 +106,30 @@ function JobCard({ job }) {
               <div>
                 <p className="text-sm font-semibold text-slate-700 mb-2">Packing Checklist</p>
                 <div className="space-y-2">
-                  {checklistItems.map(item => (
-                    <div key={item.key} className="flex items-center gap-2.5">
-                      <Checkbox
-                        id={`${job._id}-${item.key}`}
-                        checked={!!cl[item.key]}
-                        onCheckedChange={(v) => handleChecklistChange(item.key, !!v)}
-                        disabled={job.status === 'Packed' || job.status === 'Dispatched'}
-                      />
-                      <label
-                        htmlFor={`${job._id}-${item.key}`}
-                        className={`text-sm cursor-pointer ${cl[item.key] ? 'text-emerald-700 font-medium' : 'text-slate-600'}`}
-                      >
-                        {item.label}
-                      </label>
-                      {cl[item.key] && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 ml-auto" />}
-                    </div>
-                  ))}
+                  {checklistItems.map(item => {
+                    const isUpdating = !!updatingKeys[item.key];
+                    return (
+                      <div key={item.key} className="flex items-center gap-2.5">
+                        {isUpdating ? (
+                          <Loader2 className="h-4 w-4 text-slate-500 animate-spin" />
+                        ) : (
+                          <Checkbox
+                            id={`${job._id}-${item.key}`}
+                            checked={!!cl[item.key]}
+                            onCheckedChange={(v) => handleChecklistChange(item.key, !!v)}
+                            disabled={job.status === 'Packed' || job.status === 'Dispatched'}
+                          />
+                        )}
+                        <label
+                          htmlFor={`${job._id}-${item.key}`}
+                          className={`text-sm cursor-pointer ${cl[item.key] ? 'text-emerald-700 font-medium' : 'text-slate-600'}`}
+                        >
+                          {item.label}
+                        </label>
+                        {cl[item.key] && !isUpdating && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 ml-auto" />}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}

@@ -147,12 +147,6 @@ const PaymentVerifications = () => {
     });
   };
 
-  const handleOpenPdfViewer = (lead) => {
-    setPdfUrl(lead.quotation);
-    setPdfLeadCode(lead.leadCode);
-    setPdfOpen(true);
-  };
-
   // Filter and search logic for leads
   const filteredLeads = leadsWithPayments.filter(lead => {
     const matchesSearch = 
@@ -388,19 +382,28 @@ const PaymentVerifications = () => {
                       </TableCell>
                       <TableCell>{getStatusBadge(lead.paymentCheckStatus)}</TableCell>
                       <TableCell>
-                        {lead.quotation ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleOpenPdfViewer(lead)}
-                            className="gap-1"
-                          >
-                            <Eye className="h-3 w-3" />
-                            View
-                          </Button>
-                        ) : (
-                          <span className="text-gray-400 text-sm">No quotation</span>
-                        )}
+                        {(() => {
+                          const quotationDoc = (lead.leadDocuments || []).find(
+                            doc => doc.docType === 'Quotation'
+                          );
+                          return quotationDoc ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setPdfUrl(quotationDoc.url);
+                                setPdfLeadCode(lead.leadCode);
+                                setPdfOpen(true);
+                              }}
+                              className="gap-1"
+                            >
+                              <Eye className="h-3 w-3" />
+                              View
+                            </Button>
+                          ) : (
+                            <span className="text-gray-400 text-sm">No quotation</span>
+                          );
+                        })()}
                       </TableCell>
                       <TableCell>
                         <Button
@@ -457,11 +460,18 @@ const PaymentVerifications = () => {
             </div>
 
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setUpdateOpen(false)}>
+              <Button type="button" variant="outline" onClick={() => setUpdateOpen(false)} disabled={updateStatusMutation.isPending}>
                 Cancel
               </Button>
-              <Button type="submit">
-                Update Status
+              <Button type="submit" disabled={updateStatusMutation.isPending}>
+                {updateStatusMutation.isPending ? (
+                  <span className="flex items-center gap-2">
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    Updating...
+                  </span>
+                ) : (
+                  'Update Status'
+                )}
               </Button>
             </DialogFooter>
           </form>

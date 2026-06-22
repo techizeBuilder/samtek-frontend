@@ -11,7 +11,11 @@ import {
   Clock,
   ScanSearch,
   CheckCheck,
-  XCircle
+  XCircle,
+  ArrowRightCircle,
+  ShoppingCart,
+  Factory,
+  Wrench
 } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -120,7 +124,9 @@ const StoreOrders = () => {
         ...prev,
         [itemId]: {
           ...(prev[itemId] || {}),
-          ...updates
+          ...updates,
+          // Carry forward storeQCStatus from server response if available
+          storeQCStatus: response?.data?.storeQCStatus ?? prev[itemId]?.storeQCStatus
         }
       }));
 
@@ -258,13 +264,14 @@ const StoreOrders = () => {
                 <TableHead className="w-[130px]">Delivery Date</TableHead>
                 <TableHead className="w-[180px]">Product Type</TableHead>
                 <TableHead className="w-[180px]">Inventory Status</TableHead>
+                <TableHead className="w-[180px]">Store Status</TableHead>
                 <TableHead className="text-center w-[160px]">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-12">
+                  <TableCell colSpan={10} className="text-center py-12">
                     <div className="flex flex-col items-center gap-2">
                       <RefreshCw className="h-6 w-6 animate-spin text-blue-600" />
                       <p className="text-slate-500 text-sm">Loading orders...</p>
@@ -272,7 +279,7 @@ const StoreOrders = () => {
                   </TableCell>                </TableRow>
               ) : storeOrders.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center py-12 text-slate-500">
+                  <TableCell colSpan={10} className="text-center py-12 text-slate-500">
                     No approved orders found in store
                   </TableCell>
                 </TableRow>
@@ -392,26 +399,92 @@ const StoreOrders = () => {
                       )}
                     </div>
                   </TableCell>
+                  {/* Store Status Column */}
+                  <TableCell>
+                    {(() => {
+                      const qcStatus = localStoreInfo[item._id]?.storeQCStatus ?? item.storeQCStatus;
+                      if (!qcStatus) return (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-500 border border-slate-200">
+                          —
+                        </span>
+                      );
+                      const statusConfig = {
+                        'Goes to QC': { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200', icon: <ArrowRightCircle className="w-3 h-3" /> },
+                        'Approved from QC': { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', icon: <CheckCheck className="w-3 h-3" /> },
+                        'Rejected from QC': { bg: 'bg-rose-50', text: 'text-rose-700', border: 'border-rose-200', icon: <XCircle className="w-3 h-3" /> },
+                        'Goes to Purchase': { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', icon: <ShoppingCart className="w-3 h-3" /> },
+                        'Purchase Completed': { bg: 'bg-teal-50', text: 'text-teal-700', border: 'border-teal-200', icon: <CheckCircle2 className="w-3 h-3" /> },
+                        'Goes to Production': { bg: 'bg-violet-50', text: 'text-violet-700', border: 'border-violet-200', icon: <Factory className="w-3 h-3" /> },
+                        'Production Completed': { bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-200', icon: <Wrench className="w-3 h-3" /> },
+                      };
+                      const cfg = statusConfig[qcStatus] || { bg: 'bg-slate-100', text: 'text-slate-600', border: 'border-slate-200', icon: null };
+                      return (
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium w-fit ${cfg.bg} ${cfg.text} border ${cfg.border}`}>
+                          {cfg.icon}{qcStatus}
+                        </span>
+                      );
+                    })()}
+                  </TableCell>
                   <TableCell>
                     <div className="flex justify-center gap-1">
-                      {/* Check Inventory Button */}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className={`h-8 px-2 text-xs gap-1 transition-colors ${
-                          checkingInventory === item._id
-                            ? 'text-blue-500 border-blue-300'
-                            : 'text-indigo-600 border-indigo-200 hover:bg-indigo-50'
-                        }`}
-                        onClick={() => handleCheckInventory(item)}
-                        disabled={checkingInventory === item._id || storeInfoLoading === item._id}
-                        title="Auto-fetch Product Type & Inventory Status from Inventory"
-                      >
-                        {checkingInventory === item._id
-                          ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                          : <ScanSearch className="w-3.5 h-3.5" />}
-                        {checkingInventory === item._id ? 'Checking...' : 'Check Inv.'}
-                      </Button>
+                      {/* Check Inventory Button - smart enable/disable logic */}
+                      {(() => {
+                        const qcStatus = localStoreInfo[item._id]?.storeQCStatus ?? item.storeQCStatus;
+                        const productType = localStoreInfo[item._id]?.productType ?? item.productType;
+                        // Disable cases:
+                        // 1. Currently loading
+                        // 2. Goes to QC / In QC (not rejected yet)
+                        // 3. Approved from QC (done)
+                        // 4. Goes to Production (only status shown, no re-check)
+                        // 5. Production Completed (only status shown)
+                        // Enable cases:
+                        // 1. Not checked yet (no qcStatus)
+                        // 2. Rejected from QC (re-check for retry)
+                        // 3. Purchase Completed (item now in inventory, can go to QC)
+                        const isLoading_ = checkingInventory === item._id || storeInfoLoading === item._id;
+                        const isProductionPath = productType === 'In-house Manufactured' || qcStatus === 'Goes to Production' || qcStatus === 'Production Completed';
+                        const isPurchasePath = productType === 'Purchased (Trading Product)' || qcStatus === 'Goes to Purchase';
+                        
+                        let isDisabled = isLoading_;
+                        let disabledReason = '';
+
+                        if (!isLoading_) {
+                          if (qcStatus === 'Goes to QC') { isDisabled = true; disabledReason = 'Item is in QC'; }
+                          else if (qcStatus === 'Approved from QC') { isDisabled = true; disabledReason = 'QC Approved'; }
+                          else if (qcStatus === 'Goes to Production') { isDisabled = true; disabledReason = 'In Production'; }
+                          else if (qcStatus === 'Production Completed') { isDisabled = true; disabledReason = 'Production Done'; }
+                          else if (qcStatus === 'Goes to Purchase') { isDisabled = true; disabledReason = 'Purchase Pending'; }
+                          // 'Rejected from QC' → enabled (retry)
+                          // 'Purchase Completed' → enabled (item in inventory, re-check to go to QC)
+                          // null / no status → enabled
+                        }
+
+                        return (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className={`h-8 px-2 text-xs gap-1 transition-colors ${
+                              isLoading_
+                                ? 'text-blue-500 border-blue-300'
+                                : isDisabled
+                                  ? 'text-slate-400 border-slate-200 cursor-not-allowed opacity-50'
+                                  : qcStatus === 'Rejected from QC'
+                                    ? 'text-rose-600 border-rose-300 hover:bg-rose-50'
+                                    : qcStatus === 'Purchase Completed'
+                                      ? 'text-teal-600 border-teal-300 hover:bg-teal-50'
+                                      : 'text-indigo-600 border-indigo-200 hover:bg-indigo-50'
+                            }`}
+                            onClick={() => !isDisabled && handleCheckInventory(item)}
+                            disabled={isDisabled}
+                            title={isDisabled ? disabledReason : (qcStatus === 'Rejected from QC' ? 'Re-check Inventory (QC Rejected)' : qcStatus === 'Purchase Completed' ? 'Check Inventory (Purchase Received)' : 'Check Inventory')}
+                          >
+                            {isLoading_
+                              ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                              : <ScanSearch className="w-3.5 h-3.5" />}
+                            {isLoading_ ? 'Checking...' : 'Check Inv.'}
+                          </Button>
+                        );
+                      })()}
                       <Button
                         variant="ghost"
                         size="icon"

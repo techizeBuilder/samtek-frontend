@@ -33,7 +33,7 @@ const statusIcon = {
 };
 
 const UNITS = ['kg', 'pcs', 'ltr', 'm', 'set', 'nos'];
-const emptyOrder = { machineCode: '', machineName: '', priority: 'Normal', deliveryDate: '' };
+const emptyOrder = { machineCode: '', machineName: '', priority: 'Normal', deliveryDate: '', source: 'Stock' };
 const emptyDemand = { materialCode: '', materialName: '', quantity: '', unit: 'kg' };
 
 export default function OrderManagement() {
@@ -254,6 +254,14 @@ export default function OrderManagement() {
                             : 'bg-blue-100 text-blue-700 border-blue-200'
                         }`}>
                           {isRejected ? 'QC Rejected' : 'Store Order'}
+                        </span>
+                        {/* Purpose badge */}
+                        <span className={`mt-1 flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border w-fit ${
+                          order.source === 'Stock'
+                            ? 'bg-violet-100 text-violet-700 border-violet-200'
+                            : 'bg-amber-100 text-amber-700 border-amber-200'
+                        }`}>
+                          {order.source === 'Stock' ? '🏭 Stock' : '📦 Order'}
                         </span>
                       </td>
                       <td className="px-5 py-3.5">
@@ -498,6 +506,22 @@ export default function OrderManagement() {
                   <option value="Urgent">Urgent</option>
                 </select>
               </div>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-600 mb-1 block">Production Type *</label>
+              <select
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                value={form.source}
+                onChange={e => setForm(f => ({ ...f, source: e.target.value }))}
+              >
+                <option value="Stock">Stock — Company ka apna stock badhana</option>
+                <option value="Store">Store Order — Customer order ke liye</option>
+              </select>
+              <p className="text-xs text-slate-400 mt-1">
+                {form.source === 'Stock'
+                  ? '🏭 QC pass hone ke baad item inventory mein add ho jaayega'
+                  : '📦 QC pass hone ke baad item dispatch/packing queue mein jaayega'}
+              </p>
             </div>
             <div>
               <label className="text-xs font-semibold text-slate-600 mb-1 block">Machine Name *</label>

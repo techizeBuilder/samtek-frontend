@@ -175,7 +175,7 @@ const Leads = () => {
     contactPerson: '',
     companyName: '',
     country: 'India',
-    assignedTo: user?._id || '',
+    assignedTo: '',
     state: '',
     city: '',
     enquiryDate: new Date().toISOString().split('T')[0],
@@ -947,7 +947,7 @@ const assignableUsers = (usersData?.users || []).filter(
       contactPerson: '',
       companyName: '',
       country: 'India',
-      assignedTo: user?._id || '',
+      assignedTo: '',
       state: '',
       city: '',
       enquiryDate: new Date().toISOString().split('T')[0],
@@ -972,13 +972,36 @@ const assignableUsers = (usersData?.users || []).filter(
     setExistingLead(null);
   };
 
+  // ─── Validation Helpers ────────────────────────────────────────
+  const isValidEmail = (email) => {
+    if (!email) return true; // optional unless mobile also empty
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  };
+
+  const isValidMobile = (mobile) => {
+    if (!mobile) return true; // optional unless email also empty
+    return /^[0-9]{10}$/.test(mobile.trim());
+  };
+
+  const isTextOnly = (value) => {
+    return /^[a-zA-Z\s\-'.(),&]*$/.test(value);
+  };
+
+  const isNumbersOnly = (value) => {
+    return /^[0-9]*$/.test(value);
+  };
+
   const handleInitialCheck = async () => {
     if (!formData.email && !formData.mobile) {
-      toast({
-        title: "Required",
-        description: "Please enter email or mobile number",
-        variant: "destructive"
-      });
+      toast({ title: "Required", description: "Email ya Mobile number mein se ek zaroor enter karein", variant: "destructive" });
+      return;
+    }
+    if (formData.email && !isValidEmail(formData.email)) {
+      toast({ title: "Invalid Email", description: "Sahi email format enter karein (e.g. user@example.com)", variant: "destructive" });
+      return;
+    }
+    if (formData.mobile && !isValidMobile(formData.mobile)) {
+      toast({ title: "Invalid Mobile", description: "Mobile number sirf 10 digits ka hona chahiye (sirf numbers)", variant: "destructive" });
       return;
     }
 
@@ -1004,9 +1027,42 @@ const assignableUsers = (usersData?.users || []).filter(
 
   const handleNextStep = () => {
     if (step === 2) {
-      // Validate step 2 fields
-      if (!formData.productRequired || !formData.contactPerson || !formData.companyName) {
-        toast({ title: "Required", description: "Please fill all mandatory fields (*)", variant: "destructive" });
+      // Required fields check
+      if (!formData.productRequired) {
+        toast({ title: "Required", description: "Product / Service Required field fill karein", variant: "destructive" });
+        return;
+      }
+      if (!formData.contactPerson) {
+        toast({ title: "Required", description: "Contact Person fill karein", variant: "destructive" });
+        return;
+      }
+      if (!formData.companyName) {
+        toast({ title: "Required", description: "Company Name fill karein", variant: "destructive" });
+        return;
+      }
+      if (!formData.assignedTo) {
+        toast({ title: "Required", description: "Assign To field select karein", variant: "destructive" });
+        return;
+      }
+      if (!formData.enquiryDate) {
+        toast({ title: "Required", description: "Enquiry Received Date fill karein", variant: "destructive" });
+        return;
+      }
+      if (!formData.nextFollowUpDate) {
+        toast({ title: "Required", description: "Next Follow Up Date fill karein", variant: "destructive" });
+        return;
+      }
+      // Text-only fields
+      if (formData.contactPerson && !isTextOnly(formData.contactPerson)) {
+        toast({ title: "Invalid Input", description: "Contact Person mein sirf text enter karein (numbers allowed nahi)", variant: "destructive" });
+        return;
+      }
+      if (formData.state && !/^[a-zA-Z\s\-'.]*$/.test(formData.state)) {
+        toast({ title: "Invalid Input", description: "State mein sirf text enter karein", variant: "destructive" });
+        return;
+      }
+      if (formData.city && !/^[a-zA-Z\s\-'.]*$/.test(formData.city)) {
+        toast({ title: "Invalid Input", description: "City mein sirf text enter karein", variant: "destructive" });
         return;
       }
       setStep(3);
@@ -1018,11 +1074,123 @@ const assignableUsers = (usersData?.users || []).filter(
   };
 
   const handleSubmit = () => {
+    // Step 3 final submit validation
+    if (!formData.productRequired) {
+      toast({ title: "Required", description: "Product / Service Required field fill karein", variant: "destructive" });
+      return;
+    }
+    if (!formData.contactPerson) {
+      toast({ title: "Required", description: "Contact Person fill karein", variant: "destructive" });
+      return;
+    }
+    if (!formData.companyName) {
+      toast({ title: "Required", description: "Company Name fill karein", variant: "destructive" });
+      return;
+    }
+    // Text-only fields validation
+    if (formData.contactPerson && !isTextOnly(formData.contactPerson)) {
+      toast({ title: "Invalid Input", description: "Contact Person mein sirf text enter karein", variant: "destructive" });
+      return;
+    }
+    if (formData.designation && !isTextOnly(formData.designation)) {
+      toast({ title: "Invalid Input", description: "Designation mein sirf text enter karein", variant: "destructive" });
+      return;
+    }
+    if (formData.state && !/^[a-zA-Z\s\-'.]*$/.test(formData.state)) {
+      toast({ title: "Invalid Input", description: "State mein sirf text enter karein", variant: "destructive" });
+      return;
+    }
+    if (formData.city && !/^[a-zA-Z\s\-'.]*$/.test(formData.city)) {
+      toast({ title: "Invalid Input", description: "City mein sirf text enter karein", variant: "destructive" });
+      return;
+    }
+    // Alternate mobile validation
+    if (formData.alternateMobile && !isValidMobile(formData.alternateMobile)) {
+      toast({ title: "Invalid Alternate Mobile", description: "Alternate Mobile sirf 10 digits ka hona chahiye", variant: "destructive" });
+      return;
+    }
+    // Alternate email validation
+    if (formData.alternateEmail && !isValidEmail(formData.alternateEmail)) {
+      toast({ title: "Invalid Alternate Email", description: "Sahi alternate email format enter karein", variant: "destructive" });
+      return;
+    }
+    // Pincode validation — max 6 digits, numbers only
+    if (formData.pincode && !/^[0-9]{1,6}$/.test(formData.pincode)) {
+      toast({ title: "Invalid Pincode", description: "Pincode mein sirf numbers enter karein (max 6 digits)", variant: "destructive" });
+      return;
+    }
+    // GST format
+    if (formData.gstNumber && !/^[0-9A-Z]{15}$/.test(formData.gstNumber.toUpperCase())) {
+      toast({ title: "Invalid GST", description: "GST Number 15 characters ka hona chahiye (alphanumeric)", variant: "destructive" });
+      return;
+    }
+    // PAN format
+    if (formData.pan && !/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(formData.pan.toUpperCase())) {
+      toast({ title: "Invalid PAN", description: "PAN format sahi nahi hai (e.g. ABCDE1234F)", variant: "destructive" });
+      return;
+    }
+    // Website validation
+    if (formData.website && !/^(https?:\/\/)?([\w\-]+\.)+[\w]{2,}(\/.*)?$/.test(formData.website)) {
+      toast({ title: "Invalid Website", description: "Website ka sahi URL enter karein (e.g. https://www.example.com)", variant: "destructive" });
+      return;
+    }
+    // Profile text only
+    if (formData.profile && !isTextOnly(formData.profile)) {
+      toast({ title: "Invalid Input", description: "Profile mein sirf text enter karein", variant: "destructive" });
+      return;
+    }
     createLeadMutation.mutate(formData);
   };
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
+
+    // ─── Live Input Restrictions ────────────────────────────────
+    // Mobile fields: sirf numbers, max 10 digits
+    if (name === 'mobile') {
+      if (!/^[0-9]*$/.test(value)) return; // only digits
+      if (value.length > 10) return;       // max 10
+    }
+    if (name === 'alternateMobile') {
+      if (!/^[0-9]*$/.test(value)) return;
+      if (value.length > 10) return;
+    }
+    // Pincode: sirf numbers, max 6
+    if (name === 'pincode') {
+      if (!/^[0-9]*$/.test(value)) return;
+      if (value.length > 6) return;
+    }
+    // Text-only fields: no numbers allowed
+    if (['contactPerson', 'state', 'city', 'designation', 'profile'].includes(name)) {
+      if (value !== '' && !/^[a-zA-Z\s\-'.,()&]*$/.test(value)) return;
+    }
+    // GST: alphanumeric uppercase, max 15
+    if (name === 'gstNumber') {
+      if (!/^[0-9a-zA-Z]*$/.test(value)) return;
+      if (value.length > 15) return;
+    }
+    // PAN: alphanumeric uppercase, max 10
+    if (name === 'pan') {
+      if (!/^[0-9a-zA-Z]*$/.test(value)) return;
+      if (value.length > 10) return;
+    }
+    // TAN: alphanumeric, max 10
+    if (name === 'tan') {
+      if (!/^[0-9a-zA-Z]*$/.test(value)) return;
+      if (value.length > 10) return;
+    }
+    // IEC: alphanumeric, max 10
+    if (name === 'iec') {
+      if (!/^[0-9a-zA-Z]*$/.test(value)) return;
+      if (value.length > 10) return;
+    }
+    // CIN/LLPIN: alphanumeric, max 21
+    if (name === 'cin') {
+      if (!/^[0-9a-zA-Z]*$/.test(value)) return;
+      if (value.length > 21) return;
+    }
+    // ─────────────────────────────────────────────────────────────
+
     if (name.includes('.')) {
       const [parent, child] = name.split('.');
       setFormData(prev => ({
@@ -1763,7 +1931,8 @@ const assignableUsers = (usersData?.users || []).filter(
                     <Input
                       id="email"
                       name="email"
-                      placeholder="Enter email"
+                      type="email"
+                      placeholder="Enter email (e.g. user@example.com)"
                       value={formData.email}
                       onChange={handleInputChange}
                     />
@@ -1774,10 +1943,16 @@ const assignableUsers = (usersData?.users || []).filter(
                     <Input
                       id="mobile"
                       name="mobile"
-                      placeholder="Enter mobile number"
+                      type="tel"
+                      placeholder="Enter 10-digit mobile number"
                       value={formData.mobile}
                       onChange={handleInputChange}
+                      maxLength={10}
+                      inputMode="numeric"
                     />
+                    {formData.mobile && formData.mobile.length > 0 && formData.mobile.length < 10 && (
+                      <p className="text-xs text-amber-600">{10 - formData.mobile.length} aur digits chahiye</p>
+                    )}
                   </div>
                 </div>
 
@@ -1907,7 +2082,7 @@ const assignableUsers = (usersData?.users || []).filter(
                     <Label className="font-bold">Contact Person <span className="text-red-500">*</span></Label>
                     <Input
                       name="contactPerson"
-                      placeholder="Contact Person"
+                      placeholder="Contact Person (sirf text)"
                       value={formData.contactPerson}
                       onChange={handleInputChange}
                       className="border-gray-300"
@@ -1962,7 +2137,7 @@ const assignableUsers = (usersData?.users || []).filter(
                     <Label className="font-bold">Select State</Label>
                     <Input
                       name="state"
-                      placeholder="Enter State"
+                      placeholder="Enter State (sirf text)"
                       value={formData.state}
                       onChange={handleInputChange}
                       className="border-gray-300"
@@ -1973,7 +2148,7 @@ const assignableUsers = (usersData?.users || []).filter(
                     <Label className="font-bold">Select City</Label>
                     <Input
                       name="city"
-                      placeholder="Enter City"
+                      placeholder="Enter City (sirf text)"
                       value={formData.city}
                       onChange={handleInputChange}
                       className="border-gray-300"
@@ -2039,7 +2214,7 @@ const assignableUsers = (usersData?.users || []).filter(
 
                   <div className="space-y-2">
                     <Label className="font-bold">Designation</Label>
-                    <Input name="designation" placeholder="Designation" value={formData.designation} onChange={handleInputChange} className="border-gray-300" />
+                    <Input name="designation" placeholder="Designation (sirf text)" value={formData.designation} onChange={handleInputChange} className="border-gray-300" />
                   </div>
 
                   <div className="space-y-2">
@@ -2049,7 +2224,16 @@ const assignableUsers = (usersData?.users || []).filter(
 
                   <div className="space-y-2">
                     <Label className="font-bold">Alternate Mobile</Label>
-                    <Input name="alternateMobile" placeholder="Alternate Mobile" value={formData.alternateMobile} onChange={handleInputChange} className="border-gray-300" />
+                    <Input
+                      name="alternateMobile"
+                      placeholder="10-digit Alternate Mobile"
+                      value={formData.alternateMobile}
+                      onChange={handleInputChange}
+                      className="border-gray-300"
+                      type="tel"
+                      maxLength={10}
+                      inputMode="numeric"
+                    />
                   </div>
 
                   {/* Phone Fields */}
@@ -2117,7 +2301,7 @@ const assignableUsers = (usersData?.users || []).filter(
 
                   <div className="space-y-2">
                     <Label className="font-bold">PIN / ZIP Code</Label>
-                    <Input name="pincode" placeholder="Zip code" value={formData.pincode} onChange={handleInputChange} className="border-gray-300" />
+                    <Input name="pincode" placeholder="6-digit Pincode" value={formData.pincode} onChange={handleInputChange} className="border-gray-300" type="tel" maxLength={6} inputMode="numeric" />
                   </div>
 
                   <div className="space-y-2">
@@ -2137,27 +2321,27 @@ const assignableUsers = (usersData?.users || []).filter(
 
                   <div className="space-y-2">
                     <Label className="font-bold">GST Number</Label>
-                    <Input name="gstNumber" placeholder="GST Number" value={formData.gstNumber} onChange={handleInputChange} className="border-gray-300" />
+                    <Input name="gstNumber" placeholder="GST Number (15 characters)" value={formData.gstNumber} onChange={handleInputChange} className="border-gray-300" maxLength={15} style={{ textTransform: 'uppercase' }} />
                   </div>
 
                   <div className="space-y-2">
                     <Label className="font-bold">PAN</Label>
-                    <Input name="pan" placeholder="type PAN" value={formData.pan} onChange={handleInputChange} className="border-gray-300" />
+                    <Input name="pan" placeholder="PAN (e.g. ABCDE1234F)" value={formData.pan} onChange={handleInputChange} className="border-gray-300" maxLength={10} style={{ textTransform: 'uppercase' }} />
                   </div>
 
                   <div className="space-y-2">
                     <Label className="font-bold">IEC</Label>
-                    <Input name="iec" placeholder="Type IEC" value={formData.iec} onChange={handleInputChange} className="border-gray-300" />
+                    <Input name="iec" placeholder="IEC (10 characters)" value={formData.iec} onChange={handleInputChange} className="border-gray-300" maxLength={10} style={{ textTransform: 'uppercase' }} />
                   </div>
 
                   <div className="space-y-2">
                     <Label className="font-bold">TAN</Label>
-                    <Input name="tan" placeholder="Type TAN" value={formData.tan} onChange={handleInputChange} className="border-gray-300" />
+                    <Input name="tan" placeholder="TAN (10 characters)" value={formData.tan} onChange={handleInputChange} className="border-gray-300" maxLength={10} style={{ textTransform: 'uppercase' }} />
                   </div>
 
                   <div className="space-y-2">
                     <Label className="font-bold">CIN / LLPIN</Label>
-                    <Input name="cin" placeholder="Type CIN/LLPIN" value={formData.cin} onChange={handleInputChange} className="border-gray-300" />
+                    <Input name="cin" placeholder="CIN/LLPIN (max 21 characters)" value={formData.cin} onChange={handleInputChange} className="border-gray-300" maxLength={21} style={{ textTransform: 'uppercase' }} />
                   </div>
 
                   <div className="space-y-2">
