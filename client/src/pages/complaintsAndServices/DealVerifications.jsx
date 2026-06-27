@@ -12,7 +12,7 @@ import {
   ShieldCheck, Phone, CheckCircle2, XCircle, MessageSquare, Mail,
   Calendar, User, MapPin, Briefcase, Eye, History, Star, ThumbsUp,
   ChevronRight, FileText, Package, CreditCard, Clock, AlertCircle,
-  ThumbsDown, X
+  ThumbsDown, X, ChevronLeft, ChevronsLeft, ChevronsRight
 } from 'lucide-react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
@@ -69,18 +69,31 @@ const DealVerifications = () => {
   const queryClient = useQueryClient();
 
   const [activeTab, setActiveTab] = useState('all');
+  const [currentPage, setCurrentPage] = useState(1);
 
   /* ── data ── */
   const { data: ordersData, isLoading } = useQuery({
-    queryKey: ['service-deal-verifications'],
-    queryFn: () => orderApi.getAll({ limit: 100, sortBy: 'createdAt', sortOrder: 'desc' }),
-    staleTime: 2 * 60 * 1000,        // 2 minutes — don't refetch on every tab switch
-    refetchOnWindowFocus: false,       // no refetch when user switches window
+    queryKey: ['service-deal-verifications', currentPage, activeTab],
+    queryFn: () => {
+      const params = {
+        page: currentPage,
+        limit: 10,
+        sortBy: 'createdAt',
+        sortOrder: 'desc',
+      };
+      // 'all' → no serviceStatus param; others pass the tab key directly
+      if (activeTab !== 'all') params.serviceStatus = activeTab;
+      return orderApi.getDealVerifications(params);
+    },
+    staleTime: 1 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
-  const allOrders = ordersData?.orders || [];
-  const orders = activeTab === 'all'
-    ? allOrders
-    : allOrders.filter(o => getServiceStatus(o) === activeTab);
+
+  const orders          = ordersData?.orders || [];
+  const paginatedOrders = orders;  // backend already gives us the current page slice
+  const totalOrders     = ordersData?.pagination?.totalOrders || 0;
+  const totalPages      = ordersData?.pagination?.totalPages  || 1;
+  const allOrders       = orders; // alias used in header badge
 
   /* ── modal states ── */
   const [verifyModal,  setVerifyModal]  = useState({ open: false, order: null });
@@ -106,7 +119,7 @@ const DealVerifications = () => {
 
   const handleOpenVerifyModal = (order) => {
     // Always use the latest version of the order from cache (not the stale card reference)
-    const latestOrder = queryClient.getQueryData(['service-deal-verifications'])?.orders?.find(
+    const latestOrder = queryClient.getQueryData(['service-deal-verifications', currentPage, activeTab])?.orders?.find(
       (o) => o._id === order._id
     ) || order;
 
@@ -164,7 +177,7 @@ const DealVerifications = () => {
       // Update local form state ONLY after API confirms save
       setVerifyFormData(p => ({ ...p, salesChecklist: variables.salesChecklist }));
       // Directly patch the React Query cache so reopening modal shows saved state instantly
-      queryClient.setQueryData(['service-deal-verifications'], (old) => {
+      queryClient.setQueryData(['service-deal-verifications', currentPage, activeTab], (old) => {
         if (!old?.orders) return old;
         return {
           ...old,
@@ -179,7 +192,7 @@ const DealVerifications = () => {
     onError: (_, variables) => {
       setSavingKey(null);
       // On failure, revert to the last known good checklist from cache
-      const cachedOrder = queryClient.getQueryData(['service-deal-verifications'])?.orders?.find(
+      const cachedOrder = queryClient.getQueryData(['service-deal-verifications', currentPage, activeTab])?.orders?.find(
         (o) => o._id === variables.id
       );
       if (cachedOrder?.salesChecklist) {
@@ -239,33 +252,30 @@ const DealVerifications = () => {
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold text-gray-800">Deal Verifications (Service Team)</h1>
         <Badge className="bg-blue-100 text-blue-800 text-sm px-3 py-1 border border-blue-200">
-          {allOrders.length} Total
+          {totalOrders} Total
         </Badge>
       </div>
 
       {/* ── Status Filter Tabs ── */}
       <div className="flex gap-2 mb-5 flex-wrap">
-        {STATUS_TABS.map(tab => {
-          const count = tab.key === 'all'
-            ? allOrders.length
-            : allOrders.filter(o => getServiceStatus(o) === tab.key).length;
-          return (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={`px-4 py-1.5 rounded-full text-sm font-medium border transition-all ${
-                activeTab === tab.key
-                  ? `${tab.color} border-transparent shadow-sm`
-                  : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
-              }`}
-            >
-              {tab.label}
-              <span className={`ml-1.5 px-1.5 py-0.5 rounded-full text-xs font-bold ${
-                activeTab === tab.key ? 'bg-white/60' : 'bg-gray-100'
-              }`}>{count}</span>
-            </button>
-          );
-        })}
+        {STATUS_TABS.map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => { setActiveTab(tab.key); setCurrentPage(1); }}
+            className={`px-4 py-1.5 rounded-full text-sm font-medium border transition-all ${
+              activeTab === tab.key
+                ? `${tab.color} border-transparent shadow-sm`
+                : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+            }`}
+          >
+            {tab.label}
+            {activeTab === tab.key && (
+              <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-xs font-bold bg-white/60">
+                {totalOrders}
+              </span>
+            )}
+          </button>
+        ))}
       </div>
 
       {/* ── List ── */}
@@ -274,7 +284,7 @@ const DealVerifications = () => {
           <div className="flex justify-center py-12">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
           </div>
-        ) : orders.length === 0 ? (
+        ) : paginatedOrders.length === 0 ? (
           <div className="bg-white rounded-lg p-12 text-center shadow-sm border border-gray-100">
             <ShieldCheck className="h-16 w-16 mx-auto text-gray-300 mb-4" />
             <h3 className="text-xl font-medium text-gray-600">No Deals Found</h3>
@@ -283,7 +293,7 @@ const DealVerifications = () => {
             </p>
           </div>
         ) : (
-          orders.map((order) => {
+          paginatedOrders.map((order) => {
             const customer    = order.customer  || {};
             const salesPerson = order.salesPerson || {};
             const products    = order.products   || [];
@@ -604,6 +614,88 @@ const DealVerifications = () => {
           })
         )}
       </div>
+
+      {/* ── Pagination Controls ── */}
+      {totalOrders > 0 && (
+        <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mt-6 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+          <div className="text-sm text-gray-500">
+            Showing <span className="font-semibold">{(currentPage - 1) * 10 + 1}</span> to{" "}
+            <span className="font-semibold">{Math.min(currentPage * 10, totalOrders)}</span> of{" "}
+            <span className="font-medium">{totalOrders}</span> entries
+          </div>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8 text-gray-600 hover:text-gray-900 border-gray-200"
+              onClick={() => setCurrentPage(1)}
+              disabled={currentPage === 1}
+            >
+              <ChevronsLeft className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8 text-gray-600 hover:text-gray-900 border-gray-200"
+              onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+              disabled={currentPage === 1}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+
+            {(() => {
+              const pageNumbers = [];
+              const maxVisiblePages = 5;
+              let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
+              let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+              
+              if (endPage - startPage + 1 < maxVisiblePages) {
+                startPage = Math.max(1, endPage - maxVisiblePages + 1);
+              }
+
+              for (let i = startPage; i <= endPage; i++) {
+                pageNumbers.push(i);
+              }
+
+              return pageNumbers.map((page) => (
+                <Button
+                  key={page}
+                  variant={currentPage === page ? "default" : "outline"}
+                  size="sm"
+                  className={cn(
+                    "h-8 w-8 font-semibold text-xs",
+                    currentPage === page
+                      ? "bg-blue-600 hover:bg-blue-700 text-white border-transparent"
+                      : "text-gray-600 hover:text-gray-900 hover:bg-gray-100 border-gray-200"
+                  )}
+                  onClick={() => setCurrentPage(page)}
+                >
+                  {page}
+                </Button>
+              ));
+            })()}
+
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8 text-gray-600 hover:text-gray-900 border-gray-200"
+              onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+              disabled={currentPage === totalPages}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8 text-gray-600 hover:text-gray-900 border-gray-200"
+              onClick={() => setCurrentPage(totalPages)}
+              disabled={currentPage === totalPages}
+            >
+              <ChevronsRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* ══════════════════════════════════════════════════════
           MODAL 1 – VERIFY

@@ -41,7 +41,16 @@ const CustomerPayments = () => {
         enabled: !!selectedCustomer
     });
 
+    // Use Customer Master's outstandingAmount as the authoritative balance
+    // The ageing query can show duplicates if multiple Sale records exist for one order
     const customerOutstanding = outstandingResponse?.data?.[0];
+    const selectedCustomerInfo = customersData?.data?.find(c => c._id === selectedCustomer);
+
+    // True outstanding = Customer Master outstandingAmount (single source of truth)
+    // Ageing invoices list is still useful to show breakdown
+    const trueOutstanding = selectedCustomerInfo?.outstandingAmount ?? customerOutstanding?.totalOutstanding ?? 0;
+    const pendingInvoices = customerOutstanding?.invoices || [];
+    const invoiceCount = customerOutstanding?.invoiceCount || 0;
 
     const { data: statsResponse } = useQuery({
         queryKey: ['/api/accounts/sales/payment/stats'],
@@ -325,27 +334,13 @@ const CustomerPayments = () => {
                                         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-8">
                                             <div className="space-y-2">
                                                 <h3 className="text-blue-100/70 text-[10px] font-black uppercase tracking-[0.2em]">Current Receivables</h3>
-                                                <div className="text-5xl font-black italic tracking-tighter">₹{customerOutstanding?.totalOutstanding?.toLocaleString('en-IN') || '0'}</div>
+                                                <div className="text-5xl font-black italic tracking-tighter">₹{trueOutstanding.toLocaleString('en-IN')}</div>
                                                 <div className="flex items-center gap-3 mt-4">
                                                     <Badge className="bg-white/20 hover:bg-white/30 text-white rounded-full px-4 py-1 text-[10px] font-bold border-0 backdrop-blur-sm">
-                                                        {customerOutstanding?.invoiceCount || 0} PENDING BILLS
+                                                        OUTSTANDING BALANCE
                                                     </Badge>
                                                 </div>
                                             </div>
-
-                                            {customerOutstanding?.invoices?.length > 0 && (
-                                                <div className="w-full md:w-1/2 space-y-3 max-h-[180px] overflow-y-auto pr-4 custom-scrollbar">
-                                                    {customerOutstanding.invoices.map((inv, idx) => (
-                                                        <div key={idx} className="flex justify-between items-center bg-white/10 hover:bg-white/15 transition-colors p-4 rounded-2xl border border-white/10 backdrop-blur-md">
-                                                            <div className="flex flex-col">
-                                                                <span className="font-black text-xs">{inv.invoiceNo}</span>
-                                                                <span className="text-[10px] opacity-60 font-bold">{new Date(inv.date).toLocaleDateString()}</span>
-                                                            </div>
-                                                            <div className="font-black text-lg italic">₹{inv.balance.toLocaleString()}</div>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            )}
                                         </div>
                                     </div>
                                 </div>

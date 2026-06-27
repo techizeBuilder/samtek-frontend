@@ -652,6 +652,7 @@ const assignableUsers = (usersData?.users || []).filter(
   });
 
   const leads = leadsData?.leads || [];
+  console.log("Leads Data",leads);
 
   // Fetch Call Logs for the selected lead
   const { data: callLogsData, isLoading: callLogsLoading } = useQuery({
@@ -1335,6 +1336,7 @@ const assignableUsers = (usersData?.users || []).filter(
           </div>
         ) : (
           leads.map((lead) => (
+    
             <Card key={lead._id} className="shadow-sm border-gray-100 hover:border-blue-200 transition-colors">
               <CardContent className="p-0">
                 {/* Main Card Content */}
@@ -1677,8 +1679,9 @@ const assignableUsers = (usersData?.users || []).filter(
                       size="sm" 
                       className="h-8 text-xs rounded-full bg-blue-600"
                       onClick={() => setLocation(`/sales/quotation?lead_id=${lead._id}`)}
+                      disabled={lead.status === 'Won'}
                     >
-                      {lead.hasQuotation ? 'Update Quotation' : 'Send Quotation'}
+                      {lead.hasQuotation  ? 'Update Quotation' : 'Send Quotation'}
                     </Button>
                     <Button 
                       variant="outline" 

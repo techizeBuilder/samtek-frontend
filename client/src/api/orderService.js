@@ -91,5 +91,20 @@ export const orderApi = {
       },
       body: JSON.stringify(data)
     });
+  },
+
+  // Deal Verifications page: paginated, with serviceStatus filter
+  getDealVerifications: (params = {}) => {
+    const queryParams = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== '') {
+        queryParams.append(key, value);
+      }
+    });
+    const queryString = queryParams.toString();
+    const token = localStorage.getItem('token');
+    return apiRequest(`/orders/deal-verifications${queryString ? `?${queryString}` : ''}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
   }
 };

@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import {
   Bell, Volume2, VolumeX, Check, AlertCircle, Package, ShoppingCart,
   UserPlus, Target, CreditCard, Factory, Truck, Shield, MessageSquare,
@@ -57,7 +57,14 @@ const getPriorityColor = (priority) => {
 
 // Navigate to relevant page based on notification type and data
 const getNavigationUrl = (notification) => {
-  const { type, data } = notification;
+  const { type, data, title, icon } = notification;
+  if (type === 'complaint' && (
+    title?.toLowerCase().includes('deal') ||
+    title?.toLowerCase().includes('verification') ||
+    icon === 'shield'
+  )) {
+    return '/complaints/deal-verifications';
+  }
   if (data?.orderId) return `/sales/orders?highlight=${data.orderId}`;
   if (type === 'lead' && data?.leadId) return `/sales/leads?highlight=${data.leadId}`;
   if (type === 'payment' && data?.leadId) return `/accounts/lead-payments`;

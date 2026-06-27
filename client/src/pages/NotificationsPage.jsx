@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import {
   Bell, Volume2, VolumeX, Search, Check, Loader2,
   AlertCircle, Package, ShoppingCart, UserPlus, Target,
@@ -155,8 +155,14 @@ export default function NotificationsPage() {
   });
 
   const handleNotificationClick = (notification) => {
-    const { type, data } = notification;
-    if (data?.orderId) {
+    const { type, data, title, icon } = notification;
+    if (type === 'complaint' && (
+      title?.toLowerCase().includes('deal') ||
+      title?.toLowerCase().includes('verification') ||
+      icon === 'shield'
+    )) {
+      window.location.href = `/complaints/deal-verifications`;
+    } else if (data?.orderId) {
       window.location.href = `/sales/orders?highlight=${data.orderId}`;
     } else if (type === 'lead' && data?.leadId) {
       window.location.href = `/sales/leads?highlight=${data.leadId}`;
