@@ -6,11 +6,12 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import {
   ClipboardList, Plus, CheckCircle, AlertTriangle, Clock, Package,
-  ChevronRight, FileCheck, Wrench, Send, Search, Filter
+  ChevronRight, FileCheck, Wrench, Send, Search, Filter, FileText, ExternalLink
 } from 'lucide-react';
 import { useProduction as useProd } from '@/contexts/ProductionContext';
 import { apiRequest } from '@/lib/queryClient';
 import { showSuccessToast, showSmartToast } from '@/lib/toast-utils';
+import { config } from '@/config/environment';
 
 const statusColor = {
   'Pending': 'bg-slate-100 text-slate-700 border-slate-200',
@@ -142,6 +143,33 @@ export default function OrderManagement() {
 
   // Keep detailOrder in sync with updated orders state
   const detailOrderLive = detailOrder ? orders.find(o => String(o._id || o.id) === String(detailOrder._id || detailOrder.id)) : null;
+
+  const handleRaiseRDRequest = async (id) => {
+    try {
+      await raiseRDRequest(id);
+      showSuccessToast('R&D Request Raised', 'The request has been sent to the R&D team.');
+    } catch (error) {
+      showSmartToast(error, 'Failed to raise R&D request');
+    }
+  };
+
+  const handleVerifyBOM = async (id) => {
+    try {
+      await verifyBOM(id);
+      showSuccessToast('BOM Verified', 'The Bill of Materials has been verified.');
+    } catch (error) {
+      showSmartToast(error, 'Failed to verify BOM');
+    }
+  };
+
+  const handleVerifyDesign = async (id) => {
+    try {
+      await verifyDesign(id);
+      showSuccessToast('Design Verified', 'The machine design has been verified.');
+    } catch (error) {
+      showSmartToast(error, 'Failed to verify design');
+    }
+  };
 
   return (
     <div className="p-6 space-y-6 bg-slate-50 min-h-screen">
@@ -388,22 +416,16 @@ export default function OrderManagement() {
                     <div className={`flex-1 p-3 rounded-lg border text-sm ${detailOrderLive.bomVerified ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
                       <div className="flex items-center justify-between">
                         <span className="font-semibold">{detailOrderLive.bomVerified ? '✓ BOM Verified' : '✗ BOM Not Verified'}</span>
-                        {!detailOrderLive.bomVerified && (
-                          <Button size="sm" className="h-6 text-xs bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => verifyBOM(detailOrderLive._id || detailOrderLive.id)}>Verify</Button>
-                        )}
                       </div>
                     </div>
                     <div className={`flex-1 p-3 rounded-lg border text-sm ${detailOrderLive.designVerified ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
                       <div className="flex items-center justify-between">
                         <span className="font-semibold">{detailOrderLive.designVerified ? '✓ Design Verified' : '✗ Design Not Verified'}</span>
-                        {!detailOrderLive.designVerified && (
-                          <Button size="sm" className="h-6 text-xs bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => verifyDesign(detailOrderLive._id || detailOrderLive.id)}>Verify</Button>
-                        )}
                       </div>
                     </div>
                   </div>
                   {(!detailOrderLive.bomVerified || !detailOrderLive.designVerified) && !detailOrderLive.rdRequestRaised && (
-                    <Button size="sm" variant="outline" className="mt-2 border-amber-300 text-amber-700 hover:bg-amber-50 text-xs" onClick={() => raiseRDRequest(detailOrderLive._id || detailOrderLive.id)}>
+                    <Button size="sm" variant="outline" className="mt-2 border-amber-300 text-amber-700 hover:bg-amber-50 text-xs" onClick={() => handleRaiseRDRequest(detailOrderLive._id || detailOrderLive.id)}>
                       <Send className="h-3.5 w-3.5 mr-1" /> Raise R&D Request
                     </Button>
                   )}
@@ -411,6 +433,31 @@ export default function OrderManagement() {
                     <p className="text-xs text-amber-600 mt-2 flex items-center gap-1"><AlertTriangle className="h-3.5 w-3.5" /> R&D request raised — awaiting design & BOM from R&D team</p>
                   )}
                 </div>
+
+                {/* Design Documents */}
+                {detailOrderLive.designDocuments && detailOrderLive.designDocuments.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-700 mb-2 flex items-center gap-1.5"><FileText className="h-4 w-4" /> Design Documents</h3>
+                    <div className="grid grid-cols-2 gap-3">
+                      {detailOrderLive.designDocuments.map(doc => {
+                        // Support relative paths from backend using environment config
+                        const url = doc.fileUrl.startsWith('http') ? doc.fileUrl : `${config.baseURL}${doc.fileUrl}`;
+                        return (
+                          <a key={doc._id || doc.id} href={url} target="_blank" rel="noreferrer" className="flex items-center p-3 rounded-lg border border-slate-200 hover:border-blue-300 hover:bg-blue-50 transition-colors group">
+                            <div className="bg-blue-100 text-blue-600 p-2 rounded-md mr-3 group-hover:bg-blue-200 transition-colors">
+                              <FileText className="h-4 w-4" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-semibold text-slate-800 truncate">{doc.name}</p>
+                              <p className="text-[10px] text-slate-500">Version: {doc.version || 'v1.0'}</p>
+                            </div>
+                            <ExternalLink className="h-3.5 w-3.5 text-slate-400 group-hover:text-blue-500 transition-colors ml-2 flex-shrink-0" />
+                          </a>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 {/* Material Demands */}
                 <div>

@@ -119,10 +119,10 @@ export function ProductionProvider({ children }) {
 
   // ── Stable callback wrappers (keep same API as before) ────────────────────
   const addOrder = useCallback((data) => addOrderMutation.mutate(data), []);
-  const verifyBOM = useCallback((id) => verifyBOMMutation.mutate(id), []);
-  const verifyDesign = useCallback((id) => verifyDesignMutation.mutate(id), []);
-  const raiseRDRequest = useCallback((id) => raiseRDRequestMutation.mutate(id), []);
-  const markMaterialIssued = useCallback((id) => markMaterialIssuedMutation.mutate(id), []);
+  const verifyBOM = useCallback((id) => verifyBOMMutation.mutateAsync(id), []);
+  const verifyDesign = useCallback((id) => verifyDesignMutation.mutateAsync(id), []);
+  const raiseRDRequest = useCallback((id) => raiseRDRequestMutation.mutateAsync(id), []);
+  const markMaterialIssued = useCallback((id) => markMaterialIssuedMutation.mutateAsync(id), []);
   const addMaterialDemand = useCallback((orderId, demand) => addMaterialDemandMutation.mutate({ orderId, demand }), []);
   const updateMaterialStatus = useCallback((orderId, materialId, status) => updateMaterialStatusMutation.mutate({ orderId, materialId, status }), []);
   const addTeam = useCallback((data) => addTeamMutation.mutate(data), []);

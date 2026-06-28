@@ -13,7 +13,8 @@ import {
 } from '@/components/ui/dialog';
 import {
   Loader2, Send, Eye, FileText, CheckCircle2, AlertCircle, Clock, Package,
-  ChevronRight, Users, Mail, BarChart3, Gavel, RefreshCw, Tag
+  ChevronRight, Users, Mail, BarChart3, Gavel, RefreshCw, Tag,
+  Info, FlaskConical, Wrench, Shield // <-- Added missing icons for R&D
 } from 'lucide-react';
 
 // ── Status badge helper ───────────────────────────────────────────────────────
@@ -50,21 +51,22 @@ export default function RFQManagement() {
   const qc = useQueryClient();
 
   // ── State ─────────────────────────────────────────────────────────────────
-  // Inline date/notes — no pre-modal needed for category-matched flow
-  const [sendingPRId, setSendingPRId] = useState(null); // tracks which row is loading
+  const [sendingPRId, setSendingPRId] = useState(null);
 
-  // Manual vendor selection modal — only shown when backend returns 400 (no match)
   const [manualModal, setManualModal] = useState(false);
-  const [manualPR, setManualPR] = useState(null);           // the PR being processed
-  const [manualVendorList, setManualVendorList] = useState([]); // allVendors from backend
-  const [manualVendorIds, setManualVendorIds] = useState([]); // user's checked selections
+  const [manualPR, setManualPR] = useState(null);
+  const [manualVendorList, setManualVendorList] = useState([]);
+  const [manualVendorIds, setManualVendorIds] = useState([]);
   const [manualRequiredByDate, setManualRequiredByDate] = useState('');
   const [manualNotes, setManualNotes] = useState('');
   const [detectedCategory, setDetectedCategory] = useState('');
 
-  // View RFQ modal
   const [viewRFQModal, setViewRFQModal] = useState(false);
   const [selectedRFQ, setSelectedRFQ] = useState(null);
+
+  // NEW: State for R&D Specifications Modal
+  const [viewPRModal, setViewPRModal] = useState(false);
+  const [selectedPR, setSelectedPR] = useState(null);
 
   // ── Data fetching ─────────────────────────────────────────────────────────
   const { data: prData, isLoading: prLoading, refetch: refetchPRs } = useQuery({
@@ -85,16 +87,12 @@ export default function RFQManagement() {
     select: (d) => d.data || {}
   });
 
-  // ── Mutations ─────────────────────────────────────────────────────────────
-
-  // Helper: invalidate all RFQ-related queries after success
   const invalidateAll = () => {
     qc.invalidateQueries({ queryKey: ['/api/rfq'] });
     qc.invalidateQueries({ queryKey: ['/api/purchase-requests'] });
     qc.invalidateQueries({ queryKey: ['/api/rfq/stats'] });
   };
 
-  // Direct send — category matched vendors → no modal
   const autoSendMutation = useMutation({
     mutationFn: (payload) => apiRequest('POST', '/api/rfq', payload),
     onSuccess: (data) => {
@@ -105,15 +103,13 @@ export default function RFQManagement() {
     onError: (err) => {
       setSendingPRId(null);
 
-      // Parse backend error — check if it has allVendors (no category match)
       let errData = null;
-      try { errData = JSON.parse(err.message || '{}'); } catch (_) {}
+      try { errData = JSON.parse(err.message || '{}'); } catch (_) { }
       const noMatchPayload = errData?.data?.allVendors ? errData.data
         : err?.data?.allVendors ? err.data
-        : null;
+          : null;
 
       if (noMatchPayload) {
-        // Open manual selection modal with vendor list
         setManualVendorList(noMatchPayload.allVendors || []);
         setDetectedCategory(noMatchPayload.detectedCategory || '');
         setManualVendorIds([]);
@@ -125,7 +121,6 @@ export default function RFQManagement() {
     }
   });
 
-  // Manual send — user selected vendors explicitly
   const manualSendMutation = useMutation({
     mutationFn: (payload) => apiRequest('POST', '/api/rfq', payload),
     onSuccess: (data) => {
@@ -140,13 +135,11 @@ export default function RFQManagement() {
     }
   });
 
-  // "Send RFQ" button on the table row — fire directly, no modal
   const handleSendRFQ = (pr) => {
     const defaultDate = new Date();
     defaultDate.setDate(defaultDate.getDate() + 7);
     const requiredByDate = defaultDate.toISOString().split('T')[0];
 
-    // Store PR info in case we need manual modal later
     setManualPR(pr);
     setManualRequiredByDate(requiredByDate);
     setManualNotes('');
@@ -159,7 +152,6 @@ export default function RFQManagement() {
     });
   };
 
-  // "Send to X Vendors" inside manual modal
   const handleManualSend = () => {
     if (!manualPR || manualVendorIds.length === 0) return;
     manualSendMutation.mutate({
@@ -184,11 +176,15 @@ export default function RFQManagement() {
     }
   };
 
-  // Filter PRs: only show Pending or Approved (Ordered ones already have PO or RFQ)
+  // NEW: Handler for showing R&D Specs
+  const handleViewPR = (pr) => {
+    setSelectedPR(pr);
+    setViewPRModal(true);
+  };
+
   const purchaseRequests = (prData || []).filter(pr => ['Pending', 'Approved'].includes(pr.status));
   const rfqList = rfqData || [];
 
-  // Map rfqNo to PR for quick lookup
   const rfqByPRId = {};
   rfqList.forEach(rfq => {
     const prId = rfq.purchaseRequest?._id || rfq.purchaseRequest;
@@ -200,7 +196,6 @@ export default function RFQManagement() {
   return (
     <div className="p-6 bg-slate-50 min-h-screen space-y-6">
 
-      {/* ── Header ─────────────────────────────────────────────────────── */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
@@ -216,7 +211,6 @@ export default function RFQManagement() {
         </Button>
       </div>
 
-      {/* ── Stats ──────────────────────────────────────────────────────── */}
       {statsData && (
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           {[
@@ -241,7 +235,6 @@ export default function RFQManagement() {
         </div>
       )}
 
-      {/* ── Purchase Requests needing RFQ ─────────────────────────────── */}
       <Card className="shadow-sm border-0">
         <CardHeader className="border-b bg-slate-50/50 py-4">
           <CardTitle className="text-base font-bold text-slate-800 flex items-center gap-2">
@@ -283,7 +276,22 @@ export default function RFQManagement() {
                     return (
                       <tr key={pr._id} className="border-b hover:bg-slate-50 transition-colors">
                         <td className="py-3 px-5 font-bold text-slate-800">{pr.requestId}</td>
-                        <td className="py-3 px-5 font-medium text-slate-700">{pr.productName}</td>
+                        <td className="py-3 px-5 font-medium text-slate-700">
+                          <div className="flex items-center gap-2">
+                            {pr.productName}
+                            {/* NEW: R&D Specs Info Button */}
+                            {pr.item && (pr.item.specifications?.length > 0 || pr.item.warranty?.type) && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 text-blue-500 bg-blue-50 hover:bg-blue-100 rounded-full"
+                                onClick={() => handleViewPR(pr)}
+                              >
+                                <Info className="w-3.5 h-3.5" />
+                              </Button>
+                            )}
+                          </div>
+                        </td>
                         <td className="py-3 px-5 text-center font-bold text-slate-700">{pr.quantity}</td>
                         <td className="py-3 px-5 text-slate-500">
                           {pr.requestDate ? format(new Date(pr.requestDate), 'dd MMM yyyy') : '—'}
@@ -338,7 +346,6 @@ export default function RFQManagement() {
         </CardContent>
       </Card>
 
-      {/* ── Active RFQs ────────────────────────────────────────────────── */}
       {rfqList.length > 0 && (
         <Card className="shadow-sm border-0">
           <CardHeader className="border-b bg-slate-50/50 py-4">
@@ -396,35 +403,76 @@ export default function RFQManagement() {
         </Card>
       )}
 
-      {/* ── Manual Vendor Selection Modal (only when no category match) ────── */}
+      {/* ── NEW: View R&D PR Specs Modal ────────────────────────────────────── */}
+      <Dialog open={viewPRModal} onOpenChange={setViewPRModal}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-slate-800">
+              <FlaskConical className="w-5 h-5 text-blue-600" />
+              R&D Specifications
+            </DialogTitle>
+            <DialogDescription>
+              Master Inventory parameters for <strong>{selectedPR?.productName}</strong>.
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedPR?.item && (
+            <div className="space-y-4 py-3">
+              {selectedPR.item.specifications?.length > 0 && (
+                <div>
+                  <h4 className="text-sm font-semibold text-slate-700 flex items-center gap-2 mb-2">
+                    <Wrench className="w-4 h-4 text-slate-400" /> Technical Requirements
+                  </h4>
+                  <div className="bg-slate-50 border border-slate-200 rounded-md overflow-hidden text-sm">
+                    {selectedPR.item.specifications.map((spec, i) => (
+                      <div key={i} className="flex border-b border-slate-100 last:border-0">
+                        <div className="w-1/3 bg-slate-100 px-3 py-2 text-slate-600 font-medium">{spec.key}</div>
+                        <div className="w-2/3 px-3 py-2 text-slate-900">{spec.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {selectedPR.item.warranty && selectedPR.item.warranty.type && (
+                <div>
+                  <h4 className="text-sm font-semibold text-slate-700 flex items-center gap-2 mb-2">
+                    <Shield className="w-4 h-4 text-slate-400" /> Warranty Requirements
+                  </h4>
+                  <div className="bg-slate-50 border border-slate-200 rounded-md p-3 text-sm grid grid-cols-2 gap-2">
+                    <div><span className="text-slate-500 text-xs uppercase block mb-1">Period</span><span className="font-medium text-slate-900">{selectedPR.item.warranty.period} Months</span></div>
+                    <div><span className="text-slate-500 text-xs uppercase block mb-1">Type</span><span className="font-medium text-slate-900">{selectedPR.item.warranty.type}</span></div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setViewPRModal(false)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={manualModal} onOpenChange={(open) => { if (!open) { setManualModal(false); setManualVendorIds([]); } }}>
         <DialogContent className="sm:max-w-[540px]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-slate-800">
               <AlertCircle className="w-5 h-5 text-amber-500" />
-              No Matching Vendors Found — Select Manually
+              Select Vendors to Send RFQ
             </DialogTitle>
             <DialogDescription>
-              No vendor has categories matching <strong>{manualPR?.productName}</strong>
-              {detectedCategory && <> (detected category: <strong>{detectedCategory}</strong>)</>}.
               Please tick the vendors you want to send this RFQ to.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-1">
-            {/* Vendor list with categories */}
             <div className="border border-slate-200 rounded-lg overflow-hidden">
               <div className="flex items-center justify-between px-3 py-2 bg-slate-50 border-b">
-                <p className="text-[10px] font-bold text-slate-500 uppercase">
-                  All Vendors — tick to select
-                </p>
-                <span className="text-xs font-semibold text-blue-600">
-                  {manualVendorIds.length} selected
-                </span>
+                <p className="text-[10px] font-bold text-slate-500 uppercase">All Vendors — tick to select</p>
+                <span className="text-xs font-semibold text-blue-600">{manualVendorIds.length} selected</span>
               </div>
               <div className="max-h-64 overflow-y-auto divide-y divide-slate-100">
                 {manualVendorList.length === 0 ? (
-                  <p className="text-sm text-slate-400 text-center py-8">No vendors found in Vendor Master.</p>
+                  <p className="text-sm text-slate-400 text-center py-8">No vendors found.</p>
                 ) : (
                   manualVendorList.map(vendor => {
                     const isSelected = manualVendorIds.includes(vendor._id);
@@ -432,31 +480,19 @@ export default function RFQManagement() {
                       <div
                         key={vendor._id}
                         onClick={() => toggleManualVendor(vendor._id)}
-                        className={`flex items-start gap-3 px-3 py-3 cursor-pointer transition-colors ${
-                          isSelected ? 'bg-blue-50' : 'hover:bg-slate-50'
-                        }`}
+                        className={`flex items-start gap-3 px-3 py-3 cursor-pointer transition-colors ${isSelected ? 'bg-blue-50' : 'hover:bg-slate-50'}`}
                       >
-                        {/* Checkbox */}
-                        <div className={`mt-0.5 w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${
-                          isSelected ? 'bg-blue-600 border-blue-600' : 'border-slate-300'
-                        }`}>
+                        <div className={`mt-0.5 w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${isSelected ? 'bg-blue-600 border-blue-600' : 'border-slate-300'}`}>
                           {isSelected && <CheckCircle2 className="w-3 h-3 text-white" />}
                         </div>
-
-                        {/* Vendor info */}
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-semibold text-slate-800">{vendor.supplierName}</p>
                           <p className="text-xs text-slate-400 truncate">{vendor.email}</p>
-                          {/* Categories */}
                           {vendor.vendorCategories?.length > 0 ? (
                             <div className="flex flex-wrap gap-1 mt-1.5">
                               {vendor.vendorCategories.map((cat, i) => (
-                                <span
-                                  key={i}
-                                  className="inline-flex items-center gap-1 text-[10px] bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.5 rounded"
-                                >
-                                  <Tag className="w-2.5 h-2.5" />
-                                  {cat}
+                                <span key={i} className="inline-flex items-center gap-1 text-[10px] bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.5 rounded">
+                                  <Tag className="w-2.5 h-2.5" />{cat}
                                 </span>
                               ))}
                             </div>
@@ -471,11 +507,8 @@ export default function RFQManagement() {
               </div>
             </div>
 
-            {/* Required By Date */}
             <div className="space-y-1.5">
-              <Label htmlFor="manual-rfq-date" className="text-xs font-semibold text-slate-700 uppercase">
-                Required By Date
-              </Label>
+              <Label htmlFor="manual-rfq-date" className="text-xs font-semibold text-slate-700 uppercase">Required By Date</Label>
               <Input
                 id="manual-rfq-date"
                 type="date"
@@ -485,11 +518,8 @@ export default function RFQManagement() {
               />
             </div>
 
-            {/* Notes */}
             <div className="space-y-1.5">
-              <Label htmlFor="manual-rfq-notes" className="text-xs font-semibold text-slate-700 uppercase">
-                Notes for Vendors (Optional)
-              </Label>
+              <Label htmlFor="manual-rfq-notes" className="text-xs font-semibold text-slate-700 uppercase">Notes for Vendors (Optional)</Label>
               <textarea
                 id="manual-rfq-notes"
                 rows={2}
@@ -502,9 +532,7 @@ export default function RFQManagement() {
           </div>
 
           <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => { setManualModal(false); setManualVendorIds([]); }}>
-              Cancel
-            </Button>
+            <Button variant="outline" onClick={() => { setManualModal(false); setManualVendorIds([]); }}>Cancel</Button>
             <Button
               onClick={handleManualSend}
               disabled={manualSendMutation.isPending || manualVendorIds.length === 0}
@@ -514,9 +542,7 @@ export default function RFQManagement() {
                 <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Sending...</>
               ) : (
                 <><Send className="w-4 h-4 mr-2" />
-                  {manualVendorIds.length === 0
-                    ? 'Select at least 1 vendor'
-                    : `Send to ${manualVendorIds.length} Vendor${manualVendorIds.length !== 1 ? 's' : ''}`}
+                  {manualVendorIds.length === 0 ? 'Select at least 1 vendor' : `Send to ${manualVendorIds.length} Vendor${manualVendorIds.length !== 1 ? 's' : ''}`}
                 </>
               )}
             </Button>
@@ -524,13 +550,10 @@ export default function RFQManagement() {
         </DialogContent>
       </Dialog>
 
-      {/* ── View RFQ Info Modal ────────────────────────────────────────── */}
       <Dialog open={viewRFQModal} onOpenChange={setViewRFQModal}>
         <DialogContent className="sm:max-w-[460px]">
           <DialogHeader>
-            <DialogTitle className="text-slate-800">
-              RFQ Details — {selectedRFQ?.rfqNo}
-            </DialogTitle>
+            <DialogTitle className="text-slate-800">RFQ Details — {selectedRFQ?.rfqNo}</DialogTitle>
           </DialogHeader>
           {selectedRFQ && (
             <div className="space-y-3 py-2">
@@ -549,15 +572,11 @@ export default function RFQManagement() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-400">Bids Received</span>
-                  <span className={`font-bold ${(selectedRFQ.bidCount || 0) > 0 ? 'text-emerald-600' : 'text-amber-500'}`}>
-                    {selectedRFQ.bidCount || 0}
-                  </span>
+                  <span className={`font-bold ${(selectedRFQ.bidCount || 0) > 0 ? 'text-emerald-600' : 'text-amber-500'}`}>{selectedRFQ.bidCount || 0}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-400">Status</span>
-                  <Badge variant="outline" className={`text-xs font-bold ${rfqStatusColor(selectedRFQ.status)}`}>
-                    {selectedRFQ.status}
-                  </Badge>
+                  <Badge variant="outline" className={`text-xs font-bold ${rfqStatusColor(selectedRFQ.status)}`}>{selectedRFQ.status}</Badge>
                 </div>
                 {selectedRFQ.selectedVendor && (
                   <div className="flex justify-between">

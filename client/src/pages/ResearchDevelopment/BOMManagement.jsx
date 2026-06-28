@@ -7,7 +7,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { ClipboardList, Lock, Plus, Trash2, Edit2, AlertTriangle, ChevronDown, Package, Ban, RefreshCw } from 'lucide-react';
 
 const UNITS = ['kg', 'pcs', 'ltr', 'm', 'mm', 'cm', 'set', 'nos', 'mtr'];
-const emptyMaterial = { code: '', name: '', quantity: '', unit: 'pcs', grade: '', specification: '' };
+const ITEM_TYPES = ['Fabricated Item', 'Assembly Item', 'Job Work', 'Laser Cutting', 'Coating'];
+const emptyMaterial = { code: '', childPart: '', subChildPart: '', item: '', itemType: 'Fabricated Item', quantity: '', unit: 'pcs' };
 
 export default function BOMManagement() {
   const { machines, boms, getBOMForMachine, addBOM, addMaterial, updateMaterial, deleteMaterial, lockBOM, discontinueMaterial, reactivateMaterial } = useRD();
@@ -20,32 +21,41 @@ export default function BOMManagement() {
   const [form, setForm] = useState(emptyMaterial);
   const [editForm, setEditForm] = useState(emptyMaterial);
   const [editingMat, setEditingMat] = useState(null);
+  const [bomVariant, setBomVariant] = useState('Standard');
 
-  const activeMachines = machines.filter(m => !m.isDiscontinued);
+  const activeMachines = machines.filter(m => !m.isDiscontinued && ['In House Manufacturing', 'Out Source Manufactured'].includes(m.pSourceType));
   const selectedMachine = activeMachines.find(m => String(m._id) === selectedMachineId);
   const bom = selectedMachineId ? getBOMForMachine(selectedMachineId) : null;
 
   const handleAddMaterial = () => {
-    if (!form.code || !form.name || !form.quantity) return;
+    if (!form.code || !form.item || !form.itemType || !form.quantity) return;
     addMaterial(bom._id, { ...form, quantity: Number(form.quantity) });
     setForm(emptyMaterial);
     setAddOpen(false);
   };
 
   const handleEditMaterial = () => {
-    if (!editForm.code || !editForm.name || !editForm.quantity) return;
+    if (!editForm.code || !editForm.item || !editForm.itemType || !editForm.quantity) return;
     updateMaterial(bom._id, editingMat._id, { ...editForm, quantity: Number(editForm.quantity) });
     setEditOpen(false);
   };
 
   const openEdit = (mat) => {
     setEditingMat(mat);
-    setEditForm({ code: mat.code, name: mat.name, quantity: String(mat.quantity), unit: mat.unit, grade: mat.grade, specification: mat.specification });
+    setEditForm({ 
+      code: mat.code || '',
+      childPart: mat.childPart || '', 
+      subChildPart: mat.subChildPart || '', 
+      item: mat.item || '', 
+      itemType: mat.itemType || 'Fabricated Item', 
+      quantity: String(mat.quantity), 
+      unit: mat.unit || 'pcs' 
+    });
     setEditOpen(true);
   };
 
   const handleCreateBOM = () => {
-    addBOM(selectedMachineId);
+    addBOM(selectedMachineId, bomVariant);
     setNewBOMOpen(false);
   };
 
@@ -113,7 +123,8 @@ export default function BOMManagement() {
                       <span className="font-mono text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded">{selectedMachine?.code}</span>
                     </div>
                     <div className="flex items-center gap-3 mt-1">
-                      <span className="text-xs text-slate-500">BOM Version: <strong>{bom.version}</strong></span>
+                      <span className="text-xs text-slate-500">Variant: <strong>{bom.variant}</strong></span>
+                      <span className="text-xs text-slate-500">Version: <strong>{bom.version}</strong></span>
                       <span className="text-xs text-slate-500">{bom.materials.length} materials</span>
                       {bom.isLocked && <span className="text-xs text-slate-500">Locked: {bom.lockedAt}</span>}
                     </div>
@@ -162,11 +173,11 @@ export default function BOMManagement() {
                     <tr className="bg-slate-50 border-b border-slate-100">
                       <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">#</th>
                       <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Material Code</th>
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Material Name</th>
+                      <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Hierarchy (Child &gt; Sub-Child)</th>
+                      <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Item Name</th>
+                      <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Item Type</th>
                       <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Qty</th>
                       <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Unit</th>
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Grade / Standard</th>
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Specification</th>
                       <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
                       {!bom.isLocked && <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</th>}
                     </tr>
@@ -177,12 +188,14 @@ export default function BOMManagement() {
                     ) : bom.materials.map((mat, i) => (
                       <tr key={mat._id} className={`border-b border-slate-50 transition-colors ${mat.isDiscontinued ? 'bg-red-50/40 opacity-70' : 'hover:bg-slate-50'}`}>
                         <td className="px-5 py-3.5 text-slate-400 text-xs font-semibold">{i + 1}</td>
-                        <td className="px-5 py-3.5 font-mono text-xs font-semibold text-blue-700">{mat.code}</td>
-                        <td className={`px-5 py-3.5 font-medium ${mat.isDiscontinued ? 'text-slate-400 line-through' : 'text-slate-900'}`}>{mat.name}</td>
+                        <td className="px-5 py-3.5"><span className="font-mono text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded">{mat.code || '—'}</span></td>
+                        <td className="px-5 py-3.5 text-xs text-slate-600">
+                          {[mat.childPart, mat.subChildPart].filter(Boolean).join(' > ') || '—'}
+                        </td>
+                        <td className={`px-5 py-3.5 font-medium ${mat.isDiscontinued ? 'text-slate-400 line-through' : 'text-slate-900'}`}>{mat.item}</td>
+                        <td className="px-5 py-3.5 text-slate-600 text-xs">{mat.itemType}</td>
                         <td className="px-5 py-3.5 font-bold text-slate-800">{mat.quantity}</td>
                         <td className="px-5 py-3.5 text-slate-600">{mat.unit}</td>
-                        <td className="px-5 py-3.5 text-slate-600">{mat.grade || '—'}</td>
-                        <td className="px-5 py-3.5 text-slate-500 text-xs max-w-[200px] truncate" title={mat.specification}>{mat.specification || '—'}</td>
                         <td className="px-5 py-3.5">
                           {mat.isDiscontinued
                             ? <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-600 border border-red-200">Discontinued</span>
@@ -216,42 +229,53 @@ export default function BOMManagement() {
       {/* Add Material Dialog */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle>Add Raw Material</DialogTitle></DialogHeader>
-          <div className="space-y-3 py-2">
+          <DialogHeader><DialogTitle>Add Material Item</DialogTitle></DialogHeader>
+          <div className="space-y-4 py-2">
+            <div>
+              <label className="text-xs font-semibold text-slate-600 mb-1 block">Material Code *</label>
+              <Input placeholder="e.g. STL-009" value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value }))} />
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Material Code *</label>
-                <Input placeholder="e.g. STL-009" value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value }))} />
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">Child Part</label>
+                <Input placeholder="e.g. Main Body" value={form.childPart} onChange={e => setForm(f => ({ ...f, childPart: e.target.value }))} />
               </div>
               <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Grade / Standard</label>
-                <Input placeholder="e.g. IS 2062 E250" value={form.grade} onChange={e => setForm(f => ({ ...f, grade: e.target.value }))} />
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">Sub-Child Part</label>
+                <Input placeholder="e.g. Side Panel" value={form.subChildPart} onChange={e => setForm(f => ({ ...f, subChildPart: e.target.value }))} />
               </div>
             </div>
-            <div>
-              <label className="text-xs font-semibold text-slate-600 mb-1 block">Material Name *</label>
-              <Input placeholder="Enter material name" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+            
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">Item Name *</label>
+                <Input placeholder="e.g. Sheet Metal 5mm" value={form.item} onChange={e => setForm(f => ({ ...f, item: e.target.value }))} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">Item Type *</label>
+                <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.itemType} onChange={e => setForm(f => ({ ...f, itemType: e.target.value }))}>
+                  {ITEM_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
             </div>
+            
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-xs font-semibold text-slate-600 mb-1 block">Quantity *</label>
                 <Input type="number" placeholder="0" min="0" value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} />
               </div>
               <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Unit</label>
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">Unit *</label>
                 <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.unit} onChange={e => setForm(f => ({ ...f, unit: e.target.value }))}>
                   {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
                 </select>
               </div>
             </div>
-            <div>
-              <label className="text-xs font-semibold text-slate-600 mb-1 block">Specification</label>
-              <Input placeholder="Detailed specification (dimensions, ratings, etc.)" value={form.specification} onChange={e => setForm(f => ({ ...f, specification: e.target.value }))} />
-            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
-            <Button onClick={handleAddMaterial} disabled={!form.code || !form.name || !form.quantity} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">Add to BOM</Button>
+            <Button onClick={handleAddMaterial} disabled={!form.code || !form.item || !form.itemType || !form.quantity} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">Add to BOM</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -260,41 +284,50 @@ export default function BOMManagement() {
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader><DialogTitle>Edit Material</DialogTitle></DialogHeader>
-          <div className="space-y-3 py-2">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Material Code</label>
-                <Input value={editForm.code} onChange={e => setEditForm(f => ({ ...f, code: e.target.value }))} />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Grade / Standard</label>
-                <Input value={editForm.grade} onChange={e => setEditForm(f => ({ ...f, grade: e.target.value }))} />
-              </div>
-            </div>
+          <div className="space-y-4 py-2">
             <div>
-              <label className="text-xs font-semibold text-slate-600 mb-1 block">Material Name</label>
-              <Input value={editForm.name} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))} />
+              <label className="text-xs font-semibold text-slate-600 mb-1 block">Material Code *</label>
+              <Input placeholder="e.g. STL-009" value={editForm.code} onChange={e => setEditForm(f => ({ ...f, code: e.target.value }))} />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">Child Part</label>
+                <Input value={editForm.childPart} onChange={e => setEditForm(f => ({ ...f, childPart: e.target.value }))} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">Sub-Child Part</label>
+                <Input value={editForm.subChildPart} onChange={e => setEditForm(f => ({ ...f, subChildPart: e.target.value }))} />
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Quantity</label>
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">Item Name *</label>
+                <Input value={editForm.item} onChange={e => setEditForm(f => ({ ...f, item: e.target.value }))} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">Item Type *</label>
+                <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={editForm.itemType} onChange={e => setEditForm(f => ({ ...f, itemType: e.target.value }))}>
+                  {ITEM_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">Quantity *</label>
                 <Input type="number" value={editForm.quantity} onChange={e => setEditForm(f => ({ ...f, quantity: e.target.value }))} />
               </div>
               <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Unit</label>
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">Unit *</label>
                 <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={editForm.unit} onChange={e => setEditForm(f => ({ ...f, unit: e.target.value }))}>
                   {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
                 </select>
               </div>
             </div>
-            <div>
-              <label className="text-xs font-semibold text-slate-600 mb-1 block">Specification</label>
-              <Input value={editForm.specification} onChange={e => setEditForm(f => ({ ...f, specification: e.target.value }))} />
-            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
-            <Button onClick={handleEditMaterial} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">Save Changes</Button>
+            <Button onClick={handleEditMaterial} disabled={!editForm.code || !editForm.item || !editForm.itemType || !editForm.quantity} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">Save Changes</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -334,10 +367,20 @@ export default function BOMManagement() {
       <Dialog open={newBOMOpen} onOpenChange={setNewBOMOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle>Create New BOM</DialogTitle></DialogHeader>
-          <p className="text-sm text-slate-600 py-2">Create a Bill of Materials for <strong>{selectedMachine?.name}</strong>. Start with version v1.0 and add materials.</p>
+          <div className="py-2 space-y-4">
+            <p className="text-sm text-slate-600">Create a Bill of Materials for <strong>{selectedMachine?.name}</strong>.</p>
+            <div>
+              <label className="text-xs font-semibold text-slate-600 mb-1 block">BOM Variant *</label>
+              <Input 
+                placeholder="e.g. Standard, Export, v2" 
+                value={bomVariant} 
+                onChange={e => setBomVariant(e.target.value)} 
+              />
+            </div>
+          </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setNewBOMOpen(false)}>Cancel</Button>
-            <Button onClick={handleCreateBOM} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">Create BOM</Button>
+            <Button onClick={handleCreateBOM} disabled={!bomVariant} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">Create BOM</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

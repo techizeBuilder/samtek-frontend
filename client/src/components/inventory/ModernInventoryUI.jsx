@@ -92,10 +92,11 @@ function getInventoryApiPath(user) {
   if (!user) return '/api';
 
   switch (user.role) {
-    case 'Superadmin':
-      return '/api/super-admin/inventory';
     case 'Unit Head':
       return '/api/unit-head/inventory';
+    // Research & Development Head and employees use the standard /api path
+    case 'Research & Development Head':
+    case 'Research Development Employee':
     default:
       return '/api';
   }
@@ -105,6 +106,11 @@ function getInventoryApiPath(user) {
 function useInventoryPermissions() {
   const { user } = useAuth();
   const { canPerformAction } = usePermissions();
+
+  // R&D Head and Employee have full inventory permissions (backend enforces this)
+  if (user?.role === 'Research & Development Head' || user?.role === 'Research Development Employee') {
+    return { canView: true, canAdd: true, canEdit: true, canDelete: true, canAlter: true };
+  }
 
   // For Unit Head, permissions are stored under unitHead module with inventory as feature key
   // For other roles, it's under inventory module with items as feature key
@@ -327,10 +333,18 @@ export default function ModernInventoryUI() {
   const apiBasePath = getInventoryApiPath(user);
 
   // Check inventory permissions based on user role
+  // R&D Head and Employee have full inventory permissions (backend enforces via checkInventoryPermission)
+  const isRDUser = user?.role === 'Research & Development Head' || user?.role === 'Research Development Employee';
   const moduleName = user?.role === 'Unit Head' ? 'unitHead' : 'inventory';
   const featureKey = user?.role === 'Unit Head' ? 'inventory' : 'items';
 
-  const inventoryPermissions = {
+  const inventoryPermissions = isRDUser ? {
+    canView: true,
+    canAdd: true,
+    canEdit: true,
+    canDelete: true,
+    canAlter: true
+  } : {
     canView: canPerformAction(moduleName, featureKey, 'view'),
     canAdd: canPerformAction(moduleName, featureKey, 'add'),
     canEdit: canPerformAction(moduleName, featureKey, 'edit'),

@@ -224,6 +224,9 @@ import MISHRMSReport from "@/pages/mis/MISHRMSReport";
 import MISQualityReport from "@/pages/mis/MISQualityReport";
 import MISSettings from "@/pages/mis/MISSettings";
 
+// rnd
+import RDProductionQueue from "@/pages/ResearchDevelopment/RDProductionQueue";
+
 import { Route, Switch } from "wouter";
 
 function Router() {
@@ -559,6 +562,16 @@ function Router() {
       <Route path="/r&d/dashboard">
         <ProtectedRoute requiredRole={["Research & Development Head", "Research Development Employee"]}>
           <RDDashboard />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/r&d/inventory">
+        <ProtectedRoute requiredRole={["Research & Development Head", "Research Development Employee"]}>
+          <ModernInventoryUI />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/r&d/approve-requests">
+        <ProtectedRoute requiredRole={["Research & Development Head", "Research Development Employee"]}>
+          <RDProductionQueue />
         </ProtectedRoute>
       </Route>
 
@@ -1301,7 +1314,7 @@ function Router() {
           <EmployeeTasks />
         </ProtectedRoute>
       </Route>
-      
+
 
       {/*  my task routes for manager */}
 

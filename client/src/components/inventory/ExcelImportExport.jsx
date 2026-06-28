@@ -15,10 +15,11 @@ function getInventoryApiPath(user) {
   if (!user) return '/api';
 
   switch (user.role) {
-    case 'Superadmin':
-      return '/api/super-admin/inventory';
     case 'Unit Head':
       return '/api/unit-head/inventory';
+    // Research & Development Head and employees use the standard /api path
+    case 'Research & Development Head':
+    case 'Research Development Employee':
     default:
       return '/api';
   }

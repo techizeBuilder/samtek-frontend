@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useCallback } from 'react';
+import React, { createContext, useContext, useCallback, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 
@@ -7,6 +7,15 @@ const BASE = '/api/rd';
 
 export function RDProvider({ children }) {
   const qc = useQueryClient();
+
+  // ── Production Request Filters State ─────────────────────────────────────────
+  // This state powers your tabs, search, and dropdown filters
+  const [reqFilters, setReqFilters] = useState({
+    tab: 'fresh', // 'fresh' or 'history'
+    search: '',
+    status: 'All',
+    page: 1
+  });
 
   // ── Queries ──────────────────────────────────────────────────────────────────
   const { data: machinesData, isLoading: machinesLoading } = useQuery({
@@ -44,6 +53,20 @@ export function RDProvider({ children }) {
     queryFn: () => apiRequest('GET', `${BASE}/documents`),
   });
 
+  const { data: masterOptionsData, isLoading: masterOptionsLoading } = useQuery({
+    queryKey: ['rd-master-options'],
+    queryFn: () => apiRequest('GET', `${BASE}/master-options`),
+  });
+
+  // Production Requests Query (Watches reqFilters automatically)
+  const { data: productionRequestsData, isLoading: productionRequestsLoading } = useQuery({
+    queryKey: ['rd-production-requests', reqFilters],
+    queryFn: () => {
+      const params = new URLSearchParams(reqFilters).toString();
+      return apiRequest('GET', `${BASE}/production-rnd-requests?${params}`);
+    },
+  });
+
   const machines = machinesData?.data || [];
   const boms = bomsData?.data || [];
   const prototypes = prototypesData?.data || [];
@@ -51,6 +74,9 @@ export function RDProvider({ children }) {
   const toolProcesses = toolProcessesData?.data || [];
   const qualityParams = qualityParamsData?.data || [];
   const documents = documentsData?.data || [];
+  const masterOptions = masterOptionsData?.data || { Category: [], PType: [], PSourceType: [] };
+  const productionRequests = productionRequestsData?.data || [];
+  const productionRequestsPagination = productionRequestsData?.pagination || { page: 1, pages: 1, total: 0, limit: 20 };
 
   const inv = (key) => () => qc.invalidateQueries({ queryKey: [key] });
   const invMachines = inv('rd-machines');
@@ -60,10 +86,13 @@ export function RDProvider({ children }) {
   const invToolProcesses = inv('rd-tool-processes');
   const invQualityParams = inv('rd-quality-params');
   const invDocuments = inv('rd-documents');
+  const invProductionRequests = inv('rd-production-requests');
+  const invMasterOptions = inv('rd-master-options');
 
   // ── Machine mutations ────────────────────────────────────────────────────────
   const createMachineMut = useMutation({ mutationFn: (d) => apiRequest('POST', `${BASE}/machines`, d), onSuccess: invMachines });
   const updateMachineMut = useMutation({ mutationFn: ({ id, data }) => apiRequest('PUT', `${BASE}/machines/${id}`, data), onSuccess: invMachines });
+  const addMasterOptionMut = useMutation({ mutationFn: (data) => apiRequest('POST', `${BASE}/master-options`, data), onSuccess: invMasterOptions });
   const designStatusMut = useMutation({ mutationFn: ({ id, status, note }) => apiRequest('PUT', `${BASE}/machines/${id}/design-status`, { status, note }), onSuccess: invMachines });
   const releaseStatusMut = useMutation({ mutationFn: ({ id, status }) => apiRequest('PUT', `${BASE}/machines/${id}/release-status`, { status }), onSuccess: invMachines });
   const discontinueMachineMut = useMutation({ mutationFn: (id) => apiRequest('PUT', `${BASE}/machines/${id}/discontinue`), onSuccess: invMachines });
@@ -104,7 +133,13 @@ export function RDProvider({ children }) {
   const createDocMut = useMutation({ mutationFn: (d) => apiRequest('POST', `${BASE}/documents`, d), onSuccess: invDocuments });
   const deleteDocMut = useMutation({ mutationFn: (id) => apiRequest('DELETE', `${BASE}/documents/${id}`), onSuccess: invDocuments });
 
-  // ── Stable callbacks (same API as before) ────────────────────────────────────
+  // ── Production Request Mutations ─────────────────────────────────────────────
+  const processRDRequestMut = useMutation({
+    mutationFn: ({ id, action, rejectReason }) => apiRequest('PUT', `${BASE}/${id}/process`, { action, rejectReason }),
+    onSuccess: invProductionRequests
+  });
+
+  // ── Stable callbacks ─────────────────────────────────────────────────────────
   const addMachine = useCallback((data) => createMachineMut.mutate(data), []);
   const updateMachine = useCallback((id, data) => updateMachineMut.mutate({ id, data }), []);
   const updateDesignStatus = useCallback((id, status, note = '') => designStatusMut.mutate({ id, status, note }), []);
@@ -112,13 +147,12 @@ export function RDProvider({ children }) {
   const discontinueMachine = useCallback((id) => discontinueMachineMut.mutate(id), []);
   const reactivateMachine = useCallback((id) => reactivateMachineMut.mutate(id), []);
 
-  // BOM: find by machine id (works with populated machine._id or machine string)
   const getBOMForMachine = useCallback((machineId) => {
     const mid = String(machineId);
     return boms.find(b => String(b.machine?._id || b.machine) === mid) || null;
   }, [boms]);
 
-  const addBOM = useCallback((machineId) => createBOMMut.mutate({ machineId }), []);
+  const addBOM = useCallback((machineId, variant) => createBOMMut.mutate({ machineId, variant }), []);
   const addMaterial = useCallback((bomId, mat) => addMaterialMut.mutate({ bomId, mat }), []);
   const updateMaterial = useCallback((bomId, matId, data) => updateMaterialMut.mutate({ bomId, matId, data }), []);
   const deleteMaterial = useCallback((bomId, matId) => deleteMaterialMut.mutate({ bomId, matId }), []);
@@ -132,7 +166,6 @@ export function RDProvider({ children }) {
   const addChangeRequest = useCallback((data) => createCRMut.mutate(data), []);
   const resolveChangeRequest = useCallback((id, approved, notes) => resolveCRMut.mutate({ id, approved, notes }), []);
 
-  // ToolProcess: find by machine id
   const getToolsProcess = useCallback((machineId) => {
     const mid = String(machineId);
     return toolProcesses.find(tp => String(tp.machine?._id || tp.machine) === mid) || null;
@@ -145,7 +178,6 @@ export function RDProvider({ children }) {
   const addProcess = useCallback((machineId, proc) => addProcessMut.mutate({ machineId, proc }), []);
   const removeProcess = useCallback((machineId, processId) => removeProcessMut.mutate({ machineId, processId }), []);
 
-  // QualityParam: find by machine id
   const getQualityParams = useCallback((machineId) => {
     const mid = String(machineId);
     return qualityParams.find(qp => String(qp.machine?._id || qp.machine) === mid) || null;
@@ -177,6 +209,18 @@ export function RDProvider({ children }) {
   }, [machines]);
   const deleteDocument = useCallback((id) => deleteDocMut.mutate(id), []);
 
+  const processProductionRequest = useCallback(async (id, action, rejectReason = '') => {
+    return processRDRequestMut.mutateAsync({ id, action, rejectReason });
+  }, []);
+
+  const fetchProductionRequestReviewData = useCallback(async (id) => {
+    return apiRequest('GET', `${BASE}/production-rnd-requests/${id}/review`);
+  }, []);
+
+  const addMasterOption = useCallback(async (data) => {
+    return addMasterOptionMut.mutateAsync(data);
+  }, []);
+
   // ── Computed stats ────────────────────────────────────────────────────────────
   const stats = {
     totalMachines: machines.filter(m => !m.isDiscontinued).length,
@@ -193,6 +237,17 @@ export function RDProvider({ children }) {
   return (
     <RDContext.Provider value={{
       machines, boms, prototypes, changeRequests, toolProcesses, qualityParams, documents, stats,
+      masterOptions, masterOptionsLoading, addMasterOption,
+
+      // Production Requests state
+      productionRequests,
+      productionRequestsPagination,
+      productionRequestsLoading,
+      reqFilters,
+      setReqFilters,
+      processProductionRequest,
+      fetchProductionRequestReviewData,
+
       machinesLoading, bomsLoading, prototypesLoading, changeRequestsLoading,
       toolProcessesLoading, qualityParamsLoading, documentsLoading,
       addMachine, updateMachine, updateDesignStatus, updateReleaseStatus, discontinueMachine, reactivateMachine,

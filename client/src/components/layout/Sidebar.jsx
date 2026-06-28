@@ -404,6 +404,8 @@ const companyAdminMenuItems = [
 
 const rdMenuItems = [
   { label: 'Dashboard', path: '/r&d/dashboard', icon: LayoutDashboard, module: 'rnd' },
+  { label: 'Inventory', path: '/r&d/inventory', icon: Package, module: 'rnd' },
+  { label: 'Approve Requests', path: '/r&d/approve-requests', icon: CheckCircle, module: 'rnd' },
   { label: 'Product Master', path: '/r&d/product-master', icon: Package, module: 'rnd' },
   { label: 'Design Approval', path: '/r&d/design-approval', icon: CheckCircle, module: 'rnd' },
   { label: 'BOM Management', path: '/r&d/bom-management', icon: ClipboardList, module: 'rnd' },
