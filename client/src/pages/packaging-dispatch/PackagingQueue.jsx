@@ -24,7 +24,9 @@ function CreateJobModal({ order, onClose }) {
     try {
       await createJob({
         productionOrderId: order._id,
-        orderId: order.orderId,
+        // Use salesOrderCode (resolved Order.orderCode) if available, else fall back to order.orderId
+        // This ensures Accounts pages (NOC Request, Packed Orders) can match via Order.orderCode
+        orderId: order.salesOrderCode || order.orderId,
         machineCode: order.machineCode,
         machineName: order.machineName,
         packingType: form.packingType,

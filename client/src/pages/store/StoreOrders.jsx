@@ -476,7 +476,15 @@ const StoreOrders = () => {
                             }`}
                             onClick={() => !isDisabled && handleCheckInventory(item)}
                             disabled={isDisabled}
-                            title={isDisabled ? disabledReason : (qcStatus === 'Rejected from QC' ? 'Re-check Inventory (QC Rejected)' : qcStatus === 'Purchase Completed' ? 'Check Inventory (Purchase Received)' : 'Check Inventory')}
+                            title={
+                              isDisabled
+                                ? disabledReason
+                                : qcStatus === 'Rejected from QC'
+                                  ? 'Re-check Inventory (QC Rejected)'
+                                  : qcStatus === 'Purchase Completed'
+                                    ? 'Check Inventory (Purchase Received)'
+                                    : 'Check Inventory'
+                            }
                           >
                             {isLoading_
                               ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />

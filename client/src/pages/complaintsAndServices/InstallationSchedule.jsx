@@ -85,6 +85,17 @@ export default function InstallationSchedule() {
 
   const handleUpdate = (e) => {
     e.preventDefault();
+
+    // Date is required for Scheduled and Completed status
+    if ((formState.status === 'Scheduled' || formState.status === 'Completed') && !formState.scheduledDate) {
+      toast({
+        title: 'Date Required',
+        description: 'Please select a scheduled date before saving.',
+        variant: 'destructive'
+      });
+      return;
+    }
+
     updateMutation.mutate({
       id: selectedOrder._id,
       data: {
@@ -277,12 +288,22 @@ export default function InstallationSchedule() {
                 )}
 
                 <div className="space-y-2">
-                  <Label className="text-sm font-medium text-slate-700">Schedule Date</Label>
+                  <Label className="text-sm font-medium text-slate-700">
+                    Schedule Date
+                    {(formState.status === 'Scheduled' || formState.status === 'Completed') && (
+                      <span className="text-red-500 ml-1">*</span>
+                    )}
+                  </Label>
                   <Input
                     type="date"
                     value={formState.scheduledDate}
                     onChange={e => setFormState(f => ({ ...f, scheduledDate: e.target.value }))}
+                    required={formState.status === 'Scheduled' || formState.status === 'Completed'}
+                    className={!formState.scheduledDate && (formState.status === 'Scheduled' || formState.status === 'Completed') ? 'border-red-300 focus-visible:ring-red-400' : ''}
                   />
+                  {!formState.scheduledDate && (formState.status === 'Scheduled' || formState.status === 'Completed') && (
+                    <p className="text-xs text-red-500">Date is required to schedule installation</p>
+                  )}
                 </div>
 
                 <div className="space-y-2">

@@ -59,6 +59,7 @@ export default function SuperAdminApiSettings() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState('acefone');
   const [showApiKey, setShowApiKey] = useState(false);
+  const [visibleIndiamartKeys, setVisibleIndiamartKeys] = useState({});
 
   const [ivrForm, setIvrForm] = useState({
     enabled: false,
@@ -68,7 +69,7 @@ export default function SuperAdminApiSettings() {
 
   const [indiamartForm, setIndiamartForm] = useState({
     enabled: false,
-    sellerMobile: '',
+    accounts: [],
   });
 
   const [websiteForm, setWebsiteForm] = useState({
@@ -98,9 +99,18 @@ export default function SuperAdminApiSettings() {
         apiKey: s.ivr?.apiKey || '',
         callerID: s.ivr?.callerID || '',
       });
+      let accounts = s.indiamart?.accounts || [];
+      if (accounts.length === 0 && (s.indiamart?.sellerMobile || s.indiamart?.authKey)) {
+        accounts = [{
+          apiName: 'Primary Account',
+          sellerMobile: s.indiamart.sellerMobile || '',
+          authKey: s.indiamart.authKey || '',
+          lastSyncedAt: s.indiamart.lastSyncedAt
+        }];
+      }
       setIndiamartForm({
         enabled: s.indiamart?.enabled || false,
-        sellerMobile: s.indiamart?.sellerMobile || '',
+        accounts: accounts,
       });
       setWebsiteForm({
         enabled: s.website?.enabled || false,
@@ -140,12 +150,21 @@ export default function SuperAdminApiSettings() {
 
   const handleSaveIndiamart = () => {
     const current = settingsData?.settings || {};
+    const cleanedAccounts = indiamartForm.accounts.map(acc => ({
+      apiName: (acc.apiName || '').trim(),
+      sellerMobile: (acc.sellerMobile || '').trim(),
+      authKey: (acc.authKey || '').trim(),
+      lastSyncedAt: acc.lastSyncedAt
+    }));
+
     saveMutation.mutate({
       ivr: current.ivr,
       indiamart: {
         ...current.indiamart,
         enabled: indiamartForm.enabled,
-        sellerMobile: indiamartForm.sellerMobile.trim(),
+        accounts: cleanedAccounts,
+        sellerMobile: cleanedAccounts[0]?.sellerMobile || '',
+        authKey: cleanedAccounts[0]?.authKey || '',
       },
       website: current.website,
     });
@@ -247,12 +266,12 @@ export default function SuperAdminApiSettings() {
               Acefone {ivrForm.enabled && ivrForm.apiKey ? 'Active' : 'Inactive'}
             </div>
             <div className={`p-3 rounded-lg border text-xs font-medium flex items-center gap-2 ${
-              indiamartForm.enabled && indiamartForm.sellerMobile
+              indiamartForm.enabled && indiamartForm.accounts?.some(acc => acc.sellerMobile && acc.authKey)
                 ? 'bg-orange-50 border-orange-200 text-orange-700'
                 : 'bg-gray-50 border-gray-200 text-gray-500'
             }`}>
-              <div className={`w-2 h-2 rounded-full ${indiamartForm.enabled && indiamartForm.sellerMobile ? 'bg-orange-500' : 'bg-gray-400'}`} />
-              IndiaMART {indiamartForm.enabled && indiamartForm.sellerMobile ? 'Active' : 'Inactive'}
+              <div className={`w-2 h-2 rounded-full ${indiamartForm.enabled && indiamartForm.accounts?.some(acc => acc.sellerMobile && acc.authKey) ? 'bg-orange-500' : 'bg-gray-400'}`} />
+              IndiaMART {indiamartForm.enabled && indiamartForm.accounts?.some(acc => acc.sellerMobile && acc.authKey) ? 'Active' : 'Inactive'}
             </div>
             <div className={`p-3 rounded-lg border text-xs font-medium flex items-center gap-2 ${
               websiteForm.enabled && websiteForm.apiKey
@@ -374,7 +393,7 @@ export default function SuperAdminApiSettings() {
                   IndiaMART Lead Fetch
                 </CardTitle>
                 <CardDescription>
-                  Configure IndiaMART seller mobile. Leads auto-fetch every 10 minutes and go to Cruncher (unassigned) for review and assignment.
+                  Configure IndiaMART seller credentials. Leads auto-fetch every 10 minutes and go to Cruncher (unassigned) for review and assignment.
                 </CardDescription>
               </CardHeader>
               <CardContent className="p-6 space-y-6">
@@ -390,21 +409,129 @@ export default function SuperAdminApiSettings() {
                   />
                 </div>
 
-                {/* Seller Mobile */}
-                <div className="space-y-2">
-                  <Label className="flex items-center gap-2">
-                    <Phone className="h-4 w-4 text-gray-500" />
-                    IndiaMART Seller Mobile <span className="text-red-500">*</span>
-                  </Label>
-                  <Input
-                    placeholder="e.g. 9876543210 (Company's IndiaMART registered mobile)"
-                    value={indiamartForm.sellerMobile}
-                    onChange={(e) => setIndiamartForm({ ...indiamartForm, sellerMobile: e.target.value })}
-                  />
-                  <p className="text-xs text-gray-500">
-                    This is the mobile number registered with your company's IndiaMART seller account.
-                    <strong> Not an employee's personal number.</strong>
-                  </p>
+                {/* IndiaMART Accounts List */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between border-b pb-2">
+                    <Label className="text-base font-semibold text-gray-900">
+                      Configure IndiaMART Accounts
+                    </Label>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setIndiamartForm(prev => ({
+                          ...prev,
+                          accounts: [
+                            ...(prev.accounts || []),
+                            { apiName: '', sellerMobile: '', authKey: '', lastSyncedAt: null }
+                          ]
+                        }));
+                      }}
+                      className="text-orange-600 border-orange-200 hover:bg-orange-50"
+                    >
+                      + Add Account
+                    </Button>
+                  </div>
+
+                  {!indiamartForm.accounts || indiamartForm.accounts.length === 0 ? (
+                    <div className="text-center py-6 border border-dashed rounded-xl bg-gray-50 text-gray-500 text-sm">
+                      No IndiaMART accounts configured yet. Click "+ Add Account" to add one.
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {indiamartForm.accounts.map((account, index) => (
+                        <div key={index} className="p-4 border rounded-xl bg-gray-50/50 space-y-4 relative">
+                          <div className="flex justify-between items-center">
+                            <Badge variant="outline" className="text-xs bg-orange-50 text-orange-700 border-orange-200">
+                              Account #{index + 1}
+                            </Badge>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setIndiamartForm(prev => ({
+                                  ...prev,
+                                  accounts: prev.accounts.filter((_, i) => i !== index)
+                                }));
+                              }}
+                              className="text-red-500 hover:text-red-700 hover:bg-red-50 h-8 px-2"
+                            >
+                              Remove
+                            </Button>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            {/* Account Label */}
+                            <div className="space-y-2">
+                              <Label className="text-xs font-medium text-gray-700">Account Label / Name</Label>
+                              <Input
+                                placeholder="e.g. IndiaMART Samtek"
+                                value={account.apiName || ''}
+                                onChange={(e) => {
+                                  const updated = [...indiamartForm.accounts];
+                                  updated[index] = { ...updated[index], apiName: e.target.value };
+                                  setIndiamartForm(prev => ({ ...prev, accounts: updated }));
+                                }}
+                              />
+                            </div>
+
+                            {/* Seller Mobile */}
+                            <div className="space-y-2">
+                              <Label className="text-xs font-medium text-gray-700">Seller Mobile *</Label>
+                              <Input
+                                placeholder="e.g. 7042115971"
+                                value={account.sellerMobile || ''}
+                                onChange={(e) => {
+                                  const updated = [...indiamartForm.accounts];
+                                  updated[index] = { ...updated[index], sellerMobile: e.target.value };
+                                  setIndiamartForm(prev => ({ ...prev, accounts: updated }));
+                                }}
+                              />
+                            </div>
+
+                            {/* Auth Key */}
+                            <div className="space-y-2">
+                              <Label className="text-xs font-medium text-gray-700">API Key / Auth Key *</Label>
+                              <div className="relative">
+                                <Input
+                                  type={visibleIndiamartKeys[index] ? 'text' : 'password'}
+                                  placeholder="Enter IndiaMART API Key"
+                                  value={account.authKey || ''}
+                                  onChange={(e) => {
+                                    const updated = [...indiamartForm.accounts];
+                                    updated[index] = { ...updated[index], authKey: e.target.value };
+                                    setIndiamartForm(prev => ({ ...prev, accounts: updated }));
+                                  }}
+                                  className="pr-10"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setVisibleIndiamartKeys(prev => ({
+                                      ...prev,
+                                      [index]: !prev[index]
+                                    }));
+                                  }}
+                                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                                >
+                                  {visibleIndiamartKeys[index] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+
+                          {account.lastSyncedAt && (
+                            <div className="text-xs text-green-700 flex items-center gap-1.5 mt-2 bg-green-50/50 p-2 rounded border border-green-100">
+                              <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
+                              Last Synced: {new Date(account.lastSyncedAt).toLocaleString('en-IN')}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* Last sync info */}
@@ -424,7 +551,7 @@ export default function SuperAdminApiSettings() {
                     IndiaMART Lead Flow (Cruncher Model):
                   </p>
                   <ol className="text-xs text-orange-800 list-decimal list-inside space-y-1">
-                    <li>IndiaMART sends enquiries to this Seller Mobile</li>
+                    <li>IndiaMART sends enquiries to the configured Seller Mobile accounts</li>
                     <li>System fetches them every 10 minutes automatically</li>
                     <li>All leads saved as <strong>Unassigned</strong> (no auto-assignment)</li>
                     <li><strong>Cruncher</strong> (designation) sees all unassigned leads, reviews them</li>

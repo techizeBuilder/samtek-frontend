@@ -148,17 +148,25 @@ const PaymentVerifications = () => {
   };
 
   // Filter and search logic for leads
-  const filteredLeads = leadsWithPayments.filter(lead => {
-    const matchesSearch = 
-      (lead.leadCode || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (lead.companyName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (lead.contactPerson || '').toLowerCase().includes(searchTerm.toLowerCase());
+  const filteredLeads = leadsWithPayments
+    .filter(lead => {
+      const matchesSearch = 
+        (lead.leadCode || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (lead.companyName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (lead.contactPerson || '').toLowerCase().includes(searchTerm.toLowerCase());
 
-    const matchesStatus = statusFilter === 'all' || 
-      (lead.paymentCheckStatus || '').toLowerCase() === statusFilter.toLowerCase();
+      const matchesStatus = statusFilter === 'all' || 
+        (lead.paymentCheckStatus || '').toLowerCase() === statusFilter.toLowerCase();
 
-    return matchesSearch && matchesStatus;
-  });
+      return matchesSearch && matchesStatus;
+    })
+    // Sort by payment request time ascending (oldest first = FIFO queue)
+    // Falls back to createdAt for older records that don't have paymentCheckRequestedAt
+    .sort((a, b) => {
+      const dateA = a.paymentCheckRequestedAt ? new Date(a.paymentCheckRequestedAt) : new Date(a.createdAt);
+      const dateB = b.paymentCheckRequestedAt ? new Date(b.paymentCheckRequestedAt) : new Date(b.createdAt);
+      return dateA - dateB;
+    });
 
   // Calculate Metrics
   const totalRequests = leads.length;
@@ -318,6 +326,7 @@ const PaymentVerifications = () => {
               <TableHeader>
                 <TableRow>
                   <TableHead>Lead Details</TableHead>
+                  <TableHead>Request Time</TableHead>
                   <TableHead>Customer & Company</TableHead>
                   <TableHead>Product Required</TableHead>
                   <TableHead className="text-right">Deal Value</TableHead>
@@ -331,13 +340,13 @@ const PaymentVerifications = () => {
               <TableBody>
                 {isLoading || paymentsLoading ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-8">
+                    <TableCell colSpan={10} className="text-center py-8">
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
                     </TableCell>
                   </TableRow>
                 ) : filteredLeads.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-8 text-gray-500">
+                    <TableCell colSpan={10} className="text-center py-8 text-gray-500">
                       No payment check requests found
                     </TableCell>
                   </TableRow>
@@ -348,6 +357,20 @@ const PaymentVerifications = () => {
                         <div>
                           <p className="font-semibold">{lead.leadCode}</p>
                           <p className="text-sm text-gray-500">{formatDate(lead.createdAt)}</p>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="text-sm">
+                          <p className="font-medium text-slate-700">
+                            {lead.paymentCheckRequestedAt
+                              ? formatDate(lead.paymentCheckRequestedAt)
+                              : formatDate(lead.createdAt)}
+                          </p>
+                          <p className="text-xs text-slate-400">
+                            {lead.paymentCheckRequestedAt
+                              ? new Date(lead.paymentCheckRequestedAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+                              : '—'}
+                          </p>
                         </div>
                       </TableCell>
                       <TableCell>
