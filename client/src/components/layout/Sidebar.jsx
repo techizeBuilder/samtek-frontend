@@ -26,7 +26,7 @@ const superAdminMenuItems = [
   { label: 'Sales', path: '/super-admin/sales', icon: TrendingUp, module: 'sales' },
   // { label: 'Dispatches', path: '/super-admin/dispatches', icon: Truck, module: 'dispatches' },
   // { label: 'Accounts', path: '/super-admin/accounts', icon: Calculator, module: 'accounts' },
-  { label: 'Inventory', path: '/super-admin/inventory', icon: Package, module: 'inventory' },
+  // { label: 'Inventory', path: '/super-admin/inventory', icon: Package, module: 'inventory' },
   { label: 'Customers', path: '/super-admin/customers', icon: Users, module: 'customers' },
   { label: 'Companies', path: '/super-admin/companies', icon: Building2, module: 'companies' },
   { label: 'Role & Permissions', path: '/role-permission-management', icon: Shield, module: 'permissions' },
@@ -465,6 +465,7 @@ const storeMenuItems = [
   { label: 'Inventory', path: '/store/inventory', icon: Package, module: 'Store' },
   { label: 'Orders', path: '/store/orders', icon: Receipt, module: 'Store' },
   { label: 'Purchase Orders', path: '/store/purchases/requests', icon: ShoppingCart, module: 'Store' },
+  { label: 'Material Issues', path: '/store/material-issues', icon: History, module: 'Store' },
   { label: 'Task Management', path: '/store/task-management', icon: CheckSquare, module: 'store' },
   { label: 'My Task', path: '/store/my-task', icon: CheckSquare, module: 'store' },
   {

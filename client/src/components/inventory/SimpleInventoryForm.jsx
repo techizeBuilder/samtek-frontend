@@ -58,7 +58,7 @@ function DynamicListField({ label, icon: Icon, items, onChange, placeholder }) {
 }
 
 export default function SimpleInventoryForm({
-  isOpen, onClose, item = null, categories = [], customerCategories = [], onSubmit, isLoading = false, onOpenCategoryManagement
+  isOpen, onClose, item = null, categories = [], customerCategories = [], groups = [], onSubmit, isLoading = false, onOpenCategoryManagement, onOpenGroupManagement
 }) {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -255,6 +255,20 @@ export default function SimpleInventoryForm({
                 <SelectTrigger className="mt-1"><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent>{customerCategories.map((c) => <SelectItem key={c._id} value={c.name}>{c.name}</SelectItem>)}</SelectContent>
               </Select>
+            </div>
+            <div>
+              <Label className="text-sm font-medium text-gray-700">Group</Label>
+              <div className="flex gap-2 mt-1">
+                <Select value={formData.group || ''} onValueChange={(v) => handleInputChange('group', v)}>
+                  <SelectTrigger className="flex-1"><SelectValue placeholder="Select Group" /></SelectTrigger>
+                  <SelectContent>
+                    {groups.map((g) => <SelectItem key={g._id} value={g.name}>{g.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                {onOpenGroupManagement && (
+                  <Button type="button" variant="outline" size="icon" onClick={onOpenGroupManagement}><Plus className="h-4 w-4" /></Button>
+                )}
+              </div>
             </div>
             <div>
               <Label className="text-sm font-medium text-gray-700">Item Type *</Label>

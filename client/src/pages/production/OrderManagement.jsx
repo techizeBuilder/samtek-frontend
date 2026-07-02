@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import {
   ClipboardList, Plus, CheckCircle, AlertTriangle, Clock, Package,
-  ChevronRight, FileCheck, Wrench, Send, Search, Filter, FileText, ExternalLink
+  ChevronRight, FileCheck, Wrench, Send, Search, Filter, FileText, ExternalLink, ShoppingCart, ArrowDownToLine
 } from 'lucide-react';
 import { useProduction as useProd } from '@/contexts/ProductionContext';
 import { apiRequest } from '@/lib/queryClient';
@@ -53,6 +53,34 @@ export default function OrderManagement() {
   const [form, setForm] = useState(emptyOrder);
   const [demandForm, setDemandForm] = useState(emptyDemand);
   const [foundItem, setFoundItem] = useState(null);
+  const [raisePurchaseOpen, setRaisePurchaseOpen] = useState(false);
+  const [purchaseRow, setPurchaseRow] = useState(null); // { materialCode, materialName, quantity, unit }
+
+  // ── NEW STATE ──
+  const [issueModalOpen, setIssueModalOpen] = useState(false);
+  const [issueRow, setIssueRow] = useState(null);
+  const [issueQty, setIssueQty] = useState('');
+
+  // ── NEW HANDLER ──
+  const handleIssueMaterial = async () => {
+    if (!issueRow || !issueQty || Number(issueQty) <= 0 || Number(issueQty) > issueRow.remainingQty) return;
+    try {
+      const orderId = detailOrderLive?._id || detailOrderLive?.id;
+      // Hitting the updated specific API route
+      await apiRequest('PUT', `/api/production-mfg/orders/${orderId}/mark-material-issued`, {
+        materialCode: issueRow.materialCode,
+        quantityToIssue: Number(issueQty)
+      });
+      
+      showSuccessToast('Material Received', `Successfully issued ${issueQty} ${issueRow.unit} from Store.`);
+      setIssueModalOpen(false);
+      setIssueRow(null);
+      setIssueQty('');
+      // If you have a refresh function in your context, call it here (e.g., refreshOrders())
+    } catch (error) {
+      showSmartToast(error, 'Receive Material Failed');
+    }
+  };
 
   const statuses = ['All', 'Pending', 'BOM Pending', 'In Progress', 'Completed'];
   const sources = ['All', 'Store Orders', 'Rejected Items'];
@@ -111,33 +139,40 @@ export default function OrderManagement() {
 
   const handleAddDemand = async () => {
     if (!demandForm.materialCode || !demandForm.materialName || !demandForm.quantity) return;
-    
     try {
-      // 1. Add material demand locally to production order
-      await addMaterialDemand(detailOrder._id || detailOrder.id, { 
-        ...demandForm, 
-        quantity: Number(demandForm.quantity) 
+      await addMaterialDemand(detailOrder._id || detailOrder.id, {
+        ...demandForm,
+        quantity: Number(demandForm.quantity)
       });
-
-      // 2. Raise a Purchase Request for the Store
-      await apiRequest('POST', '/api/purchase-requests', {
-        productName: demandForm.materialName,
-        quantity: Number(demandForm.quantity),
-        unit: demandForm.unit,
-        requestFromDepartment: 'Production',
-        source: 'Production',
-        priority: 'Medium',
-        materialCode: demandForm.materialCode,
-        storeOrderId: detailOrder._id || detailOrder.id
-      });
-
-      showSuccessToast('Demand Raised', `Material demand for "${demandForm.materialName}" sent to Store for approval.`);
+      showSuccessToast('Sent to R&D', `Extra material demand for "${demandForm.materialName}" is pending R&D approval.`);
       setDemandForm(emptyDemand);
       setFoundItem(null);
       setDemandOpen(false);
     } catch (error) {
-      console.error('Failed to raise material demand:', error);
-      showSmartToast(error, 'Raise Material Demand');
+      console.error('Failed to add material demand:', error);
+      showSmartToast(error, 'Add Material Demand');
+    }
+  };
+
+  const handleRaisePurchase = async () => {
+    if (!purchaseRow) return;
+    try {
+      await apiRequest('POST', '/api/purchase-requests', {
+        productName: purchaseRow.materialName,
+        quantity: Number(purchaseRow.quantity),
+        unit: purchaseRow.unit,
+        requestFromDepartment: 'Production',
+        source: 'Production',
+        priority: 'Medium',
+        materialCode: purchaseRow.materialCode,
+        storeOrderId: detailOrderLive?._id || detailOrderLive?.id
+      });
+      showSuccessToast('Purchase Request Raised', `Request for "${purchaseRow.materialName}" sent to Store.`);
+      setRaisePurchaseOpen(false);
+      setPurchaseRow(null);
+    } catch (error) {
+      console.error('Failed to raise purchase request:', error);
+      showSmartToast(error, 'Raise Purchase Request');
     }
   };
 
@@ -464,11 +499,6 @@ export default function OrderManagement() {
                   <div className="flex items-center justify-between mb-2">
                     <h3 className="text-sm font-bold text-slate-700 flex items-center gap-1.5"><Package className="h-4 w-4" /> Material Demand</h3>
                     <div className="flex gap-2">
-                      {!detailOrderLive.materialIssued && detailOrderLive.materialDemands.length > 0 && (
-                        <Button size="sm" className="h-6 text-xs bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => markMaterialIssued(detailOrderLive._id || detailOrderLive.id)}>
-                          Mark All Issued
-                        </Button>
-                      )}
                       <Button size="sm" className="h-6 text-xs" variant="outline" onClick={() => {
                         setDemandForm(emptyDemand);
                         setFoundItem(null);
@@ -488,22 +518,83 @@ export default function OrderManagement() {
                           <th className="text-left px-3 py-2 text-slate-500 font-semibold">Material</th>
                           <th className="text-left px-3 py-2 text-slate-500 font-semibold">Qty</th>
                           <th className="text-left px-3 py-2 text-slate-500 font-semibold">Status</th>
+                          <th className="text-left px-3 py-2 text-slate-500 font-semibold">Action</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {detailOrderLive.materialDemands.map(m => (
-                          <tr key={m.id} className="border-t border-slate-50">
-                            <td className="px-3 py-2 font-mono text-blue-700">{m.materialCode}</td>
-                            <td className="px-3 py-2 font-medium text-slate-800">{m.materialName}</td>
-                            <td className="px-3 py-2 text-slate-600">{m.quantity} {m.unit}</td>
-                            <td className="px-3 py-2">
-                              <span className={`px-1.5 py-0.5 rounded text-xs font-semibold ${
-                                m.status === 'Issued' ? 'bg-emerald-100 text-emerald-700' :
-                                m.status === 'Pending Purchase' ? 'bg-amber-100 text-amber-700' :
-                                'bg-slate-100 text-slate-600'}`}>{m.status}</span>
-                            </td>
-                          </tr>
-                        ))}
+                        {detailOrderLive.materialDemands.map(m => {
+                          const issued = m.issuedQuantity || 0;
+                          const remaining = m.quantity - issued;
+                          
+                          return (
+                            <tr key={m._id || m.id} className="border-t border-slate-50">
+                              <td className="px-3 py-2 font-mono text-blue-700">{m.materialCode}</td>
+                              <td className="px-3 py-2 font-medium text-slate-800">{m.materialName}</td>
+                              
+                              <td className="px-3 py-2">
+                                {m.bomQuantity !== null && m.bomQuantity !== undefined ? (
+                                  <div className="flex flex-col">
+                                    <span className="text-slate-800 font-semibold flex items-center gap-1.5">
+                                      Req: {m.quantity} {m.unit} 
+                                      <span className="text-[9px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded uppercase font-bold border border-slate-200">BOM</span>
+                                    </span>
+                                    <span className={`text-[10px] font-bold mt-0.5 ${issued === m.quantity ? 'text-emerald-600' : 'text-blue-600'}`}>
+                                      Issued: {issued} / {m.quantity}
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <div className="flex flex-col">
+                                    <span className="text-purple-700 font-bold flex items-center gap-1.5">
+                                      Req: {m.quantity} {m.unit}
+                                      <span className="text-[9px] bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded uppercase font-bold border border-purple-200">Out of BOM</span>
+                                    </span>
+                                    <span className={`text-[10px] font-bold mt-0.5 ${issued === m.quantity ? 'text-emerald-600' : 'text-blue-600'}`}>
+                                      Issued: {issued} / {m.quantity}
+                                    </span>
+                                  </div>
+                                )}
+                              </td>
+
+                              <td className="px-3 py-2">
+                                <span className={`px-1.5 py-0.5 rounded text-xs font-semibold ${
+                                  m.status === 'Issued' ? 'bg-emerald-100 text-emerald-700' :
+                                  m.status === 'Pending Purchase' ? 'bg-amber-100 text-amber-700' :
+                                  m.status === 'Pending R&D' ? 'bg-orange-100 text-orange-700' :
+                                  m.status === 'R&D Rejected' ? 'bg-red-100 text-red-700' :
+                                  'bg-slate-100 text-slate-600'}`}>{m.status}</span>
+                              </td>
+                              
+                              <td className="px-3 py-2">
+                                {m.status === 'Requested' && remaining > 0 && (
+                                  <div className="flex gap-2">
+                                    <button
+                                      onClick={() => {
+                                        setPurchaseRow({ materialCode: m.materialCode, materialName: m.materialName, quantity: remaining, unit: m.unit });
+                                        setRaisePurchaseOpen(true);
+                                      }}
+                                      className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold text-violet-700 bg-violet-50 hover:bg-violet-100 border border-violet-200 transition-colors"
+                                      title="Ask Store to buy from Vendor"
+                                    >
+                                      <ShoppingCart className="h-3 w-3" /> Purchase
+                                    </button>
+
+                                    <button
+                                      onClick={() => {
+                                        setIssueRow({ materialCode: m.materialCode, materialName: m.materialName, remainingQty: remaining, unit: m.unit });
+                                        setIssueQty(remaining); // Default to exactly what they need
+                                        setIssueModalOpen(true);
+                                      }}
+                                      className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition-colors"
+                                      title="Receive items internally from the Store shelf"
+                                    >
+                                      <ArrowDownToLine className="h-3 w-3" /> Receive
+                                    </button>
+                                  </div>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   )}
@@ -620,10 +711,135 @@ export default function OrderManagement() {
               <label className="text-xs font-semibold text-slate-600 mb-1 block">Quantity *</label>
               <Input type="number" min="0" placeholder="0" value={demandForm.quantity} onChange={e => setDemandForm(f => ({ ...f, quantity: e.target.value }))} />
             </div>
+
+            {/* R&D Gating Notice */}
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex gap-2">
+              <AlertTriangle className="h-4 w-4 text-amber-500 flex-shrink-0 mt-0.5" />
+              <div className="text-xs text-amber-700 leading-relaxed">
+                <span className="font-bold block mb-0.5">R&D Authorization Required</span>
+                This demand will be locked as <strong>Pending R&D</strong> and an R&D ticket will be auto-generated. The "Raise Purchase" button on this item will only unlock after R&D approves the request.
+              </div>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDemandOpen(false)}>Cancel</Button>
             <Button onClick={handleAddDemand} disabled={!demandForm.materialCode || !demandForm.materialName || !demandForm.quantity} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">Add Demand</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Raise Purchase Request Modal */}
+      <Dialog open={raisePurchaseOpen} onOpenChange={(o) => { setRaisePurchaseOpen(o); if (!o) setPurchaseRow(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-violet-700">
+              <ShoppingCart className="h-4 w-4" /> Raise Purchase Request
+            </DialogTitle>
+          </DialogHeader>
+          {purchaseRow && (
+            <div className="space-y-4 py-2">
+              <div className="bg-slate-50 rounded-lg p-3 space-y-1 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-xs text-slate-500 font-semibold">Material Code</span>
+                  <span className="font-mono text-blue-700 text-xs font-semibold">{purchaseRow.materialCode}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-xs text-slate-500 font-semibold">Material Name</span>
+                  <span className="text-slate-800 text-xs font-medium">{purchaseRow.materialName}</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 mb-1 block">Quantity *</label>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={purchaseRow.quantity}
+                    onChange={e => setPurchaseRow(r => ({ ...r, quantity: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 mb-1 block">Unit</label>
+                  <select
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white"
+                    value={purchaseRow.unit}
+                    onChange={e => setPurchaseRow(r => ({ ...r, unit: e.target.value }))}
+                  >
+                    {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <p className="text-xs text-slate-400 leading-relaxed">
+                This will create a Purchase Request visible to the Store department for procurement approval.
+              </p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setRaisePurchaseOpen(false); setPurchaseRow(null); }}>Cancel</Button>
+            <Button
+              onClick={handleRaisePurchase}
+              disabled={!purchaseRow?.quantity || Number(purchaseRow?.quantity) <= 0}
+              className="bg-violet-600 hover:bg-violet-700 text-white"
+            >
+              <ShoppingCart className="h-3.5 w-3.5 mr-1" /> Send to Store
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── STRICT MATERIAL RECEIVE MODAL ─── */}
+      <Dialog open={issueModalOpen} onOpenChange={(o) => { setIssueModalOpen(o); if (!o) { setIssueRow(null); setIssueQty(''); } }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-emerald-700">
+              <ArrowDownToLine className="h-5 w-5" /> Receive Material
+            </DialogTitle>
+          </DialogHeader>
+          {issueRow && (
+            <div className="space-y-4 py-2">
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Confirm exactly how much material you are taking from the store shelf. This will automatically deduct from master inventory.
+              </p>
+              <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-1 text-sm">
+                <div className="flex justify-between"><span className="text-xs text-slate-500 font-semibold">Code</span><span className="font-mono text-blue-700 text-xs font-semibold">{issueRow.materialCode}</span></div>
+                <div className="flex justify-between"><span className="text-xs text-slate-500 font-semibold">Material</span><span className="text-slate-800 text-xs font-medium truncate ml-2">{issueRow.materialName}</span></div>
+                <div className="flex justify-between border-t border-slate-200 pt-1 mt-1"><span className="text-xs text-slate-500 font-semibold">Remaining Required</span><span className="text-emerald-700 text-xs font-bold">{issueRow.remainingQty} {issueRow.unit}</span></div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 mb-1 block">Quantity Received *</label>
+                  <Input 
+                    type="number" 
+                    min="0" 
+                    max={issueRow.remainingQty} 
+                    value={issueQty} 
+                    onChange={e => setIssueQty(e.target.value)} 
+                    className={Number(issueQty) > issueRow.remainingQty ? 'border-red-500 focus-visible:ring-red-500' : ''}
+                  />
+                  {Number(issueQty) > issueRow.remainingQty && (
+                    <span className="text-[10px] text-red-500 font-medium">Cannot exceed {issueRow.remainingQty}</span>
+                  )}
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 mb-1 block">Unit</label>
+                  <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-slate-100" disabled value={issueRow.unit}>
+                    <option>{issueRow.unit}</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setIssueModalOpen(false); setIssueRow(null); setIssueQty(''); }}>Cancel</Button>
+            <Button 
+              onClick={handleIssueMaterial} 
+              disabled={!issueQty || Number(issueQty) <= 0 || Number(issueQty) > (issueRow?.remainingQty || 0)} 
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+            >
+              Confirm Receipt
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

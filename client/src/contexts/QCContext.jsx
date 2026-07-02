@@ -29,12 +29,48 @@ export function QCProvider({ children }) {
 
   // ── Mutations ─────────────────────────────────────────────────────────────────
   const createJobMut = useMutation({ mutationFn: (d) => apiRequest('POST', `${BASE}/jobs`, d), onSuccess: invAll });
-  const updateJobMut = useMutation({ mutationFn: ({ id, data }) => apiRequest('PUT', `${BASE}/jobs/${id}`, data), onSuccess: invJobs });
-  const startInspectionMut = useMutation({ mutationFn: ({ id, data }) => apiRequest('PUT', `${BASE}/jobs/${id}/start`, data), onSuccess: invAll });
-  const updateChecklistItemMut = useMutation({ mutationFn: ({ id, itemId, data }) => apiRequest('PUT', `${BASE}/jobs/${id}/checklist/${itemId}`, data), onSuccess: invJobs });
-  const addChecklistItemMut = useMutation({ mutationFn: ({ id, data }) => apiRequest('POST', `${BASE}/jobs/${id}/checklist`, data), onSuccess: invJobs });
-  const removeChecklistItemMut = useMutation({ mutationFn: ({ id, itemId }) => apiRequest('DELETE', `${BASE}/jobs/${id}/checklist/${itemId}`), onSuccess: invJobs });
-  const submitDecisionMut = useMutation({ mutationFn: ({ id, data }) => apiRequest('PUT', `${BASE}/jobs/${id}/decision`, data), onSuccess: invAll });
+  const updateJobMut = useMutation({ 
+    mutationFn: ({ id, data }) => apiRequest('PUT', `${BASE}/jobs/${id}`, data), 
+    onSuccess: (data, variables) => {
+      invJobs();
+      qc.invalidateQueries({ queryKey: ['qc-job', variables.id] });
+    }
+  });
+  const startInspectionMut = useMutation({ 
+    mutationFn: ({ id, data }) => apiRequest('PUT', `${BASE}/jobs/${id}/start`, data), 
+    onSuccess: (data, variables) => {
+      invAll();
+      qc.invalidateQueries({ queryKey: ['qc-job', variables.id] });
+    }
+  });
+  const updateChecklistItemMut = useMutation({ 
+    mutationFn: ({ id, itemId, data }) => apiRequest('PUT', `${BASE}/jobs/${id}/checklist/${itemId}`, data), 
+    onSuccess: (data, variables) => {
+      invJobs();
+      qc.invalidateQueries({ queryKey: ['qc-job', variables.id] });
+    }
+  });
+  const addChecklistItemMut = useMutation({ 
+    mutationFn: ({ id, data }) => apiRequest('POST', `${BASE}/jobs/${id}/checklist`, data), 
+    onSuccess: (data, variables) => {
+      invJobs();
+      qc.invalidateQueries({ queryKey: ['qc-job', variables.id] });
+    }
+  });
+  const removeChecklistItemMut = useMutation({ 
+    mutationFn: ({ id, itemId }) => apiRequest('DELETE', `${BASE}/jobs/${id}/checklist/${itemId}`), 
+    onSuccess: (data, variables) => {
+      invJobs();
+      qc.invalidateQueries({ queryKey: ['qc-job', variables.id] });
+    }
+  });
+  const submitDecisionMut = useMutation({ 
+    mutationFn: ({ id, data }) => apiRequest('PUT', `${BASE}/jobs/${id}/decision`, data), 
+    onSuccess: (data, variables) => {
+      invAll();
+      qc.invalidateQueries({ queryKey: ['qc-job', variables.id] });
+    }
+  });
 
   // ── Stable callbacks ──────────────────────────────────────────────────────────
   const createJob = useCallback((data) => createJobMut.mutateAsync(data), []);

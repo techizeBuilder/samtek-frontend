@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast';
 import {
   CheckCircle2, XCircle, Clock, AlertTriangle, ChevronLeft,
-  Play, Send, Package, Factory, ShoppingCart, Plus, Trash2
+  Play, Send, Package, Factory, ShoppingCart, Plus, Trash2, RefreshCw
 } from 'lucide-react';
 
 const statusColor = {
@@ -33,14 +33,24 @@ function ChecklistRow({ item, jobStatus, onUpdate }) {
     try { await onUpdate(item._id, local); } finally { setSaving(false); }
   };
 
+  // Dynamically set placeholder based on the type of check
+  const isVisualCheck = item.standardValue === 'Visual Inspection';
+  const actualValuePlaceholder = isVisualCheck ? 'Observations (optional)' : 'Measured value';
+
   return (
     <div className={`p-4 rounded-lg border ${item.status === 'Pass' ? 'border-emerald-200 bg-emerald-50' : item.status === 'Fail' ? 'border-red-200 bg-red-50' : 'border-slate-200 bg-white'}`}>
-      <div className="flex items-start justify-between gap-3 mb-3">
+      <div className="flex items-start justify-between gap-3 mb-4">
         <div className="flex-1">
-          <p className="font-medium text-slate-800">{item.parameter}</p>
-          {item.standardValue && <p className="text-xs text-slate-500 mt-0.5">Standard: {item.standardValue}</p>}
+          <p className="font-semibold text-slate-900">{item.parameter}</p>
+          {item.standardValue && (
+            <div className="mt-1.5">
+              <span className="inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10">
+                Standard: {item.standardValue}
+              </span>
+            </div>
+          )}
         </div>
-        <div className={`flex items-center gap-1 text-sm font-semibold ${itemStatusColor[item.status]}`}>
+        <div className={`flex items-center gap-1.5 text-sm font-semibold ${itemStatusColor[item.status]}`}>
           {item.status === 'Pass' && <CheckCircle2 className="h-4 w-4" />}
           {item.status === 'Fail' && <XCircle className="h-4 w-4" />}
           {item.status === 'Pending' && <Clock className="h-4 w-4" />}
@@ -49,15 +59,20 @@ function ChecklistRow({ item, jobStatus, onUpdate }) {
       </div>
 
       {editable ? (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 items-end">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
           <div>
             <Label className="text-xs text-slate-500">Actual Value</Label>
-            <Input className="mt-1 h-8 text-sm" value={local.actualValue} onChange={e => setLocal(l => ({ ...l, actualValue: e.target.value }))} placeholder="Measured value" />
+            <Input 
+              className="mt-1 h-9 text-sm" 
+              value={local.actualValue} 
+              onChange={e => setLocal(l => ({ ...l, actualValue: e.target.value }))} 
+              placeholder={actualValuePlaceholder} 
+            />
           </div>
           <div>
             <Label className="text-xs text-slate-500">Result</Label>
             <Select value={local.status} onValueChange={v => setLocal(l => ({ ...l, status: v }))}>
-              <SelectTrigger className="mt-1 h-8 text-sm"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="mt-1 h-9 text-sm"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="Pending">Pending</SelectItem>
                 <SelectItem value="Pass">Pass</SelectItem>
@@ -67,18 +82,23 @@ function ChecklistRow({ item, jobStatus, onUpdate }) {
           </div>
           <div>
             <Label className="text-xs text-slate-500">Remarks {local.status === 'Fail' && <span className="text-red-500">*</span>}</Label>
-            <div className="flex gap-1 mt-1">
-              <Input className="h-8 text-sm flex-1" value={local.remarks} onChange={e => setLocal(l => ({ ...l, remarks: e.target.value }))} placeholder={local.status === 'Fail' ? 'Reason required' : 'Optional'} />
-              <Button size="sm" className="h-8 px-2" onClick={save} disabled={saving}>
-                {saving ? '…' : '✓'}
+            <div className="flex gap-2 mt-1">
+              <Input 
+                className="h-9 text-sm flex-1" 
+                value={local.remarks} 
+                onChange={e => setLocal(l => ({ ...l, remarks: e.target.value }))} 
+                placeholder={local.status === 'Fail' ? 'Reason required' : 'Optional'} 
+              />
+              <Button size="sm" className="h-9 px-3 shrink-0" onClick={save} disabled={saving}>
+                {saving ? '...' : 'Save'}
               </Button>
             </div>
           </div>
         </div>
       ) : (
-        <div className="flex gap-6 text-sm">
-          {item.actualValue && <div><span className="text-slate-400">Actual: </span><span className="text-slate-700">{item.actualValue}</span></div>}
-          {item.remarks && <div><span className="text-slate-400">Remarks: </span><span className="text-slate-700">{item.remarks}</span></div>}
+        <div className="flex gap-6 text-sm mt-2 pt-3 border-t border-slate-100">
+          {item.actualValue && <div><span className="text-slate-400">Actual: </span><span className="font-medium text-slate-700">{item.actualValue}</span></div>}
+          {item.remarks && <div><span className="text-slate-400">Remarks: </span><span className="font-medium text-slate-700">{item.remarks}</span></div>}
         </div>
       )}
     </div>
@@ -90,7 +110,9 @@ export default function QCInspection() {
   const [, setLocation] = useLocation();
   const { startInspection, updateChecklistItem, submitDecision, addChecklistItem, removeChecklistItem } = useQC();
   const { toast } = useToast();
+
   const [loading, setLoading] = useState(false);
+  const [syncingRD, setSyncingRD] = useState(false); // New state for R&D sync
   const [decision, setDecision] = useState('');
   const [failReason, setFailReason] = useState('');
   const [inspectorRemarks, setInspectorRemarks] = useState('');
@@ -105,6 +127,24 @@ export default function QCInspection() {
   });
 
   const job = data?.data;
+
+  // ⚡ The new Sync Function ⚡
+  const handleSyncRD = async () => {
+    setSyncingRD(true);
+    try {
+      await apiRequest('PUT', `/api/qc/jobs/${id}/sync-rd`);
+      toast({ title: 'Success', description: 'R&D parameters loaded successfully.' });
+      refetch(); // Instantly reloads the UI with the new checklist
+    } catch (e) {
+      toast({
+        title: 'Sync Failed',
+        description: e.message || 'Could not find R&D data for this item.',
+        variant: 'destructive'
+      });
+    } finally {
+      setSyncingRD(false);
+    }
+  };
 
   const handleStart = async () => {
     if (!inspectorName.trim()) {
@@ -121,9 +161,9 @@ export default function QCInspection() {
     } finally { setLoading(false); }
   };
 
-  const handleUpdateItem = async (itemId, data) => {
+  const handleUpdateItem = async (itemId, updateData) => {
     try {
-      await updateChecklistItem(id, itemId, data);
+      await updateChecklistItem(id, itemId, updateData);
       refetch();
     } catch (e) {
       toast({ title: 'Error', description: e.message, variant: 'destructive' });
@@ -160,6 +200,7 @@ export default function QCInspection() {
     setLoading(true);
     try {
       await submitDecision(id, { decision, failReason, inspectorRemarks });
+      await refetch();
       toast({
         title: decision === 'Pass' ? '✓ QC Approved' : '✗ QC Rejected',
         description: decision === 'Pass' ? 'Item transferred to Store' : `Returned to ${job.source} Department`,
@@ -245,6 +286,20 @@ export default function QCInspection() {
                 </p>
               )}
             </div>
+
+            {/* Sync R&D Data Button */}
+            {(job.status === 'Pending' || job.status === 'In Progress') && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleSyncRD}
+                disabled={syncingRD}
+                className="flex items-center gap-2 text-blue-600 border-blue-200 hover:bg-blue-50"
+              >
+                <RefreshCw className={`h-4 w-4 ${syncingRD ? 'animate-spin' : ''}`} />
+                {syncingRD ? 'Syncing...' : 'Pull R&D Data'}
+              </Button>
+            )}
           </div>
 
           {cl.length === 0 ? (
@@ -295,17 +350,15 @@ export default function QCInspection() {
               <div className="flex gap-3">
                 <button
                   onClick={() => setDecision('Pass')}
-                  className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg border-2 font-medium transition-all ${
-                    decision === 'Pass' ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-slate-200 text-slate-500 hover:border-emerald-300'
-                  }`}
+                  className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg border-2 font-medium transition-all ${decision === 'Pass' ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-slate-200 text-slate-500 hover:border-emerald-300'
+                    }`}
                 >
                   <CheckCircle2 className="h-5 w-5" /> Pass — Approve & Transfer to Store
                 </button>
                 <button
                   onClick={() => setDecision('Fail')}
-                  className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg border-2 font-medium transition-all ${
-                    decision === 'Fail' ? 'border-red-500 bg-red-50 text-red-700' : 'border-slate-200 text-slate-500 hover:border-red-300'
-                  }`}
+                  className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg border-2 font-medium transition-all ${decision === 'Fail' ? 'border-red-500 bg-red-50 text-red-700' : 'border-slate-200 text-slate-500 hover:border-red-300'
+                    }`}
                 >
                   <XCircle className="h-5 w-5" /> Fail — Return to {job.source}
                 </button>

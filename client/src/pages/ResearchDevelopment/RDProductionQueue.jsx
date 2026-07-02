@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import {
     FileCheck, FileText, CheckCircle, XCircle, AlertTriangle,
-    Search, Clock, ChevronRight, Eye, ChevronLeft
+    Search, Clock, ChevronRight, Eye, ChevronLeft, Package
 } from 'lucide-react';
 import { showSuccessToast, showSmartToast } from '@/lib/toast-utils';
 
@@ -33,9 +33,10 @@ export default function RDProductionQueue() {
         documents // Pulling this from context to display associated design files
     } = useRD();
 
-    const [rejectModal, setRejectModal] = useState({ open: false, requestId: null, reason: '' });
+    const [rejectModal, setRejectModal] = useState({ open: false, requestId: null, requestType: 'Initial BOM', reason: '' });
     const [reviewModal, setReviewModal] = useState({ open: false, data: null, isLoading: false });
     const [searchTerm, setSearchTerm] = useState(reqFilters.search || '');
+    const [typeFilter, setTypeFilter] = useState('All'); // 'All' | 'Initial BOM' | 'Material Change'
 
     const handleTabChange = (tab) => {
         setReqFilters(prev => ({ ...prev, tab, page: 1 }));
@@ -43,15 +44,16 @@ export default function RDProductionQueue() {
 
     const handleSearch = (e) => {
         const value = e.target.value;
-        setSearchTerm(value); // Update local state immediately for fast UI
-        
-        // Clear any existing timeout
+        setSearchTerm(value);
         if (window.searchTimeout) clearTimeout(window.searchTimeout);
-        
-        // Set a new timeout to update the filter after 300ms of no typing
         window.searchTimeout = setTimeout(() => {
             setReqFilters(prev => ({ ...prev, search: value, page: 1 }));
         }, 300);
+    };
+
+    const handleTypeFilter = (type) => {
+        setTypeFilter(type);
+        setReqFilters(prev => ({ ...prev, requestType: type, page: 1 }));
     };
 
     const handlePageChange = (newPage) => {
@@ -60,11 +62,17 @@ export default function RDProductionQueue() {
         }
     };
 
-    const handleApprove = async (id) => {
-        if (window.confirm('Approve this request? This will push the BOM and Design Documents to the Production Order.')) {
+    const handleApprove = async (id, requestType) => {
+        const msg = requestType === 'Material Change'
+            ? 'Approve this material change? The extra material will be unlocked for Production to raise a purchase request.'
+            : 'Approve this request? This will push the BOM and Design Documents to the Production Order.';
+        if (window.confirm(msg)) {
             try {
                 await processProductionRequest(id, 'Approve');
-                showSuccessToast('Request Approved', 'BOM and Designs successfully sent to Production.');
+                const successMsg = requestType === 'Material Change'
+                    ? 'Material change approved. Production can now raise a purchase request.'
+                    : 'BOM and Designs successfully sent to Production.';
+                showSuccessToast('Request Approved', successMsg);
             } catch (err) {
                 showSmartToast(err, 'Approval Failed');
             }
@@ -75,8 +83,11 @@ export default function RDProductionQueue() {
         if (!rejectModal.reason.trim()) return;
         try {
             await processProductionRequest(rejectModal.requestId, 'Reject', rejectModal.reason);
-            showSuccessToast('Request Rejected', 'The request has been sent back to Production.');
-            setRejectModal({ open: false, requestId: null, reason: '' });
+            const msg = rejectModal.requestType === 'Material Change'
+                ? 'Material change rejected. The item has been marked R&D Rejected.'
+                : 'The request has been sent back to Production.';
+            showSuccessToast('Request Rejected', msg);
+            setRejectModal({ open: false, requestId: null, requestType: 'Initial BOM', reason: '' });
         } catch (err) {
             showSmartToast(err, 'Rejection Failed');
         }
@@ -113,36 +124,59 @@ export default function RDProductionQueue() {
             <Card className="border-none shadow-sm">
                 <CardContent className="p-4 space-y-4">
 
-                    {/* Controls: Tabs & Search */}
-                    <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+                    {/* Controls: Tabs, Type Filter & Search */}
+                    <div className="flex flex-col gap-3">
+                        <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
 
-                        {/* Custom Pill Tabs */}
-                        <div className="flex gap-1 bg-slate-100 p-1 rounded-lg w-full sm:w-fit">
-                            <button
-                                onClick={() => handleTabChange('fresh')}
-                                className={`flex-1 sm:flex-none px-5 py-2 rounded-md text-sm font-semibold transition-all duration-200 ${reqFilters.tab === 'fresh' ? 'bg-white shadow-sm text-blue-700' : 'text-slate-500 hover:text-slate-700'
-                                    }`}
-                            >
-                                Fresh Requests
-                            </button>
-                            <button
-                                onClick={() => handleTabChange('history')}
-                                className={`flex-1 sm:flex-none px-5 py-2 rounded-md text-sm font-semibold transition-all duration-200 ${reqFilters.tab === 'history' ? 'bg-white shadow-sm text-blue-700' : 'text-slate-500 hover:text-slate-700'
-                                    }`}
-                            >
-                                Approved / History
-                            </button>
+                            {/* Custom Pill Tabs */}
+                            <div className="flex gap-1 bg-slate-100 p-1 rounded-lg w-full sm:w-fit">
+                                <button
+                                    onClick={() => handleTabChange('fresh')}
+                                    className={`flex-1 sm:flex-none px-5 py-2 rounded-md text-sm font-semibold transition-all duration-200 ${reqFilters.tab === 'fresh' ? 'bg-white shadow-sm text-blue-700' : 'text-slate-500 hover:text-slate-700'
+                                        }`}
+                                >
+                                    Fresh Requests
+                                </button>
+                                <button
+                                    onClick={() => handleTabChange('history')}
+                                    className={`flex-1 sm:flex-none px-5 py-2 rounded-md text-sm font-semibold transition-all duration-200 ${reqFilters.tab === 'history' ? 'bg-white shadow-sm text-blue-700' : 'text-slate-500 hover:text-slate-700'
+                                        }`}
+                                >
+                                    Approved / History
+                                </button>
+                            </div>
+
+                            {/* Search */}
+                            <div className="relative w-full sm:max-w-xs">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                                <Input
+                                    placeholder="Search machine, material code..."
+                                    className="pl-9 bg-white"
+                                    value={searchTerm}
+                                    onChange={handleSearch}
+                                />
+                            </div>
                         </div>
 
-                        {/* Search */}
-                        <div className="relative w-full sm:max-w-xs">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                            <Input
-                                placeholder="Search Machine Code..."
-                                className="pl-9 bg-white"
-                                value={searchTerm}
-                                onChange={handleSearch}
-                            />
+                        {/* Request Type Filter */}
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs font-semibold text-slate-500">Type:</span>
+                            {['All', 'Initial BOM', 'Material Change'].map(t => (
+                                <button
+                                    key={t}
+                                    onClick={() => handleTypeFilter(t)}
+                                    className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${typeFilter === t
+                                            ? t === 'Material Change'
+                                                ? 'bg-violet-600 text-white border-violet-600'
+                                                : t === 'Initial BOM'
+                                                    ? 'bg-blue-600 text-white border-blue-600'
+                                                    : 'bg-slate-700 text-white border-slate-700'
+                                            : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400'
+                                        }`}
+                                >
+                                    {t}
+                                </button>
+                            ))}
                         </div>
                     </div>
 
@@ -151,9 +185,9 @@ export default function RDProductionQueue() {
                         <table className="w-full text-sm text-left">
                             <thead className="bg-slate-50 border-b border-slate-200">
                                 <tr>
-                                    <th className="px-5 py-3 font-semibold text-slate-600">Machine Code</th>
-                                    <th className="px-5 py-3 font-semibold text-slate-600">Machine Name</th>
-                                    <th className="px-5 py-3 font-semibold text-slate-600">Design Docs</th>
+                                    <th className="px-5 py-3 font-semibold text-slate-600">Type</th>
+                                    <th className="px-5 py-3 font-semibold text-slate-600">Machine</th>
+                                    <th className="px-5 py-3 font-semibold text-slate-600">Details</th>
                                     <th className="px-5 py-3 font-semibold text-slate-600">Status</th>
                                     {reqFilters.tab === 'fresh' && <th className="px-5 py-3 font-semibold text-slate-600 text-center">Action</th>}
                                 </tr>
@@ -169,29 +203,82 @@ export default function RDProductionQueue() {
                                 ) : (
                                     productionRequests.map((req) => {
                                         const machineDocs = getDocsForMachine(req.machineCode);
+                                        const isMaterialChange = req.requestType === 'Material Change';
 
                                         return (
-                                            <tr key={req._id} className="hover:bg-slate-50 transition-colors">
-                                                <td className="px-5 py-4 font-mono font-bold text-blue-700">
-                                                    {req.machineCode}
-                                                </td>
-                                                <td className="px-5 py-4 font-medium text-slate-900">
-                                                    {req.machineName}
-                                                </td>
+                                            <tr key={req._id} className={`hover:bg-slate-50 transition-colors ${isMaterialChange ? 'bg-violet-50/40' : ''}`}>
+                                                {/* Type Badge */}
                                                 <td className="px-5 py-4">
-                                                    <div className="flex flex-wrap gap-2">
-                                                        {machineDocs.length > 0 ? (
-                                                            machineDocs.map((doc, idx) => (
-                                                                <span key={idx} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-blue-50 border border-blue-100 text-blue-700 text-xs font-medium">
-                                                                    <FileText className="h-3 w-3" />
-                                                                    {doc.name}
-                                                                </span>
-                                                            ))
-                                                        ) : (
-                                                            <span className="text-xs text-slate-400 italic">No files uploaded</span>
-                                                        )}
-                                                    </div>
+                                                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border ${isMaterialChange
+                                                            ? 'bg-violet-100 text-violet-700 border-violet-200'
+                                                            : 'bg-blue-100 text-blue-700 border-blue-200'
+                                                        }`}>
+                                                        {isMaterialChange ? <Package className="h-3 w-3" /> : <FileCheck className="h-3 w-3" />}
+                                                        {isMaterialChange ? 'Material Change' : 'Initial BOM'}
+                                                    </span>
                                                 </td>
+
+                                                {/* Machine */}
+                                                <td className="px-5 py-4">
+                                                    <div className="font-mono font-bold text-blue-700 text-sm">{req.machineCode}</div>
+                                                    <div className="font-medium text-slate-700 text-sm">{req.machineName}</div>
+                                                </td>
+
+                                                {/* Details column — adaptive */}
+                                                <td className="px-5 py-4">
+                                                    {isMaterialChange ? (
+                                                        // Material Change: show the specific material requested with smart quantity UI
+                                                        <div className="space-y-2">
+                                                            <div className="flex items-center gap-1.5">
+                                                                <span className="font-mono text-xs text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100">
+                                                                    {req.materialChangeDetails?.materialCode || '—'}
+                                                                </span>
+                                                                <span className="text-sm font-medium text-slate-800">{req.materialChangeDetails?.materialName || '—'}</span>
+                                                            </div>
+
+                                                            <div className="flex items-center gap-3 bg-white border border-slate-100 p-1.5 rounded-md w-fit shadow-sm">
+                                                                {req.materialChangeDetails?.bomQuantity !== null && req.materialChangeDetails?.bomQuantity !== undefined ? (
+                                                                    <>
+                                                                        <div className="px-2 border-r border-slate-200">
+                                                                            <span className="text-[9px] font-bold text-slate-400 uppercase block leading-none mb-1">BOM Qty</span>
+                                                                            <span className="text-xs font-semibold text-slate-700 leading-none block">{req.materialChangeDetails.bomQuantity} {req.materialChangeDetails.unit}</span>
+                                                                        </div>
+                                                                        <div className="px-2">
+                                                                            <span className="text-[9px] font-bold text-amber-500 uppercase block leading-none mb-1">Requested</span>
+                                                                            <span className="text-xs font-bold text-amber-600 leading-none block">{req.materialChangeDetails.requestedQuantity} {req.materialChangeDetails.unit}</span>
+                                                                        </div>
+                                                                    </>
+                                                                ) : (
+                                                                    <div className="px-2 flex items-center gap-2">
+                                                                        <div>
+                                                                            <span className="text-[9px] font-bold text-purple-500 uppercase block leading-none mb-1">Requested</span>
+                                                                            <span className="text-xs font-bold text-purple-700 leading-none block">{req.materialChangeDetails?.requestedQuantity} {req.materialChangeDetails?.unit}</span>
+                                                                        </div>
+                                                                        <span className="px-1.5 py-0.5 bg-purple-100 text-purple-700 text-[9px] font-bold uppercase rounded border border-purple-200">
+                                                                            Out of BOM
+                                                                        </span>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        // Initial BOM: show design doc chips
+                                                        <div className="flex flex-wrap gap-2">
+                                                            {machineDocs.length > 0 ? (
+                                                                machineDocs.map((doc, idx) => (
+                                                                    <span key={idx} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-blue-50 border border-blue-100 text-blue-700 text-xs font-medium">
+                                                                        <FileText className="h-3 w-3" />
+                                                                        {doc.name}
+                                                                    </span>
+                                                                ))
+                                                            ) : (
+                                                                <span className="text-xs text-slate-400 italic">No files uploaded</span>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </td>
+
+                                                {/* Status */}
                                                 <td className="px-5 py-4">
                                                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${statusStyles[req.status] || statusStyles['Pending']}`}>
                                                         {statusIcons[req.status]}
@@ -199,7 +286,7 @@ export default function RDProductionQueue() {
                                                     </span>
                                                 </td>
 
-                                                {/* Only show Actions column for fresh/pending requests */}
+                                                {/* Actions — only for fresh tab */}
                                                 {reqFilters.tab === 'fresh' && (
                                                     <td className="px-5 py-4">
                                                         <div className="flex items-center justify-center gap-2">
@@ -207,23 +294,26 @@ export default function RDProductionQueue() {
                                                                 size="sm"
                                                                 variant="outline"
                                                                 className="h-8 bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 hover:text-emerald-800"
-                                                                onClick={() => handleApprove(req._id)}
+                                                                onClick={() => handleApprove(req._id, req.requestType)}
                                                             >
                                                                 <CheckCircle className="h-3.5 w-3.5 mr-1" /> Approve
                                                             </Button>
-                                                            <Button
-                                                                size="sm"
-                                                                variant="outline"
-                                                                className="h-8 bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 hover:text-blue-800"
-                                                                onClick={() => handleReview(req._id)}
-                                                            >
-                                                                <Eye className="h-3.5 w-3.5 mr-1" /> Review
-                                                            </Button>
+                                                            {/* Review only makes sense for Initial BOM (has BOM + docs to preview) */}
+                                                            {!isMaterialChange && (
+                                                                <Button
+                                                                    size="sm"
+                                                                    variant="outline"
+                                                                    className="h-8 bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 hover:text-blue-800"
+                                                                    onClick={() => handleReview(req._id)}
+                                                                >
+                                                                    <Eye className="h-3.5 w-3.5 mr-1" /> Review
+                                                                </Button>
+                                                            )}
                                                             <Button
                                                                 size="sm"
                                                                 variant="outline"
                                                                 className="h-8 bg-red-50 text-red-700 border-red-200 hover:bg-red-100 hover:text-red-800"
-                                                                onClick={() => setRejectModal({ open: true, requestId: req._id, reason: '' })}
+                                                                onClick={() => setRejectModal({ open: true, requestId: req._id, requestType: req.requestType || 'Initial BOM', reason: '' })}
                                                             >
                                                                 <XCircle className="h-3.5 w-3.5 mr-1" /> Reject
                                                             </Button>
@@ -254,7 +344,7 @@ export default function RDProductionQueue() {
                                 >
                                     <ChevronLeft className="h-4 w-4" />
                                 </Button>
-                                
+
                                 <div className="flex items-center gap-1">
                                     {Array.from({ length: productionRequestsPagination.pages }, (_, i) => i + 1).map(pageNum => (
                                         <Button
@@ -303,11 +393,13 @@ export default function RDProductionQueue() {
                             onChange={(e) => setRejectModal(prev => ({ ...prev, reason: e.target.value }))}
                         />
                         <p className="text-xs text-slate-500 mt-2">
-                            This note will be sent directly back to the Production Order.
+                            {rejectModal.requestType === 'Material Change'
+                                ? 'The extra material demand will be marked R&D Rejected on the Production Order.'
+                                : 'This note will be sent directly back to the Production Order.'}
                         </p>
                     </div>
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setRejectModal({ open: false, requestId: null, reason: '' })}>
+                        <Button variant="outline" onClick={() => setRejectModal({ open: false, requestId: null, requestType: 'Initial BOM', reason: '' })}>
                             Cancel
                         </Button>
                         <Button
@@ -350,7 +442,7 @@ export default function RDProductionQueue() {
                                         <p className="text-sm text-red-500">Machine profile not found.</p>
                                     )}
                                 </div>
-                                
+
                                 {/* BOM */}
                                 <div>
                                     <h3 className="text-sm font-bold text-slate-700 mb-2 border-b pb-1">Master BOM ({reviewModal.data.bom?.materials?.length || 0} items)</h3>

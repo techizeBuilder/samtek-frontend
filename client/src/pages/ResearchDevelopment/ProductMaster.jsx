@@ -40,7 +40,7 @@ const releaseStatusBadge = (status) => status === 'Released'
   ? 'bg-blue-100 text-blue-700 border-blue-200'
   : 'bg-slate-100 text-slate-500 border-slate-200';
 
-const emptyForm = { code: '', name: '', description: '', category: '', pType: '', pSourceType: '', pSpecification: '', brand: '', machineType: 'Standard' };
+const emptyForm = { code: '', name: '', description: '', category: '', pType: '', pSourceType: '', specifications: [], brand: '', machineType: 'Standard' };
 
 export default function ProductMaster() {
   const { machines, stats, addMachine, updateMachine, discontinueMachine, reactivateMachine, masterOptions, addMasterOption } = useRD();
@@ -101,11 +101,67 @@ export default function ProductMaster() {
     setEditForm({
       code: m.code || '', name: m.name || '', description: m.description || '',
       category: m.category || '', pType: m.pType || '', pSourceType: m.pSourceType || '',
-      pSpecification: m.pSpecification || '', brand: m.brand || '',
+      specifications: Array.isArray(m.specifications) ? m.specifications : [],
+      brand: m.brand || '',
       machineType: m.machineType || 'Standard'
     });
     setEditOpen(true);
   };
+
+  // ── Specification key-value helpers ──────────────────────────────────────────
+  const addSpecRow = (setState) => setState(f => ({ ...f, specifications: [...f.specifications, { key: '', value: '' }] }));
+  const removeSpecRow = (setState, idx) => setState(f => ({ ...f, specifications: f.specifications.filter((_, i) => i !== idx) }));
+  const updateSpecRow = (setState, idx, field, val) =>
+    setState(f => ({
+      ...f,
+      specifications: f.specifications.map((s, i) => i === idx ? { ...s, [field]: val } : s)
+    }));
+
+  const renderSpecBuilder = (state, setState) => (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <label className="text-xs font-semibold text-slate-600">P-Specifications</label>
+        <button
+          type="button"
+          onClick={() => addSpecRow(setState)}
+          className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-semibold px-2 py-1 rounded-md hover:bg-blue-50 transition-colors"
+        >
+          <Plus className="h-3 w-3" /> Add Row
+        </button>
+      </div>
+      {state.specifications.length === 0 ? (
+        <p className="text-xs text-slate-400 italic py-2 text-center border border-dashed border-slate-200 rounded-lg">
+          No specifications yet — click "Add Row" to add key-value pairs.
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {state.specifications.map((spec, idx) => (
+            <div key={idx} className="flex gap-2 items-center">
+              <Input
+                className="bg-white flex-1"
+                placeholder="Key (e.g. Power)"
+                value={spec.key}
+                onChange={e => updateSpecRow(setState, idx, 'key', e.target.value)}
+              />
+              <Input
+                className="bg-white flex-1"
+                placeholder="Value (e.g. 5 kW)"
+                value={spec.value}
+                onChange={e => updateSpecRow(setState, idx, 'value', e.target.value)}
+              />
+              <button
+                type="button"
+                onClick={() => removeSpecRow(setState, idx)}
+                className="text-slate-400 hover:text-red-500 transition-colors p-1 rounded"
+              >
+                <XCircle className="h-4 w-4" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 
   const renderDropdownWithAdd = (label, field, fieldKey, options, state, setState) => (
     <div>
@@ -251,7 +307,7 @@ export default function ProductMaster() {
       {/* Add Machine Dialog */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent className="max-w-3xl">
-          <DialogHeader><DialogTitle className="text-xl">Add New Machine</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle className="text-xl">Add New</DialogTitle></DialogHeader>
 
           <div className="space-y-5 py-2">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -271,11 +327,7 @@ export default function ProductMaster() {
               {renderDropdownWithAdd('P-Source Type', 'P-SourceType', 'pSourceType', masterOptions.PSourceType, form, setForm)}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">P-Specification</label>
-                <Input className="bg-white" placeholder="Enter specification" value={form.pSpecification} onChange={e => setForm(f => ({ ...f, pSpecification: e.target.value }))} />
-              </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="text-xs font-semibold text-slate-600 mb-1 block">Brand</label>
                 <Input className="bg-white" placeholder="Enter brand" value={form.brand} onChange={e => setForm(f => ({ ...f, brand: e.target.value }))} />
@@ -287,6 +339,8 @@ export default function ProductMaster() {
                 </select>
               </div>
             </div>
+
+            {renderSpecBuilder(form, setForm)}
 
             <div>
               <label className="text-xs font-semibold text-slate-600 mb-1 block">P-Description</label>
@@ -328,11 +382,7 @@ export default function ProductMaster() {
               {renderDropdownWithAdd('P-Source Type', 'P-SourceType', 'pSourceType', masterOptions.PSourceType, editForm, setEditForm)}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">P-Specification</label>
-                <Input className="bg-white" value={editForm.pSpecification} onChange={e => setEditForm(f => ({ ...f, pSpecification: e.target.value }))} />
-              </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="text-xs font-semibold text-slate-600 mb-1 block">Brand</label>
                 <Input className="bg-white" value={editForm.brand} onChange={e => setEditForm(f => ({ ...f, brand: e.target.value }))} />
@@ -344,6 +394,8 @@ export default function ProductMaster() {
                 </select>
               </div>
             </div>
+
+            {renderSpecBuilder(editForm, setEditForm)}
 
             <div>
               <label className="text-xs font-semibold text-slate-600 mb-1 block">P-Description</label>
@@ -400,10 +452,6 @@ export default function ProductMaster() {
 
                 {/* Specifications & Dates */}
                 <div className="bg-slate-50 rounded-lg p-3">
-                  <p className="text-xs text-slate-500 mb-1">P-Specification</p>
-                  <p className="text-sm font-medium text-slate-800">{selected.pSpecification || 'N/A'}</p>
-                </div>
-                <div className="bg-slate-50 rounded-lg p-3">
                   <p className="text-xs text-slate-500 mb-1">Brand</p>
                   <p className="text-sm font-medium text-slate-800">{selected.brand || 'N/A'}</p>
                 </div>
@@ -417,6 +465,20 @@ export default function ProductMaster() {
                 <div className="bg-slate-50 rounded-lg p-3">
                   <p className="text-xs text-slate-500 mb-1">P-Description</p>
                   <p className="text-sm text-slate-700">{selected.description}</p>
+                </div>
+              )}
+
+              {Array.isArray(selected.specifications) && selected.specifications.filter(s => s.key).length > 0 && (
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-xs text-slate-500 mb-2 font-semibold">P-Specifications</p>
+                  <div className="divide-y divide-slate-100">
+                    {selected.specifications.filter(s => s.key).map((spec, i) => (
+                      <div key={i} className="flex items-center justify-between py-1.5">
+                        <span className="text-xs font-semibold text-slate-500 w-2/5">{spec.key}</span>
+                        <span className="text-sm text-slate-800 font-medium">{spec.value || '—'}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
               {selected.rejectionNote && (

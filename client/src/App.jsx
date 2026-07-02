@@ -179,6 +179,7 @@ import PerformanceMetrics from "@/pages/hrms/Manager/PerformanceMetrics";
 import RDDashboard from "@/pages/ResearchDevelopment/Dashboard";
 import StoreDashboard from "@/pages/store/StoreDashboard";
 import StoreOrders from "@/pages/store/StoreOrders";
+import StoreMaterialIssues from "@/pages/store/StoreMaterialIssues";
 import { RDProvider } from "@/contexts/RDContext";
 import ProductMaster from "@/pages/ResearchDevelopment/ProductMaster";
 import DesignApproval from "@/pages/ResearchDevelopment/DesignApproval";
@@ -857,11 +858,11 @@ function Router() {
           <SuperAdminAccounts />
         </ProtectedRoute>
       </Route>
-      <Route path="/super-admin/inventory">
+      {/* <Route path="/super-admin/inventory">
         <ProtectedRoute requiredRole="Super Admin">
           <ModernInventoryUI />
         </ProtectedRoute>
-      </Route>
+      </Route> */}
 
       <Route path="/super-admin/settings">
         <ProtectedRoute requiredRole="Super Admin">
@@ -1155,6 +1156,11 @@ function Router() {
       <Route path="/store/orders">
         <ProtectedRoute requiredRole={["Store Head", "Store Employee"]}>
           <StoreOrders />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/store/material-issues">
+        <ProtectedRoute requiredRole={["Store Head", "Store Employee"]}>
+          <StoreMaterialIssues />
         </ProtectedRoute>
       </Route>
       <Route path="/store/purchases/requests">
