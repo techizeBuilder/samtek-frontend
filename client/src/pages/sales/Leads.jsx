@@ -72,7 +72,8 @@ import {
   Square,
   PhoneCall,
   Handshake,
-  Download
+  Download,
+  Stamp
 } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
@@ -623,6 +624,23 @@ const Leads = () => {
     queryFn: () => leadApi.getUsers(),
   });
 
+  // Fetch dynamic lead settings (stages, sources, business types, document types)
+  const { data: adminSettingsData } = useQuery({
+    queryKey: ['admin-settings'],
+    queryFn: async () => {
+      const token = localStorage.getItem('token');
+      const apiBase = import.meta.env.VITE_API_URL || '/api';
+      const res = await fetch(`${apiBase}/admin-settings/`, { headers: { Authorization: `Bearer ${token}` } });
+      const d = await res.json();
+      return d;
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+  const dynStages       = adminSettingsData?.settings?.leadStages?.map(s => s.name) || null;
+  const dynSources      = adminSettingsData?.settings?.leadSources?.map(s => s.name) || null;
+  const dynBizTypes     = adminSettingsData?.settings?.businessTypes?.map(b => b.name) || null;
+  const dynDocTypes     = adminSettingsData?.settings?.documentTypes?.map(d => d.name) || null;
+
 const assignableUsers = (usersData?.users || []).filter(
   (user) =>
     user.role === "Sales Head" ||
@@ -803,11 +821,32 @@ const assignableUsers = (usersData?.users || []).filter(
     }
   });
 
+  const base64ToFile = (base64String, filename, mimeType) => {
+    try {
+      const base64Parts = base64String.split(',');
+      const base64Data = base64Parts.length > 1 ? base64Parts[1] : base64Parts[0];
+      const byteString = atob(base64Data);
+      const ab = new ArrayBuffer(byteString.length);
+      const ia = new Uint8Array(ab);
+      for (let i = 0; i < byteString.length; i++) {
+        ia[i] = byteString.charCodeAt(i);
+      }
+      const blob = new Blob([ab], { type: mimeType });
+      return new File([blob], filename, { type: mimeType });
+    } catch (e) {
+      console.error("base64ToFile conversion error:", e);
+      return null;
+    }
+  };
+
   const requestPaymentCheckMutation = useMutation({
     mutationFn: (id) => leadApi.requestPaymentCheck(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leads'] });
       toast({ title: "Success", description: "Payment check requested successfully" });
+      setIsGoToAccountModalOpen(false);
+      setGoToAccountLead(null);
+      setGoToAccountFiles({ po: null, paymentProof: null, quotation: null });
     },
     onError: (error) => {
       toast({
@@ -822,36 +861,36 @@ const assignableUsers = (usersData?.users || []).filter(
   const [isGoToAccountModalOpen, setIsGoToAccountModalOpen] = useState(false);
   const [goToAccountLead, setGoToAccountLead] = useState(null);
   const [goToAccountFiles, setGoToAccountFiles] = useState({ po: null, paymentProof: null, quotation: null });
+  const [isLoadingQuotation, setIsLoadingQuotation] = useState(false);
 
-  const handleOpenGoToAccountModal = (lead) => {
+  const handleOpenGoToAccountModal = async (lead) => {
     setGoToAccountLead(lead);
     setGoToAccountFiles({ po: null, paymentProof: null, quotation: null });
     setIsGoToAccountModalOpen(true);
-  };
 
-  const goToAccountMutation = useMutation({
-    mutationFn: (id) => leadApi.sendToAccount(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['leads'] });
-      toast({ title: "Success", description: "Lead sent to Account successfully" });
-      setIsGoToAccountModalOpen(false);
-      setGoToAccountLead(null);
-      setGoToAccountFiles({ po: null, paymentProof: null, quotation: null });
-    },
-    onError: (error) => {
-      toast({
-        title: "Error",
-        description: error?.message || "Failed to send lead to account",
-        variant: "destructive"
-      });
+    if (lead.hasQuotation) {
+      setIsLoadingQuotation(true);
+      try {
+        const res = await leadApi.getQuotation(lead._id);
+        if (res && res.success && res.quotation) {
+          const file = base64ToFile(res.quotation, `Quotation_${res.leadCode || 'document'}.pdf`, 'application/pdf');
+          if (file) {
+            setGoToAccountFiles(prev => ({ ...prev, quotation: file }));
+          }
+        }
+      } catch (e) {
+        console.error("Error auto-loading quotation PDF:", e);
+      } finally {
+        setIsLoadingQuotation(false);
+      }
     }
-  });
+  };
 
   const uploadLeadDocsMutation = useMutation({
     mutationFn: ({ id, files }) => leadApi.uploadLeadDocuments(id, files),
     onSuccess: (_, { id }) => {
-      // After docs uploaded, send lead to account
-      goToAccountMutation.mutate(id);
+      // After docs uploaded, request payment check
+      requestPaymentCheckMutation.mutate(id);
     },
     onError: (error) => {
       toast({
@@ -887,16 +926,18 @@ const assignableUsers = (usersData?.users || []).filter(
     if (!goToAccountLead) return;
     // Quotation and Payment Proof are required
     if (!goToAccountFiles.quotation) {
-      toast({ title: "Required", description: "Please upload Quotation before sending to Account.", variant: "destructive" });
+      toast({ title: "Required", description: "Please upload Quotation before requesting payment check.", variant: "destructive" });
       return;
     }
     if (!goToAccountFiles.paymentProof) {
-      toast({ title: "Required", description: "Please upload Payment Proof / Screenshot before sending to Account.", variant: "destructive" });
+      toast({ title: "Required", description: "Please upload Payment Proof / Screenshot before requesting payment check.", variant: "destructive" });
       return;
     }
-    // PO is optional — always upload (at least quotation + paymentProof are present)
+    // PO is optional — upload docs then trigger payment check request
     uploadLeadDocsMutation.mutate({ id: goToAccountLead._id, files: goToAccountFiles });
-  };  const handleEditBuyerClick = (lead) => {
+  };
+
+  const handleEditBuyerClick = (lead) => {
     setEditingLeadId(lead._id);
     setFormData({
       ...formData,
@@ -1679,7 +1720,7 @@ const assignableUsers = (usersData?.users || []).filter(
                       size="sm" 
                       className="h-8 text-xs rounded-full bg-blue-600"
                       onClick={() => setLocation(`/sales/quotation?lead_id=${lead._id}`)}
-                      disabled={lead.status === 'Won'}
+                      // disabled={lead.status === 'Won'}
                     >
                       {lead.hasQuotation  ? 'Update Quotation' : 'Send Quotation'}
                     </Button>
@@ -1692,25 +1733,14 @@ const assignableUsers = (usersData?.users || []).filter(
                           toast({ title: "Required", description: "Please send a quotation first.", variant: "destructive" });
                           return;
                         }
-                        requestPaymentCheckMutation.mutate(lead._id);
+                        handleOpenGoToAccountModal(lead);
                       }}
-                      disabled={requestPaymentCheckMutation.isPending && requestPaymentCheckMutation.variables === lead._id}
+                      disabled={requestPaymentCheckMutation.isPending || uploadLeadDocsMutation.isPending}
                     >
                       {lead.paymentCheckStatus === 'Pending' ? 'Verification Pending' :
                        lead.paymentCheckStatus === 'Paid' ? 'Payment Verified' :
                        lead.paymentCheckStatus === 'Partially Paid' ? 'Partial Payment Verified' :
                        'Check Payment'}
-                    </Button>
-                    
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="h-8 text-xs rounded-full bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100"
-                      onClick={() => handleOpenGoToAccountModal(lead)}
-                      disabled={lead.sentToAccount || goToAccountMutation.isPending || uploadLeadDocsMutation.isPending}
-                    >
-                      <Briefcase className="h-3 w-3 mr-1" />
-                      {lead.sentToAccount ? 'Sent to Account' : 'Go to Account'}
                     </Button>
 
                     <Button 
@@ -1954,7 +1984,7 @@ const assignableUsers = (usersData?.users || []).filter(
                       inputMode="numeric"
                     />
                     {formData.mobile && formData.mobile.length > 0 && formData.mobile.length < 10 && (
-                      <p className="text-xs text-amber-600">{10 - formData.mobile.length} aur digits chahiye</p>
+                      <p className="text-xs text-amber-600">{10 - formData.mobile.length} more digits required</p>
                     )}
                   </div>
                 </div>
@@ -2045,10 +2075,9 @@ const assignableUsers = (usersData?.users || []).filter(
                         <SelectValue placeholder="-- Select Source --" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="Direct Visit">Direct Visit</SelectItem>
-                        <SelectItem value="IndiaMART">IndiaMART</SelectItem>
-                        <SelectItem value="TradeIndia">TradeIndia</SelectItem>
-                        <SelectItem value="Website">Website</SelectItem>
+                        {(dynSources || ['Direct Visit', 'IndiaMART', 'TradeIndia', 'Website']).map(s => (
+                          <SelectItem key={s} value={s}>{s}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -2314,10 +2343,9 @@ const assignableUsers = (usersData?.users || []).filter(
                         <SelectValue placeholder="Select" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="Distributor">Distributor</SelectItem>
-                        <SelectItem value="Retailer">Retailer</SelectItem>
-                        <SelectItem value="Wholesaler">Wholesaler</SelectItem>
-                        <SelectItem value="End User">End User</SelectItem>
+                        {(dynBizTypes || ['Distributor', 'Retailer', 'Wholesaler', 'End User']).map(bt => (
+                          <SelectItem key={bt} value={bt}>{bt}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -2484,10 +2512,9 @@ const assignableUsers = (usersData?.users || []).filter(
                         <SelectValue placeholder="Select Type" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="Manufacturer">Manufacturer</SelectItem>
-                        <SelectItem value="Trader">Trader</SelectItem>
-                        <SelectItem value="End User">End User</SelectItem>
-                        <SelectItem value="Distributor">Distributor</SelectItem>
+                        {(dynBizTypes || ['Distributor', 'Retailer', 'Wholesaler', 'End User', 'Manufacturer', 'Trader']).map(bt => (
+                          <SelectItem key={bt} value={bt}>{bt}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -2627,10 +2654,9 @@ const assignableUsers = (usersData?.users || []).filter(
                   <SelectValue placeholder="Select Source" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Direct Visit">Direct Visit</SelectItem>
-                  <SelectItem value="IndiaMART">IndiaMART</SelectItem>
-                  <SelectItem value="TradeIndia">TradeIndia</SelectItem>
-                  <SelectItem value="Website">Website</SelectItem>
+                  {(dynSources || ['Direct Visit', 'IndiaMART', 'TradeIndia', 'Website']).map(s => (
+                    <SelectItem key={s} value={s}>{s}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -2641,9 +2667,9 @@ const assignableUsers = (usersData?.users || []).filter(
                   <SelectValue placeholder="Select Type" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Customer">Customer</SelectItem>
-                  <SelectItem value="Dealer">Dealer</SelectItem>
-                  <SelectItem value="Distributor">Distributor</SelectItem>
+                  {(dynBizTypes || ['Distributor', 'Retailer', 'Wholesaler', 'End User']).map(bt => (
+                    <SelectItem key={bt} value={bt}>{bt}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -2770,13 +2796,9 @@ const assignableUsers = (usersData?.users || []).filter(
                     <SelectValue placeholder="Select Type" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Aadhaar">Aadhaar</SelectItem>
-                    <SelectItem value="Gst Registration Certificate">Gst Registration Certificate</SelectItem>
-                    <SelectItem value="Indiamart Pns Calls">Indiamart Pns Calls</SelectItem>
-                    <SelectItem value="Ivr">Ivr</SelectItem>
-                    <SelectItem value="Non Discloser Agreement">Non Discloser Agreement</SelectItem>
-                    <SelectItem value="Pan">Pan</SelectItem>
-                    <SelectItem value="Other">Other</SelectItem>
+                    {(dynDocTypes || ['Aadhaar', 'Gst Registration Certificate', 'Indiamart Pns Calls', 'Ivr', 'Non Discloser Agreement', 'Pan', 'Other']).map(dt => (
+                      <SelectItem key={dt} value={dt}>{dt}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -3655,7 +3677,7 @@ const assignableUsers = (usersData?.users || []).filter(
           </div>
 
           <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto scrollbar-thin">
-            {STAGES.map((stageOption) => (
+            {(dynStages || STAGES).map((stageOption) => (
               <div 
                 key={stageOption} 
                 className="flex items-center gap-3 py-1 cursor-pointer"
@@ -3874,7 +3896,7 @@ const assignableUsers = (usersData?.users || []).filter(
         </DialogContent>
       </Dialog>
 
-      {/* ─── Go to Account: Document Upload Modal ─────────────────────── */}
+      {/* ─── Go to Account: Document Upload Modal (Reused for Payment Check) ─────────────────────── */}
       <Dialog open={isGoToAccountModalOpen} onOpenChange={(open) => {
         if (!open) {
           setIsGoToAccountModalOpen(false);
@@ -3885,13 +3907,13 @@ const assignableUsers = (usersData?.users || []).filter(
         <DialogContent className="max-w-lg">
           <DialogHeader className="pb-2">
             <DialogTitle className="text-lg font-bold flex items-center gap-2">
-              <Briefcase className="h-5 w-5 text-blue-600" />
-              Go to Account — Upload Documents
+              <Stamp className="h-5 w-5 text-orange-600" />
+              Request Payment Verification
             </DialogTitle>
             <DialogDescription className="text-gray-500 text-sm">
-              Uploading documents for{' '}
-              <span className="font-semibold text-gray-700">{goToAccountLead?.companyName}</span>.
-              {' '}Quotation and Payment Proof are required.
+              Upload payment documents for{' '}
+              <span className="font-semibold text-gray-700">{goToAccountLead?.companyName}</span>{' '}
+              to request account payment check.
             </DialogDescription>
           </DialogHeader>
 
@@ -3906,11 +3928,18 @@ const assignableUsers = (usersData?.users || []).filter(
                 <span className="text-xs font-normal text-gray-400 ml-1">PDF, Image, DOC</span>
               </Label>
               <div className={`border-2 border-dashed rounded-lg p-3 transition-colors ${
-                goToAccountFiles.quotation
+                isLoadingQuotation
+                  ? 'border-purple-200 bg-purple-50/50'
+                  : goToAccountFiles.quotation
                   ? 'border-purple-400 bg-purple-50'
                   : 'border-red-200 hover:border-purple-400 bg-red-50/30'
               }`}>
-                {goToAccountFiles.quotation ? (
+                {isLoadingQuotation ? (
+                  <div className="flex items-center gap-2 text-sm text-purple-600">
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    <span>Loading quotation from records...</span>
+                  </div>
+                ) : goToAccountFiles.quotation ? (
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <FileDown className="h-4 w-4 text-purple-600" />
@@ -4012,7 +4041,7 @@ const assignableUsers = (usersData?.users || []).filter(
 
             <p className="text-xs text-gray-500 bg-amber-50 rounded p-2 border border-amber-100 flex items-start gap-1.5">
               <AlertTriangle className="h-3.5 w-3.5 text-amber-500 mt-0.5 flex-shrink-0" />
-              <span>Quotation and Payment Proof are <strong>mandatory</strong> before sending to Account. PO is optional. Uploaded documents will be visible in Lead Payments section.</span>
+              <span>Quotation and Payment Proof are <strong>mandatory</strong> before sending to Account. PO is optional. Uploaded documents will be sent to the Accounts team for verification.</span>
             </p>
           </div>
 
@@ -4031,17 +4060,16 @@ const assignableUsers = (usersData?.users || []).filter(
             <Button
               className="px-5 bg-blue-600 hover:bg-blue-700"
               onClick={handleGoToAccountSubmit}
-              disabled={goToAccountMutation.isPending || uploadLeadDocsMutation.isPending}
+              disabled={requestPaymentCheckMutation.isPending || uploadLeadDocsMutation.isPending || isLoadingQuotation}
             >
-              {(goToAccountMutation.isPending || uploadLeadDocsMutation.isPending) ? (
+              {(requestPaymentCheckMutation.isPending || uploadLeadDocsMutation.isPending) ? (
                 <span className="flex items-center gap-2">
                   <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  {uploadLeadDocsMutation.isPending ? 'Uploading...' : 'Sending...'}
+                  {uploadLeadDocsMutation.isPending ? 'Uploading...' : 'Requesting...'}
                 </span>
               ) : (
                 <span className="flex items-center gap-1.5">
-                  <Briefcase className="h-4 w-4" />
-                  Send to Account
+                  Submit for Verification
                 </span>
               )}
             </Button>

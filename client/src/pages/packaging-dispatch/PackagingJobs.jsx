@@ -20,7 +20,7 @@ const checklistItems = [
   { key: 'allPartsIncluded', label: 'All Parts Included' },
   { key: 'accessoriesIncluded', label: 'Accessories Included' },
   { key: 'manualIncluded', label: 'Manual Included' },
-  { key: 'invoiceCopyIncluded', label: 'Invoice Copy Included' },
+  // { key: 'invoiceCopyIncluded', label: 'Invoice Copy Included' },
   { key: 'safetyPackingCompleted', label: 'Safety Packing Completed' },
 ];
 

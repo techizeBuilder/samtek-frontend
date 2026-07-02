@@ -45,6 +45,7 @@ import SuperAdminSales from "@/pages/super-admin/SuperAdminSales";
 import SuperAdminCustomers from "@/pages/super-admin/SuperAdminCustomers";
 import SuperAdminSettings from "@/pages/super-admin/SuperAdminSettings";
 import SuperAdminApiSettings from "@/pages/super-admin/SuperAdminApiSettings";
+import AdminSettings from "@/pages/admin/AdminSettings";
 import SuperAdminCompanies from "@/pages/super-admin/SuperAdminCompanies";
 import SuperAdminCompanyReport from "@/pages/super-admin/SuperAdminCompanyReport";
 import SuperAdminDispatches from "@/pages/super-admin/SuperAdminDispatches";
@@ -858,6 +859,11 @@ function Router() {
       <Route path="/super-admin/api-settings">
         <ProtectedRoute requiredRole="Super Admin">
           <SuperAdminApiSettings />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/admin/settings">
+        <ProtectedRoute requiredRole="Super Admin">
+          <AdminSettings />
         </ProtectedRoute>
       </Route>
       <Route path="/profile">

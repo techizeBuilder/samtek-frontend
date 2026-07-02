@@ -42,7 +42,10 @@ import {
   RefreshCw,
   MapPin,
   Phone,
-  Mail
+  Mail,
+  Stamp,
+  CheckCircle2,
+  AlertCircle
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { showSmartToast, showSuccessToast } from '@/lib/toast-utils';
@@ -51,6 +54,8 @@ import { api } from '@/services/api';
 import CompanyForm from '@/components/companies/CompanyForm';
 import CompanyDetails from '@/components/companies/CompanyDetails';
 import DeleteConfirmDialog from '@/components/inventory/DeleteConfirmDialog';
+
+const API_URL = import.meta.env.VITE_API_URL || '/api';
 
 export default function Companies() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -78,10 +83,31 @@ export default function Companies() {
 
   const companies = companiesData?.companies || [];
 
-  // Create/Update mutations
+  // Upload stamp helper
+  const uploadStamp = async (companyId, uploadFn) => {
+    if (typeof uploadFn === 'function') {
+      await uploadFn(companyId);
+      // Refetch companies to show updated stamp status
+      queryClient.invalidateQueries(['/api/companies']);
+    }
+  };
+
+  // Create mutation
   const createMutation = useMutation({
-    mutationFn: (data) => api.post('/companies', data),
-    onSuccess: () => {
+    mutationFn: ({ data, uploadFn }) => api.post('/companies', data),
+    onSuccess: async (result, { data, uploadFn }) => {
+      const companyId = result?.company?._id || result?._id;
+      if (companyId && uploadFn) {
+        try {
+          await uploadStamp(companyId, uploadFn);
+        } catch (e) {
+          toast({
+            title: 'Warning',
+            description: 'Company created but stamp upload failed. Please edit company to upload stamp.',
+            variant: 'destructive',
+          });
+        }
+      }
       queryClient.invalidateQueries(['/api/companies']);
       setShowForm(false);
       setEditingCompany(null);
@@ -102,8 +128,19 @@ export default function Companies() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }) => api.put(`/companies/${id}`, data),
-    onSuccess: () => {
+    mutationFn: ({ id, data, uploadFn }) => api.put(`/companies/${id}`, data),
+    onSuccess: async (result, { id, uploadFn }) => {
+      if (uploadFn) {
+        try {
+          await uploadStamp(id, uploadFn);
+        } catch (e) {
+          toast({
+            title: 'Warning',
+            description: 'Company updated but stamp upload failed.',
+            variant: 'destructive',
+          });
+        }
+      }
       queryClient.invalidateQueries(['/api/companies']);
       setShowForm(false);
       setEditingCompany(null);
@@ -135,11 +172,12 @@ export default function Companies() {
     }
   });
 
-  const handleFormSubmit = (data) => {
+  // handleFormSubmit receives (data, uploadFn) from CompanyForm
+  const handleFormSubmit = (data, uploadFn) => {
     if (editingCompany) {
-      updateMutation.mutate({ id: editingCompany._id, data });
+      updateMutation.mutate({ id: editingCompany._id, data, uploadFn });
     } else {
-      createMutation.mutate(data);
+      createMutation.mutate({ data, uploadFn });
     }
   };
 
@@ -246,19 +284,25 @@ export default function Companies() {
                   <TableHead>Unit & Location</TableHead>
                   <TableHead>Contact Info</TableHead>
                   <TableHead>Legal Info</TableHead>
+                  <TableHead className="text-center">
+                    <div className="flex items-center justify-center gap-1">
+                      <Stamp className="h-4 w-4" />
+                      Stamp
+                    </div>
+                  </TableHead>
                   <TableHead className="w-[100px]">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center py-8">
+                    <TableCell colSpan={6} className="text-center py-8">
                       Loading companies...
                     </TableCell>
                   </TableRow>
                 ) : companies.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                       No companies found. Add your first company to get started.
                     </TableCell>
                   </TableRow>
@@ -322,6 +366,20 @@ export default function Companies() {
                             GST: {company.gst}
                           </div>
                         </div>
+                      </TableCell>
+                      {/* Stamp Status Column */}
+                      <TableCell className="text-center">
+                        {company.stampUrl ? (
+                          <div className="flex flex-col items-center gap-1">
+                            <CheckCircle2 className="h-5 w-5 text-green-500" />
+                            <span className="text-[10px] text-green-600 font-medium">Uploaded</span>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col items-center gap-1">
+                            <AlertCircle className="h-5 w-5 text-amber-400" />
+                            <span className="text-[10px] text-amber-500 font-medium">Missing</span>
+                          </div>
+                        )}
                       </TableCell>
                       <TableCell>
                         <DropdownMenu>

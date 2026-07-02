@@ -583,10 +583,6 @@ const StoreOrders = () => {
                   <span className="text-xs text-slate-400">Status</span>
                   <div className="text-sm font-medium text-slate-700 capitalize">{selectedOrderDetails?.status || '—'}</div>
                 </div>
-                <div>
-                  <span className="text-xs text-slate-400">Payment Status</span>
-                  <div className="text-sm font-medium text-slate-700">{selectedOrderDetails?.paymentStatus || '—'}</div>
-                </div>
               </div>
             </div>
 
@@ -601,8 +597,6 @@ const StoreOrders = () => {
                       <th className="text-left px-4 py-3 font-semibold text-slate-500">Product Name</th>
                       <th className="text-left px-4 py-3 font-semibold text-slate-500">Specification</th>
                       <th className="text-center px-4 py-3 font-semibold text-slate-500">Qty</th>
-                      <th className="text-right px-4 py-3 font-semibold text-slate-500">Price</th>
-                      <th className="text-right px-4 py-3 font-semibold text-slate-500">Total</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-slate-100">
@@ -615,26 +609,14 @@ const StoreOrders = () => {
                           <td className="px-4 py-3 text-center">
                             <span className="bg-slate-100 text-slate-700 text-xs font-medium px-2 py-0.5 rounded">{p.quantity}</span>
                           </td>
-                          <td className="px-4 py-3 text-right text-slate-600">₹{p.price?.toLocaleString() || '—'}</td>
-                          <td className="px-4 py-3 text-right font-semibold text-slate-900">₹{p.total?.toLocaleString() || '—'}</td>
                         </tr>
                       ))
                     ) : (
                       <tr>
-                        <td colSpan={6} className="px-4 py-6 text-center text-slate-400 text-sm">No products found</td>
+                        <td colSpan={4} className="px-4 py-6 text-center text-slate-400 text-sm">No products found</td>
                       </tr>
                     )}
                   </tbody>
-                  {selectedOrderDetails?.products?.length > 0 && (
-                    <tfoot className="bg-slate-50 border-t border-slate-100">
-                      <tr>
-                        <td colSpan={5} className="px-4 py-3 text-right text-sm font-semibold text-slate-600">Total Amount</td>
-                        <td className="px-4 py-3 text-right text-base font-bold text-slate-900">
-                          ₹{selectedOrderDetails?.totalAmount?.toLocaleString()}
-                        </td>
-                      </tr>
-                    </tfoot>
-                  )}
                 </table>
               </div>
             </div>

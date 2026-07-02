@@ -65,6 +65,14 @@ const Quotation = () => {
   const [quotationType, setQuotationType] = useState('Customer'); // Price List, Dealer, Customer, PI
   const [selectedItems, setSelectedItems] = useState([]);
 
+  // Additional Charges state
+  const [additionalCharges, setAdditionalCharges] = useState([]); // [{id, name, price, gst}]
+  const [showChargesPicker, setShowChargesPicker] = useState(false);
+  const [chargePickerChecked, setChargePickerChecked] = useState({});
+
+  // Item name/description inline editing
+  const [editingItemField, setEditingItemField] = useState(null); // {id, field} or null
+
   const getImageUrl = (path) => {
     if (!path || path.trim() === '') return null; // no image
     if (path.startsWith('data:')) return path;   // base64 image — use as-is
@@ -80,7 +88,25 @@ const Quotation = () => {
   const [isAddProductModalOpen, setIsAddProductModalOpen] = useState(false);
 
   // ─── Terms & Conditions state ────────────────────────────────
-  const ALL_TERMS = [
+  // Fetch dynamic quotation settings
+  const { data: adminSettingsData } = useQuery({
+    queryKey: ['admin-settings'],
+    queryFn: async () => {
+      const token = localStorage.getItem('token');
+      const apiBase = import.meta.env.VITE_API_URL || '/api';
+      const res = await fetch(`${apiBase}/admin-settings/`, { headers: { Authorization: `Bearer ${token}` } });
+      return res.json();
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const dynTerms = adminSettingsData?.settings?.termsAndConditions;
+  const dynCharges = adminSettingsData?.settings?.additionalCharges;
+  const dynNotes = adminSettingsData?.settings?.quotationNotes;
+
+  const ALL_TERMS = (dynTerms && dynTerms.length > 0)
+    ? dynTerms.map((t, i) => ({ id: t._id || i + 1, heading: t.heading, text: t.text }))
+    : [
     { id: 1, heading: 'Jurisdiction', text: 'All disputes will be settled under Ghaziabad, Uttar Pradesh jurisdiction only.' },
     { id: 2, heading: 'Prices & Packing', text: 'All prices are Ex-Works Ghaziabad, excluding packing, transport, insurance, and taxes (charged at actuals)' },
     { id: 3, heading: 'Validity', text: 'Quotation valid for 30 days from the issue date. Prices may change thereafter.' },
@@ -91,12 +117,25 @@ const Quotation = () => {
     { id: 8, heading: 'Product & Packaging', text: "Customer must share product and packing details. If delayed, SAMTEK may arrange the same at customer's cost." },
     { id: 9, heading: 'Dispatch & Clearance', text: "Dispatch only after full payment. If goods aren't collected within 10 days, SAMTEK may return them at buyer's cost." },
     { id: 10, heading: 'Inspection', text: "Inspection allowed at factory with 15 days' prior notice. Third-party inspection charges are borne by the customer." },
-    { id: 11, heading: 'Installation & Commissioning', text: '1. Engineer will be deputed after receiving written confirmation from the customer. 2. All travel, lodging, boarding, and local conveyance expenses shall be borne by the customer. 3. Transport charges will be extra and borne by the customer at actuals. 4. All rates are based on Ex-Factory terms. 5. Pulley sets, V-belts, and nuts & bolts are included in our supply. 6. Electrical cables, panels, PVC pipes, and electrical fittings are under the customer\'s scope. 7. The customer must ensure adequate power supply during installation. In case of power fluctuation or failure, backup arrangements (generator/inverter) must be provided by the customer.' },
-    { id: 12, heading: 'Transit & Short Shipment', text: 'Customer must insure goods before dispatch. SAMTEK is not liable for transit loss. If short shipment occurs due to SAMTEK, pending shipment cost will be borne by the company' },
-    { id: 13, heading: 'Not In Our Scope Of Supply', text: 'The following are not included in our scope: 1. Civil and foundation work required for machine installation. 2. Semi-skilled or unskilled manpower and material-handling equipment for plant installation. 3. Tools and tackles required for installation. The customer must ensure adequate power supply during installation. In case of power fluctuation or failure, backup arrangements (generator/inverter) must be provided by the customer' },
+    { id: 11, heading: 'Installation & Commissioning', text: '1. Engineer will be deputed after receiving written confirmation from the customer. 2. All travel, lodging, boarding, and local conveyance expenses shall be borne by the customer.' },
+    { id: 12, heading: 'Transit & Short Shipment', text: 'Customer must insure goods before dispatch. SAMTEK is not liable for transit loss.' },
+    { id: 13, heading: 'Not In Our Scope Of Supply', text: 'Civil and foundation work required for machine installation is not included.' },
   ];
 
-  const ALL_ADDITIONAL_NOTES = [
+  const ALL_SERVICE_CHARGES = (dynCharges && dynCharges.length > 0)
+    ? dynCharges.map(c => ({ id: c._id || c.name.toLowerCase().replace(/\s+/g, '_'), name: c.name, price: c.price || 0, gst: c.gst || 18 }))
+    : [
+    { id: 'installation', name: 'Installation Charges', price: 10000, gst: 18 },
+    { id: 'freight',      name: 'Freight Charges',      price: 3000,  gst: 18 },
+    { id: 'storage10',   name: 'STORAGE TANK 10 TON',  price: 0,     gst: 18 },
+    { id: 'storage5',    name: 'STORAGE TANK 05 TON',  price: 160000, gst: 18 },
+    { id: 'amc',         name: 'AMC Charges',           price: 5000,  gst: 18 },
+    { id: 'training',    name: 'Training Charges',      price: 2000,  gst: 18 },
+  ];
+
+  const ALL_ADDITIONAL_NOTES = (dynNotes && dynNotes.length > 0)
+    ? dynNotes.map(n => n.text)
+    : [
     'The Semi-Skill and Unskilled Manpower, Along With Material Handling Equipment, Required For The Installation Of The Complete Plant.',
     'The Civil & Foundation Work Required For Installation of The Machine.',
     'Installation Charges Are Extra',
@@ -181,10 +220,49 @@ const Quotation = () => {
       });
       return res.data;
     },
-    enabled: !!leadId
+    enabled: !!leadId,
+    staleTime: 0,          // always fetch fresh — lead data may be updated between visits
+    refetchOnMount: true,
   });
 
   const leadData = leadResponse?.lead;
+
+  // Fetch the user's company to get the stamp URL
+  const { data: companyResponse } = useQuery({
+    queryKey: ['my-company'],
+    queryFn: async () => {
+      const token = localStorage.getItem('token');
+      const userStr = localStorage.getItem('user');
+      const user = userStr ? JSON.parse(userStr) : null;
+      const companyId = user?.companyId || user?.company?._id;
+      if (!companyId) return null;
+      const res = await axios.get(`${import.meta.env.VITE_API_URL || '/api'}/super-admin/companies/${companyId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      return res.data;
+    },
+    staleTime: 1000 * 60 * 10
+  });
+
+  const companyStampUrl = companyResponse?.company?.stampUrl
+    ? `${(import.meta.env.VITE_API_URL || 'http://localhost:5000').replace('/api', '')}${companyResponse.company.stampUrl}`
+    : null;
+
+  // ─── Logged-in salesman data (for Thanks & Regards) ─────────
+  const loggedInUser = (() => {
+    try {
+      const userStr = localStorage.getItem('user');
+      return userStr ? JSON.parse(userStr) : null;
+    } catch { return null; }
+  })();
+
+  // Company data from API (for dynamic header details)
+  const companyData = companyResponse?.company || {};
+  const companyGst = companyData.gst || '';
+  const companyMobile = companyData.mobile || '';
+  const companyEmail = companyData.email || '';
+  const companyWebsite = companyData.website || '';
+  const companyName = companyData.name || companyData.unitName || 'Samtek Machinery';
 
   // ─── localStorage key for this lead's quotation state ────────
   const quotationStateKey = leadId ? `quotation_state_${leadId}` : null;
@@ -202,6 +280,7 @@ const Quotation = () => {
       if (state.quotationType) setQuotationType(state.quotationType);
       if (state.selectedTerms?.length) setSelectedTerms(state.selectedTerms);
       if (state.selectedNotes?.length) setSelectedNotes(state.selectedNotes);
+      if (state.additionalCharges?.length) setAdditionalCharges(state.additionalCharges);
       // Jump straight to product selection — skip "Select Type" screen
       setStep('product_selection');
     } catch (e) { /* ignore */ }
@@ -817,7 +896,8 @@ const Quotation = () => {
           selectedItems,
           quotationType,
           selectedTerms,
-          selectedNotes
+          selectedNotes,
+          additionalCharges
         }));
       }
       toast({ title: "Success", description: "PDF generated with intelligent page breaks." });
@@ -924,7 +1004,14 @@ const Quotation = () => {
         to: recipients,
         customerName: leadData.contactPerson || leadData.companyName,
         leadCode: leadData.leadCode,
-        attachmentBase64: pdfBase64
+        attachmentBase64: pdfBase64,
+        // Compute net amount (items + GST + additional charges, no GST on charges) — same formula as renderPreview
+        quotationFinalAmount: (() => {
+          const itemsSubTotal = selectedItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
+          const itemsGst = selectedItems.reduce((acc, item) => acc + (item.price * item.quantity * (item.gst / 100)), 0);
+          const chargesSubTotal = additionalCharges.reduce((acc, c) => acc + c.price, 0);
+          return itemsSubTotal + itemsGst + chargesSubTotal;
+        })()
       }, {
         headers: { Authorization: `Bearer ${token}` },
         timeout: 60000 // 60 seconds timeout
@@ -937,7 +1024,8 @@ const Quotation = () => {
             selectedItems,
             quotationType,
             selectedTerms,
-            selectedNotes
+            selectedNotes,
+            additionalCharges
           }));
         }
         toast({
@@ -1290,21 +1378,73 @@ const Quotation = () => {
                       <div className="flex gap-3">
                         <div className="h-16 w-16 rounded border overflow-hidden bg-gray-50 flex-shrink-0 flex items-center justify-center">
                           {getImageUrl(item.image) ? (
-                            <img
-                              src={getImageUrl(item.image)}
-                              alt={item.name}
-                              className="h-full w-full object-cover"
-                              onError={(e) => { e.target.style.display='none'; e.target.nextSibling.style.display='flex'; }}
-                            />
+                            <img src={getImageUrl(item.image)} alt={item.name} className="h-full w-full object-cover"
+                              onError={(e) => { e.target.style.display='none'; e.target.nextSibling.style.display='flex'; }} />
                           ) : null}
                           <div className="h-full w-full items-center justify-center text-gray-300" style={{display: getImageUrl(item.image) ? 'none' : 'flex'}}>
                             <Package className="h-8 w-8" />
                           </div>
                         </div>
-                        <div>
-                          <div className="font-bold text-gray-900">{item.name}</div>
+                        <div className="flex-1 min-w-0">
+                          {/* Editable Item Name */}
+                          {editingItemField?.id === item.id && editingItemField?.field === 'name' ? (
+                            <Input
+                              autoFocus
+                              value={item.name}
+                              onChange={(e) => handleUpdateItem(item.id, 'name', e.target.value)}
+                              onBlur={() => setEditingItemField(null)}
+                              className="h-7 text-sm font-bold mb-1"
+                            />
+                          ) : (
+                            <div className="flex items-center gap-1 group">
+                              <span className="font-bold text-gray-900">{item.name}</span>
+                              <button onClick={() => setEditingItemField({id: item.id, field: 'name'})}
+                                className="opacity-0 group-hover:opacity-100 text-orange-400 hover:text-orange-600 transition-opacity" title="Edit name">
+                                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-current"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+                              </button>
+                            </div>
+                          )}
                           <div className="text-xs text-gray-500">Code: {item.code}</div>
-                          <div className="text-xs text-gray-400 line-clamp-1">{item.description}</div>
+                          {/* Editable Specs + Usage line (replaces description) */}
+                          {(() => {
+                            // Build default spec+usage text from DB data
+                            const buildSpecUsageText = (it) => {
+                              const specParts = (it.specifications || []).map(s => `${s.key}: ${s.value}`);
+                              const apps = it.applications || it.features || [];
+                              if (apps.length > 0) specParts.push(`Usage: ${apps.join(', ')}`);
+                              return specParts.join(' | ');
+                            };
+                            // Initialize specUsageText from item if not yet set
+                            const currentText = item.specUsageText !== undefined
+                              ? item.specUsageText
+                              : buildSpecUsageText(item);
+                            return editingItemField?.id === item.id && editingItemField?.field === 'specUsageText' ? (
+                              <textarea
+                                autoFocus
+                                value={currentText}
+                                onChange={(e) => handleUpdateItem(item.id, 'specUsageText', e.target.value)}
+                                onBlur={() => setEditingItemField(null)}
+                                rows={2}
+                                className="mt-1 w-full text-xs border border-gray-300 rounded px-2 py-1 resize-none focus:outline-none focus:border-blue-400"
+                              />
+                            ) : (
+                              <div className="flex items-start gap-1 group mt-0.5">
+                                <span className="text-xs text-gray-500">
+                                  {currentText || <em className="text-gray-300 italic">No specs/usage</em>}
+                                </span>
+                                <button
+                                  onClick={() => {
+                                    if (item.specUsageText === undefined) {
+                                      handleUpdateItem(item.id, 'specUsageText', buildSpecUsageText(item));
+                                    }
+                                    setEditingItemField({id: item.id, field: 'specUsageText'});
+                                  }}
+                                  className="opacity-0 group-hover:opacity-100 text-orange-400 hover:text-orange-600 transition-opacity flex-shrink-0 mt-0.5" title="Edit specs/usage">
+                                  <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-current"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+                                </button>
+                              </div>
+                            );
+                          })()}
                         </div>
                       </div>
                     </td>
@@ -1342,12 +1482,41 @@ const Quotation = () => {
                     </td>
                   </tr>
                 ))}
+                {/* Additional Charges rows in builder (with X remove button) */}
+                {additionalCharges.map((charge) => (
+                  <tr key={charge.id} className="border-b last:border-0 bg-orange-50">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-black text-orange-600 bg-orange-100 px-2 py-0.5 rounded">S</span>
+                        <span className="font-bold text-gray-800">{charge.name}</span>
+                        <button onClick={() => setAdditionalCharges(prev => prev.filter(c => c.id !== charge.id))}
+                          className="text-red-400 hover:text-red-600 ml-1" title="Remove">
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Input type="number" value={charge.price}
+                        onChange={(e) => setAdditionalCharges(prev => prev.map(c => c.id === charge.id ? {...c, price: parseFloat(e.target.value)||0} : c))}
+                        className="h-8 text-center" />
+                    </td>
+                    <td className="px-4 py-3 text-center text-gray-400">-</td>
+                    <td className="px-4 py-3 text-center text-gray-400">-</td>
+                    <td className="px-4 py-3 text-right font-bold">
+                      ₹{charge.price.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    </td>
+                    <td></td>
+                  </tr>
+                ))}
               </tbody>
               <tfoot className="bg-gray-50 font-bold">
                 <tr>
                   <td colSpan={4} className="px-4 py-3 text-right text-lg">Total Amount:</td>
                   <td className="px-4 py-3 text-right text-lg text-blue-600">
-                    ₹{selectedItems.reduce((acc, item) => acc + (item.price * item.quantity * (1 + item.gst / 100)), 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    ₹{(
+                      selectedItems.reduce((acc, item) => acc + (item.price * item.quantity * (1 + item.gst / 100)), 0) +
+                      additionalCharges.reduce((acc, c) => acc + c.price, 0)
+                    ).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                   </td>
                   <td></td>
                 </tr>
@@ -1356,6 +1525,88 @@ const Quotation = () => {
           </div>
         </CardContent>
       </Card>
+
+      {/* ─── Additional Service Charges Selector ─────────────────── */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base font-bold">Additional Charges</CardTitle>
+            <Button size="sm" variant="outline" className="gap-1 text-orange-600 border-orange-200 hover:bg-orange-50"
+              onClick={() => {
+                const init = {};
+                ALL_SERVICE_CHARGES.forEach(c => { init[c.id] = !!additionalCharges.find(x => x.id === c.id); });
+                setChargePickerChecked(init);
+                setShowChargesPicker(true);
+              }}>
+              <Plus className="h-4 w-4" /> Add Additional Charges
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {additionalCharges.length === 0 ? (
+            <p className="text-sm text-gray-400 italic">No charges selected. Click "Add Additional Charges" to select.</p>
+          ) : (
+            additionalCharges.map((charge) => (
+              <div key={charge.id} className="flex items-center gap-3 bg-orange-50 border border-orange-100 rounded-md p-3">
+                <span className="text-xs font-black text-orange-600 bg-orange-100 px-2 py-0.5 rounded">S</span>
+                <span className="flex-1 text-sm font-bold text-gray-800">{charge.name}</span>
+                <span className="text-sm text-gray-500">₹{charge.price.toLocaleString()}</span>
+                <button onClick={() => setAdditionalCharges(prev => prev.filter(c => c.id !== charge.id))}
+                  className="text-red-400 hover:text-red-600 ml-1" title="Remove">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            ))
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Charges Picker Modal */}
+      {showChargesPicker && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 max-h-[70vh] flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b">
+              <h3 className="text-lg font-bold">Select Service Charges</h3>
+              <button onClick={() => setShowChargesPicker(false)} className="text-gray-400 hover:text-gray-600"><X className="h-5 w-5" /></button>
+            </div>
+            <div className="overflow-y-auto flex-1 px-6 py-4 space-y-3">
+              <div className="flex items-center gap-2 mb-2">
+                <input type="checkbox" id="charge-select-all"
+                  checked={ALL_SERVICE_CHARGES.every(c => chargePickerChecked[c.id])}
+                  onChange={(e) => {
+                    const val = e.target.checked;
+                    const next = {};
+                    ALL_SERVICE_CHARGES.forEach(c => { next[c.id] = val; });
+                    setChargePickerChecked(next);
+                  }}
+                  className="h-4 w-4 rounded border-gray-300 text-orange-500" />
+                <label htmlFor="charge-select-all" className="text-sm font-semibold text-gray-700 cursor-pointer">Select All</label>
+              </div>
+              {ALL_SERVICE_CHARGES.map(c => (
+                <div key={c.id} className="flex items-center gap-3 p-3 rounded-lg border border-gray-100 hover:bg-orange-50 cursor-pointer"
+                  onClick={() => setChargePickerChecked(prev => ({ ...prev, [c.id]: !prev[c.id] }))}>
+                  <input type="checkbox" checked={!!chargePickerChecked[c.id]} onChange={() => {}}
+                    className="h-4 w-4 rounded border-gray-300 text-orange-500 flex-shrink-0" />
+                  <span className="flex-1 text-sm text-gray-800">{c.name}</span>
+                  <span className="text-sm font-bold text-gray-600">₹{c.price.toLocaleString('en-IN', {minimumFractionDigits: 2})}</span>
+                </div>
+              ))}
+            </div>
+            <div className="px-6 py-4 border-t flex justify-end gap-3">
+              <Button variant="outline" onClick={() => setShowChargesPicker(false)}>Cancel</Button>
+              <Button className="bg-green-600 hover:bg-green-700"
+                onClick={() => {
+                  const toAdd = ALL_SERVICE_CHARGES.filter(c => chargePickerChecked[c.id] && !additionalCharges.find(x => x.id === c.id));
+                  const toRemove = ALL_SERVICE_CHARGES.filter(c => !chargePickerChecked[c.id]).map(c => c.id);
+                  setAdditionalCharges(prev => [...prev.filter(x => !toRemove.includes(x.id)), ...toAdd]);
+                  setShowChargesPicker(false);
+                }}>
+                Apply
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ─── Terms & Conditions Selector ─────────────────────────── */}
       <Card>
@@ -1475,13 +1726,13 @@ const Quotation = () => {
                 setShowNotesPicker(true);
               }}
             >
-              <Plus className="h-4 w-4" /> Select Additional Charges
+              <Plus className="h-4 w-4" /> Select Additional Notes
             </Button>
           </div>
         </CardHeader>
         <CardContent className="space-y-2">
           {selectedNotes.length === 0 ? (
-            <p className="text-sm text-gray-400 italic">No notes selected. Click "Select Additional Charges" to add.</p>
+            <p className="text-sm text-gray-400 italic">No notes selected. Click "Select Additional Notes" to add.</p>
           ) : (
             selectedNotes.map((note, idx) => (
               <div key={idx} className="flex items-start gap-3 bg-gray-50 border border-gray-200 rounded-md p-3">
@@ -1505,7 +1756,7 @@ const Quotation = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg mx-4 max-h-[70vh] flex flex-col">
             <div className="flex items-center justify-between px-6 py-4 border-b">
-              <h3 className="text-lg font-bold">Select Additional Charges</h3>
+              <h3 className="text-lg font-bold">Select Additional Notes</h3>
               <button onClick={() => setShowNotesPicker(false)} className="text-gray-400 hover:text-gray-600"><X className="h-5 w-5" /></button>
             </div>
             <div className="overflow-y-auto flex-1 px-6 py-4 space-y-3">
@@ -1558,9 +1809,12 @@ const Quotation = () => {
   );
 
   const renderPreview = () => {
-    const totalAmount = selectedItems.reduce((acc, item) => acc + (item.price * item.quantity * (1 + item.gst / 100)), 0);
-    const subTotal = selectedItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
-    const totalGst = totalAmount - subTotal;
+    const itemsSubTotal = selectedItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
+    const itemsGst = selectedItems.reduce((acc, item) => acc + (item.price * item.quantity * (item.gst / 100)), 0);
+    const chargesSubTotal = additionalCharges.reduce((acc, c) => acc + c.price, 0);
+    const subTotal = itemsSubTotal + chargesSubTotal;
+    const totalGst = itemsGst;
+    const totalAmount = subTotal + totalGst;
 
     return (
       <div className="space-y-6 pb-20">
@@ -1597,7 +1851,7 @@ const Quotation = () => {
               </div>
               {/* Address Column */}
               <div className="w-[52%] p-4 border-r border-gray-400 space-y-1 flex flex-col justify-center">
-                <div className="text-xl font-serif font-bold tracking-tight text-black">Samtek Machinery</div>
+                <div className="text-xl font-serif font-bold tracking-tight text-black">{companyName}</div>
                 <div className="text-[9px] font-bold text-gray-800 uppercase">MKT BY: Samtek Engineering and GIS Solution Pvt Ltd.</div>
                 <div className="text-[9px] text-gray-600 leading-normal">
                   D-16 B S Road, Industrial Area, Near IMS College, Lal Kuan, Ghaziabad, Uttar Pradesh - 201001
@@ -1607,10 +1861,13 @@ const Quotation = () => {
 
               {/* Contact Column */}
               <div className="w-[30%] p-3 text-[10px] flex flex-col justify-center space-y-1">
-                <div className="flex justify-between gap-1"><span>Email:</span> <span className="font-medium truncate">sales@samtekmachinery.com</span></div>
-                <div className="flex justify-between gap-1"><span>Mobile:</span> <span className="font-medium">+91-7822813451</span></div>
-                <div className="flex justify-between gap-1"><span>Website:</span> <span className="font-medium">www.samtekmachinery.com</span></div>
-                <div className="flex justify-between gap-1 font-bold text-black pt-1 border-t border-gray-100"><span>GST:</span> <span>09AABCX1268H1ZJ</span></div>
+                <div className="flex justify-between gap-1"><span>Email:</span> <span className="font-medium truncate">{companyEmail || 'sales@samtekmachinery.com'}</span></div>
+                <div className="flex justify-between gap-1"><span>Mobile:</span> <span className="font-medium">{companyMobile ? `+91-${companyMobile}` : '+91-7822813451'}</span></div>
+                {companyWebsite && <div className="flex justify-between gap-1"><span>Website:</span> <span className="font-medium">{companyWebsite}</span></div>}
+                {!companyWebsite && <div className="flex justify-between gap-1"><span>Website:</span> <span className="font-medium">www.samtekmachinery.com</span></div>}
+                {companyGst && (
+                  <div className="flex justify-between gap-1 font-bold text-black pt-1 border-t border-gray-100"><span>GST:</span> <span>{companyGst}</span></div>
+                )}
               </div>
             </div>
 
@@ -1624,6 +1881,9 @@ const Quotation = () => {
                 </div>
                 <div className="text-[10px]"><span className="font-bold">Email:</span> {leadData?.email}</div>
                 <div className="text-[10px]"><span className="font-bold">Mobile:</span> {leadData?.mobile}</div>
+                {leadData?.gstNumber && (
+                  <div className="text-[10px]"><span className="font-bold">GST No:</span> {leadData.gstNumber}</div>
+                )}
               </div>
               <div className="w-2/5">
                 <table className="w-full h-full text-[10px]">
@@ -1669,17 +1929,32 @@ const Quotation = () => {
                             <div className="flex-1 space-y-2">
                               <div className="text-sm font-bold text-blue-900 border-b pb-1">{item.name}</div>
                               <div className="font-bold">Product Code: <span className="text-blue-600">{item.code || '-'}</span></div>
-                              <div className="text-[9px] text-gray-600 space-y-0.5">
-                                <div># Capacity : 200 Kg/hr</div>
-                                <div># Usages : Milling</div>
-                                <div># Model : Heavy Duty</div>
-                                <div># Size : 24 inch</div>
-                                <div># Material : Mild Steel</div>
-                                <div># Motor (HP) : 15 HP</div>
-                                <div># Load (KW) : 11.25 Kwh</div>
-                                <div># Motor RPM : 960 RPM</div>
-                                <div># Phase : Three</div>
-                              </div>
+                              {/* Dynamic Specs + Usage from DB (or edited text from builder) */}
+                              {(() => {
+                                // If user edited specUsageText in builder, use that; else build from DB fields
+                                const buildSpecUsageText = (it) => {
+                                  const specParts = (it.specifications || []).map(s => `${s.key}: ${s.value}`);
+                                  const apps = it.applications || it.features || [];
+                                  if (apps.length > 0) specParts.push(`Usage: ${apps.join(', ')}`);
+                                  return specParts.join(' | ');
+                                };
+
+                                const rawText = item.specUsageText !== undefined
+                                  ? item.specUsageText
+                                  : buildSpecUsageText(item);
+
+                                if (!rawText) return null;
+
+                                // Split by ' | ' to render each as a separate line with #
+                                const lines = rawText.split(' | ').map(l => l.trim()).filter(Boolean);
+                                return (
+                                  <div className="text-[9px] text-gray-600 space-y-0.5 mt-1">
+                                    {lines.map((line, i) => (
+                                      <div key={i}># {line}</div>
+                                    ))}
+                                  </div>
+                                );
+                              })()}
                             </div>
                             <div className="w-24 h-24 border border-gray-200 rounded flex items-center justify-center p-1 shrink-0 bg-white overflow-hidden">
                               {getImageUrl(item.image) ? (
@@ -1704,6 +1979,21 @@ const Quotation = () => {
                         </td>
                         <td className="p-2 border-r border-gray-400 align-top font-bold">{item.gst}%</td>
                         <td className="p-2 align-top text-right font-black">₹{(item.price * item.quantity * (1 + item.gst / 100)).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                      </tr>
+                    ))}
+                    {/* Additional Charges rows in PDF — no remove button */}
+                    {additionalCharges.map((charge, idx) => (
+                      <tr key={charge.id} className="border-b border-gray-400 pdf-section">
+                        <td className="p-2 border-r border-gray-400 align-top font-bold text-orange-600">S</td>
+                        <td className="p-4 border-r border-gray-400 text-left">
+                          <div className="text-sm font-bold text-blue-900">{charge.name}</div>
+                        </td>
+                        <td className="p-2 border-r border-gray-400 align-top">
+                          <div className="border border-gray-300 p-1 rounded font-bold">₹{charge.price.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
+                        </td>
+                        <td className="p-2 border-r border-gray-400 align-top text-center font-bold text-gray-400">-</td>
+                        <td className="p-2 border-r border-gray-400 align-top font-bold text-gray-400">-</td>
+                        <td className="p-2 align-top text-right font-black">₹{charge.price.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1779,15 +2069,31 @@ const Quotation = () => {
                 <div className="flex justify-between items-end mt-12">
                   <div className="space-y-1">
                     <div className="font-black text-sm text-blue-900">Thanks & Regards</div>
-                    <div className="text-[11px] font-bold">Samtek Machinery</div>
-                    <div className="text-[10px] text-gray-500">Mobile: 7822813451</div>
-                    <div className="text-[10px] text-gray-500">Email: sales@samtekmachinery.com</div>
+                    <div className="text-[11px] font-bold">{loggedInUser?.fullName || companyName}</div>
+                    {(loggedInUser?.email) && (
+                      <div className="text-[10px] text-gray-500">Email: {loggedInUser.email}</div>
+                    )}
+                    {(loggedInUser?.mobile) && (
+                      <div className="text-[10px] text-gray-500">Mobile: {loggedInUser.mobile}</div>
+                    )}
                   </div>
                   <div className="text-center relative">
-                    <div className="font-black text-sm text-blue-900 mb-12">Authorized Signatory</div>
-                    <div className="absolute -bottom-8 right-0 w-28 opacity-70">
-                      <img src="/samtek_stamp.png" alt="Stamp" className="w-full h-auto" />
-                    </div>
+                    <div className="font-black text-sm text-blue-900 mb-2">Authorized Signatory</div>
+                    {companyStampUrl ? (
+                      <div className="w-32 h-24 flex items-center justify-center">
+                        <img
+                          src={companyStampUrl}
+                          alt="Company Stamp"
+                          className="max-w-full max-h-full object-contain opacity-90"
+                          crossOrigin="anonymous"
+                          onError={(e) => { e.target.style.display='none'; }}
+                        />
+                      </div>
+                    ) : (
+                      <div className="w-32 h-24 border-2 border-dashed border-gray-300 rounded flex items-center justify-center">
+                        <span className="text-[9px] text-gray-400 italic text-center px-1">Stamp not uploaded</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1870,7 +2176,7 @@ const Quotation = () => {
                 <img src="/logo Semtek.webp" alt="Samtek Logo" className="h-12 w-auto object-contain" />
               </div>
               <div>
-                <div className="text-2xl font-black tracking-tight">SAMTEK MACHINERY</div>
+                <div className="text-2xl font-black tracking-tight">{companyName.toUpperCase()}</div>
                 <div className="text-[10px] opacity-80">Mkt By : Samtek Engineering And GIS Solutions Pvt Ltd</div>
               </div>
             </div>
@@ -1898,7 +2204,21 @@ const Quotation = () => {
             <div className="grid grid-cols-5 gap-8 items-start mb-8">
               <div className="col-span-1">
                 <div className="relative mb-6">
-                  <img src="/anniversary_badge.png" alt="13 Years Anniversary" className="w-full h-auto" />
+                  {/* Dynamic anniversary badge — year auto-increments each year */}
+                  {(() => {
+                    const FOUNDED_YEAR = 2013;
+                    const yearsOfExcellence = new Date().getFullYear() - FOUNDED_YEAR;
+                    return (
+                      <div className="relative w-full aspect-square flex items-center justify-center">
+                        <img src="/anniversary_badge.png" alt={`${yearsOfExcellence} Years Anniversary`} className="w-full h-auto absolute inset-0" />
+                        <div className="relative z-10 flex flex-col items-center justify-center" style={{ marginTop: '-8%' }}>
+                          <span className="font-black text-white leading-none" style={{ fontSize: 'clamp(28px, 8vw, 48px)', textShadow: '0 2px 4px rgba(0,0,0,0.4)' }}>
+                            {yearsOfExcellence}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* Checklist */}
@@ -1951,22 +2271,47 @@ const Quotation = () => {
               </table>
             </div>
 
-            {/* Contact Footer */}
-            <div className="mt-12 flex flex-col items-center space-y-4 pt-8 border-t border-gray-100 pdf-section">
-              <div className="flex gap-8 text-blue-800 font-bold text-sm">
-                <div className="flex items-center gap-2">
-                  <div className="bg-green-500 p-1 rounded-full text-white"><Send className="h-3 w-3" /></div>
-                  <span>+91 7822813451</span>
+            {/* Contact Footer — matches printed quotation exactly */}
+            <div className="mt-10 pt-6 border-t border-gray-200 pdf-section">
+              {/* Phone + Website row */}
+              <div className="flex justify-center gap-10 mb-3">
+                <div className="flex items-center gap-2 text-blue-900 font-bold text-sm">
+                  {/* WhatsApp icon */}
+                  <svg viewBox="0 0 24 24" className="w-5 h-5 fill-green-500 shrink-0"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 0 0-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413z"/></svg>
+                  <span>{companyMobile ? `+91 ${companyMobile}` : '+91 7822813451'}</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <div className="bg-blue-500 p-1 rounded-full text-white"><Search className="h-3 w-3" /></div>
-                  <span>https://www.samtekmachinery.com/</span>
+                <div className="flex items-center gap-2 text-blue-900 font-bold text-sm">
+                  {/* Globe icon */}
+                  <svg viewBox="0 0 24 24" className="w-5 h-5 text-blue-500 shrink-0" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                  <span>{companyWebsite || 'https://www.samtekmachinery.com/'}</span>
                 </div>
               </div>
-              <div className="flex flex-wrap justify-center gap-6 text-[10px] font-bold text-blue-800">
-                <span className="flex items-center gap-1 opacity-70">@samtekmachinerygzb</span>
-                <span className="flex items-center gap-1 opacity-70">@samtekmachinerygzb</span>
-                <span className="flex items-center gap-1 opacity-70">@SamTekMachinery</span>
+
+              {/* Social handles row */}
+              <div className="flex justify-center gap-8 mb-4">
+                <div className="flex items-center gap-1.5 text-blue-900 font-bold text-xs">
+                  {/* Facebook */}
+                  <svg viewBox="0 0 24 24" className="w-4 h-4 fill-blue-600 shrink-0"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+                  <span>@samtekmachinerygzb</span>
+                </div>
+                <div className="flex items-center gap-1.5 text-blue-900 font-bold text-xs">
+                  {/* Instagram */}
+                  <svg viewBox="0 0 24 24" className="w-4 h-4 shrink-0" style={{fill:'url(#igGrad)'}}>
+                    <defs><linearGradient id="igGrad" x1="0%" y1="100%" x2="100%" y2="0%"><stop offset="0%" stopColor="#f09433"/><stop offset="25%" stopColor="#e6683c"/><stop offset="50%" stopColor="#dc2743"/><stop offset="75%" stopColor="#cc2366"/><stop offset="100%" stopColor="#bc1888"/></linearGradient></defs>
+                    <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>
+                  </svg>
+                  <span>@samtekmachinerygzb</span>
+                </div>
+                <div className="flex items-center gap-1.5 text-blue-900 font-bold text-xs">
+                  {/* YouTube */}
+                  <svg viewBox="0 0 24 24" className="w-4 h-4 fill-red-600 shrink-0"><path d="M23.495 6.205a3.007 3.007 0 0 0-2.088-2.088c-1.87-.501-9.396-.501-9.396-.501s-7.507-.01-9.396.501A3.007 3.007 0 0 0 .527 6.205a31.247 31.247 0 0 0-.522 5.805 31.247 31.247 0 0 0 .522 5.783 3.007 3.007 0 0 0 2.088 2.088c1.868.502 9.396.502 9.396.502s7.506 0 9.396-.502a3.007 3.007 0 0 0 2.088-2.088 31.247 31.247 0 0 0 .5-5.783 31.247 31.247 0 0 0-.5-5.805zM9.609 15.601V8.408l6.264 3.602z"/></svg>
+                  <span>@SamTekMachinery</span>
+                </div>
+              </div>
+
+              {/* Address bar */}
+              <div className="bg-orange-500 text-white text-xs font-bold px-4 py-2 rounded text-center">
+                <span className="font-black">ADDRESS :-</span> D-16, BS Road Industrial Area, Near IMS College, Lal Kuan, Ghaziabad-201009
               </div>
             </div>
           </div>

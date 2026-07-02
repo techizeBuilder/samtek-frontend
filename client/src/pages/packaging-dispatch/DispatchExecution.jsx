@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { Truck, CheckCircle2, AlertTriangle, X, MapPin, Clock } from 'lucide-react';
+import { Truck, CheckCircle2, AlertTriangle, X, MapPin, Clock, Upload, FileText, FileCheck } from 'lucide-react';
 
 const statusColor = {
   Ready: 'bg-blue-100 text-blue-700',
@@ -137,16 +137,77 @@ function ExecuteDispatchModal({ dispatch, onClose }) {
   );
 }
 
+function FileUploadSlot({ label, fieldName, icon: Icon, file, onChange }) {
+  const inputId = `delivery-doc-${fieldName}`;
+  return (
+    <div>
+      <Label className="text-sm font-medium text-slate-700 mb-1.5 block">{label} <span className="text-red-500">*</span></Label>
+      <label
+        htmlFor={inputId}
+        className={`flex items-center gap-3 px-4 py-3 rounded-xl border-2 border-dashed cursor-pointer transition-all
+          ${file
+            ? 'border-emerald-400 bg-emerald-50'
+            : 'border-slate-200 bg-slate-50 hover:border-blue-300 hover:bg-blue-50'
+          }`}
+      >
+        {file ? (
+          <FileCheck className="h-5 w-5 text-emerald-600 flex-shrink-0" />
+        ) : (
+          <Icon className="h-5 w-5 text-slate-400 flex-shrink-0" />
+        )}
+        <div className="flex-1 min-w-0">
+          {file ? (
+            <p className="text-sm text-emerald-700 font-medium truncate">{file.name}</p>
+          ) : (
+            <p className="text-sm text-slate-500">Click to upload {label}</p>
+          )}
+          <p className="text-xs text-slate-400 mt-0.5">PDF, JPG, PNG — max 10 MB</p>
+        </div>
+        {file && (
+          <button
+            type="button"
+            onClick={e => { e.preventDefault(); onChange(null); }}
+            className="p-1 rounded hover:bg-red-100 text-slate-400 hover:text-red-500"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
+      </label>
+      <input
+        id={inputId}
+        type="file"
+        accept=".pdf,.jpg,.jpeg,.png,.webp"
+        className="hidden"
+        onChange={e => onChange(e.target.files?.[0] || null)}
+      />
+    </div>
+  );
+}
+
 function DeliveryModal({ dispatch, onClose }) {
   const { confirmDelivery } = usePackagingDispatch();
   const { toast } = useToast();
-  const [deliveryProofUrl, setDeliveryProofUrl] = useState('');
+  const [files, setFiles] = useState({ noc: null, ewayBill: null, invoice: null });
   const [loading, setLoading] = useState(false);
 
+  const setFile = (field) => (file) => setFiles(f => ({ ...f, [field]: file }));
+
+  const allUploaded = files.noc && files.ewayBill && files.invoice;
+
   const handle = async () => {
+    if (!allUploaded) {
+      toast({ title: 'Documents required', description: 'Please upload NOC, E-Way Bill, and Invoice before confirming delivery.', variant: 'destructive' });
+      return;
+    }
     setLoading(true);
     try {
-      await confirmDelivery(dispatch._id, { deliveryProofUrl, deliveryOTPVerified: true });
+      const formData = new FormData();
+      formData.append('noc', files.noc);
+      formData.append('ewayBill', files.ewayBill);
+      formData.append('invoice', files.invoice);
+      formData.append('deliveryOTPVerified', 'true');
+
+      await confirmDelivery(dispatch._id, formData);
       toast({ title: 'Delivery confirmed', description: `${dispatch.dispatchId} marked as delivered` });
       onClose();
     } catch (e) {
@@ -158,28 +219,81 @@ function DeliveryModal({ dispatch, onClose }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
-        <div className="flex justify-between items-center px-6 pt-6 pb-4 border-b border-slate-100">
-          <h2 className="font-semibold text-slate-800">Confirm Delivery</h2>
-          <button onClick={onClose}><X className="h-5 w-5 text-slate-400 hover:text-slate-600" /></button>
-        </div>
-        <div className="px-6 py-4 space-y-3">
-          <div className="p-3 bg-slate-50 rounded-lg text-sm">
-            <p className="font-medium text-slate-700">{dispatch.dispatchId}</p>
-            <p className="text-slate-500">{dispatch.machineName} delivered to {dispatch.customerName || 'Customer'}</p>
-          </div>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col" style={{ maxHeight: 'calc(100vh - 60px)' }}>
+        {/* Header */}
+        <div className="flex justify-between items-center px-6 pt-6 pb-4 border-b border-slate-100 flex-shrink-0">
           <div>
-            <Label>Delivery Proof URL (optional)</Label>
-            <Input className="mt-1" value={deliveryProofUrl} onChange={e => setDeliveryProofUrl(e.target.value)} placeholder="https://..." />
+            <h2 className="font-bold text-lg text-slate-800">Confirm Delivery</h2>
+            <p className="text-xs text-slate-400 mt-0.5">Upload all 3 documents to confirm delivery</p>
           </div>
-          <div className="flex items-center gap-2 p-3 bg-emerald-50 rounded-lg text-sm text-emerald-700">
-            <CheckCircle2 className="h-4 w-4" />
-            OTP verification will be marked as confirmed
-          </div>
+          <button onClick={onClose} className="p-1 rounded-lg hover:bg-slate-100">
+            <X className="h-5 w-5 text-slate-400 hover:text-slate-600" />
+          </button>
         </div>
-        <div className="px-6 pb-6 pt-4 border-t border-slate-100 flex gap-3">
-          <Button variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
-          <Button className="flex-1" onClick={handle} disabled={loading}>
+
+        {/* Body */}
+        <div className="overflow-y-auto flex-1 px-6 py-5 space-y-4">
+          {/* Order info */}
+          <div className="p-3 bg-slate-50 rounded-xl text-sm border border-slate-100">
+            <p className="font-semibold text-slate-700">{dispatch.dispatchId}</p>
+            <p className="text-slate-500 mt-0.5">{dispatch.machineName} → {dispatch.customerName || 'Customer'}</p>
+          </div>
+
+          {/* Progress indicator */}
+          <div className="flex items-center gap-2 text-xs text-slate-500">
+            <span className={`w-5 h-5 rounded-full flex items-center justify-center text-white text-xs font-bold ${files.noc ? 'bg-emerald-500' : 'bg-slate-200'}`}>
+              {files.noc ? '✓' : '1'}
+            </span>
+            <div className={`flex-1 h-0.5 ${files.noc ? 'bg-emerald-400' : 'bg-slate-200'}`} />
+            <span className={`w-5 h-5 rounded-full flex items-center justify-center text-white text-xs font-bold ${files.ewayBill ? 'bg-emerald-500' : 'bg-slate-200'}`}>
+              {files.ewayBill ? '✓' : '2'}
+            </span>
+            <div className={`flex-1 h-0.5 ${files.ewayBill ? 'bg-emerald-400' : 'bg-slate-200'}`} />
+            <span className={`w-5 h-5 rounded-full flex items-center justify-center text-white text-xs font-bold ${files.invoice ? 'bg-emerald-500' : 'bg-slate-200'}`}>
+              {files.invoice ? '✓' : '3'}
+            </span>
+          </div>
+
+          <FileUploadSlot
+            label="NOC (No Objection Certificate)"
+            fieldName="noc"
+            icon={FileText}
+            file={files.noc}
+            onChange={setFile('noc')}
+          />
+          <FileUploadSlot
+            label="E-Way Bill"
+            fieldName="ewayBill"
+            icon={FileText}
+            file={files.ewayBill}
+            onChange={setFile('ewayBill')}
+          />
+          <FileUploadSlot
+            label="Invoice"
+            fieldName="invoice"
+            icon={FileText}
+            file={files.invoice}
+            onChange={setFile('invoice')}
+          />
+
+          {allUploaded && (
+            <div className="flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-700">
+              <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
+              <span className="font-medium">All documents uploaded — ready to confirm delivery</span>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 pb-6 pt-4 border-t border-slate-100 flex gap-3 flex-shrink-0">
+          <Button variant="outline" className="flex-1 h-11" onClick={onClose} disabled={loading}>
+            Cancel
+          </Button>
+          <Button
+            className={`flex-1 h-11 ${allUploaded ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-slate-300 cursor-not-allowed'}`}
+            onClick={handle}
+            disabled={loading || !allUploaded}
+          >
             {loading ? 'Confirming...' : 'Confirm Delivery'}
           </Button>
         </div>

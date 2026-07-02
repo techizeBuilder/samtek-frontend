@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { useSettings } from '@/hooks/useSettings';
+import { generateDueBillPDF } from '@/utils/generateDueBillPDF';
 import {
   Search,
   Phone,
@@ -17,7 +18,9 @@ import {
   AlertCircle,
   Eye,
   MessageSquare,
-  DollarSign
+  DollarSign,
+  Receipt,
+  Loader2
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -75,6 +78,10 @@ const PackedOrders = () => {
   // View Order Detail Modal State
   const [viewDetailOpen, setViewDetailOpen] = useState(false);
   const [viewDetailItem, setViewDetailItem] = useState(null);
+
+  // Due Bill State
+  const [dueBillLoading, setDueBillLoading] = useState(null); // stores jobId that's loading
+  const logoRef = useRef(null);
 
   // Company info
   const userCompany = user?.company || {};
@@ -221,6 +228,50 @@ const PackedOrders = () => {
   const openViewDetail = (item) => {
     setViewDetailItem(item);
     setViewDetailOpen(true);
+  };
+
+  // ── Due Bill PDF ──────────────────────────────────────────────────────────
+  const handleGenerateDueBill = async (item) => {
+    setDueBillLoading(item.jobId);
+    try {
+      // 1. Fetch detailed due bill data from backend
+      const res = await apiRequest('GET', `/api/accounts/packed-orders/${item.jobId}/due-bill`);
+      const billData = res.data;
+
+      // 2. Load logo as base64 (try from /logo Semtek.webp in public folder)
+      let logoDataUrl = null;
+      try {
+        const logoResp = await fetch('/logo Semtek.webp');
+        if (logoResp.ok) {
+          const blob = await logoResp.blob();
+          logoDataUrl = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          });
+        }
+      } catch (_) {
+        // Logo failed to load, proceed without it
+      }
+
+      // 3. Generate PDF
+      await generateDueBillPDF(billData, logoDataUrl);
+
+      toast({
+        title: 'Due Bill Generated',
+        description: `PDF downloaded for order ${item.orderCode}`,
+        className: 'bg-green-50 border-green-200 text-green-900'
+      });
+    } catch (err) {
+      toast({
+        title: 'PDF Generation Failed',
+        description: err.message || 'Could not generate due bill',
+        variant: 'destructive'
+      });
+    } finally {
+      setDueBillLoading(null);
+    }
   };
 
   const handleCall = (mobile) => {
@@ -495,6 +546,23 @@ const PackedOrders = () => {
                         {/* Actions */}
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-2">
+                            {/* Generate Due Bill */}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8 border-orange-200 hover:border-orange-400 hover:bg-orange-50 text-orange-600 font-semibold rounded-md"
+                              onClick={() => handleGenerateDueBill(item)}
+                              disabled={dueBillLoading === item.jobId}
+                              title="Generate Due Bill PDF"
+                            >
+                              {dueBillLoading === item.jobId ? (
+                                <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                              ) : (
+                                <Receipt className="w-3.5 h-3.5 mr-1" />
+                              )}
+                              Due Bill
+                            </Button>
+
                             {item.saleId ? (
                               <Button
                                 size="sm"
