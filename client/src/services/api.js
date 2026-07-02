@@ -586,6 +586,20 @@ class APIService {
     return this.put(`/super-admin/companies/${id}`, data);
   }
 
+  async uploadCompanyStamp(id, file) {
+    const formData = new FormData();
+    formData.append('stamp', file);
+    const token = localStorage.getItem('token');
+    const response = await fetch(`${this.baseURL}/super-admin/companies/${id}/stamp`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.message || 'Stamp upload failed');
+    return data;
+  }
+
   async deleteCompany(id) {
     return this.delete(`/super-admin/companies/${id}`);
   }

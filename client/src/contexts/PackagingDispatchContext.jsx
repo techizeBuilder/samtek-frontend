@@ -56,7 +56,10 @@ export function PackagingDispatchProvider({ children }) {
   const updateDispatchOrderMut = useMutation({ mutationFn: ({ id, data }) => apiRequest('PUT', `${BASE}/dispatch-orders/${id}`, data), onSuccess: invOrders });
   const executeDispatchMut = useMutation({ mutationFn: ({ id, data }) => apiRequest('PUT', `${BASE}/dispatch-orders/${id}/execute`, data), onSuccess: () => { invOrders(); invDashboard(); } });
   const markInTransitMut = useMutation({ mutationFn: (id) => apiRequest('PUT', `${BASE}/dispatch-orders/${id}/in-transit`), onSuccess: () => { invOrders(); invDashboard(); } });
-  const confirmDeliveryMut = useMutation({ mutationFn: ({ id, data }) => apiRequest('PUT', `${BASE}/dispatch-orders/${id}/deliver`, data), onSuccess: () => { invOrders(); invDashboard(); } });
+  const confirmDeliveryMut = useMutation({
+    mutationFn: ({ id, data }) => apiRequest('PUT', `${BASE}/dispatch-orders/${id}/deliver`, data),
+    onSuccess: () => { invOrders(); invDashboard(); },
+  });
   const closeDispatchMut = useMutation({ mutationFn: (id) => apiRequest('PUT', `${BASE}/dispatch-orders/${id}/close`), onSuccess: () => { invOrders(); invDashboard(); } });
 
   // ── Stable callbacks ─────────────────────────────────────────────────────────

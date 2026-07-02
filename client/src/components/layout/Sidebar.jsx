@@ -30,8 +30,7 @@ const superAdminMenuItems = [
   { label: 'Customers', path: '/super-admin/customers', icon: Users, module: 'customers' },
   { label: 'Companies', path: '/super-admin/companies', icon: Building2, module: 'companies' },
   { label: 'Role & Permissions', path: '/role-permission-management', icon: Shield, module: 'permissions' },
-  { label: 'API Settings', path: '/super-admin/api-settings', icon: Cog, module: 'settings' },
-  { label: 'Settings', path: '/super-admin/settings', icon: Settings, module: 'settings' },
+  { label: 'Settings', path: '/admin/settings', icon: Settings, module: 'settings' },
 ];
 
 const productionMenuItems = [
@@ -188,7 +187,6 @@ const accountsMenuItems = [
   { label: 'Ledger', path: '/accounts/ledger', icon: History, module: 'accounts', feature: 'bankAndCash' },
   { label: 'Reports', path: '/accounts/financial-summary', icon: BarChart, module: 'accounts', feature: 'reports' },
   { label: 'Payment Reminders', path: '/accounts/payment-reminders', icon: Bell, module: 'accounts', feature: 'bankAndCash' },
-  { label: 'Lead Payments', path: '/accounts/lead-payments', icon: Target, module: 'accounts' },
   { label: 'Settings', path: '/accounts/settings', icon: Settings, module: 'accounts', feature: 'settings' },
   {
     label: 'Training Management',

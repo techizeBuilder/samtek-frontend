@@ -38,6 +38,15 @@ export const leadApi = {
     });
   },
 
+  getQuotation: (id) => {
+    const token = localStorage.getItem('token');
+    return apiRequest(`/leads/${id}/quotation`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+  },
+
   update: (id, updateData) => {
     const token = localStorage.getItem('token');
     return apiRequest(`/leads/${id}`, {
