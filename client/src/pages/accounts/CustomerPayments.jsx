@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { apiRequest, queryClient } from '@/lib/queryClient';
+import axios from 'axios';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -29,6 +30,30 @@ const CustomerPayments = () => {
     const { toast } = useToast();
     const [selectedCustomer, setSelectedCustomer] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
+
+    // Fetch logged-in user's company details
+    const { data: companyResponse } = useQuery({
+        queryKey: ['my-company-payments'],
+        queryFn: async () => {
+            const token = localStorage.getItem('token');
+            const userStr = localStorage.getItem('user');
+            const user = userStr ? JSON.parse(userStr) : null;
+            const companyId = user?.companyId || user?.company?._id;
+            if (!companyId) return null;
+            const apiBase = import.meta.env.VITE_API_URL || '/api';
+            const res = await axios.get(`${apiBase}/super-admin/companies/${companyId}`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            return res.data;
+        },
+        staleTime: 1000 * 60 * 10
+    });
+    const companyData = companyResponse?.company || {};
+    const companyName = 'SAMTEK MACHINERY';
+    const companyGst = companyData.gst || '';
+    const companyMobile = companyData.mobile || '';
+    const companyEmail = companyData.email || '';
+    const companyAddress = [companyData.address, companyData.city, companyData.state].filter(Boolean).join(', ');
 
     const { data: customersData } = useQuery({
         queryKey: ['/api/customers/dropdown'],
@@ -114,7 +139,8 @@ const CustomerPayments = () => {
     const handlePrintReceipt = (payment) => {
         if (!payment) return;
 
-        const logoSVG = `<svg xmlns="http://www.w3.org/2000/svg" width="54" height="54" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="4.22" y1="4.22" x2="6.34" y2="6.34"/><line x1="17.66" y1="17.66" x2="19.78" y2="19.78"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/><line x1="4.22" y1="19.78" x2="6.34" y2="17.66"/><line x1="17.66" y1="6.34" x2="19.78" y2="4.22"/></svg>`;
+        // Use actual logo from public folder (encode spaces for safe URL resolution)
+        const logoUrl = window.location.origin + '/logo%20Semtek.webp';
 
         const html = `<!DOCTYPE html>
 <html>
@@ -128,7 +154,10 @@ const CustomerPayments = () => {
     .receipt-card { border: 2px solid #f1f5f9; border-radius: 16px; overflow: hidden; }
     .header { background: #1e293b; color:#fff; padding:24px; display:flex; justify-content:space-between; align-items:center; }
     .logo-area { display:flex; align-items:center; gap:12px; }
-    .company-name { font-size:22px; font-weight:900; }
+    .logo-img { width:54px; height:54px; object-fit:contain; }
+    .company-info .company-name { font-size:22px; font-weight:900; letter-spacing:1px; }
+    .company-info .company-sub { font-size:10px; color:#94a3b8; margin-top:2px; }
+    .company-info .company-details { font-size:9px; color:#cbd5e1; margin-top:6px; line-height:1.6; }
     .receipt-badge { background:rgba(255,255,255,0.1); padding:8px 16px; border-radius:8px; text-align:right; }
     .content { padding: 32px; display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
     .info-block label { font-size:10px; font-weight:800; color:#94a3b8; text-transform:uppercase; display:block; margin-bottom:4px; }
@@ -141,8 +170,16 @@ const CustomerPayments = () => {
   <div class="receipt-card">
     <div class="header">
       <div class="logo-area">
-        ${logoSVG}
-        <div class="company-name">SUNRISE</div>
+        <img src="${logoUrl}" class="logo-img" alt="Logo" onerror="this.style.display='none'" />
+        <div class="company-info">
+          <div class="company-name">${companyName}</div>
+          <div class="company-sub">Official Payment Receipt</div>
+          <div class="company-details">
+            ${companyAddress ? companyAddress + '<br/>' : ''}
+            ${companyGst ? 'GSTIN: ' + companyGst + ' &nbsp;|&nbsp; ' : ''}${companyMobile ? 'Tel: ' + companyMobile : ''}
+            ${companyEmail ? '<br/>' + companyEmail : ''}
+          </div>
+        </div>
       </div>
       <div class="receipt-badge">
         <div style="font-size:10px; opacity:0.7; text-transform:uppercase;">Payment Receipt</div>
@@ -178,7 +215,7 @@ const CustomerPayments = () => {
       </div>
     </div>
     <div class="footer">
-      This is an electronic receipt and does not require a physical signature.
+      This is an electronic receipt and does not require a physical signature. &nbsp;|&nbsp; ${companyName}
     </div>
   </div>
 </body>
@@ -188,7 +225,17 @@ const CustomerPayments = () => {
         win.document.write(html);
         win.document.close();
         win.focus();
-        setTimeout(() => { win.print(); }, 500);
+
+        // Wait for logo image to load completely before opening print window
+        win.onload = function() {
+            win.print();
+        };
+        // Fallback for some browsers where onload might not trigger correctly
+        setTimeout(() => {
+            if (win && !win.closed) {
+                win.print();
+            }
+        }, 1000);
     };
 
     return (

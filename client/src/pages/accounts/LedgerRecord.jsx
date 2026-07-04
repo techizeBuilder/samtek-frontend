@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import axios from 'axios';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -29,9 +31,27 @@ const LedgerRecord = () => {
     const [selectedRecordForReceipt, setSelectedRecordForReceipt] = useState(null);
     const receiptPrintRef = useRef();
 
+    // Fetch logged-in user's company details for print header
+    const { data: companyResponse } = useQuery({
+        queryKey: ['my-company-ledger'],
+        queryFn: async () => {
+            const token = localStorage.getItem('token');
+            const userStr = localStorage.getItem('user');
+            const user = userStr ? JSON.parse(userStr) : null;
+            const companyId = user?.companyId || user?.company?._id;
+            if (!companyId) return null;
+            const apiBase = import.meta.env.VITE_API_URL || '/api';
+            const res = await axios.get(`${apiBase}/super-admin/companies/${companyId}`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            return res.data;
+        },
+        staleTime: 1000 * 60 * 10
+    });
+    const companyData = companyResponse?.company || {};
+
     // Filters
-    const getDefaultDates = () => {
-        const today = new Date();
+    const getDefaultDates = () => {        const today = new Date();
         const currentYear = today.getFullYear();
         const fyStartYear = today.getMonth() < 3 ? currentYear - 1 : currentYear;
         return {
@@ -524,6 +544,7 @@ const LedgerRecord = () => {
                     record={selectedRecordForReceipt}
                     accountInfo={accountInfo}
                     openingBalance={openingBalance}
+                    companyData={companyData}
                 />
             </div>
         </div>
@@ -531,20 +552,32 @@ const LedgerRecord = () => {
 };
 
 // --- Receipt Template for Individual Transaction Printing ---
-const ReceiptTemplate = React.forwardRef(({ record, accountInfo }, ref) => {
+const ReceiptTemplate = React.forwardRef(({ record, accountInfo, companyData }, ref) => {
     if (!record) return null;
+
+    const cName = "SAMTEK MACHINERY";
+    const cAddress = companyData?.address 
+        ? `${companyData.address}, ${companyData.city || ''}, ${companyData.state || ''} - ${companyData.locationPin || ''}` 
+        : "Tirupati, Andhra Pradesh, India";
+    const cGst = companyData?.gst || "37AAAAA0000A1Z5";
+    const cMobile = companyData?.mobile || "+91 98765 43210";
+    const cEmail = companyData?.email || "";
 
     return (
         <div ref={ref} className="p-10 bg-white text-slate-900 font-sans print:p-8" style={{ width: '210mm', minHeight: '297mm' }}>
             {/* Header */}
             <div className="flex justify-between items-start border-b-2 border-slate-900 pb-6 mb-8">
-                <div>
-                    <h1 className="text-4xl font-black tracking-tighter text-slate-900">SUNRISE FOODS</h1>
-                    <p className="text-sm font-bold text-slate-500 uppercase tracking-widest mt-1">Quality You Can Trust</p>
-                    <div className="mt-4 text-xs space-y-0.5 text-slate-600">
-                        <p>Tirupati, Andhra Pradesh, India</p>
-                        <p>GSTIN: 37AAAAA0000A1Z5</p>
-                        <p>Contact: +91 98765 43210</p>
+                <div className="flex items-center gap-4">
+                    <img src="/logo Semtek.webp" alt="Samtek Logo" className="w-16 h-16 object-contain" />
+                    <div>
+                        <h1 className="text-4xl font-black tracking-tighter text-slate-900 uppercase">{cName}</h1>
+                        <p className="text-sm font-bold text-slate-500 uppercase tracking-widest mt-1">Quality You Can Trust</p>
+                        <div className="mt-4 text-xs space-y-0.5 text-slate-600">
+                            <p>{cAddress}</p>
+                            <p>GSTIN: {cGst}</p>
+                            <p>Contact: {cMobile}</p>
+                            {cEmail && <p>Email: {cEmail}</p>}
+                        </div>
                     </div>
                 </div>
                 <div className="text-right">
@@ -623,7 +656,7 @@ const ReceiptTemplate = React.forwardRef(({ record, accountInfo }, ref) => {
                 <div className="text-center">
                     <div className="w-48 h-1 bg-slate-200 mb-4 mx-auto"></div>
                     <p className="text-xs font-bold text-slate-900 uppercase tracking-widest">Authorized Signatory</p>
-                    <p className="text-[10px] text-slate-400 mt-1">for Sunrise Foods</p>
+                    <p className="text-[10px] text-slate-400 mt-1">for SAMTEK MACHINERY</p>
                 </div>
             </div>
         </div>

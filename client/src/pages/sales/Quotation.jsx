@@ -83,6 +83,13 @@ const Quotation = () => {
   };
   const [searchKeyword, setSearchKeyword] = useState('');
   const [searchCategory, setSearchCategory] = useState('All');
+  const [searchGroup, setSearchGroup] = useState('All');
+  const [searchSubCategory, setSearchSubCategory] = useState('All');
+  // Applied filters — only set when Search button is clicked
+  const [appliedFilters, setAppliedFilters] = useState({
+    keyword: '', group: 'All', category: 'All', subCategory: 'All', mode: null
+    // mode: null | 'filter' (group+cat+subcat used) | 'keyword'
+  });
   const [buyerType, setBuyerType] = useState('Customer'); // Dealer or Customer
   const [selectedPriceListCategory, setSelectedPriceListCategory] = useState(null);
   const [isAddProductModalOpen, setIsAddProductModalOpen] = useState(false);
@@ -285,6 +292,30 @@ const Quotation = () => {
       setStep('product_selection');
     } catch (e) { /* ignore */ }
   }, []); // intentionally empty — run only once on mount
+
+  // Fetch Groups from Group collection (company-filtered)
+  const { data: groupsResponse } = useQuery({
+    queryKey: ['inventory-groups'],
+    queryFn: async () => {
+      const token = localStorage.getItem('token');
+      const res = await axios.get(`${import.meta.env.VITE_API_URL || '/api'}/inventory/groups`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      return res.data;
+    }
+  });
+
+  // Fetch Categories from Category collection (company-filtered)
+  const { data: categoriesResponse } = useQuery({
+    queryKey: ['inventory-categories'],
+    queryFn: async () => {
+      const token = localStorage.getItem('token');
+      const res = await axios.get(`${import.meta.env.VITE_API_URL || '/api'}/categories`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      return res.data;
+    }
+  });
 
   // Fetch Real Items from Sales-specific endpoint
   const { data: itemsResponse, isLoading: itemsLoading, refetch: refetchItems } = useQuery({
@@ -789,6 +820,62 @@ const Quotation = () => {
   const productsList = itemsResponse?.items || [];
   const categories = [...new Set(productsList.map(p => p.category))];
 
+  // ─── Quotation heading derived from selected items + applied filter mode ───
+  const quotationHeading = (() => {
+    if (selectedItems.length === 0) return leadData?.productRequired || '';
+
+    // Filter mode with subCategory selected → use subCategory as heading
+    if (appliedFilters.mode === 'filter' && appliedFilters.subCategory && appliedFilters.subCategory !== 'All') {
+      return appliedFilters.subCategory.toUpperCase();
+    }
+
+    // Keyword or no-filter mode → derive from selected items' categories
+    const uniqueCategories = [...new Set(selectedItems.map(i => i.category).filter(Boolean))];
+    if (uniqueCategories.length === 1) {
+      return uniqueCategories[0].toUpperCase();
+    }
+    if (uniqueCategories.length > 1) {
+      return uniqueCategories.join(', ').toUpperCase();
+    }
+
+    return leadData?.productRequired || '';
+  })();
+
+  // Derived filter options from Group and Category collections
+  // Fallback to item fields if collections are empty
+  const allGroups = (() => {
+    const fromCollection = (groupsResponse?.groups || []).map(g => g.name).filter(Boolean);
+    if (fromCollection.length > 0) return fromCollection.sort();
+    // Fallback: derive unique groups from loaded items
+    return [...new Set(productsList.map(p => p.group).filter(Boolean))].sort();
+  })();
+
+  // Categories filtered by selected group — use Category collection, each category has subcategories array
+  const allCategoriesList = categoriesResponse?.categories || [];
+  const categoriesByGroup = (() => {
+    // Always derive from items (most reliable) — filtered by selected group
+    const base = searchGroup === 'All'
+      ? productsList
+      : productsList.filter(p => p.group === searchGroup);
+    return [...new Set(base.map(p => p.category).filter(Boolean))].sort();
+  })();
+
+  // SubCategories from Category collection's subcategories array, filtered by selected category
+  const subCategoriesByCategoryAndGroup = (() => {
+    if (searchCategory === 'All') return [];
+    // Case-insensitive match because item.category and Category collection name may differ in case
+    const catDoc = allCategoriesList.find(
+      c => c.name.toLowerCase().trim() === searchCategory.toLowerCase().trim()
+    );
+    if (catDoc) return (catDoc.subcategories || []).filter(Boolean).sort();
+    // Fallback: derive from productsList if no Category doc matched
+    return [...new Set(
+      productsList
+        .filter(p => p.category?.toLowerCase().trim() === searchCategory.toLowerCase().trim())
+        .map(p => p.subCategory)
+        .filter(Boolean)
+    )].sort();
+  })();
   const handleAddItem = (product) => {
     // Toggle: if already selected, unselect it
     const existing = selectedItems.find(item => item.id === product._id);
@@ -1175,10 +1262,25 @@ const Quotation = () => {
   };
 
   const renderProductSelection = () => {
-    const filteredProducts = productsList.filter(p =>
-      (searchKeyword === '' || p.name?.toLowerCase().includes(searchKeyword.toLowerCase()) || p.code?.toLowerCase().includes(searchKeyword.toLowerCase())) &&
-      (searchCategory === 'All' || p.category === searchCategory)
-    );
+    const af = appliedFilters;
+    const filteredProducts = productsList.filter(p => {
+      // If nothing applied yet, show all
+      if (af.mode === null) return true;
+
+      if (af.mode === 'keyword') {
+        const kw = af.keyword.toLowerCase();
+        return p.name?.toLowerCase().includes(kw) || p.code?.toLowerCase().includes(kw);
+      }
+
+      if (af.mode === 'filter') {
+        const matchesGroup = af.group === 'All' || p.group === af.group;
+        const matchesCategory = af.category === 'All' || p.category === af.category;
+        const matchesSubCategory = af.subCategory === 'All' || p.subCategory === af.subCategory;
+        return matchesGroup && matchesCategory && matchesSubCategory;
+      }
+
+      return true;
+    });
 
     const allFilteredSelected = filteredProducts.length > 0 &&
       filteredProducts.every(p => selectedItems.find(i => i.id === p._id));
@@ -1235,7 +1337,8 @@ const Quotation = () => {
             </div>
           </CardHeader>
           <CardContent className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+              {/* Search */}
               <div className="space-y-2">
                 <Label>Search Product</Label>
                 <div className="relative">
@@ -1244,41 +1347,161 @@ const Quotation = () => {
                     placeholder="Enter keyword or code..."
                     className="pl-10"
                     value={searchKeyword}
-                    onChange={(e) => setSearchKeyword(e.target.value)}
+                    onChange={(e) => {
+                      setSearchKeyword(e.target.value);
+                      // Clear group/cat/subcat when typing keyword
+                      if (e.target.value) {
+                        setSearchGroup('All');
+                        setSearchCategory('All');
+                        setSearchSubCategory('All');
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && searchKeyword.trim()) {
+                        setAppliedFilters({ keyword: searchKeyword.trim(), group: 'All', category: 'All', subCategory: 'All', mode: 'keyword' });
+                      }
+                    }}
                   />
                 </div>
               </div>
+
+              {/* Group filter */}
+              <div className="space-y-2">
+                <Label>Group</Label>
+                <Select
+                  value={searchGroup}
+                  onValueChange={(val) => {
+                    setSearchGroup(val);
+                    setSearchCategory('All');
+                    setSearchSubCategory('All');
+                    setSearchKeyword('');
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="All Groups" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="All">All Groups</SelectItem>
+                    {allGroups.map(g => (
+                      <SelectItem key={g} value={g}>{g}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Category filter - filtered by group */}
               <div className="space-y-2">
                 <Label>Category</Label>
-                <Select value={searchCategory} onValueChange={setSearchCategory}>
+                <Select
+                  value={searchCategory}
+                  onValueChange={(val) => {
+                    setSearchCategory(val);
+                    setSearchSubCategory('All');
+                    setSearchKeyword('');
+                  }}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="All Categories" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="All">All Categories</SelectItem>
-                    {categories.map(cat => (
+                    {categoriesByGroup.map(cat => (
                       <SelectItem key={cat} value={cat}>{cat}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
+
+              {/* SubCategory filter */}
               <div className="space-y-2">
-                <Label>&nbsp;</Label>
-                <Button
-                  variant="outline"
-                  className={allFilteredSelected
-                    ? "w-full border-red-300 text-red-600 hover:bg-red-50"
-                    : "w-full border-blue-300 text-blue-600 hover:bg-blue-50"}
-                  onClick={handleSelectAll}
-                  disabled={filteredProducts.length === 0}
+                <Label>Sub Category</Label>
+                <Select
+                  value={searchSubCategory}
+                  onValueChange={(val) => {
+                    setSearchSubCategory(val);
+                    setSearchKeyword('');
+                  }}
                 >
-                  {allFilteredSelected ? (
-                    <><X className="h-4 w-4 mr-2" /> Deselect All ({filteredProducts.length})</>
-                  ) : (
-                    <><CheckCircle2 className="h-4 w-4 mr-2" /> Select All ({filteredProducts.length})</>
-                  )}
-                </Button>
+                  <SelectTrigger>
+                    <SelectValue placeholder={
+                      searchCategory === 'All'
+                        ? 'Select Category first'
+                        : subCategoriesByCategoryAndGroup.length === 0
+                          ? 'No Sub Categories'
+                          : 'All Sub Categories'
+                    } />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="All">All Sub Categories</SelectItem>
+                    {subCategoriesByCategoryAndGroup.map(sc => (
+                      <SelectItem key={sc} value={sc}>{sc}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
+            </div>
+
+            {/* Search Button + Select All row */}
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              {/* Search Button */}
+              <Button
+                className="bg-blue-600 hover:bg-blue-700 text-white px-6"
+                onClick={() => {
+                  // Keyword mode
+                  if (searchKeyword.trim()) {
+                    setAppliedFilters({ keyword: searchKeyword.trim(), group: 'All', category: 'All', subCategory: 'All', mode: 'keyword' });
+                    return;
+                  }
+                  // Filter mode — group selected means category + subCategory mandatory
+                  if (searchGroup !== 'All') {
+                    if (searchCategory === 'All') {
+                      toast({ title: "Please select Category", description: "Category is required when Group is selected.", variant: "destructive" });
+                      return;
+                    }
+                    if (searchSubCategory === 'All' && subCategoriesByCategoryAndGroup.length > 0) {
+                      toast({ title: "Please select Sub Category", description: "Sub Category is required when Category is selected.", variant: "destructive" });
+                      return;
+                    }
+                  }
+                  // Apply filter (even if all 'All', shows all products)
+                  setAppliedFilters({ keyword: '', group: searchGroup, category: searchCategory, subCategory: searchSubCategory, mode: searchGroup === 'All' && searchCategory === 'All' ? null : 'filter' });
+                }}
+              >
+                <Search className="h-4 w-4 mr-2" /> Search
+              </Button>
+
+              {/* Reset */}
+              {appliedFilters.mode !== null && (
+                <Button
+                  variant="ghost"
+                  className="text-gray-500"
+                  onClick={() => {
+                    setSearchKeyword('');
+                    setSearchGroup('All');
+                    setSearchCategory('All');
+                    setSearchSubCategory('All');
+                    setAppliedFilters({ keyword: '', group: 'All', category: 'All', subCategory: 'All', mode: null });
+                  }}
+                >
+                  <X className="h-4 w-4 mr-1" /> Reset
+                </Button>
+              )}
+
+              {/* Select All / Deselect All */}
+              <Button
+                variant="outline"
+                className={`ml-auto ${allFilteredSelected
+                  ? "border-red-300 text-red-600 hover:bg-red-50"
+                  : "border-blue-300 text-blue-600 hover:bg-blue-50"}`}
+                onClick={handleSelectAll}
+                disabled={filteredProducts.length === 0}
+              >
+                {allFilteredSelected ? (
+                  <><X className="h-4 w-4 mr-2" /> Deselect All ({filteredProducts.length})</>
+                ) : (
+                  <><CheckCircle2 className="h-4 w-4 mr-2" /> Select All ({filteredProducts.length})</>
+                )}
+              </Button>
             </div>
 
             <div className="border rounded-lg overflow-hidden">
@@ -1898,7 +2121,7 @@ const Quotation = () => {
             {/* Title Section */}
             <div className="py-6 text-center space-y-2">
               <div className="text-2xl font-black text-red-600 underline underline-offset-4 tracking-widest">QUOTATION</div>
-              <div className="text-lg font-bold text-blue-800 underline underline-offset-4 uppercase">{leadData?.productRequired || 'AUTOMATIC FLOUR MILL PLANT 1000 KG/HR'}</div>
+              <div className="text-lg font-bold text-blue-800 underline underline-offset-4 uppercase">{quotationHeading || leadData?.productRequired || 'QUOTATION'}</div>
             </div>
 
             <div className="px-6 space-y-4">
