@@ -100,8 +100,17 @@ export async function generateDueBillPDF(data, logoDataUrl) {
     items = [],
     subtotal = 0, taxAmount = 0, gstType = 'CGST_SGST',
     totalAmount = 0, advancedPaymentAmount = 0, paidAmount = 0, balanceAmount = 0,
-    advancePayments = [], postInvoicePayments = []
+    advancePayments = [], postInvoicePayments = [],
+    // Customer master fields (preferred for payment summary display)
+    customerOutstanding = 0, customerAdvance = 0,
+    displayTotal = 0, displayPaid = 0, displayDue = 0,
   } = data;
+
+  // Use customer master values when available, else fall back to invoice values
+  const cmTotal   = displayTotal > 0 ? displayTotal : totalAmount;
+  const cmPaid    = displayTotal > 0 ? displayPaid  : (advancedPaymentAmount + paidAmount);
+  const cmDue     = displayTotal > 0 ? displayDue   : balanceAmount;
+  const cmAdvance = displayTotal > 0 ? customerAdvance : advancedPaymentAmount;
 
   // Fetch stamp image from server (company.stampUrl = '/uploads/company-stamps/xxx.png')
   let stampDataUrl = null;
@@ -307,13 +316,12 @@ export async function generateDueBillPDF(data, logoDataUrl) {
     },
   });
 
-  const totalPaid = advancedPaymentAmount + paidAmount;
+  const totalPaid = cmPaid;
   const summaryRows = [
-    ['Invoice Total',             fmtAmt(totalAmount)],
-    ['(-) Advance Paid at Order', fmtAmt(advancedPaymentAmount)],
-    ['(-) Post-Invoice Payments', fmtAmt(paidAmount)],
-    ['Total Received',            fmtAmt(totalPaid)],
-    ['AMOUNT DUE',                fmtAmt(balanceAmount)],
+    ['Total (Outstanding + Advance)',   fmtAmt(cmTotal)],
+    ['(-) Advance Paid',                fmtAmt(cmAdvance)],
+    ['Total Received',                  fmtAmt(cmPaid)],
+    ['AMOUNT DUE',                      fmtAmt(cmDue)],
   ];
 
   autoTable(doc, {
@@ -326,8 +334,8 @@ export async function generateDueBillPDF(data, logoDataUrl) {
     columnStyles: { 0: { halign: 'left' }, 1: { halign: 'right', cellWidth: 100 } },
     didParseCell(d) {
       if (d.section === 'body') {
-        if (d.row.index === 3) { d.cell.styles.textColor = GREEN; d.cell.styles.fontStyle = 'bold'; }
-        if (d.row.index === 4) { d.cell.styles.fillColor = LRED;  d.cell.styles.textColor = RED;   d.cell.styles.fontStyle = 'bold'; d.cell.styles.fontSize = 10; }
+        if (d.row.index === 2) { d.cell.styles.textColor = GREEN; d.cell.styles.fontStyle = 'bold'; }
+        if (d.row.index === 3) { d.cell.styles.fillColor = LRED;  d.cell.styles.textColor = RED;   d.cell.styles.fontStyle = 'bold'; d.cell.styles.fontSize = 10; }
       }
     },
   });
@@ -344,7 +352,7 @@ export async function generateDueBillPDF(data, logoDataUrl) {
   doc.setFont('helvetica', 'bold');  doc.setFontSize(8);  doc.setTextColor(...RED);
   doc.text('Balance Due in Words:', ML + 8, y + 11);
   doc.setFont('helvetica', 'bold');  doc.setFontSize(9);  doc.setTextColor(...BLACK);
-  const wordsLine = numberToWords(balanceAmount);
+  const wordsLine = numberToWords(cmDue);
   doc.text(wordsLine, ML + 8, y + 23, { maxWidth: MW - 16 });
   y += 38;
 
@@ -365,7 +373,7 @@ export async function generateDueBillPDF(data, logoDataUrl) {
       body: advancePayments.map((p, i) => [
         String(i + 1), fmtDate(p.date), p.mode || '---', p.transactionId || '---', p.remarks || '---', fmtAmt(p.amount)
       ]),
-      foot: [['', '', '', '', { content: 'Total Advance', styles: { halign: 'right', fontStyle: 'bold' } }, fmtAmt(advancedPaymentAmount)]],
+      foot: [['', '', '', '', { content: 'Total Advance', styles: { halign: 'right', fontStyle: 'bold' } }, fmtAmt(cmAdvance)]],
       styles: { font: 'helvetica', fontSize: 8, cellPadding: 4, lineColor: BORDER, lineWidth: 0.4, textColor: BLACK },
       headStyles: { fillColor: LGREY, textColor: BLACK, fontStyle: 'bold', fontSize: 7.5 },
       footStyles: { fillColor: LGREEN, textColor: GREEN, fontStyle: 'bold' },
