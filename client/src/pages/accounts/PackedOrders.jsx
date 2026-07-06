@@ -221,7 +221,7 @@ const PackedOrders = () => {
   const openPaymentModal = (item) => {
     setPaymentCustomer(item.customer);
     setPaymentSaleId(item.saleId);
-    setPaymentAmount(item.balanceAmount.toString());
+    setPaymentAmount((item.displayDue || 0).toString());
     setPaymentModalOpen(true);
   };
 
@@ -288,7 +288,7 @@ const PackedOrders = () => {
       return;
     }
     const cleanMobile = item.customer.mobile.replace(/\D/g, '');
-    const message = `Dear ${item.customer.name},\n\nYour order *${item.orderCode}* for *${item.machineName || 'machinery'}* has been packed and is ready for dispatch.\n\n*Total Amount:* ₹${item.totalAmount.toLocaleString('en-IN')}\n*Amount Paid:* ₹${item.paidAmount.toLocaleString('en-IN')}\n*Balance Due:* ₹${item.balanceAmount.toLocaleString('en-IN')}\n\nKindly clear the final payment and share the payment receipt/proof so we can initiate dispatch.\n\nThank you,\nAccounts Team\n${displayCompanyName}`;
+    const message = `Dear ${item.customer.name},\n\nYour order *${item.orderCode}* for *${item.machineName || 'machinery'}* has been packed and is ready for dispatch.\n\n*Total Amount:* ₹${(item.displayTotal || 0).toLocaleString('en-IN')}\n*Amount Paid:* ₹${(item.displayPaid || 0).toLocaleString('en-IN')}\n*Balance Due:* ₹${(item.displayDue || 0).toLocaleString('en-IN')}\n\nKindly clear the final payment and share the payment receipt/proof so we can initiate dispatch.\n\nThank you,\nAccounts Team\n${displayCompanyName}`;
     const url = `https://wa.me/91${cleanMobile}?text=${encodeURIComponent(message)}`;
     window.open(url, '_blank');
   };
@@ -298,7 +298,7 @@ const PackedOrders = () => {
       toast({ title: "Error", description: "Mobile number not found", variant: "destructive" });
       return;
     }
-    const message = `Dear ${item.customer.name}, your order ${item.orderCode} is packed. Balance due: Rs.${item.balanceAmount.toLocaleString('en-IN')}. Please clear payment. - Accounts, ${displayCompanyName}`;
+    const message = `Dear ${item.customer.name}, your order ${item.orderCode} is packed. Balance due: Rs.${(item.displayDue || 0).toLocaleString('en-IN')}. Please clear payment. - Accounts, ${displayCompanyName}`;
     window.open(`sms:${item.customer.mobile}?body=${encodeURIComponent(message)}`, '_self');
   };
 
@@ -308,7 +308,7 @@ const PackedOrders = () => {
       return;
     }
     const subject = `Payment Request: Order ${item.orderCode} Packed & Ready | ${displayCompanyName}`;
-    const body = `Dear ${item.customer.name},\n\nWe are pleased to inform you that your order ${item.orderCode} has been successfully packed and is ready for dispatch.\n\nSummary:\n- Order: ${item.orderCode}\n- Packed Items: ${item.machineName || 'Machinery'} (Serial: ${item.serialNumber || 'N/A'})\n- Total Amount: Rs. ${item.totalAmount.toLocaleString('en-IN')}\n- Paid Amount: Rs. ${item.paidAmount.toLocaleString('en-IN')}\n- Balance Amount: Rs. ${item.balanceAmount.toLocaleString('en-IN')}\n\nPlease transfer the balance amount and send us the transaction receipt.\n\nBest regards,\nAccounts Department\n${displayCompanyName}`;
+    const body = `Dear ${item.customer.name},\n\nWe are pleased to inform you that your order ${item.orderCode} has been successfully packed and is ready for dispatch.\n\nSummary:\n- Order: ${item.orderCode}\n- Packed Items: ${item.machineName || 'Machinery'} (Serial: ${item.serialNumber || 'N/A'})\n- Total Amount: Rs. ${(item.displayTotal || 0).toLocaleString('en-IN')}\n- Paid Amount: Rs. ${(item.displayPaid || 0).toLocaleString('en-IN')}\n- Balance Amount: Rs. ${(item.displayDue || 0).toLocaleString('en-IN')}\n\nPlease transfer the balance amount and send us the transaction receipt.\n\nBest regards,\nAccounts Department\n${displayCompanyName}`;
     window.open(`mailto:${item.customer.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`, '_self');
   };
 
@@ -391,9 +391,6 @@ const PackedOrders = () => {
                 </TableHeader>
                 <TableBody>
                   {filteredOrders.map((item) => {
-                    const isPaid = item.paymentStatus === 'Paid';
-                    const hasBalance = item.balanceAmount > 0;
-                    
                     return (
                       <TableRow key={item.jobId} className="hover:bg-slate-50/30">
                         {/* Order Code */}
@@ -455,30 +452,30 @@ const PackedOrders = () => {
                             <div className="flex items-center gap-1.5">
                               <Badge
                                 className={
-                                  item.paymentStatus === 'Paid'
+                                  item.displayDue === 0
                                     ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-50 border-emerald-200'
-                                    : item.paymentStatus === 'Partially Paid' || item.paymentStatus === 'Partial'
+                                    : item.displayPaid > 0
                                     ? 'bg-amber-50 text-amber-700 hover:bg-amber-50 border-amber-200'
                                     : 'bg-rose-50 text-rose-700 hover:bg-rose-50 border-rose-200'
                                 }
                                 variant="outline"
                               >
-                                {item.paymentStatus}
+                                {item.displayDue === 0 ? 'Paid' : item.displayPaid > 0 ? 'Partially Paid' : 'Pending'}
                               </Badge>
                             </div>
                             <div className="text-xs space-y-0.5 font-medium">
                               <div className="text-slate-500 flex justify-between gap-2">
                                 <span>Total:</span>
-                                <span className="text-slate-800">₹{item.totalAmount.toLocaleString('en-IN')}</span>
+                                <span className="text-slate-800">₹{(item.displayTotal || 0).toLocaleString('en-IN')}</span>
                               </div>
                               <div className="text-emerald-600 flex justify-between gap-2">
                                 <span>Paid:</span>
-                                <span>₹{item.paidAmount.toLocaleString('en-IN')}</span>
+                                <span>₹{(item.displayPaid || 0).toLocaleString('en-IN')}</span>
                               </div>
-                              {hasBalance && (
+                              {item.displayDue > 0 && (
                                 <div className="text-rose-600 font-semibold flex justify-between gap-2 border-t border-slate-100 pt-0.5">
                                   <span>Due:</span>
-                                  <span>₹{item.balanceAmount.toLocaleString('en-IN')}</span>
+                                  <span>₹{(item.displayDue || 0).toLocaleString('en-IN')}</span>
                                 </div>
                               )}
                             </div>
@@ -735,16 +732,16 @@ const PackedOrders = () => {
                   <div className="bg-slate-50 rounded-xl border border-slate-100 p-5 space-y-3">
                     <div className="flex justify-between items-center">
                       <span className="text-sm text-slate-500 font-medium">Total Amount</span>
-                      <span className="text-base font-bold text-slate-900">₹{viewDetailItem.totalAmount?.toLocaleString('en-IN')}</span>
+                      <span className="text-base font-bold text-slate-900">₹{(viewDetailItem.displayTotal || 0)?.toLocaleString('en-IN')}</span>
                     </div>
                     <div className="flex justify-between items-center">
-                      <span className="text-sm text-emerald-600 font-medium">Amount Paid</span>
-                      <span className="text-base font-bold text-emerald-600">₹{viewDetailItem.paidAmount?.toLocaleString('en-IN')}</span>
+                      <span className="text-sm text-emerald-600 font-medium">Paid (Advance)</span>
+                      <span className="text-base font-bold text-emerald-600">₹{(viewDetailItem.displayPaid || 0)?.toLocaleString('en-IN')}</span>
                     </div>
-                    {viewDetailItem.balanceAmount > 0 && (
+                    {(viewDetailItem.displayDue || 0) > 0 && (
                       <div className="flex justify-between items-center border-t border-slate-200 pt-3">
                         <span className="text-sm text-rose-600 font-semibold">Balance Due</span>
-                        <span className="text-base font-bold text-rose-600">₹{viewDetailItem.balanceAmount?.toLocaleString('en-IN')}</span>
+                        <span className="text-base font-bold text-rose-600">₹{(viewDetailItem.displayDue || 0)?.toLocaleString('en-IN')}</span>
                       </div>
                     )}
                     {viewDetailItem.paymentProofUrl && (

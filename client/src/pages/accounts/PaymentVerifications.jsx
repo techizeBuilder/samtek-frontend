@@ -263,9 +263,9 @@ const PaymentVerifications = () => {
       const dateB = getRequestDate(b);
       
       if (dateA.getTime() === dateB.getTime()) {
-        return new Date(a.createdAt) - new Date(b.createdAt);
+        return new Date(b.createdAt) - new Date(a.createdAt);
       }
-      return dateA - dateB;
+      return dateB - dateA;
     });
 
   // Calculate Metrics

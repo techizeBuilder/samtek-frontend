@@ -267,8 +267,10 @@ const NocRequest = () => {
         body: [
           ['1', `${data.machineName} (${data.machineCode})`, '1', 'Lot', 'Dispatched'],
           ['', 'SN:', '', '', data.serialNumber],
-          ['', 'Invoiced Value', '', '', `INR ${data.totalAmount?.toLocaleString()}`],
-          ['', 'Payment Status', '', '', data.paymentStatus]
+          ['', 'Total Amount', '', '', `INR ${(data.displayTotal || data.totalAmount || 0).toLocaleString('en-IN')}`],
+          ['', 'Paid (Advance)', '', '', `INR ${(data.displayPaid || data.customerAdvance || 0).toLocaleString('en-IN')}`],
+          ['', 'Balance Due', '', '', `INR ${(data.displayDue || 0).toLocaleString('en-IN')}`],
+          ['', 'Payment Status', '', '', (data.displayDue || 0) === 0 ? 'Paid' : (data.displayPaid || 0) > 0 ? 'Partially Paid' : 'Pending']
         ],
         theme: 'grid',
         headStyles: {
@@ -422,15 +424,27 @@ const NocRequest = () => {
                     <div className="text-xs text-slate-500">SN: {item.serialNumber}</div>
                   </TableCell>
                   <TableCell className="text-right">
-                    <div className="font-semibold text-slate-900">₹{item.totalAmount?.toLocaleString()}</div>
-                    {item.advancedPaymentAmount > 0 && (
-                      <div className="text-[10px] text-emerald-600 font-medium flex items-center justify-end gap-0.5 mt-0.5">
-                        <CreditCard className="w-2.5 h-2.5" />
-                        Advance: ₹{item.advancedPaymentAmount?.toLocaleString()}
+                    <div className="font-semibold text-slate-900">₹{item.displayTotal?.toLocaleString('en-IN') || item.totalAmount?.toLocaleString()}</div>
+                    <div className="text-xs space-y-0.5 font-medium mt-1">
+                      <div className="text-emerald-600 flex justify-end gap-1.5">
+                        <span className="text-slate-500">Paid:</span>
+                        <span>₹{(item.displayPaid || 0).toLocaleString('en-IN')}</span>
                       </div>
-                    )}
-                    <div className={`text-[10px] font-medium ${item.paymentStatus === 'Paid' ? 'text-emerald-600' : 'text-amber-600'}`}>
-                      {item.paymentStatus} (Paid: ₹{item.paidAmount?.toLocaleString()})
+                      {(item.displayDue || 0) > 0 && (
+                        <div className="text-rose-600 font-semibold flex justify-end gap-1.5">
+                          <span className="text-slate-500">Due:</span>
+                          <span>₹{(item.displayDue || 0).toLocaleString('en-IN')}</span>
+                        </div>
+                      )}
+                      {(item.customerAdvance || 0) > 0 && (
+                        <div className="text-[10px] text-emerald-600 font-medium flex items-center justify-end gap-0.5 mt-0.5">
+                          <CreditCard className="w-2.5 h-2.5" />
+                          Advance: ₹{(item.customerAdvance || 0).toLocaleString('en-IN')}
+                        </div>
+                      )}
+                    </div>
+                    <div className={`text-[10px] font-medium mt-1 ${(item.displayDue || 0) === 0 ? 'text-emerald-600' : (item.displayPaid || 0) > 0 ? 'text-amber-600' : 'text-rose-600'}`}>
+                      {(item.displayDue || 0) === 0 ? 'Paid' : (item.displayPaid || 0) > 0 ? 'Partially Paid' : 'Pending'}
                     </div>
                   </TableCell>
                   <TableCell>
@@ -660,16 +674,16 @@ const NocRequest = () => {
                   </thead>
                   <tbody className="divide-y text-slate-700">
                     <tr>
-                      <td className="p-3 text-slate-600">Order Total Amount</td>
-                      <td className="p-3 text-right font-semibold text-slate-950">₹{gatePassData?.totalAmount?.toLocaleString()}</td>
+                      <td className="p-3 text-slate-600">Total Amount</td>
+                      <td className="p-3 text-right font-semibold text-slate-950">₹{(gatePassData?.displayTotal || gatePassData?.totalAmount || 0).toLocaleString('en-IN')}</td>
                     </tr>
-                    {gatePassData?.advancedPaymentAmount > 0 && (
+                    {(gatePassData?.displayPaid || gatePassData?.customerAdvance || 0) > 0 && (
                       <tr className="bg-emerald-50/50">
                         <td className="p-3 text-emerald-800 flex items-center gap-1 font-medium">
-                          <CreditCard className="w-3.5 h-3.5 text-emerald-600" /> Advanced Paid (Lead)
+                          <CreditCard className="w-3.5 h-3.5 text-emerald-600" /> Paid (Advance)
                         </td>
                         <td className="p-3 text-right text-emerald-700 font-semibold">
-                          - ₹{gatePassData.advancedPaymentAmount?.toLocaleString()}
+                          ₹{(gatePassData?.displayPaid || gatePassData?.customerAdvance || 0).toLocaleString('en-IN')}
                         </td>
                       </tr>
                     )}
@@ -677,17 +691,17 @@ const NocRequest = () => {
                       <td className="p-3 text-slate-600">Payment Status</td>
                       <td className="p-3 text-right">
                         <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                          gatePassData?.paymentStatus === 'Paid' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                          (gatePassData?.displayDue || 0) === 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
                         }`}>
-                          {gatePassData?.paymentStatus}
+                          {(gatePassData?.displayDue || 0) === 0 ? 'Paid' : (gatePassData?.displayPaid || 0) > 0 ? 'Partially Paid' : 'Pending'}
                         </span>
                       </td>
                     </tr>
-                    {gatePassData?.advancedPaymentAmount > 0 && (
-                      <tr className="bg-blue-50/50 border-t-2">
-                        <td className="p-3 font-bold text-blue-900">Net Balance Due</td>
-                        <td className="p-3 text-right font-bold text-blue-900 text-base">
-                          ₹{gatePassData?.balanceAmount?.toLocaleString()}
+                    {(gatePassData?.displayDue || 0) > 0 && (
+                      <tr className="bg-rose-50/50 border-t-2">
+                        <td className="p-3 font-bold text-rose-900">Balance Due</td>
+                        <td className="p-3 text-right font-bold text-rose-900 text-base">
+                          ₹{(gatePassData?.displayDue || 0).toLocaleString('en-IN')}
                         </td>
                       </tr>
                     )}
