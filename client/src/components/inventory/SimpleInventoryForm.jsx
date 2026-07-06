@@ -319,19 +319,107 @@ export default function SimpleInventoryForm({
             </div>
 
             <div className="mt-6 border-t border-blue-200 pt-4">
-              <div className="flex justify-between items-center mb-3">
-                <Label className="text-sm font-medium text-gray-700 flex items-center gap-1.5"><Package className="h-4 w-4 text-gray-500" /> Product Variants</Label>
-                <Button size="sm" variant="outline" className="h-7 text-xs bg-white" onClick={() => handleInputChange('variants', [...formData.variants, { name: '', code: '', capacity: '', motorPower: '' }])}><Plus className="h-3 w-3 mr-1" /> Add Variant</Button>
-              </div>
-              <div className="space-y-2">
-                {formData.variants.length === 0 && <p className="text-xs text-gray-400 italic">No variants added. Parent item will be used directly.</p>}
-                {formData.variants.map((variant, idx) => (
-                  <div key={idx} className="grid grid-cols-[1fr_1fr_1fr_1fr_auto] gap-2 p-3 bg-white rounded border border-gray-200">
-                    <div><Label className="text-[10px] text-gray-500 uppercase">Variant Name</Label><Input className="h-8 text-sm" value={variant.name} onChange={e => handleVariantChange(idx, 'name', e.target.value)} /></div>
-                    <div><Label className="text-[10px] text-gray-500 uppercase">Sub-Code</Label><Input className="h-8 text-sm" value={variant.code} onChange={e => handleVariantChange(idx, 'code', e.target.value)} /></div>
-                    <div><Label className="text-[10px] text-gray-500 uppercase">Capacity</Label><Input className="h-8 text-sm" value={variant.capacity} onChange={e => handleVariantChange(idx, 'capacity', e.target.value)} /></div>
-                    <div><Label className="text-[10px] text-gray-500 uppercase">Motor Power</Label><Input className="h-8 text-sm" value={variant.motorPower} onChange={e => handleVariantChange(idx, 'motorPower', e.target.value)} /></div>
-                    <div className="flex items-end"><Button size="icon" variant="ghost" className="h-8 w-8 text-red-500" onClick={() => handleInputChange('variants', formData.variants.filter((_, i) => i !== idx))}><Trash2 className="h-4 w-4" /></Button></div>
+              {/* Product Variants Section */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-semibold text-slate-700">Product Variants</Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100"
+                    onClick={() => handleInputChange('variants', [...(formData.variants || []), { name: '', code: '', capacity: '', motorPower: '', price: '' }])}
+                  >
+                    <Plus className="h-3 w-3 mr-1" /> Add Variant
+                  </Button>
+                </div>
+
+                {(formData.variants || []).map((variant, index) => (
+                  <div key={index} className="grid grid-cols-5 gap-3 p-3 bg-slate-50 border border-slate-200 rounded-lg relative mt-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute -top-2 -right-2 h-5 w-5 rounded-full bg-red-100 text-red-600 hover:bg-red-200 shadow-sm"
+                      onClick={() => {
+                        const newVariants = [...formData.variants];
+                        newVariants.splice(index, 1);
+                        handleInputChange('variants', newVariants);
+                      }}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+
+                    <div>
+                      <Label className="text-xs text-slate-500">Variant Name</Label>
+                      <Input
+                        value={variant.name || ''}
+                        onChange={(e) => {
+                          const newVariants = [...formData.variants];
+                          newVariants[index].name = e.target.value;
+                          handleInputChange('variants', newVariants);
+                        }}
+                        placeholder="e.g. Standard"
+                        className="h-8 mt-1 text-xs"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs text-slate-500">Sub-Code</Label>
+                      <Input
+                        value={variant.code || ''}
+                        onChange={(e) => {
+                          const newVariants = [...formData.variants];
+                          newVariants[index].code = e.target.value;
+                          handleInputChange('variants', newVariants);
+                        }}
+                        placeholder="e.g. STD-01"
+                        className="h-8 mt-1 text-xs"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs text-slate-500">Capacity</Label>
+                      <Input
+                        value={variant.capacity || ''}
+                        onChange={(e) => {
+                          const newVariants = [...formData.variants];
+                          newVariants[index].capacity = e.target.value;
+                          handleInputChange('variants', newVariants);
+                        }}
+                        placeholder="e.g. 500L"
+                        className="h-8 mt-1 text-xs"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs text-slate-500">Motor Power</Label>
+                      <Input
+                        value={variant.motorPower || ''}
+                        onChange={(e) => {
+                          const newVariants = [...formData.variants];
+                          newVariants[index].motorPower = e.target.value;
+                          handleInputChange('variants', newVariants);
+                        }}
+                        placeholder="e.g. 5HP"
+                        className="h-8 mt-1 text-xs"
+                      />
+                    </div>
+
+                    {/* ─── NEW PRICE FIELD ─── */}
+                    <div>
+                      <Label className="text-xs font-bold text-emerald-700">Price (₹)</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        value={variant.price || ''}
+                        onChange={(e) => {
+                          const newVariants = [...formData.variants];
+                          newVariants[index].price = e.target.value;
+                          handleInputChange('variants', newVariants);
+                        }}
+                        placeholder="0.00"
+                        className="h-8 mt-1 text-xs border-emerald-200 focus-visible:ring-emerald-500 bg-white"
+                      />
+                    </div>
+                    {/* ─────────────────────── */}
                   </div>
                 ))}
               </div>
