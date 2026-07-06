@@ -251,8 +251,20 @@ const PaymentVerifications = () => {
       return matchesSearch && matchesStatus;
     })
     .sort((a, b) => {
-      const dateA = a.paymentCheckRequestedAt ? new Date(a.paymentCheckRequestedAt) : new Date(a.createdAt);
-      const dateB = b.paymentCheckRequestedAt ? new Date(b.paymentCheckRequestedAt) : new Date(b.createdAt);
+      const getRequestDate = (lead) => {
+        if (lead.paymentCheckRequestedAt) return new Date(lead.paymentCheckRequestedAt);
+        const reqEntry = (lead.history || []).find(h => 
+          h.action === 'Payment Check Requested' || h.action === 'Sent to Account'
+        );
+        return reqEntry && reqEntry.timestamp ? new Date(reqEntry.timestamp) : new Date(lead.createdAt);
+      };
+
+      const dateA = getRequestDate(a);
+      const dateB = getRequestDate(b);
+      
+      if (dateA.getTime() === dateB.getTime()) {
+        return new Date(a.createdAt) - new Date(b.createdAt);
+      }
       return dateA - dateB;
     });
 
@@ -606,7 +618,7 @@ const PaymentVerifications = () => {
           <div className="space-y-4 pt-2">
             <div className="space-y-2">
               <Label>Select Lead *</Label>
-              <Select value={addPaymentLeadId} onValueChange={setAddPaymentLeadId}>
+              <Select value={addPaymentLeadId} onValueChange={setAddPaymentLeadId} disabled>
                 <SelectTrigger>
                   <SelectValue placeholder="Select a lead" />
                 </SelectTrigger>

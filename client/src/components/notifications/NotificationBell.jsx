@@ -67,7 +67,7 @@ const getNavigationUrl = (notification) => {
   }
   if (data?.orderId) return `/sales/orders?highlight=${data.orderId}`;
   if (type === 'lead' && data?.leadId) return `/sales/leads?highlight=${data.leadId}`;
-  if (type === 'payment' && data?.leadId) return `/accounts/lead-payments`;
+  if (type === 'payment' && data?.leadId) return `/accounts/payment-verifications`;
   if (type === 'payment') return `/accounts/payment-verifications`;
   if (type === 'account' && data?.orderCode) return `/accounts/sales/packed-orders`;
   if (type === 'purchase') return `/accounts/purchases/requests`;
