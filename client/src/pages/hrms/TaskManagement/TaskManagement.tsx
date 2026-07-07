@@ -4,6 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import TaskDashboardView from "@/components/hrmsTaskManagement/Dashboard";
 import TaskWorkspaceView from "@/components/hrmsTaskManagement/WorkShop";
 import TaskCreationForm from "@/components/hrmsTaskManagement/TaskCreationForm";
+import TaskReports from "@/components/hrmsTaskManagement/Reports"; // Your imported Reports component
 
 // --- ROLE HIERARCHY ---
 type Role = string; // Simplified for flexibility
@@ -25,17 +26,17 @@ export default function HRMSTaskManagement() {
 
   const [activeTab, setActiveTab] = useState<TabType>("workspace");
   const [isCreateFormOpen, setIsCreateFormOpen] = useState(false);
-  
+
   // THE REFRESH TRIGGER: Updates when a new task is created
   const [refreshKey, setRefreshKey] = useState(0);
 
   if (loading) return <div className="p-6">Loading...</div>;
 
-  const TOP_LEVEL_ADMINS = ['HR-Admin', 'MIS Admin', 'Company Admin', 'Super Admin', 'Admin']; 
-  
+  const TOP_LEVEL_ADMINS = ['HR-Admin', 'MIS Admin', 'Company Admin', 'Super Admin', 'Admin'];
+
   // 🔥 ADDED NEW DEPARTMENT HEADS HERE
   const DEPT_HEADS = [
-    'Production Head', 'Packing Head', 'Dispatch Head', 
+    'Production Head', 'Packing Head', 'Dispatch Head',
     'Accounts Head', 'Sales Head', 'Manager', 'Finance Manager',
     'Unit Head', 'Unit Manager',
     'Research & Development Head', 'Store Head', 'QC Head'
@@ -53,7 +54,7 @@ export default function HRMSTaskManagement() {
         </div>
 
         {canCreateTask && (
-          <button 
+          <button
             onClick={() => setIsCreateFormOpen(true)}
             className="bg-orange-500 text-white px-4 py-2 rounded-lg shadow hover:bg-orange-600 transition font-medium"
           >
@@ -73,13 +74,14 @@ export default function HRMSTaskManagement() {
       <div className="mt-4">
         {activeTab === "dashboard" && <TaskDashboardView refreshTrigger={refreshKey} />}
         {activeTab === "workspace" && <TaskWorkspaceView refreshTrigger={refreshKey} />}
-        {activeTab === "reports" && <TaskReportsView />}
+        {/* Wired the actual TaskReports component right here 👇 */}
+        {activeTab === "reports" && <TaskReports />}
       </div>
 
       {/* Creation Form Modal */}
       {isCreateFormOpen && (
-        <TaskCreationForm 
-          onClose={() => setIsCreateFormOpen(false)} 
+        <TaskCreationForm
+          onClose={() => setIsCreateFormOpen(false)}
           onSuccess={() => setRefreshKey(prev => prev + 1)} // Updates the trigger!
         />
       )}
@@ -91,17 +93,10 @@ function TabButton({ label, value, activeTab, setActiveTab }: any) {
   return (
     <button
       onClick={() => setActiveTab(value)}
-      className={`px-6 py-3 text-sm font-medium transition-all ${
-        activeTab === value ? "text-indigo-600 border-b-2 border-indigo-500" : "text-gray-400 hover:text-indigo-500"
-      }`}
+      className={`px-6 py-3 text-sm font-medium transition-all ${activeTab === value ? "text-indigo-600 border-b-2 border-indigo-500" : "text-gray-400 hover:text-indigo-500"
+        }`}
     >
       {label}
     </button>
   );
 }
-
-const TaskReportsView = () => (
-  <div className="p-4 bg-white rounded-lg shadow border border-gray-100 text-gray-500">
-    Analytics & Export Options Coming Soon...
-  </div>
-);
