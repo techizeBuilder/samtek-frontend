@@ -33,8 +33,7 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { toast } from "@/hooks/use-toast";
-import { jsPDF } from 'jspdf';
-import 'jspdf-autotable';
+import { generateQuotationPDF } from '@/utils/generateQuotationPDF';
 import html2canvas from 'html2canvas';
 
 // Dummy Products Data
@@ -215,7 +214,7 @@ const Quotation = () => {
   }));
 
   const pdfRef = useRef();
-
+  const pageRefs = useRef([]); // refs for individual page blocks
   // Fetch Lead Data
   const { data: leadResponse } = useQuery({
     queryKey: ['lead', leadId],
@@ -902,95 +901,203 @@ const Quotation = () => {
     ));
   };
 
-  const generatePDF = async () => {
+  const captureHTMLToPDF = async (returnBase64 = false) => {
     const element = pdfRef.current;
-    toast({ title: "Generating PDF...", description: "Optimizing layout for multiple pages..." });
-    try {
-      // 1. Calculate dimensions
-      const width = element.offsetWidth;
-      const pageHeightPx = (width * 297) / 210; // A4 Ratio
+    if (!element) throw new Error('Preview element not found');
 
-      // 2. Identify sections and prevent splitting
-      const sections = Array.from(element.querySelectorAll('.pdf-section'));
-      const addedSpacers = [];
+    const canvas = await html2canvas(element, {
+      scale: 1.5,
+      useCORS: true,
+      allowTaint: true,
+      backgroundColor: '#ffffff',
+      logging: false,
+      imageTimeout: 15000,
+    });
 
-      // We need to re-calculate offsets after each spacer is added
-      // So we use a simple loop and check positions relative to the container
-      for (const section of sections) {
-        const pdfRect = element.getBoundingClientRect();
-        const sectionRect = section.getBoundingClientRect();
+    const { jsPDF } = await import('jspdf');
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    const pdfW = pdf.internal.pageSize.getWidth();
+    const scaleY = canvas.height / element.offsetHeight;
 
-        const elementTop = sectionRect.top - pdfRect.top;
-        const elementBottom = elementTop + sectionRect.height;
+    // Find all product rows
+    const allRows = Array.from(element.querySelectorAll('tr.pdf-product-row'));
+    const containerTop = element.getBoundingClientRect().top;
 
-        const pageOfTop = Math.floor(elementTop / pageHeightPx);
-        const pageOfBottom = Math.floor((elementBottom - 1) / pageHeightPx); // -1 to handle exact boundaries
+    const bottomOfEl = (el) => {
+      return (el.getBoundingClientRect().bottom - containerTop) * scaleY;
+    };
 
-        if (pageOfTop !== pageOfBottom) {
-          const spacerHeight = (pageOfTop + 1) * pageHeightPx - elementTop;
-          let spacer;
-          if (section.tagName.toLowerCase() === 'tr') {
-            spacer = document.createElement('tr');
-            const td = document.createElement('td');
-            td.colSpan = section.children.length || 10;
-            td.style.height = `${spacerHeight}px`;
-            spacer.appendChild(td);
-          } else {
-            spacer = document.createElement('div');
-            spacer.style.height = `${spacerHeight}px`;
-          }
-          spacer.className = 'pdf-paging-spacer';
-          section.parentNode.insertBefore(spacer, section);
-          addedSpacers.push(spacer);
+    // Build page cuts:
+    // - Page 1 ends after product[0]
+    // - Pages 2..N-1 end after every 2 additional products
+    // - If last group has 1 product → it goes with billing (no cut)
+    const cuts = [];
+    if (allRows.length > 0) {
+      cuts.push(bottomOfEl(allRows[0])); // after product 1
+      let i = 1;
+      while (i < allRows.length) {
+        const remaining = allRows.length - i;
+        if (remaining >= 2) {
+          cuts.push(bottomOfEl(allRows[i + 1]));
+          i += 2;
+        } else {
+          break; // 1 remaining → flows with billing
         }
       }
+    }
+    cuts.push(canvas.height); // final page
 
-      // 3. Capture canvas (scale 1.5 = good quality, much smaller than scale 2)
-      const canvas = await html2canvas(element, {
-        scale: 1.5,
-        useCORS: true,
-        backgroundColor: "#ffffff",
-        logging: false
+    // Render slices
+    let prevY = 0;
+    for (let idx = 0; idx < cuts.length; idx++) {
+      const cutY = cuts[idx];
+      const sliceH = cutY - prevY;
+      const sliceHmm = (sliceH * pdfW) / canvas.width;
+
+      const sc = document.createElement('canvas');
+      sc.width = canvas.width;
+      sc.height = sliceH;
+      const ctx = sc.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, sc.width, sc.height);
+      ctx.drawImage(canvas, 0, -prevY);
+
+      if (idx > 0) pdf.addPage();
+      pdf.addImage(sc.toDataURL('image/jpeg', 0.78), 'JPEG', 0, 0, pdfW, sliceHmm);
+      prevY = cutY;
+    }
+
+    if (returnBase64) return pdf.output('datauristring');
+    pdf.save(`Quotation_${leadData?.leadCode || 'New'}.pdf`);
+    return null;
+  };
+
+  const generatePDF = async () => {
+    if (step === 'price_list_preview') {
+      toast({ title: "Generating PDF...", description: "Capturing price list layout..." });
+      try {
+        await captureHTMLToPDF(false);
+        toast({ title: "Downloaded!", description: "Price list PDF saved successfully." });
+      } catch (err) {
+        console.error('PDF Error:', err);
+        toast({ title: "Error", description: "Failed to generate PDF.", variant: "destructive" });
+      }
+      return;
+    }
+
+    toast({ title: "Generating PDF...", description: "Creating quotation layout..." });
+    try {
+      await generateQuotationPDF({
+        logoDataUrl: '/logo Semtek.webp',
+        stampDataUrl: companyStampUrl,
+        companyData,
+        leadData,
+        quotationMeta: {
+          no: `SM-${leadData?.leadCode || 'XXXX'}-${new Date().toLocaleDateString('en-GB').replace(/\//g,'-')}`,
+          date: new Date().toLocaleDateString('en-GB'),
+          validTill: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB'),
+          heading: quotationHeading || leadData?.productRequired || 'QUOTATION'
+        },
+        selectedItems,
+        additionalCharges,
+        selectedTerms,
+        selectedNotes,
+        bankDetails: {
+          companyName: 'SAMTEK ENGINEERING AND GIS SOLUTION PVT LTD.',
+          accountNumber: '411505500062',
+          ifsc: 'ICIC0004115',
+          branch: 'NOIDA SECTOR 121 (NOIDA)'
+        },
+        loggedInUser,
+        fileName: `Quotation_${leadData?.leadCode || 'New'}.pdf`,
+        returnBase64: false
       });
 
-      // 4. Cleanup spacers immediately after capture
-      addedSpacers.forEach(s => s.remove());
-
-      // JPEG at 0.88 quality = sharp output, ~80% smaller than PNG
-      const imgData = canvas.toDataURL('image/jpeg', 0.88);
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const imgProps = pdf.getImageProperties(imgData);
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-      const pageHeight = pdf.internal.pageSize.getHeight();
-      let heightLeft = pdfHeight;
-      let position = 0;
-
-      pdf.addImage(imgData, 'JPEG', 0, position, pdfWidth, pdfHeight);
-      heightLeft -= pageHeight;
-
-      while (heightLeft > 0) {
-        position = heightLeft - pdfHeight;
-        pdf.addPage();
-        pdf.addImage(imgData, 'JPEG', 0, position, pdfWidth, pdfHeight);
-        heightLeft -= pageHeight;
-      }
-
-      pdf.save(`Quotation_${leadData?.leadCode || 'New'}.pdf`);
-      // Save state for Update Quotation restore
       if (quotationStateKey) {
         localStorage.setItem(quotationStateKey, JSON.stringify({
-          selectedItems,
-          quotationType,
-          selectedTerms,
-          selectedNotes,
-          additionalCharges
+          selectedItems, quotationType, selectedTerms, selectedNotes, additionalCharges
         }));
       }
-      toast({ title: "Success", description: "PDF generated with intelligent page breaks." });
-    } catch (error) {
-      console.error("PDF Generation Error:", error);
-      toast({ title: "Error", description: "Failed to generate PDF properly.", variant: "destructive" });
+      toast({ title: "Downloaded!", description: "Quotation PDF saved successfully." });
+    } catch (err) {
+      console.error('PDF Error:', err);
+      toast({ title: "Error", description: "Failed to generate PDF.", variant: "destructive" });
+    }
+  };
+
+  const handlePrint = async () => {
+    if (step === 'price_list_preview') {
+      toast({ title: "Preparing print...", description: "Capturing price list layout..." });
+      try {
+        const dataUri = await captureHTMLToPDF(true);
+        const base64 = dataUri.split(',')[1];
+        const byteArr = new Uint8Array(atob(base64).split('').map(c => c.charCodeAt(0)));
+        const blob = new Blob([byteArr], { type: 'application/pdf' });
+        const blobUrl = URL.createObjectURL(blob);
+        const frame = document.createElement('iframe');
+        frame.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;';
+        frame.src = blobUrl;
+        document.body.appendChild(frame);
+        frame.onload = () => {
+          setTimeout(() => {
+            frame.contentWindow.focus();
+            frame.contentWindow.print();
+            setTimeout(() => { document.body.removeChild(frame); URL.revokeObjectURL(blobUrl); }, 3000);
+          }, 500);
+        };
+      } catch (err) {
+        console.error('Print Error:', err);
+        toast({ title: "Error", description: "Failed to prepare print.", variant: "destructive" });
+      }
+      return;
+    }
+
+    toast({ title: "Preparing print...", description: "Creating quotation layout..." });
+    try {
+      const dataUri = await generateQuotationPDF({
+        logoDataUrl: '/logo Semtek.webp',
+        stampDataUrl: companyStampUrl,
+        companyData,
+        leadData,
+        quotationMeta: {
+          no: `SM-${leadData?.leadCode || 'XXXX'}-${new Date().toLocaleDateString('en-GB').replace(/\//g,'-')}`,
+          date: new Date().toLocaleDateString('en-GB'),
+          validTill: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB'),
+          heading: quotationHeading || leadData?.productRequired || 'QUOTATION'
+        },
+        selectedItems,
+        additionalCharges,
+        selectedTerms,
+        selectedNotes,
+        bankDetails: {
+          companyName: 'SAMTEK ENGINEERING AND GIS SOLUTION PVT LTD.',
+          accountNumber: '411505500062',
+          ifsc: 'ICIC0004115',
+          branch: 'NOIDA SECTOR 121 (NOIDA)'
+        },
+        loggedInUser,
+        fileName: `Quotation_${leadData?.leadCode || 'New'}.pdf`,
+        returnBase64: true
+      });
+
+      const base64 = dataUri.split(',')[1];
+      const byteArr = new Uint8Array(atob(base64).split('').map(c => c.charCodeAt(0)));
+      const blob = new Blob([byteArr], { type: 'application/pdf' });
+      const blobUrl = URL.createObjectURL(blob);
+      const frame = document.createElement('iframe');
+      frame.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;';
+      frame.src = blobUrl;
+      document.body.appendChild(frame);
+      frame.onload = () => {
+        setTimeout(() => {
+          frame.contentWindow.focus();
+          frame.contentWindow.print();
+          setTimeout(() => { document.body.removeChild(frame); URL.revokeObjectURL(blobUrl); }, 3000);
+        }, 500);
+      };
+    } catch (err) {
+      console.error('Print Error:', err);
+      toast({ title: "Error", description: "Failed to prepare print.", variant: "destructive" });
     }
   };
 
@@ -1008,76 +1115,39 @@ const Quotation = () => {
 
     try {
       setIsSendingEmail(true);
-      toast({ title: "Processing...", description: "Optimizing layout and generating PDF" });
+      toast({ title: "Processing...", description: "Generating quotation layout for email..." });
 
-      const element = pdfRef.current;
-
-      // Intelligent Paging Logic
-      const width = element.offsetWidth;
-      const pageHeightPx = (width * 297) / 210;
-      const sections = Array.from(element.querySelectorAll('.pdf-section'));
-      const addedSpacers = [];
-
-      for (const section of sections) {
-        const pdfRect = element.getBoundingClientRect();
-        const sectionRect = section.getBoundingClientRect();
-
-        const elementTop = sectionRect.top - pdfRect.top;
-        const elementBottom = elementTop + sectionRect.height;
-
-        const pageOfTop = Math.floor(elementTop / pageHeightPx);
-        const pageOfBottom = Math.floor((elementBottom - 1) / pageHeightPx);
-
-        if (pageOfTop !== pageOfBottom) {
-          const spacerHeight = (pageOfTop + 1) * pageHeightPx - elementTop;
-          let spacer;
-          if (section.tagName.toLowerCase() === 'tr') {
-            spacer = document.createElement('tr');
-            const td = document.createElement('td');
-            td.colSpan = section.children.length || 10;
-            td.style.height = `${spacerHeight}px`;
-            spacer.appendChild(td);
-          } else {
-            spacer = document.createElement('div');
-            spacer.style.height = `${spacerHeight}px`;
-          }
-          spacer.className = 'pdf-paging-spacer';
-          section.parentNode.insertBefore(spacer, section);
-          addedSpacers.push(spacer);
-        }
+      let pdfBase64;
+      if (step === 'price_list_preview') {
+        pdfBase64 = await captureHTMLToPDF(true);
+      } else {
+        pdfBase64 = await generateQuotationPDF({
+          logoDataUrl: '/logo Semtek.webp',
+          stampDataUrl: companyStampUrl,
+          companyData,
+          leadData,
+          quotationMeta: {
+            no: `SM-${leadData?.leadCode || 'XXXX'}-${new Date().toLocaleDateString('en-GB').replace(/\//g,'-')}`,
+            date: new Date().toLocaleDateString('en-GB'),
+            validTill: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB'),
+            heading: quotationHeading || leadData?.productRequired || 'QUOTATION'
+          },
+          selectedItems,
+          additionalCharges,
+          selectedTerms,
+          selectedNotes,
+          bankDetails: {
+            companyName: 'SAMTEK ENGINEERING AND GIS SOLUTION PVT LTD.',
+            accountNumber: '411505500062',
+            ifsc: 'ICIC0004115',
+            branch: 'NOIDA SECTOR 121 (NOIDA)'
+          },
+          loggedInUser,
+          fileName: `Quotation_${leadData?.leadCode || 'New'}.pdf`,
+          returnBase64: true
+        });
       }
 
-      const canvas = await html2canvas(element, {
-        scale: 2.0,
-        useCORS: true,
-        logging: false,
-        allowTaint: true,
-        backgroundColor: "#ffffff"
-      });
-
-      // Cleanup spacers
-      addedSpacers.forEach(s => s.remove());
-
-      const imgData = canvas.toDataURL('image/jpeg', 0.95);
-
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const imgProps = pdf.getImageProperties(imgData);
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-      const pageHeight = pdf.internal.pageSize.getHeight();
-      let heightLeft = pdfHeight;
-      let position = 0;
-
-      pdf.addImage(imgData, 'JPEG', 0, position, pdfWidth, pdfHeight);
-      heightLeft -= pageHeight;
-
-      while (heightLeft > 0) {
-        position = heightLeft - pdfHeight;
-        pdf.addPage();
-        pdf.addImage(imgData, 'JPEG', 0, position, pdfWidth, pdfHeight);
-        heightLeft -= pageHeight;
-      }
-      const pdfBase64 = pdf.output('datauristring');
       const token = localStorage.getItem('token');
 
       // Prepare recipient list (Main email + Alternate email)
@@ -2049,7 +2119,7 @@ const Quotation = () => {
             <Button variant="outline" onClick={generatePDF} className="gap-2">
               <Download className="h-4 w-4" /> Download
             </Button>
-            <Button variant="outline" className="gap-2">
+            <Button variant="outline" onClick={handlePrint} className="gap-2">
               <Printer className="h-4 w-4" /> Print
             </Button>
             <Button
@@ -2081,15 +2151,16 @@ const Quotation = () => {
                 </div>
                 <div className="text-[9px] text-gray-600">India</div>
               </div>
-
               {/* Contact Column */}
-              <div className="w-[30%] p-3 text-[10px] flex flex-col justify-center space-y-1">
-                <div className="flex justify-between gap-1"><span>Email:</span> <span className="font-medium truncate">{companyEmail || 'sales@samtekmachinery.com'}</span></div>
-                <div className="flex justify-between gap-1"><span>Mobile:</span> <span className="font-medium">{companyMobile ? `+91-${companyMobile}` : '+91-7822813451'}</span></div>
-                {companyWebsite && <div className="flex justify-between gap-1"><span>Website:</span> <span className="font-medium">{companyWebsite}</span></div>}
-                {!companyWebsite && <div className="flex justify-between gap-1"><span>Website:</span> <span className="font-medium">www.samtekmachinery.com</span></div>}
+              <div className="w-[30%] p-3 text-[10px] flex flex-col justify-center space-y-[3px]">
+                <div><span>Email: </span><span>{companyEmail || 'sales@samtekmachinery.com'}</span></div>
+                <div><span>Mobile: </span><span>{companyMobile ? `+91-${companyMobile}` : '+91-7822813451'}</span></div>
+                <div><span>Website: </span><span>{companyWebsite || 'https://samtekmachinery.com'}</span></div>
                 {companyGst && (
-                  <div className="flex justify-between gap-1 font-bold text-black pt-1 border-t border-gray-100"><span>GST:</span> <span>{companyGst}</span></div>
+                  <div><span className="font-bold">GST: </span><span className="font-bold">{companyGst}</span></div>
+                )}
+                {!companyGst && (
+                  <div><span className="font-bold">GST: </span><span className="font-bold">09ABDCS1268B1ZJ</span></div>
                 )}
               </div>
             </div>
@@ -2110,7 +2181,7 @@ const Quotation = () => {
               </div>
               <div className="w-2/5">
                 <table className="w-full h-full text-[10px]">
-                  <tr className="border-b border-gray-400"><td className="p-2 border-r border-gray-400 font-bold bg-gray-50">Quotation No</td><td className="p-2 font-medium">: SM-7653-17-03</td></tr>
+                  <tr className="border-b border-gray-400"><td className="p-2 border-r border-gray-400 font-bold bg-gray-50">Quotation No</td><td className="p-2 font-medium">: SM-{leadData?.leadCode || 'XXXX'}-{new Date().toLocaleDateString('en-GB').replace(/\//g,'-')}</td></tr>
                   <tr className="border-b border-gray-400"><td className="p-2 border-r border-gray-400 font-bold bg-gray-50">Quotation Date</td><td className="p-2 font-medium">: {new Date().toLocaleDateString('en-GB')}</td></tr>
                   <tr className="border-b border-gray-400"><td className="p-2 border-r border-gray-400 font-bold bg-gray-50">Valid Till</td><td className="p-2 font-medium">: {new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB')}</td></tr>
                   <tr><td className="p-2 border-r border-gray-400 font-bold bg-gray-50">Enquiry Ref ID</td><td className="p-2 font-medium">: {leadData?.leadCode || '3135580830'}</td></tr>
@@ -2145,48 +2216,33 @@ const Quotation = () => {
                   </thead>
                   <tbody>
                     {selectedItems.map((item, idx) => (
-                      <tr key={item.id} className="border-b border-gray-400 last:border-0 pdf-section">
+                      <tr key={item.id} className="border-b border-gray-400 last:border-0 pdf-section pdf-product-row">
                         <td className="p-2 border-r border-gray-400 align-top font-bold">{idx + 1}</td>
                         <td className="p-4 border-r border-gray-400 text-left">
                           <div className="flex gap-4">
                             <div className="flex-1 space-y-2">
                               <div className="text-sm font-bold text-blue-900 border-b pb-1">{item.name}</div>
                               <div className="font-bold">Product Code: <span className="text-blue-600">{item.code || '-'}</span></div>
-                              {/* Dynamic Specs + Usage from DB (or edited text from builder) */}
                               {(() => {
-                                // If user edited specUsageText in builder, use that; else build from DB fields
                                 const buildSpecUsageText = (it) => {
                                   const specParts = (it.specifications || []).map(s => `${s.key}: ${s.value}`);
                                   const apps = it.applications || it.features || [];
                                   if (apps.length > 0) specParts.push(`Usage: ${apps.join(', ')}`);
                                   return specParts.join(' | ');
                                 };
-
-                                const rawText = item.specUsageText !== undefined
-                                  ? item.specUsageText
-                                  : buildSpecUsageText(item);
-
+                                const rawText = item.specUsageText !== undefined ? item.specUsageText : buildSpecUsageText(item);
                                 if (!rawText) return null;
-
-                                // Split by ' | ' to render each as a separate line with #
                                 const lines = rawText.split(' | ').map(l => l.trim()).filter(Boolean);
                                 return (
                                   <div className="text-[9px] text-gray-600 space-y-0.5 mt-1">
-                                    {lines.map((line, i) => (
-                                      <div key={i}># {line}</div>
-                                    ))}
+                                    {lines.map((line, i) => <div key={i}># {line}</div>)}
                                   </div>
                                 );
                               })()}
                             </div>
                             <div className="w-24 h-24 border border-gray-200 rounded flex items-center justify-center p-1 shrink-0 bg-white overflow-hidden">
                               {getImageUrl(item.image) ? (
-                                <img
-                                  src={getImageUrl(item.image)}
-                                  alt="Product"
-                                  className="max-w-full max-h-full object-contain"
-                                  onError={(e) => { e.target.style.display='none'; e.target.nextSibling.style.display='block'; }}
-                                />
+                                <img src={getImageUrl(item.image)} alt="Product" className="max-w-full max-h-full object-contain" onError={(e) => { e.target.style.display='none'; e.target.nextSibling.style.display='block'; }} />
                               ) : null}
                               <Package className="h-8 w-8 text-gray-200" style={{display: getImageUrl(item.image) ? 'none' : 'block'}} />
                             </div>
@@ -2204,7 +2260,6 @@ const Quotation = () => {
                         <td className="p-2 align-top text-right font-black">₹{(item.price * item.quantity * (1 + item.gst / 100)).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                       </tr>
                     ))}
-                    {/* Additional Charges rows in PDF — no remove button */}
                     {additionalCharges.map((charge, idx) => (
                       <tr key={charge.id} className="border-b border-gray-400 pdf-section">
                         <td className="p-2 border-r border-gray-400 align-top font-bold text-orange-600">S</td>
@@ -2248,7 +2303,6 @@ const Quotation = () => {
 
               {/* Conditions Sections */}
               <div className="space-y-4 pt-4 pb-10">
-                {/* Terms & Conditions — dynamic from builder */}
                 {selectedTerms.length > 0 && (
                   <div className="border border-gray-300 pdf-section">
                     <div className="bg-blue-100 p-2 text-[10px] font-black border-b border-gray-300 uppercase tracking-widest text-blue-900">TERMS &amp; CONDITIONS</div>
@@ -2262,19 +2316,26 @@ const Quotation = () => {
                     </div>
                   </div>
                 )}
-
-                {/* Additional Notes — dynamic from builder */}
+                {selectedTerms.length === 0 && (
+                  <div className="border border-gray-300 pdf-section">
+                    <div className="bg-blue-100 p-2 text-[10px] font-black border-b border-gray-300 uppercase tracking-widest text-blue-900">TERMS &amp; CONDITIONS</div>
+                    <div className="p-4 text-[10px] text-gray-500 italic">Not Applicable</div>
+                  </div>
+                )}
                 {selectedNotes.length > 0 && (
                   <div className="border border-gray-300 pdf-section">
                     <div className="bg-blue-100 p-2 text-[10px] font-black border-b border-gray-300 uppercase tracking-widest text-blue-900">ADDITIONAL NOTE</div>
                     <div className="p-4 text-[10px] text-gray-600 leading-relaxed italic">
-                      {selectedNotes.map((note, idx) => (
-                        <div key={idx} className="mb-1">{idx + 1}. {note}</div>
-                      ))}
+                      {selectedNotes.map((note, idx) => <div key={idx} className="mb-1">{idx + 1}. {note}</div>)}
                     </div>
                   </div>
                 )}
-
+                {selectedNotes.length === 0 && (
+                  <div className="border border-gray-300 pdf-section">
+                    <div className="bg-blue-100 p-2 text-[10px] font-black border-b border-gray-300 uppercase tracking-widest text-blue-900">ADDITIONAL NOTE</div>
+                    <div className="p-4 text-[10px] text-gray-500 italic">Not Applicable</div>
+                  </div>
+                )}
                 <div className="border border-gray-300 pdf-section">
                   <div className="bg-blue-100 p-2 text-[10px] font-black border-b border-gray-300 uppercase tracking-widest text-blue-900">BANK DETAILS</div>
                   <div className="p-4 text-[10px] font-bold text-gray-700 space-y-1">
@@ -2291,26 +2352,16 @@ const Quotation = () => {
                 <p className="text-[10px] text-gray-600 text-center italic">Thank you again for showing your interest with our company. We expect a healthy and long-term relationship with you. Early revert from your side will be highly appreciated. Please feel free to ask your queries.</p>
                 <div className="flex justify-between items-end mt-12">
                   <div className="space-y-1">
-                    <div className="font-black text-sm text-blue-900">Thanks & Regards</div>
+                    <div className="font-black text-sm text-blue-900">Thanks &amp; Regards</div>
                     <div className="text-[11px] font-bold">{loggedInUser?.fullName || companyName}</div>
-                    {(loggedInUser?.email) && (
-                      <div className="text-[10px] text-gray-500">Email: {loggedInUser.email}</div>
-                    )}
-                    {(loggedInUser?.mobile) && (
-                      <div className="text-[10px] text-gray-500">Mobile: {loggedInUser.mobile}</div>
-                    )}
+                    {loggedInUser?.email && <div className="text-[10px] text-gray-500">Email: {loggedInUser.email}</div>}
+                    {loggedInUser?.mobile && <div className="text-[10px] text-gray-500">Mobile: {loggedInUser.mobile}</div>}
                   </div>
                   <div className="text-center relative">
                     <div className="font-black text-sm text-blue-900 mb-2">Authorized Signatory</div>
                     {companyStampUrl ? (
                       <div className="w-32 h-24 flex items-center justify-center">
-                        <img
-                          src={companyStampUrl}
-                          alt="Company Stamp"
-                          className="max-w-full max-h-full object-contain opacity-90"
-                          crossOrigin="anonymous"
-                          onError={(e) => { e.target.style.display='none'; }}
-                        />
+                        <img src={companyStampUrl} alt="Company Stamp" className="max-w-full max-h-full object-contain opacity-90" crossOrigin="anonymous" onError={(e) => { e.target.style.display='none'; }} />
                       </div>
                     ) : (
                       <div className="w-32 h-24 border-2 border-dashed border-gray-300 rounded flex items-center justify-center">
@@ -2320,7 +2371,6 @@ const Quotation = () => {
                   </div>
                 </div>
               </div>
-
             </div>
           </div>
           {/* Main Page Footer */}
@@ -2334,7 +2384,6 @@ const Quotation = () => {
               <div className="flex items-center justify-center gap-1"><span className="text-black">▶️</span> @SamTekMachinery</div>
             </div>
           </div>
-
         </div>
       </div>
     );
@@ -2377,7 +2426,7 @@ const Quotation = () => {
             <Button variant="outline" onClick={generatePDF} className="gap-2">
               <Download className="h-4 w-4" /> Download
             </Button>
-            <Button variant="outline" className="gap-2">
+            <Button variant="outline" onClick={handlePrint} className="gap-2">
               <Printer className="h-4 w-4" /> Print
             </Button>
             <Button
