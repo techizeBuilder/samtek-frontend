@@ -45,6 +45,11 @@ export const adminSettingsApi = {
   updateDocumentType: (id, body) => apiFetch(`/document-types/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   deleteDocumentType: (id) => apiFetch(`/document-types/${id}`, { method: 'DELETE' }),
 
+  // Lead Reject Reasons
+  addLeadRejectReason: (body) => apiFetch('/lead-reject-reasons', { method: 'POST', body: JSON.stringify(body) }),
+  updateLeadRejectReason: (id, body) => apiFetch(`/lead-reject-reasons/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deleteLeadRejectReason: (id) => apiFetch(`/lead-reject-reasons/${id}`, { method: 'DELETE' }),
+
   // Terms & Conditions
   addTerm: (body) => apiFetch('/terms', { method: 'POST', body: JSON.stringify(body) }),
   updateTerm: (id, body) => apiFetch(`/terms/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
@@ -59,4 +64,14 @@ export const adminSettingsApi = {
   addNote: (body) => apiFetch('/notes', { method: 'POST', body: JSON.stringify(body) }),
   updateNote: (id, body) => apiFetch(`/notes/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   deleteNote: (id) => apiFetch(`/notes/${id}`, { method: 'DELETE' }),
+
+  // Dispatch Checklist
+  addDispatchChecklistItem: (body) => apiFetch('/dispatch-checklist', { method: 'POST', body: JSON.stringify(body) }),
+  updateDispatchChecklistItem: (id, body) => apiFetch(`/dispatch-checklist/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deleteDispatchChecklistItem: (id) => apiFetch(`/dispatch-checklist/${id}`, { method: 'DELETE' }),
+
+  // Quotation Number Settings
+  addQuotationNumberSetting: (body) => apiFetch('/quotation-number-settings', { method: 'POST', body: JSON.stringify(body) }),
+  updateQuotationNumberSetting: (id, body) => apiFetch(`/quotation-number-settings/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deleteQuotationNumberSetting: (id) => apiFetch(`/quotation-number-settings/${id}`, { method: 'DELETE' }),
 };

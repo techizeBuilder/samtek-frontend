@@ -343,6 +343,19 @@ const DealVerifications = () => {
                           <span className="text-gray-400 text-xs">Payment</span>
                           <span className="text-gray-700">{order.paymentStatus || 'Pending'}</span>
                         </div>
+                        {svcStatus === 'verified' && (
+                          <div className="flex flex-col">
+                            <span className="text-gray-400 text-xs">Order Form</span>
+                            <Badge className={cn('text-xs mt-0.5 w-fit',
+                              order.orderFormStatus === 'Submitted' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                              order.orderFormStatus === 'Returned' ? 'bg-red-50 text-red-700 border-red-200' :
+                              'bg-gray-50 text-gray-500 border-gray-200'
+                            )}>
+                              {order.orderFormStatus === 'Submitted' ? 'Submitted' :
+                               order.orderFormStatus === 'Returned' ? 'Returned' : 'Not Filled'}
+                            </Badge>
+                          </div>
+                        )}
                       </div>
 
                       {/* Action Icons Row */}

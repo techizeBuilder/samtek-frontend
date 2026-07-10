@@ -12,10 +12,11 @@ import {
   Building2, Settings, Globe, Mail, Zap, PhoneCall, Eye, EyeOff,
   Plus, Pencil, Trash2, Save, RefreshCw, Info, Key, Phone, CheckCircle2,
   FileText, Tag, List, Layers, DollarSign, StickyNote, Target, Upload,
-  ChevronRight,
+  ChevronRight, Truck, ClipboardList,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest } from '@/lib/queryClient';
+import { buildQuotationNumber } from '@/utils/quotationNumber';
 
 // ─── Reusable inline-edit list item ──────────────────────────────────────────
 function ListItem({ item, onSave, onDelete, fields }) {
@@ -127,6 +128,114 @@ function CrudSection({ title, icon: Icon, items = [], fields, addLabel, onAdd, o
   );
 }
 
+// ─── Quotation Number Setting — bespoke form + table (dropdowns + live example,
+//     which the generic CrudSection/ListItem above don't support) ─────────────
+const BIFURCATE_OPTIONS = ['-', '/', '_', 'None'];
+const FY_POSITION_OPTIONS = [
+  { value: 'none', label: '== Select ==' },
+  { value: 'before_prefix', label: 'Before Prefix' },
+  { value: 'after_prefix', label: 'After Prefix' },
+];
+const selectClass = 'h-9 w-full rounded-md border border-gray-300 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300';
+
+function QuotationNumberSettingSection({ items = [], onAdd, onUpdate, onDelete }) {
+  const emptyForm = { prefix: '', suffix: '', bifurcateWith: '-', financialYearPosition: 'none' };
+  const [form, setForm] = useState(emptyForm);
+  const [editingId, setEditingId] = useState(null);
+
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const example = buildQuotationNumber(form, 'LD-0001');
+
+  const startEdit = (item) => {
+    setEditingId(item._id);
+    setForm({
+      prefix: item.prefix || '',
+      suffix: item.suffix || '',
+      bifurcateWith: item.bifurcateWith || '-',
+      financialYearPosition: item.financialYearPosition || 'none',
+    });
+  };
+  const cancelEdit = () => { setEditingId(null); setForm(emptyForm); };
+  const handleSave = () => {
+    if (editingId) onUpdate(editingId, form);
+    else onAdd(form);
+    setForm(emptyForm);
+    setEditingId(null);
+  };
+
+  return (
+    <div className="bg-white rounded-lg border border-gray-200">
+      {/* Form */}
+      <div className="p-5 border-b border-gray-100">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 items-end">
+          <div className="space-y-1.5">
+            <Label className="text-sm">Prefix</Label>
+            <Input value={form.prefix} onChange={e => set('prefix', e.target.value)} placeholder="e.g. SAM" />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-sm">Suffix</Label>
+            <Input value={form.suffix} onChange={e => set('suffix', e.target.value)} placeholder="e.g. 0011" />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-sm">Bifurcate With</Label>
+            <select className={selectClass} value={form.bifurcateWith} onChange={e => set('bifurcateWith', e.target.value)}>
+              {BIFURCATE_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-sm">Add Financial Year (eg. 25-26)</Label>
+            <select className={selectClass} value={form.financialYearPosition} onChange={e => set('financialYearPosition', e.target.value)}>
+              {FY_POSITION_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+        </div>
+        <div className="flex items-center justify-between mt-4">
+          <p className="text-sm text-gray-600"><span className="font-semibold text-gray-800">For Example:</span> {example}</p>
+          <div className="flex gap-2">
+            {editingId && <Button size="sm" variant="ghost" onClick={cancelEdit}>Cancel</Button>}
+            <Button size="sm" onClick={handleSave}>{editingId ? 'Update' : 'Save'}</Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Saved settings table */}
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-gray-100 text-left text-gray-500">
+              <th className="px-5 py-3 font-medium">Prefix</th>
+              <th className="px-5 py-3 font-medium">Suffix</th>
+              <th className="px-5 py-3 font-medium">Bifurcate With</th>
+              <th className="px-5 py-3 font-medium">Financial Year Position</th>
+              <th className="px-5 py-3 font-medium">Example</th>
+              <th className="px-5 py-3 font-medium">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.length === 0 ? (
+              <tr><td colSpan={6} className="px-5 py-6 text-center text-gray-400 italic">No number settings yet — add one above.</td></tr>
+            ) : items.map(item => (
+              <tr key={item._id} className="border-b border-gray-50 last:border-0">
+                <td className="px-5 py-3">{item.prefix || '-'}</td>
+                <td className="px-5 py-3">{item.suffix || '-'}</td>
+                <td className="px-5 py-3">{item.bifurcateWith}</td>
+                <td className="px-5 py-3">{FY_POSITION_OPTIONS.find(o => o.value === item.financialYearPosition)?.label || item.financialYearPosition}</td>
+                <td className="px-5 py-3 font-medium text-gray-800">{buildQuotationNumber(item, 'LD-0001')}</td>
+                <td className="px-5 py-3">
+                  <div className="flex gap-1">
+                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-gray-500 hover:text-gray-800" onClick={() => startEdit(item)}><Pencil className="h-3.5 w-3.5" /></Button>
+                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-400 hover:text-red-600" onClick={() => onDelete(item._id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function AdminSettings() {
   const { toast } = useToast();
@@ -150,9 +259,12 @@ export default function AdminSettings() {
   const leadSources   = settings.leadSources || [];
   const businessTypes = settings.businessTypes || [];
   const documentTypes = settings.documentTypes || [];
+  const leadRejectReasons = settings.leadRejectReasons || [];
   const terms         = settings.termsAndConditions || [];
   const charges       = settings.additionalCharges || [];
   const notes         = settings.quotationNotes || [];
+  const dispatchChecklist = settings.dispatchChecklist || [];
+  const quotationNumberSettings = settings.quotationNumberSettings || [];
 
   const inv = () => qc.invalidateQueries({ queryKey: ['admin-settings'] });
   const m = (fn, msg) => ({ mutationFn: fn, onSuccess: () => { inv(); toast({ title: msg }); }, onError: e => toast({ title: 'Error', description: e.message, variant: 'destructive' }) });
@@ -195,6 +307,21 @@ export default function AdminSettings() {
   const addNoteM    = useMutation(m(b => adminSettingsApi.addNote(b), 'Note added'));
   const updNoteM    = useMutation(m(({ id, body }) => adminSettingsApi.updateNote(id, body), 'Note updated'));
   const delNoteM    = useMutation(m(id => adminSettingsApi.deleteNote(id), 'Note deleted'));
+
+  // Dispatch Checklist
+  const addChecklistM = useMutation(m(b => adminSettingsApi.addDispatchChecklistItem(b), 'Checklist item added'));
+  const updChecklistM = useMutation(m(({ id, body }) => adminSettingsApi.updateDispatchChecklistItem(id, body), 'Checklist item updated'));
+  const delChecklistM = useMutation(m(id => adminSettingsApi.deleteDispatchChecklistItem(id), 'Checklist item deleted'));
+
+  // Lead Reject Reasons
+  const addRejectReasonM = useMutation(m(b => adminSettingsApi.addLeadRejectReason(b), 'Reject reason added'));
+  const updRejectReasonM = useMutation(m(({ id, body }) => adminSettingsApi.updateLeadRejectReason(id, body), 'Reject reason updated'));
+  const delRejectReasonM = useMutation(m(id => adminSettingsApi.deleteLeadRejectReason(id), 'Reject reason deleted'));
+
+  // Quotation Number Settings
+  const addNumberSettingM = useMutation(m(b => adminSettingsApi.addQuotationNumberSetting(b), 'Number setting added'));
+  const updNumberSettingM = useMutation(m(({ id, body }) => adminSettingsApi.updateQuotationNumberSetting(id, body), 'Number setting updated'));
+  const delNumberSettingM = useMutation(m(id => adminSettingsApi.deleteQuotationNumberSetting(id), 'Number setting deleted'));
 
   // ─── API settings ─────────────────────────────────────────────────────────
   const API_BASE_URL = import.meta.env.VITE_API_URL;
@@ -291,6 +418,7 @@ export default function AdminSettings() {
         { id: 'lead_source',   label: 'Lead Source'   },
         { id: 'business_type', label: 'Business Type' },
         { id: 'document_type', label: 'Document Type' },
+        { id: 'lead_reject_reason', label: 'Lead Reject Reason' },
       ]
     },
     {
@@ -299,6 +427,13 @@ export default function AdminSettings() {
         { id: 'terms',   label: 'Terms & Conditions' },
         { id: 'charges', label: 'Additional Charges'  },
         { id: 'notes',   label: 'Notes'               },
+        { id: 'quotation_number', label: 'Number Setting' },
+      ]
+    },
+    {
+      id: 'dispatch', label: 'Dispatch', icon: Truck,
+      children: [
+        { id: 'dispatch_checklist', label: 'Manage Checklist' },
       ]
     },
     { id: 'other', label: 'Other Settings', icon: Layers },
@@ -341,17 +476,16 @@ export default function AdminSettings() {
                 // Hover-triggered flyout submenu
                 return (
                   <div key={s.id} className="relative group">
-                    <button
-                      className={`w-full flex items-center justify-between px-3 py-2 rounded-md text-sm transition-colors ${
-                        isActive ? 'bg-gray-100 text-gray-900 font-medium' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-800'
+                    <div
+                      className={`w-full flex items-center justify-between px-3 py-2 rounded-md text-sm cursor-default select-none ${
+                        isActive ? 'bg-gray-100 text-gray-900 font-medium' : 'text-gray-500'
                       }`}
-                      onClick={() => setGeneralSection(s.id)}
                     >
                       <span className="flex items-center gap-2.5">
                         <Icon className="h-3.5 w-3.5 shrink-0" />{s.label}
                       </span>
                       <ChevronRight className="h-3.5 w-3.5 text-gray-400" />
-                    </button>
+                    </div>
 
                     {/* Flyout panel — appears on hover, floats to the right of the sidebar */}
                     <div className="absolute left-full top-0 ml-1 z-50 hidden group-hover:block">
@@ -448,6 +582,7 @@ export default function AdminSettings() {
                 </Button>
               </div>
             </div>
+
           </div>
         )}
 
@@ -517,12 +652,6 @@ export default function AdminSettings() {
             )}
 
             {/* ── Lead Settings — each child is its own section ── */}
-            {generalSection === 'lead' && (
-              <>
-                <h1 className="text-xl font-semibold text-gray-900">Lead Settings</h1>
-                <p className="text-sm text-gray-500">Hover over "Lead Settings" in the sidebar and select a section to manage.</p>
-              </>
-            )}
             {generalSection === 'lead_stage' && (
               <>
                 <h1 className="text-xl font-semibold text-gray-900">Lead Stage</h1>
@@ -583,14 +712,24 @@ export default function AdminSettings() {
                 </div>
               </>
             )}
-
-            {/* ── Quotation Settings — each child is its own section ── */}
-            {generalSection === 'quotation' && (
+            {generalSection === 'lead_reject_reason' && (
               <>
-                <h1 className="text-xl font-semibold text-gray-900">Quotation Settings</h1>
-                <p className="text-sm text-gray-500">Hover over "Quotation Settings" in the sidebar and select a section to manage.</p>
+                <h1 className="text-xl font-semibold text-gray-900">Lead Reject Reason</h1>
+                <p className="text-sm text-gray-500 -mt-3">These appear when disqualifying a lead (thumb-down) on the Leads page.</p>
+                <div className="bg-white rounded-lg border border-gray-200 p-5">
+                  <CrudSection title="Lead Reject Reason" icon={Tag} items={leadRejectReasons} defaultOpen
+                    fields={[{ key: 'label', label: 'Reason', placeholder: 'e.g. Quoted Price Is High', primary: true }]}
+                    addLabel="Add Reason"
+                    onAdd={f => addRejectReasonM.mutate(f)}
+                    onUpdate={(id, f) => updRejectReasonM.mutate({ id, body: f })}
+                    onDelete={id => delRejectReasonM.mutate(id)}
+                    emptyText="No reject reasons yet."
+                  />
+                </div>
               </>
             )}
+
+            {/* ── Quotation Settings — each child is its own section ── */}
             {generalSection === 'terms' && (
               <>
                 <h1 className="text-xl font-semibold text-gray-900">Terms & Conditions</h1>
@@ -639,6 +778,35 @@ export default function AdminSettings() {
                     onUpdate={(id, f) => updNoteM.mutate({ id, body: f })}
                     onDelete={id => delNoteM.mutate(id)}
                     emptyText="No notes yet."
+                  />
+                </div>
+              </>
+            )}
+            {generalSection === 'quotation_number' && (
+              <>
+                <h1 className="text-xl font-semibold text-gray-900">Quotation Number Setting</h1>
+                <p className="text-sm text-gray-500 -mt-3">Controls the "Quotation No" shown in preview, download, print & email. The most recently saved row is the active format.</p>
+                <QuotationNumberSettingSection
+                  items={quotationNumberSettings}
+                  onAdd={f => addNumberSettingM.mutate(f)}
+                  onUpdate={(id, f) => updNumberSettingM.mutate({ id, body: f })}
+                  onDelete={id => delNumberSettingM.mutate(id)}
+                />
+              </>
+            )}
+
+            {generalSection === 'dispatch_checklist' && (
+              <>
+                <h1 className="text-xl font-semibold text-gray-900">Manage Checklist</h1>
+                <p className="text-sm text-gray-500 -mt-3">These items appear as the packing checklist on the Packaging Jobs page.</p>
+                <div className="bg-white rounded-lg border border-gray-200 p-5">
+                  <CrudSection title="Dispatch Checklist" icon={ClipboardList} items={dispatchChecklist} defaultOpen
+                    fields={[{ key: 'label', label: 'Checklist Item', placeholder: 'e.g. All Parts Included', primary: true }]}
+                    addLabel="Add Item"
+                    onAdd={f => addChecklistM.mutate(f)}
+                    onUpdate={(id, f) => updChecklistM.mutate({ id, body: f })}
+                    onDelete={id => delChecklistM.mutate(id)}
+                    emptyText="No checklist items yet."
                   />
                 </div>
               </>

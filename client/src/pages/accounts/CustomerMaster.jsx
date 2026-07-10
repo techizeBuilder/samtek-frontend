@@ -40,11 +40,13 @@ import {
     UserPlus,
     Pencil,
     Info,
+    Phone,
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { useMutation } from '@tanstack/react-query';
+import CustomerCashAccessModal from '@/components/accounts/CustomerCashAccessModal';
 
 export default function CustomerMaster() {
     const [searchTerm, setSearchTerm] = useState('');
@@ -53,6 +55,7 @@ export default function CustomerMaster() {
     const [viewingCustomer, setViewingCustomer] = useState(null);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [editingCustomer, setEditingCustomer] = useState(null);
+    const [cashAccessCustomer, setCashAccessCustomer] = useState(null);
     const { toast } = useToast();
     const queryClient = useQueryClient();
 
@@ -281,12 +284,16 @@ export default function CustomerMaster() {
                                                 ₹{(customer.creditLimit || 0).toLocaleString('en-IN')}
                                             </TableCell>
                                             <TableCell className="text-right">
-                                                <span className={cn(
-                                                    "font-bold text-lg",
-                                                    (customer.outstandingAmount || 0) > 0 ? "text-red-600" : "text-slate-400"
-                                                )}>
-                                                    ₹{(customer.outstandingAmount || 0).toLocaleString('en-IN')}
-                                                </span>
+                                                {customer.hasOrderForm ? (
+                                                    <span className={cn(
+                                                        "font-bold text-lg",
+                                                        (customer.outstandingAmount || 0) > 0 ? "text-red-600" : "text-slate-400"
+                                                    )}>
+                                                        ₹{(customer.outstandingAmount || 0).toLocaleString('en-IN')}
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-slate-300 text-sm" title="No Order Form submitted yet">—</span>
+                                                )}
                                             </TableCell>
                                             <TableCell className="text-right">
                                                 {(customer.advancePayment || 0) > 0 ? (
@@ -319,6 +326,14 @@ export default function CustomerMaster() {
                                                         onClick={() => openEditModal(customer)}
                                                     >
                                                         <Pencil className="h-4 w-4 mr-1" /> Edit
+                                                    </Button>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                                                        onClick={() => setCashAccessCustomer(customer)}
+                                                    >
+                                                        <Phone className="h-4 w-4 mr-1" /> Call
                                                     </Button>
                                                 </div>
                                             </TableCell>
@@ -694,6 +709,13 @@ export default function CustomerMaster() {
                     )}
                 </DialogContent>
             </Dialog>
+
+            {cashAccessCustomer && (
+                <CustomerCashAccessModal
+                    customer={cashAccessCustomer}
+                    onClose={() => setCashAccessCustomer(null)}
+                />
+            )}
 
         </div>
     );

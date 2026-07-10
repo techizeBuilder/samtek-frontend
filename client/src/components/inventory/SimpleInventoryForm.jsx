@@ -14,10 +14,10 @@ import {
   Loader2, Package, AlertCircle, Upload, Plus, X, Shield, Layers, Wrench, FlaskConical, Trash2
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { UNIT_TYPES, getUnitTypeForUnit, getUnitsForType } from '@/utils/unitTypes';
 
 const ITEM_TYPES = ['Product', 'Material', 'Spares', 'Assemblies'];
 const IMPORTANCE_LEVELS = ['Low', 'Normal', 'High', 'Critical'];
-const UNITS = ['pieces', 'kg', 'liters', 'meters', 'sheets', 'boxes', 'units', 'tons', 'cartons'];
 const WARRANTY_TYPES = ['Parts Only', 'Labor Only', 'Comprehensive'];
 
 function DynamicListField({ label, icon: Icon, items, onChange, placeholder }) {
@@ -68,17 +68,27 @@ export default function SimpleInventoryForm({
   const emptyForm = {
     name: '', code: '', description: '', group: '',
     category: '', subCategory: '', customerCategory: 'Retail', type: 'Product',
-    importance: 'Normal', unit: 'pieces',
+    importance: 'Normal', unitType: '', unit: '',
     qty: 0, minStock: 0, batch: '', leadTime: 0,
     // Restored Financials
     stdCost: 0, purchaseCost: 0, salePrice: 0, mrp: 0, gst: 0, hsn: '',
-    internalManufacturing: false, purchase: true, internalNotes: '', image: '',
+    internalManufacturing: false, purchase: true, purchaseUnitType: '', purchaseUnit: '', internalNotes: '', image: '',
     // R&D Fields
     specifications: [], applications: [], variants: [],
     warranty: { period: 12, type: 'Comprehensive', terms: '' }
   };
 
   const [formData, setFormData] = useState(emptyForm);
+
+  const availableUnits = React.useMemo(
+    () => getUnitsForType(formData.unitType, formData.unit),
+    [formData.unitType, formData.unit]
+  );
+
+  const availablePurchaseUnits = React.useMemo(
+    () => getUnitsForType(formData.purchaseUnitType, formData.purchaseUnit),
+    [formData.purchaseUnitType, formData.purchaseUnit]
+  );
 
   const availableSubCategories = React.useMemo(() => {
     if (!formData.category) return [];
@@ -90,6 +100,8 @@ export default function SimpleInventoryForm({
     if (isOpen && item) {
       setFormData({
         ...emptyForm, ...item,
+        unitType: item.unitType || getUnitTypeForUnit(item.unit),
+        purchaseUnitType: item.purchaseUnitType || getUnitTypeForUnit(item.purchaseUnit),
         qty: Number(item.qty) || 0,
         minStock: Number(item.minStock) || 0,
         stdCost: Number(item.stdCost) || 0,
@@ -160,7 +172,12 @@ export default function SimpleInventoryForm({
       if (!formData.name.trim()) validationErrors.name = 'Item name is required';
       if (!formData.code || !formData.code.trim()) validationErrors.code = 'Item Code is mandatory (R&D defined).';
       if (!formData.category) validationErrors.category = 'Category is required';
+      if (!formData.unitType && !formData.unit) validationErrors.unitType = 'Unit Type is required';
       if (!formData.unit) validationErrors.unit = 'Unit is required';
+      if (formData.purchase) {
+        if (!formData.purchaseUnitType && !formData.purchaseUnit) validationErrors.purchaseUnitType = 'Purchase Unit Type is required';
+        if (!formData.purchaseUnit) validationErrors.purchaseUnit = 'Purchase Unit is required';
+      }
 
       if (Object.keys(validationErrors).length > 0) {
         setErrors(validationErrors);
@@ -172,6 +189,8 @@ export default function SimpleInventoryForm({
       const processedData = {
         ...formData,
         code: formData.code.trim(),
+        purchaseUnitType: formData.purchase ? formData.purchaseUnitType : '',
+        purchaseUnit: formData.purchase ? formData.purchaseUnit : '',
         qty: Number(formData.qty) || 0,
         minStock: Number(formData.minStock) || 0,
         stdCost: Number(formData.stdCost) || 0,
@@ -278,10 +297,17 @@ export default function SimpleInventoryForm({
               </Select>
             </div>
             <div>
+              <Label className="text-sm font-medium text-gray-700">Unit Type *</Label>
+              <Select value={formData.unitType} onValueChange={(v) => { handleInputChange('unitType', v); handleInputChange('unit', ''); }}>
+                <SelectTrigger className={`mt-1 ${errors.unitType ? 'border-red-500' : ''}`}><SelectValue placeholder="Select" /></SelectTrigger>
+                <SelectContent>{UNIT_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div>
               <Label className="text-sm font-medium text-gray-700">Unit *</Label>
-              <Select value={formData.unit} onValueChange={(v) => handleInputChange('unit', v)}>
-                <SelectTrigger className={`mt-1 ${errors.unit ? 'border-red-500' : ''}`}><SelectValue placeholder="Select" /></SelectTrigger>
-                <SelectContent>{UNITS.map((u) => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
+              <Select value={formData.unit} onValueChange={(v) => handleInputChange('unit', v)} disabled={!formData.unitType && !formData.unit}>
+                <SelectTrigger className={`mt-1 ${errors.unit ? 'border-red-500' : ''}`}><SelectValue placeholder={formData.unitType ? 'Select' : 'Select Unit Type first'} /></SelectTrigger>
+                <SelectContent>{availableUnits.map((u) => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <div>
@@ -468,6 +494,28 @@ export default function SimpleInventoryForm({
                 <label htmlFor="internalManufacturing" className="text-sm font-medium cursor-pointer">Internal Manufacturing</label>
               </div>
             </div>
+
+            {formData.purchase && (
+              <div className="mt-4 p-3 bg-blue-50/40 border border-blue-200 rounded-lg">
+                <p className="text-xs text-blue-800 font-medium mb-3">This item is purchased from vendors — specify the unit it is purchased in.</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-sm font-medium text-gray-700">Purchase Unit Type *</Label>
+                    <Select value={formData.purchaseUnitType} onValueChange={(v) => { handleInputChange('purchaseUnitType', v); handleInputChange('purchaseUnit', ''); }}>
+                      <SelectTrigger className={`mt-1 bg-white ${errors.purchaseUnitType ? 'border-red-500' : ''}`}><SelectValue placeholder="Select" /></SelectTrigger>
+                      <SelectContent>{UNIT_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-sm font-medium text-gray-700">Purchase Unit *</Label>
+                    <Select value={formData.purchaseUnit} onValueChange={(v) => handleInputChange('purchaseUnit', v)} disabled={!formData.purchaseUnitType && !formData.purchaseUnit}>
+                      <SelectTrigger className={`mt-1 bg-white ${errors.purchaseUnit ? 'border-red-500' : ''}`}><SelectValue placeholder={formData.purchaseUnitType ? 'Select' : 'Select Purchase Unit Type first'} /></SelectTrigger>
+                      <SelectContent>{availablePurchaseUnits.map((u) => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="flex justify-end space-x-2 pt-4">

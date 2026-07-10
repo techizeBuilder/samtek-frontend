@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { usePackagingDispatch } from '@/contexts/PackagingDispatchContext';
+import { adminSettingsApi } from '@/api/adminSettingsApi';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -16,15 +18,7 @@ const statusColor = {
   Dispatched: 'bg-blue-100 text-blue-700',
 };
 
-const checklistItems = [
-  { key: 'allPartsIncluded', label: 'All Parts Included' },
-  { key: 'accessoriesIncluded', label: 'Accessories Included' },
-  { key: 'manualIncluded', label: 'Manual Included' },
-  // { key: 'invoiceCopyIncluded', label: 'Invoice Copy Included' },
-  { key: 'safetyPackingCompleted', label: 'Safety Packing Completed' },
-];
-
-function JobCard({ job }) {
+function JobCard({ job, checklistItems }) {
   const { startPacking, updateChecklist, completePacking } = usePackagingDispatch();
   const { toast } = useToast();
   const [expanded, setExpanded] = useState(false);
@@ -33,7 +27,7 @@ function JobCard({ job }) {
   const [updatingKeys, setUpdatingKeys] = useState({});
 
   const cl = job.checklist || {};
-  const allChecked = checklistItems.every(item => cl[item.key]);
+  const allChecked = checklistItems.length > 0 && checklistItems.every(item => cl[item.key]);
   const checkedCount = checklistItems.filter(item => cl[item.key]).length;
 
   const handleStartPacking = async () => {
@@ -209,6 +203,14 @@ export default function PackagingJobs() {
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
 
+  // Checklist items are managed in Admin Settings > General > Dispatch > Manage Checklist
+  const { data: settingsData } = useQuery({
+    queryKey: ['admin-settings'],
+    queryFn: () => adminSettingsApi.getAll(),
+  });
+  const checklistItems = (settingsData?.settings?.dispatchChecklist || [])
+    .map(item => ({ key: item._id, label: item.label }));
+
   const statuses = ['all', 'Pending', 'In Progress', 'Packed', 'Dispatched'];
 
   const filtered = jobs.filter(j => {
@@ -268,7 +270,7 @@ export default function PackagingJobs() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {filtered.map(job => <JobCard key={job._id} job={job} />)}
+          {filtered.map(job => <JobCard key={job._id} job={job} checklistItems={checklistItems} />)}
         </div>
       )}
     </div>

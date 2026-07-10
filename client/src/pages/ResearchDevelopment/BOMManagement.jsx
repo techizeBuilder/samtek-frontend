@@ -5,10 +5,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { ClipboardList, Lock, Plus, Trash2, Edit2, AlertTriangle, ChevronDown, Package, Ban, RefreshCw } from 'lucide-react';
+import { UNIT_TYPES, getUnitTypeForUnit, getUnitsForType } from '@/utils/unitTypes';
 
-const UNITS = ['kg', 'pcs', 'ltr', 'm', 'mm', 'cm', 'set', 'nos', 'mtr'];
 const ITEM_TYPES = ['Fabricated Item', 'Assembly Item', 'Job Work', 'Laser Cutting', 'Coating'];
-const emptyMaterial = { code: '', childPart: '', subChildPart: '', item: '', itemType: 'Fabricated Item', quantity: '', unit: 'pcs' };
+const emptyMaterial = { code: '', childPart: '', subChildPart: '', item: '', itemType: 'Fabricated Item', quantity: '', unitType: '', unit: '' };
 
 export default function BOMManagement() {
   const { machines, boms, getBOMForMachine, addBOM, addMaterial, updateMaterial, deleteMaterial, lockBOM, discontinueMaterial, reactivateMaterial } = useRD();
@@ -28,14 +28,14 @@ export default function BOMManagement() {
   const bom = selectedMachineId ? getBOMForMachine(selectedMachineId) : null;
 
   const handleAddMaterial = () => {
-    if (!form.code || !form.item || !form.itemType || !form.quantity) return;
+    if (!form.code || !form.item || !form.itemType || !form.quantity || !form.unitType || !form.unit) return;
     addMaterial(bom._id, { ...form, quantity: Number(form.quantity) });
     setForm(emptyMaterial);
     setAddOpen(false);
   };
 
   const handleEditMaterial = () => {
-    if (!editForm.code || !editForm.item || !editForm.itemType || !editForm.quantity) return;
+    if (!editForm.code || !editForm.item || !editForm.itemType || !editForm.quantity || !editForm.unit) return;
     updateMaterial(bom._id, editingMat._id, { ...editForm, quantity: Number(editForm.quantity) });
     setEditOpen(false);
   };
@@ -47,9 +47,10 @@ export default function BOMManagement() {
       childPart: mat.childPart || '', 
       subChildPart: mat.subChildPart || '', 
       item: mat.item || '', 
-      itemType: mat.itemType || 'Fabricated Item', 
-      quantity: String(mat.quantity), 
-      unit: mat.unit || 'pcs' 
+      itemType: mat.itemType || 'Fabricated Item',
+      quantity: String(mat.quantity),
+      unitType: mat.unitType || getUnitTypeForUnit(mat.unit),
+      unit: mat.unit || ''
     });
     setEditOpen(true);
   };
@@ -260,22 +261,31 @@ export default function BOMManagement() {
               </div>
             </div>
             
+            <div>
+              <label className="text-xs font-semibold text-slate-600 mb-1 block">Quantity *</label>
+              <Input type="number" placeholder="0" min="0" value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} />
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Quantity *</label>
-                <Input type="number" placeholder="0" min="0" value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} />
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">Unit Type *</label>
+                <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.unitType} onChange={e => setForm(f => ({ ...f, unitType: e.target.value, unit: '' }))}>
+                  <option value="">Select</option>
+                  {UNIT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
               </div>
               <div>
                 <label className="text-xs font-semibold text-slate-600 mb-1 block">Unit *</label>
-                <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.unit} onChange={e => setForm(f => ({ ...f, unit: e.target.value }))}>
-                  {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-400" value={form.unit} disabled={!form.unitType} onChange={e => setForm(f => ({ ...f, unit: e.target.value }))}>
+                  <option value="">{form.unitType ? 'Select' : 'Select Unit Type first'}</option>
+                  {getUnitsForType(form.unitType, form.unit).map(u => <option key={u} value={u}>{u}</option>)}
                 </select>
               </div>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
-            <Button onClick={handleAddMaterial} disabled={!form.code || !form.item || !form.itemType || !form.quantity} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">Add to BOM</Button>
+            <Button onClick={handleAddMaterial} disabled={!form.code || !form.item || !form.itemType || !form.quantity || !form.unitType || !form.unit} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">Add to BOM</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -312,22 +322,30 @@ export default function BOMManagement() {
                 </select>
               </div>
             </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-600 mb-1 block">Quantity *</label>
+              <Input type="number" value={editForm.quantity} onChange={e => setEditForm(f => ({ ...f, quantity: e.target.value }))} />
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Quantity *</label>
-                <Input type="number" value={editForm.quantity} onChange={e => setEditForm(f => ({ ...f, quantity: e.target.value }))} />
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">Unit Type *</label>
+                <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={editForm.unitType} onChange={e => setEditForm(f => ({ ...f, unitType: e.target.value, unit: '' }))}>
+                  <option value="">Select</option>
+                  {UNIT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
               </div>
               <div>
                 <label className="text-xs font-semibold text-slate-600 mb-1 block">Unit *</label>
-                <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={editForm.unit} onChange={e => setEditForm(f => ({ ...f, unit: e.target.value }))}>
-                  {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-400" value={editForm.unit} disabled={!editForm.unitType && !editForm.unit} onChange={e => setEditForm(f => ({ ...f, unit: e.target.value }))}>
+                  <option value="">{editForm.unitType ? 'Select' : 'Select Unit Type first'}</option>
+                  {getUnitsForType(editForm.unitType, editForm.unit).map(u => <option key={u} value={u}>{u}</option>)}
                 </select>
               </div>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
-            <Button onClick={handleEditMaterial} disabled={!editForm.code || !editForm.item || !editForm.itemType || !editForm.quantity} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">Save Changes</Button>
+            <Button onClick={handleEditMaterial} disabled={!editForm.code || !editForm.item || !editForm.itemType || !editForm.quantity || !editForm.unit} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">Save Changes</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
