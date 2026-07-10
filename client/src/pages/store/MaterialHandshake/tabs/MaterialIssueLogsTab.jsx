@@ -4,11 +4,11 @@ import { apiRequest } from '@/lib/queryClient';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { 
-  Search, 
-  History, 
-  Package, 
-  User, 
+import {
+  Search,
+  History,
+  Package,
+  User,
   Calendar,
   ChevronLeft,
   ChevronRight,
@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 
-const StoreMaterialIssues = () => {
+const MaterialIssueLogsTab = () => {
   const [page, setPage] = useState(1);
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -36,7 +36,7 @@ const StoreMaterialIssues = () => {
     queryKey: ['/api/inventory/material-issues', page, debouncedSearch],
     queryFn: async () => {
       const response = await apiRequest(
-        'GET', 
+        'GET',
         `/api/inventory/material-issues?page=${page}&limit=${limit}&search=${debouncedSearch}`
       );
       return response;
@@ -56,12 +56,12 @@ const StoreMaterialIssues = () => {
           </h1>
           <p className="text-slate-500 mt-1">Track materials issued to production orders.</p>
         </div>
-        
+
         <div className="flex items-center gap-3 w-full md:w-auto">
           <div className="relative w-full md:w-80">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-            <Input 
-              placeholder="Search Machine, Material Code or Name..." 
+            <Input
+              placeholder="Search Production Order ID"
               className="pl-10 bg-white"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -167,17 +167,17 @@ const StoreMaterialIssues = () => {
                 <span className="ml-2 hidden sm:inline-block">({pagination.total} total records)</span>
               </div>
               <div className="flex items-center gap-2">
-                <Button 
-                  variant="outline" 
-                  size="sm" 
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={() => setPage(p => Math.max(1, p - 1))}
                   disabled={page === 1}
                 >
                   <ChevronLeft className="h-4 w-4 mr-1" /> Previous
                 </Button>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={() => setPage(p => Math.min(pagination.totalPages, p + 1))}
                   disabled={page === pagination.totalPages}
                 >
@@ -192,4 +192,4 @@ const StoreMaterialIssues = () => {
   );
 };
 
-export default StoreMaterialIssues;
+export default MaterialIssueLogsTab;

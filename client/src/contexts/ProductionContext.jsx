@@ -111,6 +111,25 @@ export function ProductionProvider({ children }) {
     onSuccess: invalidateOrders,
   });
 
+  // ── Sub-Entries mutations ──────────────────────────────────────────────────
+  const addSubEntryMutation = useMutation({
+    mutationFn: ({ orderId, stepIndex, payload }) =>
+      apiRequest('POST', `${BASE}/orders/${orderId}/processes/${stepIndex}/sub-entries`, payload),
+    onSuccess: invalidateOrders,
+  });
+
+  const completeSubEntryMutation = useMutation({
+    mutationFn: ({ orderId, stepIndex, subEntryId }) =>
+      apiRequest('PUT', `${BASE}/orders/${orderId}/processes/${stepIndex}/sub-entries/${subEntryId}/complete`),
+    onSuccess: invalidateOrders,
+  });
+
+  const qcSubEntryMutation = useMutation({
+    mutationFn: ({ orderId, stepIndex, subEntryId, qcStatus }) =>
+      apiRequest('PUT', `${BASE}/orders/${orderId}/processes/${stepIndex}/sub-entries/${subEntryId}/qc`, { qcStatus }),
+    onSuccess: invalidateOrders,
+  });
+
   // ── Team mutations ─────────────────────────────────────────────────────────
   const addTeamMutation = useMutation({
     mutationFn: (data) => apiRequest('POST', `${BASE}/teams`, data),
@@ -147,6 +166,15 @@ export function ProductionProvider({ children }) {
 
   const updateProcessNotes = useCallback((orderId, stepName, notes) =>
     updateProcessNotesMutation.mutate({ orderId, stepIndex: stepIndex(stepName), notes }), []);
+
+  const addSubEntry = useCallback((orderId, stepName, payload) =>
+    addSubEntryMutation.mutateAsync({ orderId, stepIndex: stepIndex(stepName), payload }), []);
+
+  const completeSubEntry = useCallback((orderId, stepName, subEntryId) =>
+    completeSubEntryMutation.mutateAsync({ orderId, stepIndex: stepIndex(stepName), subEntryId }), []);
+
+  const qcSubEntry = useCallback((orderId, stepName, subEntryId, qcStatus) =>
+    qcSubEntryMutation.mutateAsync({ orderId, stepIndex: stepIndex(stepName), subEntryId, qcStatus }), []);
 
   // ── Computed helpers (same interface as before) ───────────────────────────
   const getOrderProgress = useCallback((orderId) => {
@@ -195,6 +223,9 @@ export function ProductionProvider({ children }) {
       approveQC,
       rejectQC,
       updateProcessNotes,
+      addSubEntry,
+      completeSubEntry,
+      qcSubEntry,
       addTeam,
       getOrderProgress,
       getPendingQC,

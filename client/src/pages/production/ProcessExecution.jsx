@@ -40,6 +40,7 @@ export default function ProcessExecution() {
     orders, teams, getOrderProgress, getTeamById,
     assignTeam, startProcess, markProcessComplete,
     approveQC, rejectQC, updateProcessNotes,
+    addSubEntry, completeSubEntry, qcSubEntry
   } = useProduction();
 
   const [selectedOrderId, setSelectedOrderId] = useState('');
@@ -48,6 +49,8 @@ export default function ProcessExecution() {
   const [rejectReason, setRejectReason] = useState('');
   const [notesDialog, setNotesDialog] = useState(null); // { step, notes }
   const [notesValue, setNotesValue] = useState('');
+  const [subEntryDialog, setSubEntryDialog] = useState(null); // { step }
+  const [subEntryForm, setSubEntryForm] = useState({ parentPart: '', childPart: '', assignedMember: '' });
   const [assignDialog, setAssignDialog] = useState(null); // { step }
   const [selectedTeam, setSelectedTeam] = useState('');
 
@@ -236,31 +239,43 @@ export default function ProcessExecution() {
 
                       {/* Actions */}
                       <div className="flex flex-wrap gap-2 flex-shrink-0">
-                        {proc.status === 'Pending' && unlocked && (
-                          <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white text-xs" onClick={() => startProcess(selectedOrderId, proc.step)}>
-                            <Play className="h-3.5 w-3.5 mr-1" /> Start
-                          </Button>
-                        )}
-                        {proc.status === 'In Progress' && (
-                          <>
-                            <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white text-xs" onClick={() => markProcessComplete(selectedOrderId, proc.step)}>
-                              <CheckCircle className="h-3.5 w-3.5 mr-1" /> Mark Complete
-                            </Button>
-                            <Button size="sm" variant="outline" className="text-xs" onClick={() => { setNotesDialog({ step: proc.step }); setNotesValue(proc.notes); }}>
-                              Notes
-                            </Button>
-                          </>
-                        )}
-                        {proc.status === 'QC Pending' && (
-                          <>
-                            <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs" onClick={() => setQcDialog({ step: proc.step, action: 'approve' })}>
-                              <ThumbsUp className="h-3.5 w-3.5 mr-1" /> Approve QC
-                            </Button>
-                            <Button size="sm" className="bg-red-600 hover:bg-red-700 text-white text-xs" onClick={() => setQcDialog({ step: proc.step, action: 'reject' })}>
-                              <ThumbsDown className="h-3.5 w-3.5 mr-1" /> Reject QC
-                            </Button>
-                          </>
-                        )}
+                        {(() => {
+                          const isFabricationLocked = proc.step === 'Fabrication' && (
+                            !proc.subEntries || proc.subEntries.length === 0 ||
+                            proc.subEntries.some(se => se.status !== 'Completed' || se.qcStatus !== 'Approved')
+                          );
+                          
+                          return (
+                            <>
+                              {proc.status === 'Pending' && unlocked && (
+                                <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white text-xs" onClick={() => startProcess(selectedOrderId, proc.step)}>
+                                  <Play className="h-3.5 w-3.5 mr-1" /> Start
+                                </Button>
+                              )}
+                              {proc.status === 'In Progress' && (
+                                <>
+                                  <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white text-xs" onClick={() => markProcessComplete(selectedOrderId, proc.step)} disabled={isFabricationLocked}>
+                                    <CheckCircle className="h-3.5 w-3.5 mr-1" /> Mark Complete
+                                  </Button>
+                                  <Button size="sm" variant="outline" className="text-xs" onClick={() => { setNotesDialog({ step: proc.step }); setNotesValue(proc.notes); }}>
+                                    Notes
+                                  </Button>
+                                </>
+                              )}
+                              {proc.status === 'QC Pending' && (
+                                <>
+                                  <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs" onClick={() => setQcDialog({ step: proc.step, action: 'approve' })} disabled={isFabricationLocked}>
+                                    <ThumbsUp className="h-3.5 w-3.5 mr-1" /> Approve QC
+                                  </Button>
+                                  <Button size="sm" className="bg-red-600 hover:bg-red-700 text-white text-xs" onClick={() => setQcDialog({ step: proc.step, action: 'reject' })}>
+                                    <ThumbsDown className="h-3.5 w-3.5 mr-1" /> Reject QC
+                                  </Button>
+                                </>
+                              )}
+                            </>
+                          );
+                        })()}
+
                         {proc.status === 'Completed' && (
                           <span className="flex items-center gap-1 text-xs text-emerald-600 font-semibold px-2 py-1">
                             <CheckCircle className="h-3.5 w-3.5" /> QC Approved
@@ -268,6 +283,71 @@ export default function ProcessExecution() {
                         )}
                       </div>
                     </div>
+
+                    {/* Fabrication Sub Entries Section */}
+                    {proc.step === 'Fabrication' && proc.status !== 'Pending' && (
+                      <div className="w-full mt-4 pt-4 border-t border-slate-100">
+                        <div className="flex items-center justify-between mb-3">
+                          <h4 className="text-sm font-bold text-slate-800 flex items-center gap-1.5"><Cog className="h-4 w-4 text-slate-500" /> Fabrication Sub-Processes</h4>
+                          {proc.status === 'In Progress' && (
+                            <Button size="sm" variant="outline" className="h-7 text-xs bg-white text-blue-600 border-blue-200 hover:bg-blue-50" onClick={() => {
+                              setSubEntryForm({ parentPart: '', childPart: '', assignedMember: '' });
+                              setSubEntryDialog({ step: proc.step });
+                            }}>
+                              + Add Entry
+                            </Button>
+                          )}
+                        </div>
+                        
+                        {proc.subEntries && proc.subEntries.length > 0 ? (
+                          <div className="space-y-2">
+                            {proc.subEntries.map(se => (
+                              <div key={se._id || se.id} className="flex flex-wrap md:flex-nowrap items-center justify-between bg-slate-50 border border-slate-200 rounded-lg p-3 gap-3">
+                                <div className="flex items-center gap-4 w-full md:w-auto">
+                                  <div>
+                                    <p className="text-xs text-slate-500 mb-0.5">Parent Part</p>
+                                    <p className="text-sm font-semibold text-slate-800">{se.parentPart}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-xs text-slate-500 mb-0.5">Child Part</p>
+                                    <p className="text-sm font-semibold text-slate-800">{se.childPart}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-xs text-slate-500 mb-0.5">Assigned To</p>
+                                    <p className="text-sm font-medium text-slate-700">{se.assignedMember}</p>
+                                  </div>
+                                </div>
+                                
+                                <div className="flex items-center gap-2">
+                                  {se.status === 'Pending' ? (
+                                    <Button size="sm" className="h-7 text-xs bg-amber-600 hover:bg-amber-700 text-white" onClick={() => completeSubEntry(selectedOrderId, proc.step, se._id || se.id)}>
+                                      <CheckCircle className="h-3 w-3 mr-1" /> Mark Done
+                                    </Button>
+                                  ) : se.qcStatus === 'Pending' ? (
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <span className="text-xs font-semibold text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-200">Done - Pending QC</span>
+                                      <Button size="sm" className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => qcSubEntry(selectedOrderId, proc.step, se._id || se.id, 'Approved')}>
+                                        <ThumbsUp className="h-3 w-3 mr-1" /> QC Approve
+                                      </Button>
+                                      <Button size="sm" className="h-7 text-xs bg-red-600 hover:bg-red-700 text-white" onClick={() => qcSubEntry(selectedOrderId, proc.step, se._id || se.id, 'Rejected')}>
+                                        <ThumbsDown className="h-3 w-3 mr-1" /> Reject
+                                      </Button>
+                                    </div>
+                                  ) : se.qcStatus === 'Approved' ? (
+                                    <span className="flex items-center gap-1 text-xs text-emerald-600 font-semibold px-2 py-1 bg-emerald-50 rounded border border-emerald-200">
+                                      <CheckCircle className="h-3 w-3" /> Approved
+                                    </span>
+                                  ) : null}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-slate-500 italic">No sub-processes added yet.</p>
+                        )}
+                      </div>
+                    )}
+
                   </CardContent>
                 </Card>
               );
@@ -373,6 +453,45 @@ export default function ProcessExecution() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setNotesDialog(null)}>Cancel</Button>
             <Button onClick={handleSaveNotes} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">Save Notes</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* Add Sub-Entry Dialog */}
+      <Dialog open={!!subEntryDialog} onOpenChange={() => setSubEntryDialog(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-slate-800">
+              <Cog className="h-5 w-5 text-blue-600" /> Add Fabrication Entry
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div>
+              <label className="text-xs font-semibold text-slate-600 mb-1 block">Parent Part</label>
+              <Input placeholder="e.g. Main Chassis" value={subEntryForm.parentPart} onChange={e => setSubEntryForm(f => ({ ...f, parentPart: e.target.value }))} />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-600 mb-1 block">Child Part</label>
+              <Input placeholder="e.g. Side Panels" value={subEntryForm.childPart} onChange={e => setSubEntryForm(f => ({ ...f, childPart: e.target.value }))} />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-600 mb-1 block">Assign Team Member</label>
+              <Input placeholder="Member Name" value={subEntryForm.assignedMember} onChange={e => setSubEntryForm(f => ({ ...f, assignedMember: e.target.value }))} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSubEntryDialog(null)}>Cancel</Button>
+            <Button 
+              className="bg-blue-600 hover:bg-blue-700 text-white" 
+              disabled={!subEntryForm.parentPart || !subEntryForm.childPart || !subEntryForm.assignedMember}
+              onClick={async () => {
+                try {
+                  await addSubEntry(selectedOrderId, subEntryDialog.step, subEntryForm);
+                  setSubEntryDialog(null);
+                } catch (err) {}
+              }}
+            >
+              Add Entry
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

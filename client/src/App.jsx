@@ -180,7 +180,7 @@ import PerformanceMetrics from "@/pages/hrms/Manager/PerformanceMetrics";
 import RDDashboard from "@/pages/ResearchDevelopment/Dashboard";
 import StoreDashboard from "@/pages/store/StoreDashboard";
 import StoreOrders from "@/pages/store/StoreOrders";
-import StoreMaterialIssues from "@/pages/store/StoreMaterialIssues";
+import StoreMaterialIssues from "@/pages/store/MaterialHandshake/index";
 import { RDProvider } from "@/contexts/RDContext";
 import ProductMaster from "@/pages/ResearchDevelopment/ProductMaster";
 import DesignApproval from "@/pages/ResearchDevelopment/DesignApproval";

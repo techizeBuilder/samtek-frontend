@@ -53,13 +53,15 @@ export default function OrderManagement() {
   const [form, setForm] = useState(emptyOrder);
   const [demandForm, setDemandForm] = useState(emptyDemand);
   const [foundItem, setFoundItem] = useState(null);
-  const [raisePurchaseOpen, setRaisePurchaseOpen] = useState(false);
-  const [purchaseRow, setPurchaseRow] = useState(null); // { materialCode, materialName, quantity, unit }
-
-  // ── NEW STATE ──
   const [issueModalOpen, setIssueModalOpen] = useState(false);
   const [issueRow, setIssueRow] = useState(null);
   const [issueQty, setIssueQty] = useState('');
+
+  const [returnModalOpen, setReturnModalOpen] = useState(false);
+  const [returnRow, setReturnRow] = useState(null);
+  const [returnQty, setReturnQty] = useState('');
+  const [returnReason, setReturnReason] = useState('');
+  const [returnType, setReturnType] = useState('Excess');
 
   // ── NEW HANDLER ──
   const handleIssueMaterial = async () => {
@@ -69,10 +71,10 @@ export default function OrderManagement() {
       // Hitting the updated specific API route
       await apiRequest('PUT', `/api/production-mfg/orders/${orderId}/mark-material-issued`, {
         materialCode: issueRow.materialCode,
-        quantityToIssue: Number(issueQty)
+        receivedQuantity: Number(issueQty)
       });
-      
-      showSuccessToast('Material Received', `Successfully issued ${issueQty} ${issueRow.unit} from Store.`);
+
+      showSuccessToast('Material Received', `Successfully received ${issueQty} ${issueRow.unit}.`);
       setIssueModalOpen(false);
       setIssueRow(null);
       setIssueQty('');
@@ -82,13 +84,66 @@ export default function OrderManagement() {
     }
   };
 
+  const handleReturnMaterial = async () => {
+    if (!returnRow || !returnQty || Number(returnQty) <= 0 || Number(returnQty) > returnRow.issuedQuantity) return;
+    try {
+      const orderId = detailOrderLive?._id || detailOrderLive?.id;
+      await apiRequest('POST', `/api/production-mfg/orders/${orderId}/materials/return`, {
+        materialCode: returnRow.materialCode,
+        returnQuantity: Number(returnQty),
+        reason: returnReason,
+        returnType
+      });
+
+      showSuccessToast('Return Requested', `Return request for ${returnQty} ${returnRow.unit} submitted.`);
+      setReturnModalOpen(false);
+      setReturnRow(null);
+      setReturnQty('');
+      setReturnReason('');
+      setReturnType('Excess');
+    } catch (error) {
+      showSmartToast(error, 'Return Material Failed');
+    }
+  };
+
+  const handleDownloadPDF = async () => {
+    const orderId = detailOrderLive?._id || detailOrderLive?.id;
+    if (!orderId) return;
+    
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${config.baseURL}/api/production-mfg/production-orders/${orderId}/pdf`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.message || 'Failed to download PDF');
+      }
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `MaterialList-${detailOrderLive?.orderId || orderId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      showSmartToast(error, 'Download Failed');
+    }
+  };
+
   const statuses = ['All', 'Pending', 'BOM Pending', 'In Progress', 'Completed'];
   const sources = ['All', 'Store Orders', 'Rejected Items'];
 
   const filtered = orders.filter(o => {
     const matchSearch = !search || (o.orderId || o.id || '').toLowerCase().includes(search.toLowerCase()) || o.machineName.toLowerCase().includes(search.toLowerCase());
     const matchStatus = filterStatus === 'All' || o.status === filterStatus;
-    const matchSource = filterSource === 'All' || 
+    const matchSource = filterSource === 'All' ||
       (filterSource === 'Store Orders' && (!o.source || o.source === 'Store')) ||
       (filterSource === 'Rejected Items' && o.source === 'QC_Rejected');
     return matchSearch && matchStatus && matchSource;
@@ -114,12 +169,12 @@ export default function OrderManagement() {
 
   const handleCodeChange = async (codeVal) => {
     setDemandForm(prev => ({ ...prev, materialCode: codeVal }));
-    
+
     if (!codeVal.trim()) {
       setFoundItem(null);
       return;
     }
-    
+
     try {
       const res = await apiRequest('GET', `/api/items/by-code?code=${encodeURIComponent(codeVal.trim())}`);
       if (res.success && res.data) {
@@ -151,28 +206,6 @@ export default function OrderManagement() {
     } catch (error) {
       console.error('Failed to add material demand:', error);
       showSmartToast(error, 'Add Material Demand');
-    }
-  };
-
-  const handleRaisePurchase = async () => {
-    if (!purchaseRow) return;
-    try {
-      await apiRequest('POST', '/api/purchase-requests', {
-        productName: purchaseRow.materialName,
-        quantity: Number(purchaseRow.quantity),
-        unit: purchaseRow.unit,
-        requestFromDepartment: 'Production',
-        source: 'Production',
-        priority: 'Medium',
-        materialCode: purchaseRow.materialCode,
-        storeOrderId: detailOrderLive?._id || detailOrderLive?.id
-      });
-      showSuccessToast('Purchase Request Raised', `Request for "${purchaseRow.materialName}" sent to Store.`);
-      setRaisePurchaseOpen(false);
-      setPurchaseRow(null);
-    } catch (error) {
-      console.error('Failed to raise purchase request:', error);
-      showSmartToast(error, 'Raise Purchase Request');
     }
   };
 
@@ -248,7 +281,7 @@ export default function OrderManagement() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
             <Input placeholder="Search by Order ID or Machine..." className="pl-9" value={search} onChange={e => setSearch(e.target.value)} />
           </div>
-          
+
           {/* Source Filter */}
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="flex gap-2 flex-wrap">
@@ -261,7 +294,7 @@ export default function OrderManagement() {
                 >{s}</button>
               ))}
             </div>
-            
+
             {/* Status Filter */}
             <div className="flex gap-2 flex-wrap">
               <span className="text-xs font-semibold text-slate-500 flex items-center">Status:</span>
@@ -303,7 +336,7 @@ export default function OrderManagement() {
                   const progress = getOrderProgress(oid);
                   const isOverdue = order.deliveryDate && order.status !== 'Completed' && new Date(order.deliveryDate) < new Date();
                   const isRejected = order.source === 'QC_Rejected';
-                  
+
                   return (
                     <tr key={oid} className={`border-b border-slate-50 hover:bg-slate-50 transition-colors ${isRejected ? 'bg-red-50/30' : ''}`}>
                       <td className="px-5 py-3.5 font-mono text-xs font-bold text-blue-700">
@@ -311,19 +344,17 @@ export default function OrderManagement() {
                         {isRejected && <span className="block text-red-600 text-xs">REJECTED</span>}
                       </td>
                       <td className="px-5 py-3.5">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${
-                          isRejected 
-                            ? 'bg-red-100 text-red-700 border-red-200' 
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${isRejected
+                            ? 'bg-red-100 text-red-700 border-red-200'
                             : 'bg-blue-100 text-blue-700 border-blue-200'
-                        }`}>
+                          }`}>
                           {isRejected ? 'QC Rejected' : 'Store Order'}
                         </span>
                         {/* Purpose badge */}
-                        <span className={`mt-1 flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border w-fit ${
-                          order.source === 'Stock'
+                        <span className={`mt-1 flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border w-fit ${order.source === 'Stock'
                             ? 'bg-violet-100 text-violet-700 border-violet-200'
                             : 'bg-amber-100 text-amber-700 border-amber-200'
-                        }`}>
+                          }`}>
                           {order.source === 'Stock' ? '🏭 Stock' : '📦 Order'}
                         </span>
                       </td>
@@ -499,6 +530,9 @@ export default function OrderManagement() {
                   <div className="flex items-center justify-between mb-2">
                     <h3 className="text-sm font-bold text-slate-700 flex items-center gap-1.5"><Package className="h-4 w-4" /> Material Demand</h3>
                     <div className="flex gap-2">
+                      <Button size="sm" className="h-6 text-xs bg-slate-100 text-slate-700 hover:bg-slate-200 border-slate-200" variant="outline" onClick={handleDownloadPDF} title="Download Material Ledger PDF">
+                        <ArrowDownToLine className="h-3 w-3 mr-1" /> Download PDF
+                      </Button>
                       <Button size="sm" className="h-6 text-xs" variant="outline" onClick={() => {
                         setDemandForm(emptyDemand);
                         setFoundItem(null);
@@ -525,17 +559,17 @@ export default function OrderManagement() {
                         {detailOrderLive.materialDemands.map(m => {
                           const issued = m.issuedQuantity || 0;
                           const remaining = m.quantity - issued;
-                          
+
                           return (
                             <tr key={m._id || m.id} className="border-t border-slate-50">
                               <td className="px-3 py-2 font-mono text-blue-700">{m.materialCode}</td>
                               <td className="px-3 py-2 font-medium text-slate-800">{m.materialName}</td>
-                              
+
                               <td className="px-3 py-2">
                                 {m.bomQuantity !== null && m.bomQuantity !== undefined ? (
                                   <div className="flex flex-col">
                                     <span className="text-slate-800 font-semibold flex items-center gap-1.5">
-                                      Req: {m.quantity} {m.unit} 
+                                      Req: {m.quantity} {m.unit}
                                       <span className="text-[9px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded uppercase font-bold border border-slate-200">BOM</span>
                                     </span>
                                     <span className={`text-[10px] font-bold mt-0.5 ${issued === m.quantity ? 'text-emerald-600' : 'text-blue-600'}`}>
@@ -556,32 +590,21 @@ export default function OrderManagement() {
                               </td>
 
                               <td className="px-3 py-2">
-                                <span className={`px-1.5 py-0.5 rounded text-xs font-semibold ${
-                                  m.status === 'Issued' ? 'bg-emerald-100 text-emerald-700' :
-                                  m.status === 'Pending Purchase' ? 'bg-amber-100 text-amber-700' :
-                                  m.status === 'Pending R&D' ? 'bg-orange-100 text-orange-700' :
-                                  m.status === 'R&D Rejected' ? 'bg-red-100 text-red-700' :
-                                  'bg-slate-100 text-slate-600'}`}>{m.status}</span>
+                                <span className={`px-1.5 py-0.5 rounded text-xs font-semibold ${m.status === 'Issued' ? 'bg-emerald-100 text-emerald-700' :
+                                    m.status === 'Pending Purchase' ? 'bg-amber-100 text-amber-700' :
+                                      m.status === 'Pending R&D' ? 'bg-orange-100 text-orange-700' :
+                                        m.status === 'R&D Rejected' ? 'bg-red-100 text-red-700' :
+                                          'bg-slate-100 text-slate-600'}`}>{m.status}</span>
                               </td>
-                              
-                              <td className="px-3 py-2">
-                                {m.status === 'Requested' && remaining > 0 && (
-                                  <div className="flex gap-2">
-                                    <button
-                                      onClick={() => {
-                                        setPurchaseRow({ materialCode: m.materialCode, materialName: m.materialName, quantity: remaining, unit: m.unit });
-                                        setRaisePurchaseOpen(true);
-                                      }}
-                                      className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold text-violet-700 bg-violet-50 hover:bg-violet-100 border border-violet-200 transition-colors"
-                                      title="Ask Store to buy from Vendor"
-                                    >
-                                      <ShoppingCart className="h-3 w-3" /> Purchase
-                                    </button>
 
+                              <td className="px-3 py-2">
+                                <div className="flex gap-2">
+                                  {(m.status === 'Requested' || m.status === 'In Transit') && remaining > 0 && (
                                     <button
                                       onClick={() => {
-                                        setIssueRow({ materialCode: m.materialCode, materialName: m.materialName, remainingQty: remaining, unit: m.unit });
-                                        setIssueQty(remaining); // Default to exactly what they need
+                                        const inTransitQty = (m.transferredQuantity || 0) - (m.issuedQuantity || 0);
+                                        setIssueRow({ materialCode: m.materialCode, materialName: m.materialName, remainingQty: inTransitQty > 0 ? inTransitQty : remaining, unit: m.unit });
+                                        setIssueQty(inTransitQty > 0 ? inTransitQty : remaining); // Default to exactly what they need
                                         setIssueModalOpen(true);
                                       }}
                                       className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition-colors"
@@ -589,8 +612,21 @@ export default function OrderManagement() {
                                     >
                                       <ArrowDownToLine className="h-3 w-3" /> Receive
                                     </button>
-                                  </div>
-                                )}
+                                  )}
+                                  {m.status === 'Issued' && (
+                                    <button
+                                      onClick={() => {
+                                        setReturnRow({ materialCode: m.materialCode, materialName: m.materialName, issuedQuantity: m.issuedQuantity, unit: m.unit });
+                                        setReturnQty('');
+                                        setReturnModalOpen(true);
+                                      }}
+                                      className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 transition-colors"
+                                      title="Return items to the Store"
+                                    >
+                                      <Package className="h-3 w-3" /> Return
+                                    </button>
+                                  )}
+                                </div>
                               </td>
                             </tr>
                           );
@@ -609,11 +645,10 @@ export default function OrderManagement() {
                         <span className="w-5 h-5 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center font-bold flex-shrink-0">{i + 1}</span>
                         <span className="w-32 font-medium text-slate-800">{p.step}</span>
                         <span className="text-slate-400 text-xs">{p.type}</span>
-                        <span className={`ml-auto px-2 py-0.5 rounded-full text-xs font-semibold ${
-                          p.status === 'Completed' ? 'bg-emerald-100 text-emerald-700' :
-                          p.status === 'In Progress' ? 'bg-blue-100 text-blue-700' :
-                          p.status === 'QC Pending' ? 'bg-amber-100 text-amber-700' :
-                          'bg-slate-100 text-slate-500'}`}>{p.status}</span>
+                        <span className={`ml-auto px-2 py-0.5 rounded-full text-xs font-semibold ${p.status === 'Completed' ? 'bg-emerald-100 text-emerald-700' :
+                            p.status === 'In Progress' ? 'bg-blue-100 text-blue-700' :
+                              p.status === 'QC Pending' ? 'bg-amber-100 text-amber-700' :
+                                'bg-slate-100 text-slate-500'}`}>{p.status}</span>
                       </div>
                     ))}
                   </div>
@@ -717,7 +752,7 @@ export default function OrderManagement() {
               <AlertTriangle className="h-4 w-4 text-amber-500 flex-shrink-0 mt-0.5" />
               <div className="text-xs text-amber-700 leading-relaxed">
                 <span className="font-bold block mb-0.5">R&D Authorization Required</span>
-                This demand will be locked as <strong>Pending R&D</strong> and an R&D ticket will be auto-generated. The "Raise Purchase" button on this item will only unlock after R&D approves the request.
+                This demand will be locked as <strong>Pending R&D</strong> and an R&D ticket will be auto-generated. This material will only become available for receiving after R&D approves the request.
               </div>
             </div>
           </div>
@@ -728,62 +763,78 @@ export default function OrderManagement() {
         </DialogContent>
       </Dialog>
 
-      {/* Raise Purchase Request Modal */}
-      <Dialog open={raisePurchaseOpen} onOpenChange={(o) => { setRaisePurchaseOpen(o); if (!o) setPurchaseRow(null); }}>
+      {/* ─── RETURN MATERIAL MODAL ─── */}
+      <Dialog open={returnModalOpen} onOpenChange={(o) => { setReturnModalOpen(o); if (!o) { setReturnRow(null); setReturnQty(''); setReturnReason(''); setReturnType('Excess'); } }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-violet-700">
-              <ShoppingCart className="h-4 w-4" /> Raise Purchase Request
+            <DialogTitle className="flex items-center gap-2 text-amber-700">
+              <Package className="h-5 w-5" /> Return Material
             </DialogTitle>
           </DialogHeader>
-          {purchaseRow && (
+          {returnRow && (
             <div className="space-y-4 py-2">
-              <div className="bg-slate-50 rounded-lg p-3 space-y-1 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-xs text-slate-500 font-semibold">Material Code</span>
-                  <span className="font-mono text-blue-700 text-xs font-semibold">{purchaseRow.materialCode}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-xs text-slate-500 font-semibold">Material Name</span>
-                  <span className="text-slate-800 text-xs font-medium">{purchaseRow.materialName}</span>
-                </div>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Return excess or defective materials back to the store.
+              </p>
+              <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-1 text-sm">
+                <div className="flex justify-between"><span className="text-xs text-slate-500 font-semibold">Code</span><span className="font-mono text-blue-700 text-xs font-semibold">{returnRow.materialCode}</span></div>
+                <div className="flex justify-between"><span className="text-xs text-slate-500 font-semibold">Material</span><span className="text-slate-800 text-xs font-medium truncate ml-2">{returnRow.materialName}</span></div>
+                <div className="flex justify-between border-t border-slate-200 pt-1 mt-1"><span className="text-xs text-slate-500 font-semibold">Max Returnable</span><span className="text-amber-700 text-xs font-bold">{returnRow.issuedQuantity} {returnRow.unit}</span></div>
               </div>
-
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-semibold text-slate-600 mb-1 block">Quantity *</label>
+                  <label className="text-xs font-semibold text-slate-600 mb-1 block">Quantity to Return *</label>
                   <Input
                     type="number"
                     min="0"
-                    value={purchaseRow.quantity}
-                    onChange={e => setPurchaseRow(r => ({ ...r, quantity: e.target.value }))}
+                    max={returnRow.issuedQuantity}
+                    value={returnQty}
+                    onChange={e => setReturnQty(e.target.value)}
+                    className={Number(returnQty) > returnRow.issuedQuantity ? 'border-red-500 focus-visible:ring-red-500' : ''}
                   />
+                  {Number(returnQty) > returnRow.issuedQuantity && (
+                    <span className="text-[10px] text-red-500 font-medium">Cannot exceed {returnRow.issuedQuantity}</span>
+                  )}
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-slate-600 mb-1 block">Unit</label>
-                  <select
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white"
-                    value={purchaseRow.unit}
-                    onChange={e => setPurchaseRow(r => ({ ...r, unit: e.target.value }))}
-                  >
-                    {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                  <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-slate-100" disabled value={returnRow.unit}>
+                    <option>{returnRow.unit}</option>
                   </select>
                 </div>
               </div>
-
-              <p className="text-xs text-slate-400 leading-relaxed">
-                This will create a Purchase Request visible to the Store department for procurement approval.
-              </p>
+              <div>
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">Return Type</label>
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+                    <input type="radio" name="returnType" value="Excess" checked={returnType === 'Excess'} onChange={e => setReturnType(e.target.value)} className="accent-amber-600" />
+                    <span className="text-slate-700">Excess Material</span>
+                  </label>
+                  <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+                    <input type="radio" name="returnType" value="Defect" checked={returnType === 'Defect'} onChange={e => setReturnType(e.target.value)} className="accent-red-600" />
+                    <span className="text-slate-700">Defect / Scrap</span>
+                  </label>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">Reason for Return</label>
+                <Input
+                  type="text"
+                  placeholder="e.g. Excess material, Defective"
+                  value={returnReason}
+                  onChange={e => setReturnReason(e.target.value)}
+                />
+              </div>
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setRaisePurchaseOpen(false); setPurchaseRow(null); }}>Cancel</Button>
+            <Button variant="outline" onClick={() => { setReturnModalOpen(false); setReturnRow(null); setReturnQty(''); setReturnReason(''); setReturnType('Excess'); }}>Cancel</Button>
             <Button
-              onClick={handleRaisePurchase}
-              disabled={!purchaseRow?.quantity || Number(purchaseRow?.quantity) <= 0}
-              className="bg-violet-600 hover:bg-violet-700 text-white"
+              onClick={handleReturnMaterial}
+              disabled={!returnQty || Number(returnQty) <= 0 || Number(returnQty) > (returnRow?.issuedQuantity || 0)}
+              className="bg-amber-600 hover:bg-amber-700 text-white"
             >
-              <ShoppingCart className="h-3.5 w-3.5 mr-1" /> Send to Store
+              Submit Return
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -810,12 +861,12 @@ export default function OrderManagement() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-semibold text-slate-600 mb-1 block">Quantity Received *</label>
-                  <Input 
-                    type="number" 
-                    min="0" 
-                    max={issueRow.remainingQty} 
-                    value={issueQty} 
-                    onChange={e => setIssueQty(e.target.value)} 
+                  <Input
+                    type="number"
+                    min="0"
+                    max={issueRow.remainingQty}
+                    value={issueQty}
+                    onChange={e => setIssueQty(e.target.value)}
                     className={Number(issueQty) > issueRow.remainingQty ? 'border-red-500 focus-visible:ring-red-500' : ''}
                   />
                   {Number(issueQty) > issueRow.remainingQty && (
@@ -833,9 +884,9 @@ export default function OrderManagement() {
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => { setIssueModalOpen(false); setIssueRow(null); setIssueQty(''); }}>Cancel</Button>
-            <Button 
-              onClick={handleIssueMaterial} 
-              disabled={!issueQty || Number(issueQty) <= 0 || Number(issueQty) > (issueRow?.remainingQty || 0)} 
+            <Button
+              onClick={handleIssueMaterial}
+              disabled={!issueQty || Number(issueQty) <= 0 || Number(issueQty) > (issueRow?.remainingQty || 0)}
               className="bg-emerald-600 hover:bg-emerald-700 text-white"
             >
               Confirm Receipt

@@ -463,7 +463,7 @@ const storeMenuItems = [
   { label: 'Inventory', path: '/store/inventory', icon: Package, module: 'Store' },
   { label: 'Orders', path: '/store/orders', icon: Receipt, module: 'Store' },
   { label: 'Purchase Orders', path: '/store/purchases/requests', icon: ShoppingCart, module: 'Store' },
-  { label: 'Material Issues', path: '/store/material-issues', icon: History, module: 'Store' },
+  { label: 'Material Transfers', path: '/store/material-issues', icon: Handshake, module: 'Store' },
   { label: 'Task Management', path: '/store/task-management', icon: CheckSquare, module: 'store' },
   { label: 'My Task', path: '/store/my-task', icon: CheckSquare, module: 'store' },
   {
