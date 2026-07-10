@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { Truck, CheckCircle2, AlertTriangle, X, MapPin, Clock, Upload, FileText, FileCheck } from 'lucide-react';
+import { Truck, CheckCircle2, AlertTriangle, X, MapPin, Clock, Upload, FileText, FileCheck, Eye } from 'lucide-react';
+import DocumentViewerModal from '@/components/DocumentViewerModal';
 
 const statusColor = {
   Ready: 'bg-blue-100 text-blue-700',
@@ -312,6 +313,10 @@ function DispatchCard({ dispatch }) {
   const isDelayed = dispatch.expectedDeliveryDate && dispatch.expectedDeliveryDate < today &&
     ['Dispatched', 'In Transit'].includes(dispatch.status);
 
+  const hasDocs = !!(dispatch.deliveryDocs && (
+    dispatch.deliveryDocs.noc || dispatch.deliveryDocs.ewayBill || dispatch.deliveryDocs.invoice
+  ));
+
   const handleInTransit = async () => {
     setLoading(true);
     try {
@@ -340,6 +345,17 @@ function DispatchCard({ dispatch }) {
     <>
       {modal === 'execute' && <ExecuteDispatchModal dispatch={dispatch} onClose={() => setModal(null)} />}
       {modal === 'deliver' && <DeliveryModal dispatch={dispatch} onClose={() => setModal(null)} />}
+      {modal === 'documents' && (
+        <DocumentViewerModal
+          title={`${dispatch.dispatchId} — Delivery Documents`}
+          documents={[
+            { label: 'NOC (No Objection Certificate)', path: dispatch.deliveryDocs?.noc },
+            { label: 'E-Way Bill', path: dispatch.deliveryDocs?.ewayBill },
+            { label: 'Invoice', path: dispatch.deliveryDocs?.invoice },
+          ]}
+          onClose={() => setModal(null)}
+        />
+      )}
 
       <Card className={`border-none shadow-sm hover:shadow-md transition-all duration-200 ${isDelayed ? 'ring-1 ring-red-300' : ''}`}>
         <CardContent className="p-5">
@@ -404,9 +420,17 @@ function DispatchCard({ dispatch }) {
               </Button>
             )}
             {dispatch.status === 'Delivered' && (
-              <Button size="sm" variant="outline" className="flex-1" onClick={handleClose} disabled={loading}>
-                Close Dispatch
-              </Button>
+              <>
+                {hasDocs && (
+                  <Button size="sm" variant="outline" className="flex-1" onClick={() => setModal('documents')}>
+                    <Eye className="h-4 w-4 mr-1.5" />
+                    View Documents
+                  </Button>
+                )}
+                <Button size="sm" variant="outline" className="flex-1" onClick={handleClose} disabled={loading}>
+                  Close Dispatch
+                </Button>
+              </>
             )}
           </div>
         </CardContent>

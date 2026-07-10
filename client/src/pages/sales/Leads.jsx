@@ -77,6 +77,7 @@ import {
 } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
+import OrderFormModal from '@/components/sales/OrderFormModal';
 
 const Leads = () => {
   const { user } = useAuth();
@@ -247,7 +248,9 @@ const Leads = () => {
     "Service Rejected"
   ];
 
-  const DISQUALIFY_REASONS = [
+  // Fallback used only until the admin-settings query resolves (or if the admin
+  // has never opened Admin Settings > Lead Settings > Lead Reject Reason yet).
+  const DISQUALIFY_REASONS_FALLBACK = [
     "Payment Term Is Out Of Scope",
     "Freight Charged Are High",
     "Client Is Not Responding",
@@ -416,6 +419,17 @@ const Leads = () => {
 
   const handleStageSubmit = () => {
     if (!stageLead || !selectedStage) return;
+    // 'Deal Won' stage follows the same payment-verification rule as the Deal Won button
+    if (selectedStage === 'Deal Won' &&
+        stageLead.paymentCheckStatus !== 'Paid' &&
+        stageLead.paymentCheckStatus !== 'Partially Paid') {
+      toast({
+        title: "Payment Verification Required",
+        description: "Stage can be set to 'Deal Won' only after payment is verified by Accounts. Partial payment is also accepted.",
+        variant: "destructive"
+      });
+      return;
+    }
     // Stage stores Hot/Warm/Cold/Pending/Star Lead/Followup in lead.stage field
     // Never overwrite system status (Won, New, etc.)
     updateLeadMutation.mutate(
@@ -531,6 +545,34 @@ const Leads = () => {
     }
   };
 
+  // Order Form modal (post Deal-Verification paperwork, Sales Order Form to Account)
+  const [isOrderFormModalOpen, setIsOrderFormModalOpen] = useState(false);
+  const [orderFormOrder, setOrderFormOrder] = useState(null);
+  const [orderFormLead, setOrderFormLead] = useState(null);
+
+  const handleOpenOrderFormModal = async (lead) => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`/api/orders/by-lead/${lead._id}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success && data.order) {
+        setOrderFormOrder(data.order);
+        setOrderFormLead(lead);
+        setIsOrderFormModalOpen(true);
+      } else {
+        toast({
+          title: "Not Found",
+          description: data.message || "No order associated with this deal was found.",
+          variant: "destructive"
+        });
+      }
+    } catch (e) {
+      toast({ title: "Error", description: "Failed to load order for this lead.", variant: "destructive" });
+    }
+  };
+
   // Won Checklist Modal
   const [isWonChecklistModalOpen, setIsWonChecklistModalOpen] = useState(false);
   const [wonChecklistLead, setWonChecklistLead] = useState(null);
@@ -640,6 +682,8 @@ const Leads = () => {
   const dynSources      = adminSettingsData?.settings?.leadSources?.map(s => s.name) || null;
   const dynBizTypes     = adminSettingsData?.settings?.businessTypes?.map(b => b.name) || null;
   const dynDocTypes     = adminSettingsData?.settings?.documentTypes?.map(d => d.name) || null;
+  const dynRejectReasons = adminSettingsData?.settings?.leadRejectReasons?.map(r => r.label) || null;
+  const DISQUALIFY_REASONS = (dynRejectReasons && dynRejectReasons.length) ? dynRejectReasons : DISQUALIFY_REASONS_FALLBACK;
 
 const assignableUsers = (usersData?.users || []).filter(
   (user) =>
@@ -1762,6 +1806,14 @@ const assignableUsers = (usersData?.users || []).filter(
                             });
                             return;
                           }
+                          if (lead.paymentCheckStatus !== 'Paid' && lead.paymentCheckStatus !== 'Partially Paid') {
+                            toast({
+                              title: "Payment Verification Required",
+                              description: "Deal can only be marked as Won after payment is verified by Accounts. Partial payment is also accepted.",
+                              variant: "destructive"
+                            });
+                            return;
+                          }
                           handleOpenWonChecklistModal(lead);
                         }
                       }}
@@ -1776,7 +1828,10 @@ const assignableUsers = (usersData?.users || []).filter(
                       )}
                     </Button>
 
-                    {(lead.status === 'Won' || lead.stage === 'Service Verified') && (
+                    {/* Checklist is only relevant while the Service team is still verifying —
+                        once the deal is Service Verified it's replaced by the Deal Verified
+                        badge / Order Form actions below. */}
+                    {lead.status === 'Won' && lead.stage !== 'Service Verified' && (
                       <Button
                         variant="outline"
                         size="sm"
@@ -1787,6 +1842,32 @@ const assignableUsers = (usersData?.users || []).filter(
                         <ShieldCheck className="h-3 w-3 mr-1" />
                         Checklist
                       </Button>
+                    )}
+
+                    {lead.stage === 'Service Verified' && (
+                      <>
+                        <span className="h-7 px-2 inline-flex items-center gap-1 text-[10px] rounded-full bg-teal-50 text-teal-700 border border-teal-200 font-semibold">
+                          <ShieldCheck className="h-3 w-3" /> Deal Verified
+                        </span>
+
+                        {String(lead.assignedTo?._id || lead.assignedTo) === String(user?.id || user?._id) && (
+                          lead.orderFormStatus === 'Submitted' ? (
+                            <span className="h-7 px-2 inline-flex items-center text-[10px] rounded-full bg-blue-50 text-blue-700 border border-blue-200 font-semibold">
+                              Order Form Submitted
+                            </span>
+                          ) : (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 px-2 text-[10px] rounded-full bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100 font-semibold"
+                              onClick={() => handleOpenOrderFormModal(lead)}
+                              title={lead.orderFormStatus === 'Returned' ? 'Accounts sent this back — click to correct and resubmit' : 'Fill Order Form'}
+                            >
+                              {lead.orderFormStatus === 'Returned' ? 'Correct Order Form' : 'Fill Order Form'}
+                            </Button>
+                          )
+                        )}
+                      </>
                     )}
                   </div>
                 </div>
@@ -4441,6 +4522,17 @@ const assignableUsers = (usersData?.users || []).filter(
           </div>
         </DialogContent>
       </Dialog>
+
+      {isOrderFormModalOpen && (
+        <OrderFormModal
+          open={isOrderFormModalOpen}
+          onOpenChange={(v) => { setIsOrderFormModalOpen(v); if (!v) { setOrderFormOrder(null); setOrderFormLead(null); } }}
+          orderId={orderFormOrder?._id}
+          order={orderFormOrder}
+          lead={orderFormLead}
+          onSaved={() => queryClient.invalidateQueries({ queryKey: ['leads'] })}
+        />
+      )}
     </div>
   );
 };

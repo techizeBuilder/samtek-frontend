@@ -158,6 +158,7 @@ const accountsMenuItems = [
       { label: 'Sales Order Tracking', path: '/accounts/sales/order-tracking', feature: 'sales' },
       { label: 'NOC Requests', path: '/accounts/sales/noc-request', feature: 'sales' },
       { label: 'Packed Orders (Payment)', path: '/accounts/sales/packed-orders', feature: 'sales' },
+      { label: 'Order Form', path: '/accounts/sales/order-forms', feature: 'sales' },
       { label: 'Receivable Ageing', path: '/accounts/sales/ageing', feature: 'sales' },
       { label: 'Sales Reports', path: '/accounts/sales/reports', feature: 'sales' }
     ]

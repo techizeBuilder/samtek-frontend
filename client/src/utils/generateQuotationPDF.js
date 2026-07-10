@@ -9,20 +9,23 @@ import jsPDF from 'jspdf';
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const PW=210, PH=297, ML=10, MR=10, CW=190;
-const FOOTER_H  = 18;   // raised footer zone height to prevent print cut-offs
+const FOOTER_H  = 21;   // footer anchored near the page bottom (matches the print-mode
+                        // preview): links + page number end ~8 mm above the page edge
 const TBL_HDR_H = 12;   // table column-header row height mm
-const AVAIL     = PH - FOOTER_H; // 279 mm usable per page
+const AVAIL     = PH - FOOTER_H; // 276 mm usable per page
 
 /* Compact header: visible box = 22 mm, consumed space (box + gap) = 24 mm */
 const COMPACT_BOX_H = 22;
 const COMPACT_HDR_H = COMPACT_BOX_H + 2;   // = 24 mm
 
-/* Page 2+ each product row: (297 - 24 - 12 - 18) / 2 = 121 mm  */
-const ROW_H_OTHER = Math.floor((PH - COMPACT_HDR_H - TBL_HDR_H - FOOTER_H) / 2);
-
 /* Column widths  [sl, details, unit-price, qty, gst%, amount]  total = 190 mm
    Wider Amount column prevents large Indian numbers from clipping            */
 const C = [10, 86, 28, 14, 12, 40];  // 10+86+28+14+12+40 = 190 ✓
+
+/* Product row image: fixed square size so it always sits beside the text
+   instead of being stretched/centered across an oversized row.              */
+const IMG_SZ    = 32;
+const MIN_ROW_H = 40;
 
 /* ── Colours ─────────────────────────────────────────────────────────────── */
 const NAVY   = [13,  71, 161];
@@ -129,84 +132,128 @@ function drawLabelValue(doc, label, value, x, y, fontSize, labelColor, valueColo
 
 /* ── Helper to draw vector footer icons (fixes encoding issues) ──────────── */
 function drawFooterIcon(doc, type, x, y) {
-  draw(doc, NAVY);
+  const BLUE_600 = [37, 99, 235];
+  const PINK_500 = [236, 72, 153];
+  const RED_500 = [239, 68, 68];
+  const SKY_500 = [14, 165, 233];
+  const PURPLE_600 = [147, 51, 234];
+  
   doc.setLineWidth(0.3);
-  if (type === 'web') {
-    // Globe: circle with center lines and inner ellipse lines
+  
+  if (type === 'website') {
+    // Globe with meridians and parallels
+    draw(doc, NAVY);
     doc.circle(x + 1.5, y + 1.5, 1.5);
     doc.line(x, y + 1.5, x + 3.0, y + 1.5);
     doc.line(x + 1.5, y, x + 1.5, y + 3.0);
+    // Draw ellipses for better globe effect
+    doc.ellipse(x + 1.5, y + 1.5, 1.5, 0.6);
+    doc.ellipse(x + 1.5, y + 1.5, 0.6, 1.5);
   } else if (type === 'email') {
-    // Envelope: outer rectangle + letter flap lines
-    doc.rect(x, y + 0.4, 3.0, 2.2);
-    doc.line(x, y + 0.4, x + 1.5, y + 1.5);
-    doc.line(x + 1.5, y + 1.5, x + 3.0, y + 0.4);
-  } else if (type === 'insta') {
-    // Instagram: rounded square + camera lens + top-right dot
-    doc.roundedRect(x, y + 0.2, 2.6, 2.6, 0.6, 0.6);
-    doc.circle(x + 1.3, y + 1.5, 0.7);
-    fill(doc, NAVY);
-    doc.circle(x + 2.0, y + 0.8, 0.2, 'F');
-  } else if (type === 'fb') {
-    // Facebook: filled circle + white 'f'
-    fill(doc, NAVY);
-    doc.circle(x + 1.5, y + 1.5, 1.5, 'F');
+    // Modern envelope with thicker lines
+    draw(doc, RED_500);
+    doc.setLineWidth(0.4);
+    doc.rect(x, y + 0.5, 3.0, 2.0);
+    doc.line(x, y + 0.5, x + 1.5, y + 1.6);
+    doc.line(x + 1.5, y + 1.6, x + 3.0, y + 0.5);
+  } else if (type === 'instagram') {
+    // Instagram with gradient effect (using pink)
+    draw(doc, PINK_500);
+    doc.setLineWidth(0.4);
+    doc.roundedRect(x, y + 0.2, 2.8, 2.8, 0.6, 0.6);
+    doc.circle(x + 1.4, y + 1.6, 0.8);
+    fill(doc, PINK_500);
+    doc.circle(x + 2.1, y + 0.8, 0.25, 'F');
+  } else if (type === 'facebook') {
+    // Facebook rounded square with 'f'
+    fill(doc, BLUE_600);
+    doc.roundedRect(x, y + 0.2, 3.0, 3.0, 0.5, 0.5, 'F');
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(6.5);
+    doc.setFontSize(7);
     rgb(doc, WHITE);
-    doc.text('f', x + 1.1, y + 2.2);
-  } else if (type === 'yt') {
-    // YouTube: rounded rect + white play triangle
-    fill(doc, NAVY);
-    doc.roundedRect(x, y + 0.3, 3.2, 2.4, 0.6, 0.6, 'FD');
+    doc.text('f', x + 1.15, y + 2.4);
+  } else if (type === 'youtube') {
+    // YouTube rounded rect with play button
+    fill(doc, RED_500);
+    doc.roundedRect(x, y + 0.4, 3.4, 2.4, 0.6, 0.6, 'F');
     fill(doc, WHITE);
-    doc.triangle(x + 1.2, y + 0.9, x + 1.2, y + 2.1, x + 2.2, y + 1.5, 'F');
+    doc.triangle(x + 1.3, y + 1.0, x + 1.3, y + 2.2, x + 2.4, y + 1.6, 'F');
+  } else if (type === 'linkedin') {
+    // LinkedIn square with 'in'
+    fill(doc, BLUE_600);
+    doc.roundedRect(x, y + 0.2, 3.0, 3.0, 0.4, 0.4, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6);
+    rgb(doc, WHITE);
+    doc.text('in', x + 0.9, y + 2.3);
+  } else if (type === 'twitter') {
+    // Twitter bird silhouette (X logo style)
+    fill(doc, SKY_500);
+    doc.setLineWidth(0.5);
+    draw(doc, SKY_500);
+    // Simplified X shape
+    doc.line(x + 0.4, y + 0.4, x + 2.6, y + 2.6);
+    doc.line(x + 2.6, y + 0.4, x + 0.4, y + 2.6);
+    doc.circle(x + 1.5, y + 1.5, 1.4);
+  } else {
+    // Generic link icon
+    draw(doc, PURPLE_600);
+    doc.setLineWidth(0.4);
+    // Chain link shape
+    doc.ellipse(x + 0.8, y + 1.0, 0.6, 0.4, 'D');
+    doc.ellipse(x + 2.2, y + 2.0, 0.6, 0.4, 'D');
+    doc.line(x + 1.2, y + 1.2, x + 1.8, y + 1.8);
   }
 }
 
 /* ── Footer ─────────────────────────────────────────────────────────────── */
-function drawFooter(doc,cd){
-  const fy=PH-FOOTER_H;
-  draw(doc,BORDER); doc.setLineWidth(0.4);
-  doc.line(ML,fy,PW-MR,fy);
+function drawFooter(doc, cd) {
+  const fy = PH - FOOTER_H;
+  draw(doc, BORDER); doc.setLineWidth(0.4);
+  doc.line(ML, fy, PW - MR, fy);
 
-  // Column X coordinates for 3 columns (Left-aligned)
+  // Build footer items from company socialLinks array
+  const socialLinks = (cd.socialLinks || []).filter(l => l && l.url && l.url.trim());
+
+  if (socialLinks.length === 0) {
+    // No social links — show nothing (blank footer zone, just the separator line)
+    return;
+  }
+
+  // Column X coordinates for 3 columns
   const colX = [
-    ML + 4,              // 14 mm
-    ML + CW / 3 + 2,     // 75.3 mm
-    ML + 2 * CW / 3 + 2  // 138.6 mm
+    ML + 4,
+    ML + CW / 3 + 2,
+    ML + 2 * CW / 3 + 2
   ];
 
-  const row1 = [
-    { type: 'web',   text: cd.website || 'www.samtekmachinery.com' },
-    { type: 'email',  text: cd.infoEmail || 'info@samtekmachinery.com' },
-    { type: 'email',  text: cd.salesEmail || cd.email || 'sales@samtekmachinery.com' }
-  ];
+  // Split links into rows of 3
+  const rows = [];
+  for (let i = 0; i < socialLinks.length; i += 3) {
+    rows.push(socialLinks.slice(i, i + 3));
+  }
 
-  const row2 = [
-    { type: 'insta', text: '@samtekmachinery' },
-    { type: 'fb',    text: '@Samtekmachinerygzb' },
-    { type: 'yt',    text: '@SamTekMachinery' }
-  ];
-
-  // Draw Row 1
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7.5);
-  row1.forEach((col, i) => {
-    const x = colX[i];
-    const y = fy + 2.5;
-    drawFooterIcon(doc, col.type, x, y);
-    rgb(doc, NAVY);
-    doc.text(col.text, x + 4.5, y + 2.2);
-  });
 
-  // Draw Row 2
-  row2.forEach((col, i) => {
-    const x = colX[i];
-    const y = fy + 7.5;
-    drawFooterIcon(doc, col.type, x, y);
-    rgb(doc, NAVY);
-    doc.text(col.text, x + 4.5, y + 2.2);
+  // Row Y positions — packed just under the separator so the whole footer sits at the bottom
+  const rowYs = [fy + 2, fy + 8];
+
+  rows.slice(0, 2).forEach((row, rowIdx) => {
+    const rowY = rowYs[rowIdx];
+    row.forEach((link, colIdx) => {
+      const x = colX[colIdx];
+      drawFooterIcon(doc, link.type, x, rowY);
+      // Clean up display text: strip protocol for websites, mailto: for email
+      const displayText = (link.label && link.label.trim())
+        ? link.label.trim()
+        : link.url
+            .replace(/^https?:\/\/(www\.)?/, '')
+            .replace(/^mailto:/, '')
+            .replace(/\/$/, '');
+      rgb(doc, NAVY);
+      doc.text(displayText, x + 5, rowY + 2.2, { maxWidth: CW / 3 - 8 });
+    });
   });
 }
 
@@ -367,10 +414,48 @@ function drawTableHeader(doc,y){
   return y+TBL_HDR_H;
 }
 
-/* ── Product row – Aligns all columns with the top details line ─────────── */
+/* ── Spec/usage lines shared by measurement and drawing ──────────────────── */
+function buildSpecLines(item){
+  const specs=[];
+  if(item.specUsageText){
+    item.specUsageText.split(' | ').map(l=>l.trim()).filter(Boolean).forEach(l=>specs.push('# '+l));
+  }else{
+    (item.specifications||[]).forEach(s=>{if(s.key&&s.value)specs.push('# '+s.key+' : '+s.value);});
+    const apps=item.applications||item.features||[];
+    if(apps.length)specs.push('# Usages: '+apps.join(', '));
+  }
+  return specs;
+}
+
+/* ── Measure the natural height a product row needs for its own content ───
+   Used to pack rows dynamically per page without ever cutting an item's
+   name/spec text (or its image) across a page break.                       */
+function measureProductRow(doc,item){
+  const px=4;
+  const txMax=C[1]-IMG_SZ-px*2-4;
+
+  doc.setFont('helvetica','bold'); doc.setFontSize(9);
+  const nameL=doc.splitTextToSize(item.name||'',txMax);
+
+  let h = px+6;
+  h += nameL.length*4.5+2; // name
+  h += 4;                  // "Product Code:" label line
+  h += 5.5;                // code value line
+
+  const specs=buildSpecLines(item);
+  doc.setFont('helvetica','normal'); doc.setFontSize(8);
+  specs.forEach(line=>{ h += doc.splitTextToSize(line,txMax).length*4.2; });
+
+  h += 6; // bottom breathing room
+
+  return Math.max(h, IMG_SZ+12, MIN_ROW_H);
+}
+
+/* ── Product row – image sits beside the text, vertically centered in a
+   row sized to fit its own content (see measureProductRow) ─────────────── */
 async function drawProductRow(doc,item,sl,y,img,rowH){
   const px=4;
-  const imgSz=Math.min(rowH-10, 36); // cap image at 36 mm regardless of row height
+  const imgSz=IMG_SZ;
   const txMax=C[1]-imgSz-px*2-4;     // text area width in details column
 
   /* Row bounding box */
@@ -399,20 +484,15 @@ async function drawProductRow(doc,item,sl,y,img,rowH){
   doc.setFont('helvetica','normal'); doc.setFontSize(8); rgb(doc,BLACK);
   doc.text(item.code||'-',dx,ty); ty+=5.5;
 
-  const specs=[];
-  if(item.specUsageText){
-    item.specUsageText.split(' | ').map(l=>l.trim()).filter(Boolean).forEach(l=>specs.push('# '+l));
-  }else{
-    (item.specifications||[]).forEach(s=>{if(s.key&&s.value)specs.push('# '+s.key+' : '+s.value);});
-    const apps=item.applications||item.features||[];
-    if(apps.length)specs.push('# Usages: '+apps.join(', '));
-  }
+  const specs=buildSpecLines(item);
   doc.setFont('helvetica','normal'); doc.setFontSize(8); rgb(doc,GREY);
   specs.forEach(line=>{
-    if(ty<y+rowH-4){doc.text(line,dx,ty,{maxWidth:txMax});ty+=4.2;}
+    const wrapped=doc.splitTextToSize(line,txMax);
+    doc.text(wrapped,dx,ty);
+    ty+=wrapped.length*4.2;
   });
 
-  /* ── Product image ── */
+  /* ── Product image (fixed size, vertically centered beside the text) ── */
   if(img){
     const ix=ML+C[0]+C[1]-imgSz-2;
     const iy=y+(rowH-imgSz)/2;
@@ -443,9 +523,9 @@ async function drawProductRow(doc,item,sl,y,img,rowH){
   doc.setFont('helvetica','bold'); doc.setFontSize(10); rgb(doc,BLACK);
   doc.text((item.gst||18)+'%',gX,topBaselineY,{align:'center'});
 
-  /* ── Amount – aligned to top ── */
+  /* ── Amount – aligned to top (GST-inclusive, same as preview) ── */
   const amtCx=ML+C[0]+C[1]+C[2]+C[3]+C[4]+C[5]/2;
-  const amtStr=fmt((item.price||0)*(item.quantity||1));
+  const amtStr=fmt((item.price||0)*(item.quantity||1)*(1+(item.gst||18)/100));
   doc.setFont('helvetica','bold'); doc.setFontSize(8.5); rgb(doc,BLACK);
   doc.text(amtStr,amtCx,topBaselineY,{align:'center'});
 
@@ -479,15 +559,28 @@ function drawChargeRow(doc, charge, y, rowH = 8) {
   const qX = ML + C[0] + C[1] + C[2] + C[3]/2;
   doc.text('-', qX, topBaselineY, { align: 'center' });
 
-  // GST
+  // GST — no GST on additional charges, shown as '-' (same as preview)
   const gX = ML + C[0] + C[1] + C[2] + C[3] + C[4]/2;
-  doc.text('18%', gX, topBaselineY, { align: 'center' });
+  doc.text('-', gX, topBaselineY, { align: 'center' });
 
   // Amount
   const amtCx = ML + C[0] + C[1] + C[2] + C[3] + C[4] + C[5]/2;
   doc.text(fmt(charge.price), amtCx, topBaselineY, { align: 'center' });
 
   return y + rowH;
+}
+
+/* ── Exact height drawBilling() will occupy, so callers can page-break
+   BEFORE drawing instead of letting the block get cut off mid-way ───────── */
+function measureBillingHeight(doc,items,charges){
+  const sub=items.reduce((s,it)=>s+(it.price||0)*(it.quantity||1),0)
+           +(charges||[]).reduce((s,c)=>s+(c.price||0),0);
+  const gst=items.reduce((s,it)=>s+(it.price||0)*(it.quantity||1)*((it.gst||18)/100),0);
+  const net=sub+gst;
+  const wordStr=n2w(Math.round(net))+' (INR)';
+  const wordLines=doc.splitTextToSize(wordStr,CW-6);
+  const wordH=Math.max(10,wordLines.length*5+5);
+  return 9+10+10+13+wordH+2;
 }
 
 /* ── Billing summary ────────────────────────────────────────────────────────
@@ -669,133 +762,90 @@ export async function generateQuotationPDF(opts={}){
     imgs[item.id]=await loadImgCompressed(src,150);
   }));
 
-  /* ── Partition items (products) into pages ──
-     Page 1  : 1 product  (full header)
-     Page 2+ : 2 products per page (compact header)                           */
-  const productPages=[];
-  if(items.length>0){
-    productPages.push(items.slice(0,1));
-    let i=1;
-    while(i<items.length){
-      productPages.push(items.slice(i,i+2));
-      i+=2;
-    }
-  }
+  /* ── Page 1 always starts with the full header + table header, even with
+     zero items, so charges/billing have a consistent anchor to flow from ── */
+  let y=drawFullHeader(doc,logoImg,cd,ld,qm);
+  y=drawTableHeader(doc,y);
 
-  const isEven=(items.length%2===0);
+  /* ── Dynamically pack product rows ──
+     Each row is measured to its own content (name + code + specs + image)
+     via measureProductRow, so however many items fit cleanly on a page is
+     however many are shown there — never cutting an item across pages.
+     Page 1 uses the already-drawn full header; every subsequent page opens
+     with the compact header + a fresh table header.                        */
   let slNo=1;
-
-  /* ── Draw product pages ── */
-  for(let pi=0;pi<productPages.length;pi++){
-    if(pi>0) doc.addPage();
-
-    const pageItems=productPages[pi];
-    let y;
-
-    if(pi===0){
-      /* Page 1 – full header */
-      y=drawFullHeader(doc,logoImg,cd,ld,qm);
-      y=drawTableHeader(doc,y);
-      const rowH=PH-FOOTER_H-y;
-      for(const item of pageItems){
-        y=await drawProductRow(doc,item,slNo++,y,imgs[item.id]||null,rowH);
-      }
-    }else{
-      /* Page 2+ – compact header */
+  let idx=0;
+  let firstPage=true;
+  while(idx<items.length){
+    if(!firstPage){
       y=drawCompactHeader(doc,logoImg,cd);
       y=drawTableHeader(doc,y);
-
-      const isLastProductPage=(pi===productPages.length-1);
-
-      if(isEven&&isLastProductPage){
-        /* Even total: last product page has 1 item + billing + terms & notes */
-        const rowH=ROW_H_OTHER;
-        for(const item of pageItems){
-          y=await drawProductRow(doc,item,slNo++,y,imgs[item.id]||null,rowH);
-        }
-
-        // Draw additional charges compactly directly in the table
-        if (charges && charges.length > 0) {
-          for (const charge of charges) {
-            if (y + 8 > AVAIL) {
-              drawFooter(doc, cd);
-              doc.addPage();
-              y = drawCompactHeader(doc, logoImg, cd);
-              y = drawTableHeader(doc, y);
-            }
-            y = drawChargeRow(doc, charge, y);
-          }
-        }
-
-        // Check if billing section fits, otherwise page break
-        if (y + 55 > AVAIL) {
-          drawFooter(doc, cd);
-          doc.addPage();
-          y = drawCompactHeader(doc, logoImg, cd);
-        }
-
-        y=drawBilling(doc,y,items,charges);
-        y+=4;
-        y=drawTermsAndNotes(doc,y,terms,notes,logoImg,cd);
-      }else{
-        /* Normal: split available space equally between products on this page */
-        const available=PH-FOOTER_H-y;
-        const rowH=Math.floor(available/pageItems.length);
-        for(const item of pageItems){
-          y=await drawProductRow(doc,item,slNo++,y,imgs[item.id]||null,rowH);
-        }
-      }
     }
-
-    drawFooter(doc,cd);
-  }
-
-  /* ── Final closing page(s) ── */
-  if(isEven){
-    /* Even: billing + terms were on last product page; this page = bank only */
-    doc.addPage();
-    let y=drawCompactHeader(doc,logoImg,cd);
-    y=drawBankAndSignatory(doc,y,bank,cd,user,stampImg,logoImg);
-    drawFooter(doc,cd);
-  }else{
-    /* Odd: full closing section on one page (with auto page-break if needed) */
-    doc.addPage();
-    let y=drawCompactHeader(doc,logoImg,cd);
-
-    // Draw additional charges table & rows
-    if (charges && charges.length > 0) {
-      y = drawTableHeader(doc, y);
-      for (const charge of charges) {
-        if (y + 8 > AVAIL) {
-          drawFooter(doc, cd);
-          doc.addPage();
-          y = drawCompactHeader(doc, logoImg, cd);
-          y = drawTableHeader(doc, y);
+    let placedOnThisPage=false;
+    while(idx<items.length){
+      const rowH=measureProductRow(doc,items[idx]);
+      if(y+rowH>AVAIL){
+        if(!placedOnThisPage){
+          /* Edge case: a single item's content is taller than a full page —
+             draw it anyway rather than looping forever.                     */
+          y=await drawProductRow(doc,items[idx],slNo++,y,imgs[items[idx].id]||null,rowH);
+          idx++; placedOnThisPage=true;
+          continue;
         }
-        y = drawChargeRow(doc, charge, y);
+        break;
       }
+      y=await drawProductRow(doc,items[idx],slNo++,y,imgs[items[idx].id]||null,rowH);
+      idx++; placedOnThisPage=true;
     }
-
-    // Check if billing fits, otherwise break page
-    if (y + 55 > AVAIL) {
-      drawFooter(doc, cd);
+    if(idx<items.length){
+      drawFooter(doc,cd);
       doc.addPage();
-      y = drawCompactHeader(doc, logoImg, cd);
     }
-
-    y=drawBilling(doc,y,items,charges);
-    y+=4;
-    y=drawTermsAndNotes(doc,y,terms,notes,logoImg,cd);
-    y=drawBankAndSignatory(doc,y,bank,cd,user,stampImg,logoImg);
-    drawFooter(doc,cd);
+    firstPage=false;
   }
 
-  /* ── Page numbers (raised to prevent print cut-offs) ── */
+  /* ── Additional charges + billing summary ──
+     Treated as one block: if it doesn't fully fit in the space left on the
+     current page, the whole block moves to a new page instead of being cut.  */
+  const billH=measureBillingHeight(doc,items,charges);
+  const chargesH=(charges&&charges.length)?charges.length*8:0;
+  let freshPage=false;
+  if(y+chargesH+billH>AVAIL){
+    drawFooter(doc,cd);
+    doc.addPage();
+    y=drawCompactHeader(doc,logoImg,cd);
+    freshPage=true;
+  }
+
+  if(charges&&charges.length>0){
+    if(freshPage) y=drawTableHeader(doc,y);
+    for(const charge of charges){
+      if(y+8>AVAIL){
+        drawFooter(doc,cd);
+        doc.addPage();
+        y=drawCompactHeader(doc,logoImg,cd);
+        y=drawTableHeader(doc,y);
+      }
+      y=drawChargeRow(doc,charge,y);
+    }
+  }
+
+  y=drawBilling(doc,y,items,charges);
+  y+=4;
+
+  /* ── Terms, notes, bank & signatory flow onto the same page whenever they
+     fit; each helper page-breaks internally only when its own block would
+     otherwise be cut.                                                       */
+  y=drawTermsAndNotes(doc,y,terms,notes,logoImg,cd);
+  y=drawBankAndSignatory(doc,y,bank,cd,user,stampImg,logoImg);
+  drawFooter(doc,cd);
+
+  /* ── Page numbers (bottom-right, just below the footer link rows) ── */
   const total=doc.internal.getNumberOfPages();
   for(let pg=1;pg<=total;pg++){
     doc.setPage(pg);
     doc.setFont('helvetica','normal'); doc.setFontSize(8); rgb(doc,GREY);
-    doc.text('Page '+pg+' / '+total,PW-MR,PH-6,{align:'right'});
+    doc.text('Page '+pg+' / '+total,PW-MR,PH-FOOTER_H+13,{align:'right'});
   }
 
   if(returnBase64)return doc.output('datauristring');

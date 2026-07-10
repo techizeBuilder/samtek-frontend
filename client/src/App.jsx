@@ -101,6 +101,7 @@ import SuperAdminAccounts from "@/pages/super-admin/Accounts";
 import SalesOrderTracking from "@/pages/accounts/SalesOrderTracking";
 import NocRequest from "@/pages/accounts/NocRequest";
 import PackedOrders from "@/pages/accounts/PackedOrders";
+import OrderForms from "@/pages/accounts/OrderForms";
 import HRMSDashboard from "@/pages/hrms/HRMSDashboard";
 import HRMSEmployees from "@/pages/hrms/Employee";
 import HRMSAttendance from "@/pages/hrms/AttendanceReport";
@@ -121,6 +122,7 @@ import HRMSAttendanceRequests from "@/pages/hrms/Attendance/HRAdminAttendanceReq
 
 // System Configuration Imports
 import HRMSCompany from "@/pages/hrms/SystemConfigration/Company";
+import MyCompany from "@/pages/hrms/SystemConfigration/MyCompany";
 import HRMSBranches from "@/pages/hrms/SystemConfigration/Branches";
 import HRMSDepartments from "@/pages/hrms/SystemConfigration/Departments";
 import HRMSDesignation from "@/pages/hrms/SystemConfigration/Desigantion";
@@ -549,7 +551,7 @@ function Router() {
           <Switch>
             <Route exact path="/hrms/CompanyAdmin/dashboard" component={CompanyAdminDashboard} />
             <Route exact path="/hrms/CompanyAdmin/employees" component={HRMSEmployees} />
-            <Route exact path="/hrms/CompanyAdmin/companies" component={HRMSCompany} />
+            <Route exact path="/hrms/CompanyAdmin/companies" component={MyCompany} />
             <Route exact path="/hrms/CompanyAdmin/branches" component={HRMSBranches} />
             <Route exact path="/hrms/CompanyAdmin/departments" component={HRMSDepartments} />
             <Route exact path="/hrms/CompanyAdmin/designations" component={HRMSDesignation} />
@@ -1020,6 +1022,11 @@ function Router() {
         <RoleBasedProtectedRoute allowedRoles={['Superadmin', 'Accounts']}>
           <PackedOrders />
         </RoleBasedProtectedRoute>
+      </Route>
+      <Route path="/accounts/sales/order-forms">
+        <ProtectedRoute requiredRole="Accounts">
+          <OrderForms />
+        </ProtectedRoute>
       </Route>
       <Route path="/accounts/sales/customers">
         <ProtectedRoute requiredRole="Accounts">

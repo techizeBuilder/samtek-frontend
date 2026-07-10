@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { usePackagingDispatch } from '@/contexts/PackagingDispatchContext';
 import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { BarChart3, CheckCircle2, Package, Truck, MapPin, Clock } from 'lucide-react';
+import { BarChart3, CheckCircle2, Package, Truck, MapPin, Clock, Eye } from 'lucide-react';
+import DocumentViewerModal from '@/components/DocumentViewerModal';
 
 const statusColor = {
   Delivered: 'bg-emerald-100 text-emerald-700',
@@ -13,6 +15,7 @@ export default function DispatchHistoryPage() {
   const { dispatchOrders, dispatchOrdersLoading } = usePackagingDispatch();
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
+  const [viewingDocsFor, setViewingDocsFor] = useState(null);
 
   const historyStatuses = ['Delivered', 'Closed'];
 
@@ -128,16 +131,36 @@ export default function DispatchHistoryPage() {
                       </div>
                     </div>
                   </div>
-                  <div className="text-xs text-slate-400 text-right flex-shrink-0">
-                    <p>{d.transportType}</p>
-                    {d.vehicleNumber && <p>{d.vehicleNumber}</p>}
-                    {d.invoiceNumber && <p>Inv: {d.invoiceNumber}</p>}
+                  <div className="text-xs text-slate-400 text-right flex-shrink-0 flex flex-col items-end gap-2">
+                    <div>
+                      <p>{d.transportType}</p>
+                      {d.vehicleNumber && <p>{d.vehicleNumber}</p>}
+                      {d.invoiceNumber && <p>Inv: {d.invoiceNumber}</p>}
+                    </div>
+                    {(d.deliveryDocs?.noc || d.deliveryDocs?.ewayBill || d.deliveryDocs?.invoice) && (
+                      <Button size="sm" variant="outline" onClick={() => setViewingDocsFor(d)}>
+                        <Eye className="h-3.5 w-3.5 mr-1.5" />
+                        View Documents
+                      </Button>
+                    )}
                   </div>
                 </div>
               </CardContent>
             </Card>
           ))}
         </div>
+      )}
+
+      {viewingDocsFor && (
+        <DocumentViewerModal
+          title={`${viewingDocsFor.dispatchId} — Delivery Documents`}
+          documents={[
+            { label: 'NOC (No Objection Certificate)', path: viewingDocsFor.deliveryDocs?.noc },
+            { label: 'E-Way Bill', path: viewingDocsFor.deliveryDocs?.ewayBill },
+            { label: 'Invoice', path: viewingDocsFor.deliveryDocs?.invoice },
+          ]}
+          onClose={() => setViewingDocsFor(null)}
+        />
       )}
     </div>
   );
