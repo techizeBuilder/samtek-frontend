@@ -62,6 +62,8 @@ export default function PurchaseRequest() {
   const [receiveSerialNo, setReceiveSerialNo]         = useState('');
   const [receiveWarrantyMonths, setReceiveWarrantyMonths] = useState('');
   const [receiveWarrantyCard, setReceiveWarrantyCard] = useState(null);   // File object
+  const [receiveQtyReceived, setReceiveQtyReceived]   = useState('');     // qty received in purchase unit
+  const [receiveFactor, setReceiveFactor]             = useState('');     // purchase units per 1 storage unit
   const [isMarkingReceived, setIsMarkingReceived]     = useState(false);
   const warrantyFileRef = useRef(null);
   // ───────────────────────────────────────────────────────────────────────────
@@ -239,6 +241,8 @@ export default function PurchaseRequest() {
     setReceiveSerialNo('');
     setReceiveWarrantyMonths('');
     setReceiveWarrantyCard(null);
+    setReceiveQtyReceived(request.purchaseQuantity ? String(request.purchaseQuantity) : '');
+    setReceiveFactor('');
     if (warrantyFileRef.current) warrantyFileRef.current.value = '';
     setIsReceiveModalOpen(true);
   };
@@ -260,6 +264,19 @@ export default function PurchaseRequest() {
       return;
     }
 
+    // Unit conversion required when the order was placed in a purchase unit
+    const needsConversion = !!(receiveRequest?.purchaseUnit && receiveRequest?.purchaseQuantity);
+    if (needsConversion) {
+      if (!(Number(receiveQtyReceived) > 0)) {
+        toast({ title: "Required", description: `Please enter the received quantity in ${receiveRequest.purchaseUnit}.`, variant: "destructive" });
+        return;
+      }
+      if (!(Number(receiveFactor) > 0)) {
+        toast({ title: "Required", description: `Please enter how many ${receiveRequest.purchaseUnit} equal 1 storage unit.`, variant: "destructive" });
+        return;
+      }
+    }
+
     setIsMarkingReceived(true);
     try {
       const formData = new FormData();
@@ -267,6 +284,10 @@ export default function PurchaseRequest() {
       formData.append('serialNumber', receiveSerialNo.trim());
       formData.append('warrantyPeriod', receiveWarrantyMonths);
       formData.append('warrantyCard', receiveWarrantyCard);
+      if (needsConversion) {
+        formData.append('receivedQuantity', receiveQtyReceived);
+        formData.append('conversionFactor', receiveFactor);
+      }
 
       const data = await apiRequest('PATCH', `/api/purchase-requests/${receiveRequest._id}/status`, formData);
 
@@ -513,7 +534,17 @@ export default function PurchaseRequest() {
                         <TableRow key={request._id} className="hover:bg-slate-50/50 transition-colors border-b">
                           <TableCell className="font-bold text-slate-900 pl-6">{request.requestId}</TableCell>
                           <TableCell className="font-semibold text-slate-800">{request.productName}</TableCell>
-                          <TableCell className="font-extrabold text-slate-900 text-center">{request.quantity}</TableCell>
+                          <TableCell className="font-extrabold text-slate-900 text-center">
+                            {request.quantity}
+                            {(request.item?.unit || request.unit) && (
+                              <span className="ml-1 font-medium text-slate-500 text-xs">{request.item?.unit || request.unit}</span>
+                            )}
+                            {request.purchaseQuantity && request.purchaseUnit && (
+                              <div className="text-[10px] font-semibold text-violet-600 mt-0.5">
+                                Ordered: {request.purchaseQuantity} {request.purchaseUnit}
+                              </div>
+                            )}
+                          </TableCell>
                           <TableCell className="font-medium text-slate-600">
                             {request.requestFromDepartment}
                             {request.source && request.source !== 'Store' && (
@@ -688,9 +719,72 @@ export default function PurchaseRequest() {
                 <div className="bg-slate-50 rounded-lg border border-slate-200 p-3">
                   <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Item</p>
                   <p className="font-semibold text-slate-800 text-sm">{receiveRequest.productName}</p>
-                  <p className="text-xs text-slate-500 mt-0.5">Req ID: {receiveRequest.requestId} · Qty: {receiveRequest.quantity}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Req ID: {receiveRequest.requestId} · Requested: {receiveRequest.quantity} {receiveRequest.item?.unit || receiveRequest.unit || ''}
+                    {receiveRequest.purchaseQuantity && receiveRequest.purchaseUnit && (
+                      <span className="text-violet-600 font-semibold"> · Ordered: {receiveRequest.purchaseQuantity} {receiveRequest.purchaseUnit}</span>
+                    )}
+                  </p>
                 </div>
               )}
+
+              {/* ── Unit Conversion (order placed in a Purchase Unit) ─────────── */}
+              {receiveRequest?.purchaseUnit && receiveRequest?.purchaseQuantity ? (() => {
+                const baseUnit = receiveRequest.item?.unit || receiveRequest.unit || 'unit';
+                const converted = Number(receiveQtyReceived) > 0 && Number(receiveFactor) > 0
+                  ? Math.round((Number(receiveQtyReceived) / Number(receiveFactor)) * 1000) / 1000
+                  : null;
+                return (
+                  <div className="bg-violet-50 border border-violet-200 rounded-lg p-3 space-y-3">
+                    <p className="text-xs font-bold text-violet-800 uppercase">Unit Conversion</p>
+                    <p className="text-xs text-violet-700">
+                      Purchase ordered <strong>{receiveRequest.purchaseQuantity} {receiveRequest.purchaseUnit}</strong>, but this item is stored in <strong>{baseUnit}</strong>. Convert the received quantity to {baseUnit} — the converted quantity goes to QC and, after approval, into inventory.
+                    </p>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="recv-qty" className="text-xs font-semibold text-slate-700 uppercase">
+                          Received Qty ({receiveRequest.purchaseUnit}) <span className="text-rose-500">*</span>
+                        </Label>
+                        <Input
+                          id="recv-qty"
+                          type="number"
+                          min="0"
+                          step="any"
+                          placeholder={`e.g. ${receiveRequest.purchaseQuantity}`}
+                          value={receiveQtyReceived}
+                          onChange={(e) => setReceiveQtyReceived(e.target.value)}
+                          className="border-slate-300 font-medium bg-white"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="recv-factor" className="text-xs font-semibold text-slate-700 uppercase">
+                          1 {baseUnit} = ? {receiveRequest.purchaseUnit} <span className="text-rose-500">*</span>
+                        </Label>
+                        <Input
+                          id="recv-factor"
+                          type="number"
+                          min="0"
+                          step="any"
+                          placeholder={`e.g. 1 (${receiveRequest.purchaseUnit} per ${baseUnit})`}
+                          value={receiveFactor}
+                          onChange={(e) => setReceiveFactor(e.target.value)}
+                          className="border-slate-300 font-medium bg-white"
+                        />
+                      </div>
+                    </div>
+
+                    {converted !== null && (
+                      <div className="flex items-center gap-2 bg-white border border-violet-200 rounded-lg px-3 py-2">
+                        <CheckCircle2 className="w-4 h-4 text-violet-600 shrink-0" />
+                        <p className="text-sm font-bold text-violet-800">
+                          {receiveQtyReceived} {receiveRequest.purchaseUnit} = {converted} {baseUnit} → will be sent to QC
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                );
+              })() : null}
 
               {/* Serial Number */}
               <div className="space-y-1.5">

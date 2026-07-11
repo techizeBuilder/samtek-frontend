@@ -68,6 +68,11 @@ export default function RFQManagement() {
   const [viewPRModal, setViewPRModal] = useState(false);
   const [selectedPR, setSelectedPR] = useState(null);
 
+  // Purchase-unit ordering modal (items with a defined Purchase Unit)
+  const [pqModalOpen, setPqModalOpen] = useState(false);
+  const [pqPR, setPqPR] = useState(null);
+  const [pqQty, setPqQty] = useState('');
+
   // ── Data fetching ─────────────────────────────────────────────────────────
   const { data: prData, isLoading: prLoading, refetch: refetchPRs } = useQuery({
     queryKey: ['/api/purchase-requests'],
@@ -135,7 +140,7 @@ export default function RFQManagement() {
     }
   });
 
-  const handleSendRFQ = (pr) => {
+  const sendRFQ = (pr, purchaseQuantity = null) => {
     const defaultDate = new Date();
     defaultDate.setDate(defaultDate.getDate() + 7);
     const requiredByDate = defaultDate.toISOString().split('T')[0];
@@ -148,8 +153,28 @@ export default function RFQManagement() {
     autoSendMutation.mutate({
       purchaseRequestId: pr._id,
       requiredByDate,
-      notes: ''
+      notes: '',
+      ...(purchaseQuantity > 0 && pr.item?.purchaseUnit
+        ? { purchaseQuantity, purchaseUnit: pr.item.purchaseUnit }
+        : {})
     });
+  };
+
+  const handleSendRFQ = (pr) => {
+    // Item has a defined Purchase Unit → ask Purchase dept for the order qty in that unit
+    if (pr.item?.purchaseUnit) {
+      setPqPR(pr);
+      setPqQty('');
+      setPqModalOpen(true);
+      return;
+    }
+    sendRFQ(pr);
+  };
+
+  const handleConfirmPurchaseQty = () => {
+    if (!pqPR || !(Number(pqQty) > 0)) return;
+    setPqModalOpen(false);
+    sendRFQ(pqPR, Number(pqQty));
   };
 
   const handleManualSend = () => {
@@ -158,7 +183,10 @@ export default function RFQManagement() {
       purchaseRequestId: manualPR._id,
       requiredByDate: manualRequiredByDate,
       notes: manualNotes,
-      vendorIds: manualVendorIds
+      vendorIds: manualVendorIds,
+      ...(manualPR.item?.purchaseUnit && Number(pqQty) > 0
+        ? { purchaseQuantity: Number(pqQty), purchaseUnit: manualPR.item.purchaseUnit }
+        : {})
     });
   };
 
@@ -264,6 +292,7 @@ export default function RFQManagement() {
                     <th className="text-left py-3 px-5 font-semibold text-slate-600">Req ID</th>
                     <th className="text-left py-3 px-5 font-semibold text-slate-600">Product</th>
                     <th className="text-center py-3 px-5 font-semibold text-slate-600">Qty</th>
+                    <th className="text-center py-3 px-5 font-semibold text-slate-600">Purchase Unit</th>
                     <th className="text-left py-3 px-5 font-semibold text-slate-600">Date</th>
                     <th className="text-center py-3 px-5 font-semibold text-slate-600">Priority</th>
                     <th className="text-center py-3 px-5 font-semibold text-slate-600">Status</th>
@@ -292,7 +321,21 @@ export default function RFQManagement() {
                             )}
                           </div>
                         </td>
-                        <td className="py-3 px-5 text-center font-bold text-slate-700">{pr.quantity}</td>
+                        <td className="py-3 px-5 text-center font-bold text-slate-700">
+                          {pr.quantity}
+                          {(pr.item?.unit || pr.unit) && (
+                            <span className="ml-1 font-medium text-slate-500 text-xs">{pr.item?.unit || pr.unit}</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-5 text-center">
+                          {pr.item?.purchaseUnit ? (
+                            <Badge variant="outline" className="text-xs font-semibold bg-violet-50 text-violet-700 border-violet-200">
+                              {pr.item.purchaseUnit}
+                            </Badge>
+                          ) : (
+                            <span className="text-slate-300">—</span>
+                          )}
+                        </td>
                         <td className="py-3 px-5 text-slate-500">
                           {pr.requestDate ? format(new Date(pr.requestDate), 'dd MMM yyyy') : '—'}
                         </td>
@@ -374,7 +417,10 @@ export default function RFQManagement() {
                     <tr key={rfq._id} className="border-b hover:bg-slate-50 transition-colors">
                       <td className="py-3 px-5 font-bold text-slate-800">{rfq.rfqNo}</td>
                       <td className="py-3 px-5 font-medium text-slate-700">{rfq.productName}</td>
-                      <td className="py-3 px-5 text-center font-bold text-slate-700">{rfq.quantity}</td>
+                      <td className="py-3 px-5 text-center font-bold text-slate-700">
+                        {rfq.quantity}
+                        {rfq.quantityUnit && <span className="ml-1 font-medium text-slate-500 text-xs">{rfq.quantityUnit}</span>}
+                      </td>
                       <td className="py-3 px-5 text-slate-600">
                         <div className="flex items-center gap-1">
                           <Users className="w-3.5 h-3.5 text-slate-400" />
@@ -402,6 +448,74 @@ export default function RFQManagement() {
           </CardContent>
         </Card>
       )}
+
+      {/* ── Purchase Quantity Modal (items ordered in a Purchase Unit) ──────── */}
+      <Dialog open={pqModalOpen} onOpenChange={(open) => { if (!open) setPqModalOpen(false); }}>
+        <DialogContent className="sm:max-w-[440px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-slate-800">
+              <Package className="w-5 h-5 text-violet-600" />
+              Order Quantity — Purchase Unit
+            </DialogTitle>
+            <DialogDescription>
+              This item is purchased in <strong>{pqPR?.item?.purchaseUnit}</strong>. Enter how much you want to order — the Store will convert it back to <strong>{pqPR?.item?.unit || 'the storage unit'}</strong> at receiving.
+            </DialogDescription>
+          </DialogHeader>
+
+          {pqPR && (
+            <div className="space-y-4 py-1">
+              <div className="bg-slate-50 border rounded-lg p-4 space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Item</span>
+                  <span className="font-semibold text-slate-700">{pqPR.productName}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Requested Quantity</span>
+                  <span className="font-semibold text-slate-700">
+                    {pqPR.quantity} {pqPR.item?.unit || pqPR.unit || ''}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Purchase Unit</span>
+                  <Badge variant="outline" className="text-xs font-semibold bg-violet-50 text-violet-700 border-violet-200">
+                    {pqPR.item?.purchaseUnit}
+                  </Badge>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="pq-qty" className="text-xs font-semibold text-slate-700 uppercase">
+                  Order Quantity ({pqPR.item?.purchaseUnit}) <span className="text-rose-500">*</span>
+                </Label>
+                <Input
+                  id="pq-qty"
+                  type="number"
+                  min="0"
+                  step="any"
+                  placeholder={`e.g. 20 (${pqPR.item?.purchaseUnit})`}
+                  value={pqQty}
+                  onChange={(e) => setPqQty(e.target.value)}
+                  className="border-slate-300 font-semibold"
+                />
+                <p className="text-[11px] text-slate-400">
+                  The RFQ and vendor bids will be for this quantity in {pqPR.item?.purchaseUnit}.
+                </p>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setPqModalOpen(false)}>Cancel</Button>
+            <Button
+              onClick={handleConfirmPurchaseQty}
+              disabled={!(Number(pqQty) > 0)}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              <Send className="w-4 h-4 mr-2" /> Send RFQ
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ── NEW: View R&D PR Specs Modal ────────────────────────────────────── */}
       <Dialog open={viewPRModal} onOpenChange={setViewPRModal}>
@@ -564,7 +678,9 @@ export default function RFQManagement() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-400">Quantity</span>
-                  <span className="font-semibold text-slate-700">{selectedRFQ.quantity}</span>
+                  <span className="font-semibold text-slate-700">
+                    {selectedRFQ.quantity}{selectedRFQ.quantityUnit ? ` ${selectedRFQ.quantityUnit}` : ''}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-400">Vendors Invited</span>
