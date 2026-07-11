@@ -12,6 +12,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useNotifications } from '@/hooks/useNotifications';
+import { useAuth } from '@/hooks/useAuth';
+import { getNavigationUrl } from '@/components/notifications/NotificationBell';
 import { formatDistanceToNow, format } from 'date-fns';
 
 // Icon mapping for all notification types
@@ -154,50 +156,12 @@ export default function NotificationsPage() {
     limit: 50 
   });
 
+  const { user } = useAuth();
+
   const handleNotificationClick = (notification) => {
-    const { type, data, title, icon } = notification;
-    if (type === 'complaint' && (
-      title?.toLowerCase().includes('deal') ||
-      title?.toLowerCase().includes('verification') ||
-      icon === 'shield'
-    )) {
-      window.location.href = `/complaints/deal-verifications`;
-    } else if (data?.orderId) {
-      window.location.href = `/sales/orders?highlight=${data.orderId}`;
-    } else if (type === 'lead' && data?.leadId) {
-      window.location.href = `/sales/leads?highlight=${data.leadId}`;
-    } else if (type === 'payment' && data?.leadId) {
-      window.location.href = `/accounts/lead-payments`;
-    } else if (type === 'payment') {
-      window.location.href = `/accounts/payment-verifications`;
-    } else if (type === 'account' && data?.orderCode) {
-      window.location.href = `/accounts/sales/packed-orders`;
-    } else if (type === 'purchase') {
-      window.location.href = `/accounts/purchases/requests`;
-    } else if (type === 'production') {
-      window.location.href = `/production/orders`;
-    } else if (type === 'store') {
-      window.location.href = `/store/orders`;
-    } else if (type === 'dispatch') {
-      window.location.href = `/dispatch/active`;
-    } else if (type === 'qc') {
-      window.location.href = `/qc/jobs`;
-    } else if (type === 'complaint') {
-      window.location.href = `/complaints/dashboard`;
-    } else if (type === 'task') {
-      window.location.href = `/complaints/dashboard`;
-    } else if (type === 'leave') {
-      window.location.href = `/hrms/SuperAdmin/leave-requests`;
-    } else if (type === 'attendance') {
-      window.location.href = `/hrms/SuperAdmin/attendance-requests`;
-    } else if (type === 'payroll') {
-      window.location.href = `/hrms/SuperAdmin/payroll/payslips`;
-    } else if (type === 'hrms') {
-      window.location.href = `/hrms/SuperAdmin/employees`;
-    } else if (data?.customerId) {
-      window.location.href = `/customers`;
-    } else if (data?.itemId) {
-      window.location.href = `/store/inventory`;
+    const url = getNavigationUrl(notification, user?.role);
+    if (url && url !== window.location.pathname) {
+      window.location.href = url;
     }
   };
 

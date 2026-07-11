@@ -255,11 +255,13 @@ export default function PurchaseRequest() {
       toast({ title: "Required", description: "Please enter the Serial Number.", variant: "destructive" });
       return;
     }
-    if (!receiveWarrantyMonths || Number(receiveWarrantyMonths) <= 0) {
-      toast({ title: "Required", description: "Please enter a valid Warranty Period in months.", variant: "destructive" });
+    // 0 is a valid warranty (no warranty) — only empty/negative is invalid
+    if (receiveWarrantyMonths === '' || Number(receiveWarrantyMonths) < 0) {
+      toast({ title: "Required", description: "Please enter the Warranty Period in months (0 if no warranty).", variant: "destructive" });
       return;
     }
-    if (!receiveWarrantyCard) {
+    // Warranty Card is required only when there IS a warranty
+    if (Number(receiveWarrantyMonths) > 0 && !receiveWarrantyCard) {
       toast({ title: "Required", description: "Please upload the Warranty Card (image or PDF).", variant: "destructive" });
       return;
     }
@@ -283,7 +285,7 @@ export default function PurchaseRequest() {
       formData.append('status', 'Received');
       formData.append('serialNumber', receiveSerialNo.trim());
       formData.append('warrantyPeriod', receiveWarrantyMonths);
-      formData.append('warrantyCard', receiveWarrantyCard);
+      if (receiveWarrantyCard) formData.append('warrantyCard', receiveWarrantyCard);
       if (needsConversion) {
         formData.append('receivedQuantity', receiveQtyReceived);
         formData.append('conversionFactor', receiveFactor);
@@ -694,24 +696,24 @@ export default function PurchaseRequest() {
 
       {/* ── Receive Item Modal ───────────────────────────────────────────────── */}
       <Dialog open={isReceiveModalOpen} onOpenChange={setIsReceiveModalOpen}>
-        <DialogContent className="sm:max-w-[480px] rounded-xl border shadow-lg p-0 overflow-hidden">
-          <form onSubmit={handleConfirmReceive}>
-            <DialogHeader className="px-6 pt-6 pb-4 border-b bg-slate-50">
+        <DialogContent className="sm:max-w-[480px] rounded-xl border shadow-lg p-0 overflow-hidden max-h-[90vh]">
+          <form onSubmit={handleConfirmReceive} className="flex flex-col max-h-[90vh]">
+            <DialogHeader className="px-6 pt-6 pb-4 border-b bg-slate-50 shrink-0">
               <DialogTitle className="flex items-center gap-2 text-slate-900 font-bold text-lg">
                 <PackageCheck className="w-5 h-5 text-emerald-600" />
                 Mark Item as Received
               </DialogTitle>
               <DialogDescription className="text-slate-500 text-sm mt-1">
-                Fill in all 3 details before confirming receipt. These will be saved to the inventory record.
+                Fill in the details before confirming receipt. These will be saved to the inventory record.
               </DialogDescription>
             </DialogHeader>
 
-            <div className="px-6 py-5 space-y-4 bg-white">
+            <div className="px-6 py-5 space-y-4 bg-white flex-1 overflow-y-auto">
               {/* Info banner */}
               <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg p-3">
                 <AlertCircle className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
                 <p className="text-xs text-amber-800 font-medium">
-                  All three fields are mandatory. Item will not be marked as Received until Serial Number, Warranty Period and Warranty Card are provided.
+                  Serial Number and Warranty Period are mandatory. Warranty Card is required only when the warranty is more than 0 months.
                 </p>
               </div>
 
@@ -816,41 +818,47 @@ export default function PurchaseRequest() {
                 />
               </div>
 
-              {/* Warranty Card Upload */}
-              <div className="space-y-1.5">
-                <Label className="text-xs font-semibold text-slate-700 uppercase">
-                  Warranty Card <span className="text-rose-500">*</span>
-                  <span className="ml-1 font-normal text-slate-400 normal-case">(JPG, PNG or PDF, max 10 MB)</span>
-                </Label>
-                <div
-                  className={`flex items-center gap-3 border-2 border-dashed rounded-lg p-3 cursor-pointer transition-colors ${
-                    receiveWarrantyCard
-                      ? 'border-emerald-400 bg-emerald-50'
-                      : 'border-slate-300 hover:border-blue-400 bg-slate-50'
-                  }`}
-                  onClick={() => warrantyFileRef.current?.click()}
-                >
-                  <Upload className={`w-5 h-5 shrink-0 ${receiveWarrantyCard ? 'text-emerald-500' : 'text-slate-400'}`} />
-                  <span className="text-sm font-medium text-slate-700 truncate">
-                    {receiveWarrantyCard
-                      ? receiveWarrantyCard.name
-                      : 'Click to upload warranty card'}
-                  </span>
-                  {receiveWarrantyCard && (
-                    <Check className="w-4 h-4 text-emerald-500 shrink-0 ml-auto" />
-                  )}
+              {/* Warranty Card Upload — only needed when there IS a warranty (> 0 months) */}
+              {receiveWarrantyMonths !== '' && Number(receiveWarrantyMonths) === 0 ? (
+                <p className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                  No warranty (0 months) — Warranty Card is not required.
+                </p>
+              ) : (
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-slate-700 uppercase">
+                    Warranty Card <span className="text-rose-500">*</span>
+                    <span className="ml-1 font-normal text-slate-400 normal-case">(JPG, PNG or PDF, max 10 MB)</span>
+                  </Label>
+                  <div
+                    className={`flex items-center gap-3 border-2 border-dashed rounded-lg p-3 cursor-pointer transition-colors ${
+                      receiveWarrantyCard
+                        ? 'border-emerald-400 bg-emerald-50'
+                        : 'border-slate-300 hover:border-blue-400 bg-slate-50'
+                    }`}
+                    onClick={() => warrantyFileRef.current?.click()}
+                  >
+                    <Upload className={`w-5 h-5 shrink-0 ${receiveWarrantyCard ? 'text-emerald-500' : 'text-slate-400'}`} />
+                    <span className="text-sm font-medium text-slate-700 truncate">
+                      {receiveWarrantyCard
+                        ? receiveWarrantyCard.name
+                        : 'Click to upload warranty card'}
+                    </span>
+                    {receiveWarrantyCard && (
+                      <Check className="w-4 h-4 text-emerald-500 shrink-0 ml-auto" />
+                    )}
+                  </div>
+                  <input
+                    ref={warrantyFileRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,application/pdf"
+                    className="hidden"
+                    onChange={(e) => setReceiveWarrantyCard(e.target.files?.[0] || null)}
+                  />
                 </div>
-                <input
-                  ref={warrantyFileRef}
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp,application/pdf"
-                  className="hidden"
-                  onChange={(e) => setReceiveWarrantyCard(e.target.files?.[0] || null)}
-                />
-              </div>
+              )}
             </div>
 
-            <div className="px-6 pt-4 pb-6 border-t bg-slate-50 flex justify-end gap-3">
+            <div className="px-6 pt-4 pb-6 border-t bg-slate-50 flex justify-end gap-3 shrink-0">
               <Button
                 type="button"
                 variant="outline"

@@ -36,6 +36,7 @@ const getRoleSlug = (role) => {
     'Research Development Employee': 'rd-employee',
     'MIS Admin': 'mis-admin',
     'Marketing': 'marketing',
+    'Marketing Head': 'marketing-head',
     'Unit Head': 'unit-head',
     'Unit Manager': 'unit-manager',
     'Manufacturing': 'manufacturing',

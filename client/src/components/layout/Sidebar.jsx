@@ -14,7 +14,7 @@ import {
   PieChart, ShoppingCart, CreditCard, RotateCcw, Calendar, Play, FileText, CheckCircle,
   BarChart, Clock, AlertTriangle, History, UserCheck, Target, Star, MessageSquare, Briefcase,
   ClipboardList, CalendarCheck, CheckSquare, UserCircle, Award, Layers, Beaker, ShieldAlert,
-  FolderOpen, Upload, Folder, Share2, Pen, User, Bell
+  FolderOpen, Upload, Folder, Share2, Pen, User, Bell, Megaphone, Inbox
 } from 'lucide-react';
 
 // ============================================================
@@ -119,7 +119,7 @@ const salesMenuItems = [
   { label: 'Returns', path: '/sales/returns', icon: RotateCcw, module: 'sales', feature: 'returns' },
   { label: 'Damages', path: '/sales/damages', icon: AlertTriangle, module: 'sales', feature: 'damages' },
   { label: 'Customers', path: '/customers', icon: Users, module: 'customers' },
-  { label: 'Marketing Library', path: '/marketing/library', icon: Share2, module: 'marketing' },
+  { label: 'Marketing Requests', path: '/sales/marketing-requests', icon: Megaphone, module: 'marketing' },
   { label: 'Task Management', path: '/sales/task-management', icon: CheckSquare, module: 'sales' },
   { label: 'My Task', path: '/sales/my-task', icon: CheckSquare, module: 'sales' },
   {
@@ -453,6 +453,7 @@ const marketingMenuItems = [
   { label: 'Dashboard', path: '/marketing/dashboard', icon: LayoutDashboard, module: 'marketing' },
   { label: 'Marketing Library', path: '/marketing/library', icon: FolderOpen, module: 'marketing' },
   { label: 'Upload Content', path: '/marketing/upload', icon: Upload, module: 'marketing' },
+  { label: 'Sales Requests', path: '/marketing/sales-requests', icon: Inbox, module: 'marketing' },
   { label: 'Category Management', path: '/marketing/categories', icon: Folder, module: 'marketing' },
   { label: 'Reports', path: '/marketing/reports', icon: BarChart, module: 'marketing' },
   { label: 'Audit Logs', path: '/marketing/audit-logs', icon: History, module: 'marketing' },
@@ -700,8 +701,8 @@ export default function Sidebar({ isOpen, onClose }) {
   } else if (normalizedRole === 'Sales' || normalizedRole === 'Sales Employee' || normalizedRole === 'Sales Head') {
     filteredMenuItems = roleMenuItems.filter(item => {
       if (!item.module) return true;
-      if (item.module === 'sales' || item.module === 'customers') {
-        if (item.feature && item.module !== 'customers') return hasFeatureAccess('sales', item.feature, 'view');
+      if (item.module === 'sales' || item.module === 'customers' || item.module === 'marketing') {
+        if (item.feature && item.module === 'sales') return hasFeatureAccess('sales', item.feature, 'view');
         return true;
       }
       return false;

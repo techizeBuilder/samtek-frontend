@@ -55,9 +55,14 @@ const getPriorityColor = (priority) => {
   return colorMap[priority] || 'text-blue-500';
 };
 
-// Navigate to relevant page based on notification type and data
-const getNavigationUrl = (notification) => {
+// Navigate to relevant page based on notification type, data and user role
+// (NotificationsPage bhi isi ko use karta hai — routing ek hi jagah rahe)
+export const getNavigationUrl = (notification, userRole = '') => {
   const { type, data, title, icon } = notification;
+  const isSalesRole = ['Sales', 'Sales Employee', 'Sales Head'].includes(userRole);
+  const isStoreRole = ['Store', 'Store Head', 'Store Employee'].includes(userRole);
+  const isMarketingHead = userRole === 'Marketing Head';
+
   if (type === 'complaint' && (
     title?.toLowerCase().includes('deal') ||
     title?.toLowerCase().includes('verification') ||
@@ -65,10 +70,29 @@ const getNavigationUrl = (notification) => {
   )) {
     return '/complaints/deal-verifications';
   }
+
+  // Marketing content requests — role decides which screen opens
+  if (type === 'marketing') {
+    if (isMarketingHead) return '/marketing/sales-requests';
+    if (isSalesRole) return '/sales/marketing-requests';
+    return '/notifications';
+  }
+
+  // Payment notifications — Sales has its own Payment Requests screen
+  if (type === 'payment') {
+    if (isSalesRole) return '/sales/payment-requests';
+    return '/accounts/payment-verifications';
+  }
+
+  // Store users land in their own module, never in Sales/Accounts pages
+  if (isStoreRole) {
+    if (type === 'inventory' || data?.itemId) return '/store/inventory';
+    if (type === 'purchase') return '/store/purchases/requests';
+    return '/store/orders';
+  }
+
   if (data?.orderId) return `/sales/orders?highlight=${data.orderId}`;
   if (type === 'lead' && data?.leadId) return `/sales/leads?highlight=${data.leadId}`;
-  if (type === 'payment' && data?.leadId) return `/accounts/payment-verifications`;
-  if (type === 'payment') return `/accounts/payment-verifications`;
   if (type === 'account' && data?.orderCode) return `/accounts/sales/packed-orders`;
   if (type === 'purchase') return `/accounts/purchases/requests`;
   if (type === 'production') return `/production/orders`;
@@ -97,7 +121,7 @@ export const NotificationBell = () => {
     if (!notification.isReadByUser) {
       await markAsRead(notification._id);
     }
-    const url = getNavigationUrl(notification);
+    const url = getNavigationUrl(notification, user?.role);
     if (url !== window.location.pathname) {
       window.location.href = url;
     }

@@ -25,6 +25,12 @@ export default function CategoryManagement() {
   const openCreate = (parentId = '') => { setEditing(null); setForm({ name: '', parentCategory: parentId }); setOpen(true); };
   const openEdit   = (cat) => { setEditing(cat); setForm({ name: cat.name, parentCategory: cat.parentCategory?._id || '' }); setOpen(true); };
 
+  const isSub = !!form.parentCategory || !!editing?.parentCategory;
+  const parentName = mainCategories.find(c => c._id === form.parentCategory)?.name || '';
+  const dialogTitle = editing
+    ? (isSub ? 'Edit Sub-Category' : 'Edit Category')
+    : (isSub ? `Add Sub-Category${parentName ? ` in "${parentName}"` : ''}` : 'Add Category');
+
   const handleSave = async () => {
     if (!form.name.trim()) return toast({ title: 'Error', description: 'Category name is required', variant: 'destructive' });
     setSaving(true);
@@ -117,19 +123,29 @@ export default function CategoryManagement() {
       {/* Create / Edit Dialog */}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle>{editing ? 'Edit Category' : 'Add Category'}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{dialogTitle}</DialogTitle></DialogHeader>
           <div className="space-y-4">
-            <div><Label>Category Name *</Label><Input className="mt-1" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Product Catalog" /></div>
+            {!editing && isSub && (
+              <div className="flex items-center gap-2 text-sm bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-slate-600">
+                <Package className="h-4 w-4 text-indigo-500" />
+                <span>Category: <span className="font-medium text-slate-900">{parentName}</span></span>
+              </div>
+            )}
             <div>
-              <Label>Parent Category (leave empty for main category)</Label>
-              <Select value={form.parentCategory} onValueChange={v => setForm(f => ({ ...f, parentCategory: v === 'none' ? '' : v }))}>
-                <SelectTrigger className="mt-1"><SelectValue placeholder="None (Main Category)" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">None (Main Category)</SelectItem>
-                  {mainCategories.filter(m => m._id !== editing?._id).map(c => <SelectItem key={c._id} value={c._id}>{c.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <Label>{isSub ? 'Sub-Category Name *' : 'Category Name *'}</Label>
+              <Input className="mt-1" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder={isSub ? 'e.g. Brochures' : 'e.g. Product Catalog'} />
             </div>
+            {editing && isSub && (
+              <div>
+                <Label>Category</Label>
+                <Select value={form.parentCategory} onValueChange={v => setForm(f => ({ ...f, parentCategory: v }))}>
+                  <SelectTrigger className="mt-1"><SelectValue placeholder="Select category" /></SelectTrigger>
+                  <SelectContent>
+                    {mainCategories.filter(m => m._id !== editing?._id).map(c => <SelectItem key={c._id} value={c._id}>{c.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>

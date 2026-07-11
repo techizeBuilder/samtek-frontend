@@ -451,7 +451,7 @@ export default function RFQManagement() {
 
       {/* ── Purchase Quantity Modal (items ordered in a Purchase Unit) ──────── */}
       <Dialog open={pqModalOpen} onOpenChange={(open) => { if (!open) setPqModalOpen(false); }}>
-        <DialogContent className="sm:max-w-[440px]">
+        <DialogContent className="sm:max-w-[440px] max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-slate-800">
               <Package className="w-5 h-5 text-violet-600" />
@@ -519,7 +519,7 @@ export default function RFQManagement() {
 
       {/* ── NEW: View R&D PR Specs Modal ────────────────────────────────────── */}
       <Dialog open={viewPRModal} onOpenChange={setViewPRModal}>
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent className="sm:max-w-[500px] max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-slate-800">
               <FlaskConical className="w-5 h-5 text-blue-600" />
@@ -567,7 +567,7 @@ export default function RFQManagement() {
       </Dialog>
 
       <Dialog open={manualModal} onOpenChange={(open) => { if (!open) { setManualModal(false); setManualVendorIds([]); } }}>
-        <DialogContent className="sm:max-w-[540px]">
+        <DialogContent className="sm:max-w-[540px] max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-slate-800">
               <AlertCircle className="w-5 h-5 text-amber-500" />

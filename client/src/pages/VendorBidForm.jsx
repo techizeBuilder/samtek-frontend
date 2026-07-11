@@ -187,7 +187,7 @@ export default function VendorBidForm() {
               <span className="w-5 h-5 text-center text-blue-500 font-bold mt-0.5 shrink-0">#</span>
               <div>
                 <p className="text-xs text-slate-400">Required Quantity</p>
-                <p className="font-bold text-slate-800">{rfqData?.quantity} Unit(s)</p>
+                <p className="font-bold text-slate-800">{rfqData?.quantity} {rfqData?.quantityUnit || 'Unit(s)'}</p>
               </div>
             </div>
             {rfqData?.requiredByDate && (
@@ -236,7 +236,7 @@ export default function VendorBidForm() {
               />
               {unitPrice && rfqData && (
                 <p className="text-xs text-emerald-600 mt-1 font-medium">
-                  Total order value: ₹{totalValue} (for {rfqData.quantity} units)
+                  Total order value: ₹{totalValue} (for {rfqData.quantity} {rfqData.quantityUnit || 'units'})
                 </p>
               )}
             </div>

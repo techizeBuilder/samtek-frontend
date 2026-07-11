@@ -216,6 +216,8 @@ import CategoryManagement from "@/pages/marketing/Categories";
 import MarketingReports from "@/pages/marketing/Reports";
 import AuditLogs from "@/pages/marketing/AuditLogs";
 import MarketingNotifications from "@/pages/marketing/Notifications";
+import MarketingSalesRequests from "@/pages/marketing/SalesRequests";
+import SalesMarketingRequests from "@/pages/sales/MarketingRequests";
 
 // MIS Admin Module Imports
 import MISDashboard from "@/pages/mis/MISDashboard";
@@ -1433,6 +1435,16 @@ function Router() {
       <Route path="/marketing/notifications">
         <ProtectedRoute requiredRole="Marketing Head">
           <MarketingProvider><MarketingNotifications /></MarketingProvider>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/marketing/sales-requests">
+        <ProtectedRoute requiredRole="Marketing Head">
+          <MarketingSalesRequests />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/sales/marketing-requests">
+        <ProtectedRoute requiredRole={['Sales', 'Sales Employee', 'Sales Head']}>
+          <SalesMarketingRequests />
         </ProtectedRoute>
       </Route>
 
