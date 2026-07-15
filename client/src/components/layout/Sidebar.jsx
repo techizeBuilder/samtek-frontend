@@ -466,6 +466,7 @@ const storeMenuItems = [
   { label: 'Orders', path: '/store/orders', icon: Receipt, module: 'Store' },
   { label: 'Purchase Orders', path: '/store/purchases/requests', icon: ShoppingCart, module: 'Store' },
   { label: 'Material Transfers', path: '/store/material-issues', icon: Handshake, module: 'Store' },
+  { label: 'Defective Inventory', path: '/store/defective-inventory', icon: AlertTriangle, module: 'Store' },
   { label: 'Task Management', path: '/store/task-management', icon: CheckSquare, module: 'store' },
   { label: 'My Task', path: '/store/my-task', icon: CheckSquare, module: 'store' },
   {

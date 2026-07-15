@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Hash, Calendar, RefreshCw, Send, CheckCircle2, ShoppingCart } from 'lucide-react';
+import { Hash, Calendar, RefreshCw, Send, CheckCircle2, ShoppingCart, ListChecks } from 'lucide-react';
 import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -22,6 +22,53 @@ export default function PendingRequestsTab() {
   const [transferQty, setTransferQty] = useState('');
   const [purchaseRequest, setPurchaseRequest] = useState(null); // { order, material }
   const [purchaseQty, setPurchaseQty] = useState('');
+  const [isCartOpen, setIsCartOpen] = useState(false);
+
+  // ── LIVE DATABASE-BACKED STAGING QUEUE QUERY ──
+  const { data: stagedRes, refetch: refetchStaged } = useQuery({
+    queryKey: ['/api/purchase-requests/staged'],
+    queryFn: async () => {
+      return await apiRequest('GET', '/api/purchase-requests/staged');
+    }
+  });
+
+  const stagedDatabaseRows = stagedRes?.data || [];
+
+  // Local work-state cloned when modal is opened so edits don't trigger thrashing refetches
+  const [editableStagedItems, setEditableStagedItems] = useState([]);
+
+  useEffect(() => {
+    if (isCartOpen) {
+      setEditableStagedItems(stagedDatabaseRows);
+    }
+  }, [isCartOpen, stagedDatabaseRows]);
+
+  // ── LIVE REAL-TIME CALCULATION/CONSOLIDATION ENGINE ──
+  const consolidatedMap = editableStagedItems.reduce((acc, currentItem) => {
+    const code = currentItem.materialCode || 'UNKNOWN';
+    if (!acc[code]) {
+      acc[code] = {
+        productName: currentItem.productName,
+        materialCode: code,
+        quantity: 0,
+        unit: currentItem.unit,
+        itemId: currentItem.itemId,
+        priority: currentItem.priority || 'Medium',
+        source: 'Store'
+      };
+    }
+    acc[code].quantity += Number(currentItem.quantity || 0);
+    return acc;
+  }, {});
+
+  const consolidatedListForAccounts = Object.values(consolidatedMap);
+  const totalStagedIdsToPurge = editableStagedItems.map(item => item._id);
+
+  const updateStagedItemQty = (id, val) => {
+    setEditableStagedItems(prev =>
+      prev.map(item => item._id === id ? { ...item, quantity: val } : item)
+    );
+  };
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['/api/inventory/pending-requests'],
@@ -30,6 +77,7 @@ export default function PendingRequestsTab() {
     }
   });
 
+  // Individual item transfer mutation
   const transferMutation = useMutation({
     mutationFn: async ({ orderId, materialCode, quantityToTransfer }) => {
       return await apiRequest('POST', `/api/inventory/transfer-material/${orderId}`, {
@@ -55,14 +103,39 @@ export default function PendingRequestsTab() {
     }
   });
 
-  const handleTransferClick = (order, material) => {
-    const remainingToTransfer = (material.quantity || 0) - (material.transferredQuantity || 0);
-    setTransferQty(remainingToTransfer > 0 ? remainingToTransfer.toString() : '');
-    setSelectedRequest({ order, material });
-  };
+  // ── UPDATED BULK TRANSFER MUTATION (SYNCED WITH DB STAGING) ──
+  const bulkTransferMutation = useMutation({
+    mutationFn: async (orderDbId) => {
+      return await apiRequest('POST', `/api/inventory/bulk-transfer/${orderDbId}`);
+    },
+    onSuccess: (response) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/inventory/pending-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/purchase-requests/staged'] });
 
+      if (response.shortfallsCount > 0) {
+        toast({
+          title: "Bulk Transfer Handled",
+          description: `${response.shortfallsCount} item shortfalls sync'd to your global database queue.`,
+        });
+      } else {
+        toast({
+          title: "Bulk Transfer Success",
+          description: "All requested materials for this order have been fully transferred.",
+        });
+      }
+    },
+    onError: (error) => {
+      toast({
+        title: "Bulk Transfer Failed",
+        description: error.message || "Failed to process bulk transfer.",
+        variant: "destructive"
+      });
+    }
+  });
+
+  // Individual purchase request mutation
   const purchaseMutation = useMutation({
-    mutationFn: async ({ productName, materialCode, quantity, unit }) => {
+    mutationFn: async ({ productName, materialCode, quantity, unit, storeOrderId, itemId }) => {
       return await apiRequest('POST', '/api/purchase-requests', {
         productName,
         materialCode,
@@ -71,6 +144,8 @@ export default function PendingRequestsTab() {
         requestFromDepartment: 'Store',
         source: 'Store',
         priority: 'Medium',
+        storeOrderId,
+        itemId
       });
     },
     onSuccess: () => {
@@ -80,6 +155,7 @@ export default function PendingRequestsTab() {
       });
       setPurchaseRequest(null);
       setPurchaseQty('');
+      queryClient.invalidateQueries({ queryKey: ['/api/inventory/pending-requests'] });
     },
     onError: (error) => {
       toast({
@@ -89,6 +165,38 @@ export default function PendingRequestsTab() {
       });
     },
   });
+
+  // ── UPDATED BULK PURCHASE MUTATION (CONSOLIDATED PAYLOAD DETACHMENT) ──
+  const bulkPurchaseMutation = useMutation({
+    mutationFn: async ({ finalItems, stagedIds }) => {
+      return await apiRequest('POST', '/api/purchase-requests/bulk-purchase', {
+        items: finalItems,
+        stagedIds: stagedIds
+      });
+    },
+    onSuccess: () => {
+      toast({
+        title: "Bulk Purchases Submitted",
+        description: "All consolidated procurement requests have been successfully sent to Accounts.",
+      });
+      setIsCartOpen(false);
+      queryClient.invalidateQueries({ queryKey: ['/api/inventory/pending-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/purchase-requests/staged'] });
+    },
+    onError: (error) => {
+      toast({
+        title: "Bulk Purchase Failed",
+        description: error.message || "Something went wrong submitting requests.",
+        variant: "destructive"
+      });
+    }
+  });
+
+  const handleTransferClick = (order, material) => {
+    const remainingToTransfer = (material.quantity || 0) - (material.transferredQuantity || 0);
+    setTransferQty(remainingToTransfer > 0 ? remainingToTransfer.toString() : '');
+    setSelectedRequest({ order, material });
+  };
 
   const handlePurchaseClick = (order, material) => {
     const remaining = (material.quantity || 0) - (material.transferredQuantity || 0);
@@ -103,6 +211,8 @@ export default function PendingRequestsTab() {
       materialCode: purchaseRequest.material.materialCode,
       quantity: purchaseQty,
       unit: purchaseRequest.material.unit,
+      storeOrderId: purchaseRequest.order._id,
+      itemId: purchaseRequest.material.materialCode
     });
   };
 
@@ -120,7 +230,7 @@ export default function PendingRequestsTab() {
     }
 
     transferMutation.mutate({
-      orderId: selectedRequest.order._id, // Keep raw _id for database query parameter
+      orderId: selectedRequest.order._id,
       materialCode: selectedRequest.material.materialCode,
       quantityToTransfer: transferQty
     });
@@ -130,15 +240,31 @@ export default function PendingRequestsTab() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
         <div>
           <h2 className="text-xl font-semibold text-slate-800">Pending Material Transfers</h2>
           <p className="text-sm text-slate-500">Fulfill material requests from production orders.</p>
         </div>
-        <Button variant="outline" onClick={() => refetch()} className="bg-white">
-          <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button
+            variant="outline"
+            onClick={() => setIsCartOpen(true)}
+            className="relative border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100/80 transition-all font-medium"
+          >
+            <ShoppingCart className="h-4 w-4 mr-2 text-amber-600" />
+            Bulk Purchase Queue
+            {stagedDatabaseRows.length > 0 && (
+              <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center border-2 border-white shadow-sm animate-pulse">
+                {stagedDatabaseRows.length}
+              </span>
+            )}
+          </Button>
+
+          <Button variant="outline" onClick={() => refetch()} className="bg-white">
+            <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {isLoading ? (
@@ -164,7 +290,6 @@ export default function PendingRequestsTab() {
                   <div className="space-y-1">
                     <CardTitle className="text-lg text-slate-800 flex items-center gap-2">
                       <Hash className="h-5 w-5 text-blue-500" />
-                      {/* FIX: Now shows the human-friendly orderId fallback to _id */}
                       Production Order: {order.orderId || order._id}
                     </CardTitle>
                     <div className="flex items-center gap-4 text-sm text-slate-500">
@@ -173,9 +298,21 @@ export default function PendingRequestsTab() {
                       </span>
                     </div>
                   </div>
-                  <div className="text-sm text-slate-500 flex items-center gap-1.5 bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-sm">
-                    <Calendar className="h-4 w-4 text-slate-400" />
-                    Requested: {format(new Date(order.createdAt), 'MMM dd, yyyy')}
+                  <div className="flex items-center gap-3">
+                    <Button
+                      size="sm"
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition-colors"
+                      disabled={bulkTransferMutation.isPending}
+                      onClick={() => bulkTransferMutation.mutate(order._id)}
+                    >
+                      <ListChecks className="w-4 h-4 mr-1.5" />
+                      Bulk Transfer Card
+                    </Button>
+
+                    <div className="text-sm text-slate-500 flex items-center gap-1.5 bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-sm">
+                      <Calendar className="h-4 w-4 text-slate-400" />
+                      Requested: {format(new Date(order.createdAt), 'MMM dd, yyyy')}
+                    </div>
                   </div>
                 </div>
               </CardHeader>
@@ -233,12 +370,103 @@ export default function PendingRequestsTab() {
         </div>
       )}
 
+      {/* ── MODAL BOX OVERLAY DIALOG FOR BULK PROCUREMENT CONFIRMATION ── */}
+      <Dialog open={isCartOpen} onOpenChange={setIsCartOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col p-6">
+          <DialogHeader>
+            <DialogTitle className="text-xl text-slate-800 flex items-center gap-2">
+              <ShoppingCart className="h-5 w-5 text-amber-600" />
+              Review Bulk Procurement Staging List
+            </DialogTitle>
+            <DialogDescription>
+              Review shortfalls generated from stock deficits. Adjust quantities in the granular queue below. They will automatically consolidate at the bottom before dispatch.
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* SECTION A: SCROLLABLE TOP LIST - INDIVIDUAL DEFICIT BREAKDOWNS */}
+          <div className="flex-1 overflow-y-auto max-h-[35vh] border border-slate-200 rounded-xl divide-y divide-slate-100 bg-slate-50/50 p-2 space-y-1 my-2 shadow-inner">
+            <div className="text-[10px] font-bold tracking-wider text-slate-400 uppercase px-3 py-1">Originating Staging Queue Lines</div>
+            {editableStagedItems.length === 0 ? (
+              <div className="p-12 text-center text-slate-400 text-sm italic">
+                No shortfalls currently staged in the bulk queue list.
+              </div>
+            ) : (
+              editableStagedItems.map((item) => (
+                <div key={item._id} className="p-3 bg-white rounded-lg border border-slate-100 flex items-center justify-between shadow-sm transition-all">
+                  <div className="space-y-0.5 pr-4">
+                    <p className="font-semibold text-xs text-slate-800">{item.productName}</p>
+                    <div className="flex items-center gap-2 text-[11px] text-slate-400 font-mono">
+                      <span>Code: {item.materialCode}</span>
+                      {item.storeOrderId && (
+                        <span className="bg-slate-100 px-1 rounded text-[10px] text-slate-500">
+                          Staged By: {item.stagedBy}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Input
+                      type="number"
+                      className="w-24 h-8 text-right text-xs bg-white border-slate-300"
+                      value={item.quantity}
+                      min="0"
+                      onChange={(e) => updateStagedItemQty(item._id, e.target.value)}
+                    />
+                    <span className="text-xs font-medium text-slate-400 w-10 text-left">{item.unit}</span>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* SECTION B: DYNAMIC LIVE AGGREGATED SUMMARY BAR AT BOTTOM */}
+          <div className="border-t-2 border-dashed border-slate-200 pt-4 bg-amber-50/40 p-4 rounded-xl border border-amber-100">
+            <div className="text-[11px] font-bold text-amber-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+              <ListChecks className="h-4 w-4 text-amber-600" />
+              Consolidated Accounts Dispatch Summary
+            </div>
+            <div className="max-h-[18vh] overflow-y-auto space-y-1.5 pr-1">
+              {consolidatedListForAccounts.length === 0 ? (
+                <p className="text-xs text-slate-400 italic py-1">No combined rows to process.</p>
+              ) : (
+                consolidatedListForAccounts.map((combinedItem) => (
+                  <div key={combinedItem.materialCode} className="flex justify-between items-center bg-white border border-amber-100/70 p-2.5 rounded-lg shadow-sm">
+                    <div>
+                      <span className="text-xs font-bold text-slate-700">{combinedItem.productName}</span>
+                      <span className="text-[10px] font-mono text-slate-400 ml-2">({combinedItem.materialCode})</span>
+                    </div>
+                    <div className="text-xs font-semibold text-amber-700 bg-amber-100/60 px-2.5 py-1 rounded-md">
+                      Combined Total: {combinedItem.quantity} {combinedItem.unit}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          <DialogFooter className="pt-4 border-t border-slate-100 flex items-center justify-end gap-2 mt-4">
+            <Button variant="outline" onClick={() => setIsCartOpen(false)}>Keep Staged</Button>
+            <Button
+              className="bg-amber-600 hover:bg-amber-700 text-white shadow-sm font-medium text-xs h-9"
+              disabled={consolidatedListForAccounts.length === 0 || bulkPurchaseMutation.isPending}
+              onClick={() => bulkPurchaseMutation.mutate({
+                finalItems: consolidatedListForAccounts,
+                stagedIds: totalStagedIdsToPurge
+              })}
+            >
+              {bulkPurchaseMutation.isPending ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
+              Dispatch Clean Requests ({consolidatedListForAccounts.length})
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Standalone Transfer Modal View */}
       <Dialog open={!!selectedRequest} onOpenChange={(open) => !open && setSelectedRequest(null)}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Transfer Material to Production</DialogTitle>
             <DialogDescription>
-              {/* FIX: Displays the human-friendly orderId in descriptive subtext */}
               Transferring <span className="font-semibold text-slate-800">{selectedRequest?.material.materialName}</span> for order <span className="font-mono text-slate-800">{selectedRequest?.order.orderId || selectedRequest?.order._id}</span>.
             </DialogDescription>
           </DialogHeader>
@@ -277,6 +505,8 @@ export default function PendingRequestsTab() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Standalone Purchase Modal View */}
       <Dialog open={!!purchaseRequest} onOpenChange={(open) => !open && setPurchaseRequest(null)}>
         <DialogContent>
           <DialogHeader>

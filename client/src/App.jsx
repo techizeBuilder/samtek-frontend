@@ -183,6 +183,7 @@ import RDDashboard from "@/pages/ResearchDevelopment/Dashboard";
 import StoreDashboard from "@/pages/store/StoreDashboard";
 import StoreOrders from "@/pages/store/StoreOrders";
 import StoreMaterialIssues from "@/pages/store/MaterialHandshake/index";
+import DefectiveInventory from "@/pages/store/DefectiveInventory";
 import { RDProvider } from "@/contexts/RDContext";
 import ProductMaster from "@/pages/ResearchDevelopment/ProductMaster";
 import DesignApproval from "@/pages/ResearchDevelopment/DesignApproval";
@@ -1181,6 +1182,11 @@ function Router() {
       <Route path="/store/purchases/requests">
         <ProtectedRoute requiredRole={["Store Head", "Store Employee"]}>
           <PurchaseRequest />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/store/defective-inventory">
+        <ProtectedRoute requiredRole={["Store Head", "Store Employee"]}>
+          <DefectiveInventory />
         </ProtectedRoute>
       </Route>
       {/* task management route for store department */}

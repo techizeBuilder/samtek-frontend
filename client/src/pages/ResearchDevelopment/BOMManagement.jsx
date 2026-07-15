@@ -6,6 +6,8 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { ClipboardList, Lock, Plus, Trash2, Edit2, AlertTriangle, ChevronDown, Package, Ban, RefreshCw } from 'lucide-react';
 import { UNIT_TYPES, getUnitTypeForUnit, getUnitsForType } from '@/utils/unitTypes';
+import { useQuery } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
 
 const ITEM_TYPES = ['Fabricated Item', 'Assembly Item', 'Job Work', 'Laser Cutting', 'Coating'];
 const emptyMaterial = { code: '', childPart: '', subChildPart: '', item: '', itemType: 'Fabricated Item', quantity: '', unitType: '', unit: '' };
@@ -22,6 +24,31 @@ export default function BOMManagement() {
   const [editForm, setEditForm] = useState(emptyMaterial);
   const [editingMat, setEditingMat] = useState(null);
   const [bomVariant, setBomVariant] = useState('Standard');
+
+  // Query dynamic unit types
+  const { data: unitTypesData } = useQuery({
+    queryKey: ['/api/inventory/unit-types'],
+    queryFn: () => apiRequest('GET', '/api/inventory/unit-types'),
+  });
+
+  const unitTypesList = React.useMemo(() => {
+    if (unitTypesData?.unitTypes) {
+      return unitTypesData.unitTypes.map(ut => ut.name);
+    }
+    return UNIT_TYPES;
+  }, [unitTypesData]);
+
+  const getUnitsForTypeDynamic = (unitTypeName, currentUnit) => {
+    if (!unitTypeName) return [];
+    if (unitTypesData?.unitTypes) {
+      const found = unitTypesData.unitTypes.find(ut => ut.name === unitTypeName);
+      if (found) {
+        const units = found.units || [];
+        return currentUnit && !units.includes(currentUnit) ? [currentUnit, ...units] : units;
+      }
+    }
+    return getUnitsForType(unitTypeName, currentUnit);
+  };
 
   const activeMachines = machines.filter(m => !m.isDiscontinued && ['In House Manufacturing', 'Out Source Manufactured'].includes(m.pSourceType));
   const selectedMachine = activeMachines.find(m => String(m._id) === selectedMachineId);
@@ -271,14 +298,14 @@ export default function BOMManagement() {
                 <label className="text-xs font-semibold text-slate-600 mb-1 block">Unit Type *</label>
                 <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.unitType} onChange={e => setForm(f => ({ ...f, unitType: e.target.value, unit: '' }))}>
                   <option value="">Select</option>
-                  {UNIT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                  {unitTypesList.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
               <div>
                 <label className="text-xs font-semibold text-slate-600 mb-1 block">Unit *</label>
                 <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-400" value={form.unit} disabled={!form.unitType} onChange={e => setForm(f => ({ ...f, unit: e.target.value }))}>
                   <option value="">{form.unitType ? 'Select' : 'Select Unit Type first'}</option>
-                  {getUnitsForType(form.unitType, form.unit).map(u => <option key={u} value={u}>{u}</option>)}
+                  {getUnitsForTypeDynamic(form.unitType, form.unit).map(u => <option key={u} value={u}>{u}</option>)}
                 </select>
               </div>
             </div>
@@ -331,14 +358,14 @@ export default function BOMManagement() {
                 <label className="text-xs font-semibold text-slate-600 mb-1 block">Unit Type *</label>
                 <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={editForm.unitType} onChange={e => setEditForm(f => ({ ...f, unitType: e.target.value, unit: '' }))}>
                   <option value="">Select</option>
-                  {UNIT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                  {unitTypesList.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
               <div>
                 <label className="text-xs font-semibold text-slate-600 mb-1 block">Unit *</label>
                 <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-400" value={editForm.unit} disabled={!editForm.unitType && !editForm.unit} onChange={e => setEditForm(f => ({ ...f, unit: e.target.value }))}>
                   <option value="">{editForm.unitType ? 'Select' : 'Select Unit Type first'}</option>
-                  {getUnitsForType(editForm.unitType, editForm.unit).map(u => <option key={u} value={u}>{u}</option>)}
+                  {getUnitsForTypeDynamic(editForm.unitType, editForm.unit).map(u => <option key={u} value={u}>{u}</option>)}
                 </select>
               </div>
             </div>

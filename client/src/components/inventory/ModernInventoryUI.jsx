@@ -83,6 +83,7 @@ import ViewItemModal from './ViewItemModal';
 import DeleteConfirmDialog from './DeleteConfirmDialog';
 import CategoryManagement from './CategoryManagement';
 import GroupManagement from './GroupManagement';
+import UnitTypeManagement from './UnitTypeManagement';
 import ExcelImportExport from './ExcelImportExport';
 
 import { apiRequest } from '@/lib/queryClient';
@@ -374,6 +375,7 @@ export default function ModernInventoryUI() {
   const [categoryManagementOpen, setCategoryManagementOpen] = useState(false);
   const [showCustomerCategoryModal, setShowCustomerCategoryModal] = useState(false);
   const [groupManagementOpen, setGroupManagementOpen] = useState(false);
+  const [unitTypeManagementOpen, setUnitTypeManagementOpen] = useState(false);
 
   // Debounce search term to avoid excessive API calls
   useEffect(() => {
@@ -439,6 +441,10 @@ export default function ModernInventoryUI() {
     queryKey: ['/api/inventory/groups'],
   });
 
+  const { data: unitTypesData } = useQuery({
+    queryKey: ['/api/inventory/unit-types'],
+  });
+
   // Fetch companies for location dropdown - use authenticated endpoint
   const { data: companiesData } = useQuery({
     queryKey: ['companies-dropdown'],
@@ -451,6 +457,7 @@ export default function ModernInventoryUI() {
   const categories = Array.isArray(categoriesData?.categories) ? categoriesData.categories : [];
   const customerCategories = Array.isArray(customerCategoriesData?.customerCategories) ? customerCategoriesData.customerCategories : [];
   const groups = Array.isArray(groupsData?.groups) ? groupsData.groups : [];
+  const unitTypes = Array.isArray(unitTypesData?.unitTypes) ? unitTypesData.unitTypes : [];
   const companies = Array.isArray(companiesData?.companies) ? companiesData.companies : [];
 
   console.log('API Response:', { items: items.length, pagination: apiPagination });
@@ -1086,11 +1093,13 @@ export default function ModernInventoryUI() {
           categories={categories}
           customerCategories={customerCategories}
           groups={groups}
+          unitTypes={unitTypes}
           companies={companies}
           onSubmit={handleFormSubmit}
           isLoading={createItemMutation.isPending || updateItemMutation.isPending}
           onOpenCategoryManagement={() => setCategoryManagementOpen(true)}
           onOpenGroupManagement={() => setGroupManagementOpen(true)}
+          onOpenUnitTypeManagement={() => setUnitTypeManagementOpen(true)}
         />
       )}
 
@@ -1148,6 +1157,11 @@ export default function ModernInventoryUI() {
           <GroupManagement
             isOpen={groupManagementOpen}
             onClose={() => setGroupManagementOpen(false)}
+          />
+
+          <UnitTypeManagement
+            isOpen={unitTypeManagementOpen}
+            onClose={() => setUnitTypeManagementOpen(false)}
           />
         </>
       )}

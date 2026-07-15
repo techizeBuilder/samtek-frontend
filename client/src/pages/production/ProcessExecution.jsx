@@ -50,7 +50,8 @@ export default function ProcessExecution() {
   const [notesDialog, setNotesDialog] = useState(null); // { step, notes }
   const [notesValue, setNotesValue] = useState('');
   const [subEntryDialog, setSubEntryDialog] = useState(null); // { step }
-  const [subEntryForm, setSubEntryForm] = useState({ parentPart: '', childPart: '', assignedMember: '' });
+  const [subEntryForm, setSubEntryForm] = useState({ parentPart: '', childPart: '', assignedMember: '', fabricationType: '' });
+  const [customFabricationType, setCustomFabricationType] = useState('');
   const [assignDialog, setAssignDialog] = useState(null); // { step }
   const [selectedTeam, setSelectedTeam] = useState('');
 
@@ -291,7 +292,8 @@ export default function ProcessExecution() {
                           <h4 className="text-sm font-bold text-slate-800 flex items-center gap-1.5"><Cog className="h-4 w-4 text-slate-500" /> Fabrication Sub-Processes</h4>
                           {proc.status === 'In Progress' && (
                             <Button size="sm" variant="outline" className="h-7 text-xs bg-white text-blue-600 border-blue-200 hover:bg-blue-50" onClick={() => {
-                              setSubEntryForm({ parentPart: '', childPart: '', assignedMember: '' });
+                              setSubEntryForm({ parentPart: '', childPart: '', assignedMember: '', fabricationType: '' });
+                              setCustomFabricationType('');
                               setSubEntryDialog({ step: proc.step });
                             }}>
                               + Add Entry
@@ -311,6 +313,10 @@ export default function ProcessExecution() {
                                   <div>
                                     <p className="text-xs text-slate-500 mb-0.5">Child Part</p>
                                     <p className="text-sm font-semibold text-slate-800">{se.childPart}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-xs text-slate-500 mb-0.5">Fabrication Type</p>
+                                    <span className="text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-full">{se.fabricationType || 'Other'}</span>
                                   </div>
                                   <div>
                                     <p className="text-xs text-slate-500 mb-0.5">Assigned To</p>
@@ -474,6 +480,47 @@ export default function ProcessExecution() {
               <Input placeholder="e.g. Side Panels" value={subEntryForm.childPart} onChange={e => setSubEntryForm(f => ({ ...f, childPart: e.target.value }))} />
             </div>
             <div>
+              <label className="text-xs font-semibold text-slate-600 mb-1 block">Fabrication Type</label>
+              <select
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                value={subEntryForm.fabricationType}
+                onChange={e => {
+                  setSubEntryForm(f => ({ ...f, fabricationType: e.target.value }));
+                  if (e.target.value !== 'Other') setCustomFabricationType('');
+                }}
+              >
+                <option value="">-- Select type --</option>
+                <option value="Welding">Welding</option>
+                <option value="Cutting">Cutting</option>
+                <option value="Bending">Bending</option>
+                <option value="Drilling">Drilling</option>
+                <option value="Grinding">Grinding</option>
+                <option value="Painting">Painting</option>
+                <option value="Assembly">Assembly</option>
+                <option value="Other">Other — specify below</option>
+              </select>
+              {subEntryForm.fabricationType === 'Other' && (
+                <div className="mt-2 relative">
+                  <Input
+                    placeholder="e.g. Laser Cutting, Stamping..."
+                    value={customFabricationType}
+                    onChange={e => setCustomFabricationType(e.target.value)}
+                    className="pr-8 border-blue-300 focus:ring-blue-500"
+                    autoFocus
+                  />
+                  {customFabricationType && (
+                    <button
+                      type="button"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      onClick={() => setCustomFabricationType('')}
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+            <div>
               <label className="text-xs font-semibold text-slate-600 mb-1 block">Assign Team Member</label>
               <Input placeholder="Member Name" value={subEntryForm.assignedMember} onChange={e => setSubEntryForm(f => ({ ...f, assignedMember: e.target.value }))} />
             </div>
@@ -482,11 +529,21 @@ export default function ProcessExecution() {
             <Button variant="outline" onClick={() => setSubEntryDialog(null)}>Cancel</Button>
             <Button 
               className="bg-blue-600 hover:bg-blue-700 text-white" 
-              disabled={!subEntryForm.parentPart || !subEntryForm.childPart || !subEntryForm.assignedMember}
+              disabled={
+                !subEntryForm.parentPart ||
+                !subEntryForm.childPart ||
+                !subEntryForm.assignedMember ||
+                !subEntryForm.fabricationType ||
+                (subEntryForm.fabricationType === 'Other' && !customFabricationType.trim())
+              }
               onClick={async () => {
                 try {
-                  await addSubEntry(selectedOrderId, subEntryDialog.step, subEntryForm);
+                  const finalType = subEntryForm.fabricationType === 'Other'
+                    ? customFabricationType.trim()
+                    : subEntryForm.fabricationType;
+                  await addSubEntry(selectedOrderId, subEntryDialog.step, { ...subEntryForm, fabricationType: finalType });
                   setSubEntryDialog(null);
+                  setCustomFabricationType('');
                 } catch (err) {}
               }}
             >
