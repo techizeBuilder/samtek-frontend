@@ -29,6 +29,7 @@ import { cn } from '@/lib/utils';
 const CustomerPayments = () => {
     const { toast } = useToast();
     const [selectedCustomer, setSelectedCustomer] = useState('');
+    const [selectedOrder, setSelectedOrder] = useState(''); // order-wise payment target ('' = general FIFO)
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     // Fetch logged-in user's company details
@@ -77,6 +78,17 @@ const CustomerPayments = () => {
     const pendingInvoices = customerOutstanding?.invoices || [];
     const invoiceCount = customerOutstanding?.invoiceCount || 0;
 
+    // ─── Order-wise financials of the selected customer ───────────────────
+    // Har order ka apna Total / Advance / Paid / Due — payment kis order ke
+    // liye hai, ye select karne ke liye
+    const { data: orderFinResponse, isLoading: isLoadingOrderFin } = useQuery({
+        queryKey: ['customer-order-financials', selectedCustomer],
+        queryFn: () => apiRequest('GET', `/api/customers/${selectedCustomer}/order-financials`),
+        enabled: !!selectedCustomer
+    });
+    const customerOrders = orderFinResponse?.data?.orders || [];
+    const selectedOrderInfo = customerOrders.find(o => o.orderId === selectedOrder);
+
     const { data: statsResponse } = useQuery({
         queryKey: ['/api/accounts/sales/payment/stats'],
         queryFn: () => apiRequest('GET', '/api/accounts/sales/payment/stats')
@@ -98,6 +110,7 @@ const CustomerPayments = () => {
             queryClient.invalidateQueries({ queryKey: ['/api/accounts/sales/account/invoices'] });
             queryClient.invalidateQueries({ queryKey: ['/api/accounts/sales/receivables/ageing'] });
             queryClient.invalidateQueries({ queryKey: ['/api/accounts/sales/payment/stats'] });
+            queryClient.invalidateQueries({ queryKey: ['customer-order-financials'] });
             toast({
                 title: "Receipt Recorded",
                 description: "Payment has been allocated to outstanding invoices.",
@@ -106,6 +119,7 @@ const CustomerPayments = () => {
                 duration: 3000
             });
             setSelectedCustomer('');
+            setSelectedOrder('');
         },
         onError: (err) => {
             toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -294,6 +308,9 @@ const CustomerPayments = () => {
                                                     <div className="text-sm font-black text-slate-900">{payment.customer?.name || 'Unknown Customer'}</div>
                                                     <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mt-0.5">
                                                         {new Date(payment.paymentDate).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })} • {payment.referenceNo || 'No Ref'}
+                                                        {(payment.orderCode || payment.order?.orderCode) && (
+                                                            <span className="text-blue-500"> • {payment.orderCode || payment.order?.orderCode}</span>
+                                                        )}
                                                     </div>
                                                 </div>
                                             </div>
@@ -371,25 +388,102 @@ const CustomerPayments = () => {
                                 </div>
                             </div>
 
-                            {/* Outstanding Dynamic UI */}
+                            {/* ─── Order-wise: payment kis order ke against hai ─── */}
                             {selectedCustomer && (
-                                <div className="animate-in fade-in slide-in-from-top-4 duration-500">
+                                <div className="space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-2">Payment For Order (Order-wise Tracking)</label>
+                                    <select
+                                        name="orderId"
+                                        className="w-full bg-slate-50 border-2 border-slate-100 rounded-[1.25rem] p-4 font-bold text-slate-900 focus:ring-4 focus:ring-blue-500/10 transition-all appearance-none cursor-pointer"
+                                        value={selectedOrder}
+                                        onChange={(e) => setSelectedOrder(e.target.value)}
+                                    >
+                                        <option value="">-- General Receipt (auto FIFO allocation) --</option>
+                                        {customerOrders.map(o => (
+                                            <option key={o.orderId} value={o.orderId}>
+                                                {o.orderCode} — Due ₹{(o.due || 0).toLocaleString('en-IN')}{o.productName ? ` (${o.productName.slice(0, 30)})` : ''}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    {isLoadingOrderFin && (
+                                        <p className="text-[10px] text-slate-400 font-bold ml-2">Loading customer orders...</p>
+                                    )}
+                                    {!isLoadingOrderFin && customerOrders.length === 0 && (
+                                        <p className="text-[10px] text-slate-400 font-bold ml-2">No orders found — receipt will be recorded as general.</p>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Outstanding Dynamic UI — order-wise breakdown */}
+                            {selectedCustomer && (
+                                <div className="animate-in fade-in slide-in-from-top-4 duration-500 space-y-4">
                                     <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-[2rem] p-8 text-white shadow-xl shadow-blue-500/20 relative overflow-hidden">
                                         <div className="absolute -bottom-8 -right-8 opacity-20 rotate-12">
                                             <FileText className="w-48 h-48 text-white" />
                                         </div>
                                         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-8">
                                             <div className="space-y-2">
-                                                <h3 className="text-blue-100/70 text-[10px] font-black uppercase tracking-[0.2em]">Current Receivables</h3>
-                                                <div className="text-5xl font-black italic tracking-tighter">₹{trueOutstanding.toLocaleString('en-IN')}</div>
-                                                <div className="flex items-center gap-3 mt-4">
-                                                    <Badge className="bg-white/20 hover:bg-white/30 text-white rounded-full px-4 py-1 text-[10px] font-bold border-0 backdrop-blur-sm">
-                                                        OUTSTANDING BALANCE
-                                                    </Badge>
+                                                <h3 className="text-blue-100/70 text-[10px] font-black uppercase tracking-[0.2em]">
+                                                    {selectedOrderInfo ? `Order ${selectedOrderInfo.orderCode} — Due` : 'Current Receivables'}
+                                                </h3>
+                                                <div className="text-5xl font-black italic tracking-tighter">
+                                                    ₹{(selectedOrderInfo ? selectedOrderInfo.due : trueOutstanding).toLocaleString('en-IN')}
+                                                </div>
+                                                <div className="flex items-center gap-3 mt-4 flex-wrap">
+                                                    {selectedOrderInfo ? (
+                                                        <>
+                                                            <Badge className="bg-white/20 hover:bg-white/30 text-white rounded-full px-4 py-1 text-[10px] font-bold border-0 backdrop-blur-sm">
+                                                                TOTAL ₹{(selectedOrderInfo.total || 0).toLocaleString('en-IN')}
+                                                            </Badge>
+                                                            <Badge className="bg-emerald-400/30 hover:bg-emerald-400/40 text-white rounded-full px-4 py-1 text-[10px] font-bold border-0 backdrop-blur-sm">
+                                                                ADVANCE ₹{(selectedOrderInfo.advance || 0).toLocaleString('en-IN')}
+                                                            </Badge>
+                                                            <Badge className="bg-emerald-400/30 hover:bg-emerald-400/40 text-white rounded-full px-4 py-1 text-[10px] font-bold border-0 backdrop-blur-sm">
+                                                                RECEIVED ₹{(selectedOrderInfo.paid || 0).toLocaleString('en-IN')}
+                                                            </Badge>
+                                                        </>
+                                                    ) : (
+                                                        <Badge className="bg-white/20 hover:bg-white/30 text-white rounded-full px-4 py-1 text-[10px] font-bold border-0 backdrop-blur-sm">
+                                                            OUTSTANDING BALANCE
+                                                        </Badge>
+                                                    )}
                                                 </div>
                                             </div>
                                         </div>
                                     </div>
+
+                                    {/* Order-wise dues list */}
+                                    {customerOrders.length > 0 && (
+                                        <div className="bg-white border-2 border-slate-100 rounded-[1.5rem] overflow-hidden">
+                                            <div className="px-5 py-3 bg-slate-50 border-b border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
+                                                Order-wise Balances
+                                            </div>
+                                            <div className="divide-y divide-slate-50 max-h-48 overflow-y-auto">
+                                                {customerOrders.map(o => (
+                                                    <div
+                                                        key={o.orderId}
+                                                        className={cn(
+                                                            "flex items-center justify-between px-5 py-2.5 text-sm cursor-pointer hover:bg-blue-50/50 transition-colors",
+                                                            selectedOrder === o.orderId && "bg-blue-50"
+                                                        )}
+                                                        onClick={() => setSelectedOrder(selectedOrder === o.orderId ? '' : o.orderId)}
+                                                    >
+                                                        <div>
+                                                            <span className="font-black text-slate-900">{o.orderCode}</span>
+                                                            {o.productName && <span className="text-xs text-slate-400 ml-2">{o.productName.slice(0, 34)}</span>}
+                                                        </div>
+                                                        <div className="flex items-center gap-4 text-xs font-bold">
+                                                            <span className="text-slate-500">Total ₹{(o.total || 0).toLocaleString('en-IN')}</span>
+                                                            <span className="text-emerald-600">Paid ₹{((o.advance || 0) + (o.paid || 0)).toLocaleString('en-IN')}</span>
+                                                            <span className={o.due > 0 ? 'text-rose-600' : 'text-emerald-600'}>
+                                                                {o.due > 0 ? `Due ₹${o.due.toLocaleString('en-IN')}` : 'Cleared ✓'}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             )}
 

@@ -265,6 +265,7 @@ export default function AdminSettings() {
   const notes         = settings.quotationNotes || [];
   const dispatchChecklist = settings.dispatchChecklist || [];
   const quotationNumberSettings = settings.quotationNumberSettings || [];
+  const hrmsDocumentTypes = settings.hrmsDocumentTypes || [];
 
   const inv = () => qc.invalidateQueries({ queryKey: ['admin-settings'] });
   const m = (fn, msg) => ({ mutationFn: fn, onSuccess: () => { inv(); toast({ title: msg }); }, onError: e => toast({ title: 'Error', description: e.message, variant: 'destructive' }) });
@@ -322,6 +323,14 @@ export default function AdminSettings() {
   const addNumberSettingM = useMutation(m(b => adminSettingsApi.addQuotationNumberSetting(b), 'Number setting added'));
   const updNumberSettingM = useMutation(m(({ id, body }) => adminSettingsApi.updateQuotationNumberSetting(id, body), 'Number setting updated'));
   const delNumberSettingM = useMutation(m(id => adminSettingsApi.deleteQuotationNumberSetting(id), 'Number setting deleted'));
+
+  // HRMS: Upload Document Settings
+  const addHrmsDocTypeM = useMutation(m(b => adminSettingsApi.addHrmsDocumentType(b), 'Document type added'));
+  const updHrmsDocTypeM = useMutation(m(({ id, body }) => adminSettingsApi.updateHrmsDocumentType(id, body), 'Document type updated'));
+  const delHrmsDocTypeM = useMutation(m(id => adminSettingsApi.deleteHrmsDocumentType(id), 'Document type deleted'));
+  // Stable key derived from the label — stored permanently on each employee's
+  // uploaded UserDocument, so it must not change when the label is edited later.
+  const slugifyDocKey = (label) => (label || '').trim().toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '') || `DOC_${Date.now()}`;
 
   // ─── API settings ─────────────────────────────────────────────────────────
   const API_BASE_URL = import.meta.env.VITE_API_URL;
@@ -434,6 +443,12 @@ export default function AdminSettings() {
       id: 'dispatch', label: 'Dispatch', icon: Truck,
       children: [
         { id: 'dispatch_checklist', label: 'Manage Checklist' },
+      ]
+    },
+    {
+      id: 'hrms', label: 'HRMS Setting', icon: Upload,
+      children: [
+        { id: 'hrms_upload_document', label: 'Upload Document Setting' },
       ]
     },
     { id: 'other', label: 'Other Settings', icon: Layers },
@@ -755,12 +770,12 @@ export default function AdminSettings() {
                   <CrudSection title="Additional Charges" icon={DollarSign} items={charges} defaultOpen
                     fields={[
                       { key: 'name',  label: 'Charge Name', placeholder: 'e.g. Installation Charges', primary: true },
-                      { key: 'price', label: 'Price (₹)',   placeholder: '0',  type: 'number' },
-                      { key: 'gst',   label: 'GST %',       placeholder: '18', type: 'number', hideInList: true },
+                      { key: 'price', label: 'Price (₹)',   placeholder: '0',  type: 'number', prefix: '₹' },
+                      { key: 'gst',   label: 'GST %',       placeholder: '18', type: 'number', prefix: 'GST%:', default: 18 },
                     ]}
                     addLabel="Add Charge"
-                    onAdd={f => addChargeM.mutate({ ...f, price: parseFloat(f.price) || 0, gst: parseFloat(f.gst) || 18 })}
-                    onUpdate={(id, f) => updChargeM.mutate({ id, body: { ...f, price: parseFloat(f.price) || 0, gst: parseFloat(f.gst) || 18 } })}
+                    onAdd={f => addChargeM.mutate({ ...f, price: parseFloat(f.price) || 0, gst: f.gst === '' ? 18 : (parseFloat(f.gst) || 0) })}
+                    onUpdate={(id, f) => updChargeM.mutate({ id, body: { ...f, price: parseFloat(f.price) || 0, gst: f.gst === '' ? 18 : (parseFloat(f.gst) || 0) } })}
                     onDelete={id => delChargeM.mutate(id)}
                     emptyText="No charges yet."
                   />
@@ -807,6 +822,29 @@ export default function AdminSettings() {
                     onUpdate={(id, f) => updChecklistM.mutate({ id, body: f })}
                     onDelete={id => delChecklistM.mutate(id)}
                     emptyText="No checklist items yet."
+                  />
+                </div>
+              </>
+            )}
+
+            {/* ── HRMS Setting ── */}
+            {generalSection === 'hrms_upload_document' && (
+              <>
+                <h1 className="text-xl font-semibold text-gray-900">Upload Document Setting</h1>
+                <p className="text-sm text-gray-500 -mt-3">
+                  Controls the documents employees are required to upload on their HRMS "Documents" tab, and what HR-Admin verifies under Document Verification.
+                </p>
+                <div className="bg-white rounded-lg border border-gray-200 p-5">
+                  <CrudSection title="Upload Document Setting" icon={Upload} items={hrmsDocumentTypes} defaultOpen
+                    fields={[
+                      { key: 'label', label: 'Document Name', placeholder: 'e.g. Aadhaar Card', primary: true },
+                      { key: 'description', label: 'Description', placeholder: 'e.g. Front & back scan' },
+                    ]}
+                    addLabel="Add Document Type"
+                    onAdd={f => addHrmsDocTypeM.mutate({ label: f.label, description: f.description, key: slugifyDocKey(f.label) })}
+                    onUpdate={(id, f) => updHrmsDocTypeM.mutate({ id, body: { label: f.label, description: f.description } })}
+                    onDelete={id => delHrmsDocTypeM.mutate(id)}
+                    emptyText="No document types yet."
                   />
                 </div>
               </>

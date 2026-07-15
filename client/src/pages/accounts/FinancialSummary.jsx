@@ -64,6 +64,10 @@ export default function FinancialSummary() {
         end: format(new Date(), 'yyyy-MM-dd')
     });
 
+    // Profit view toggle — false = Pakka (billed) profit, true = Kaccha (cash-side) profit.
+    // Flips on double-clicking the hero profit amount.
+    const [showKacchaProfit, setShowKacchaProfit] = useState(false);
+
     // Partner Management State
     const [isPartnerModalOpen, setIsPartnerModalOpen] = useState(false);
     const [partners, setPartners] = useState([]);
@@ -123,12 +127,17 @@ export default function FinancialSummary() {
         setEndDate(customRange.end);
     };
 
+    // Pakka (billed book) profit is the default; Kaccha (cash-side) profit
+    // is Billing Amount + GST Amount + Cash Amount from the Sales Order Form,
+    // shown only when the hero amount is double-clicked.
+    const activeNetSales = showKacchaProfit ? (summary?.kacchaNetSales || 0) : (summary?.netSales || 0);
+
     const calculateMargin = () => {
-        if (!summary || summary.netSales === 0) return 0;
-        return ((summary.netProfit / summary.netSales) * 100).toFixed(1);
+        if (!summary || activeNetSales === 0) return 0;
+        return ((netProfit / activeNetSales) * 100).toFixed(1);
     };
 
-    const netProfit = summary?.netProfit || 0;
+    const netProfit = showKacchaProfit ? (summary?.kacchaProfit || 0) : (summary?.netProfit || 0);
 
     // Dynamic partners from summary
     const activePartners = summary?.partners || [];
@@ -407,24 +416,36 @@ export default function FinancialSummary() {
             </Dialog>
 
             {/* Main Profit Card */}
-            <Card className={`border-none shadow-xl bg-gradient-to-r ${(summary?.netProfit || 0) >= 0 ? 'from-blue-700 via-indigo-600 to-purple-600' : 'from-red-700 via-rose-600 to-orange-600'} text-white overflow-hidden relative`}>
+            <Card className={`border-none shadow-xl bg-gradient-to-r ${netProfit >= 0 ? 'from-blue-700 via-indigo-600 to-purple-600' : 'from-red-700 via-rose-600 to-orange-600'} text-white overflow-hidden relative`}>
                 <div className="absolute top-0 right-0 p-8 opacity-10">
-                    {(summary?.netProfit || 0) >= 0 ? <ProfitIcon size={120} /> : <TrendingDown size={120} />}
+                    {netProfit >= 0 ? <ProfitIcon size={120} /> : <TrendingDown size={120} />}
                 </div>
                 <CardContent className="p-6 sm:p-10 z-10 relative">
                     <div className="flex flex-col md:flex-row justify-between gap-6">
                         <div>
-                            <p className="text-blue-100 font-medium mb-1 uppercase tracking-widest text-[10px]">Consolidated Profit (Samtek & NERS)</p>
-                            <div className="text-4xl sm:text-6xl font-extrabold tracking-tight">
-                                ₹{(summary?.netProfit || 0).toLocaleString()}
+                            <p className="text-blue-100 font-medium mb-1 uppercase tracking-widest text-[10px] flex items-center gap-2">
+                                Consolidated Profit (Samtek & NERS)
+                                <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold tracking-wider normal-case ${showKacchaProfit ? 'bg-amber-400/30 text-amber-100' : 'bg-emerald-400/30 text-emerald-100'}`}>
+                                    {showKacchaProfit ? 'Kaccha Bill' : 'Pakka Bill'}
+                                </span>
+                            </p>
+                            <div
+                                className="text-4xl sm:text-6xl font-extrabold tracking-tight cursor-pointer select-none"
+                                onDoubleClick={() => setShowKacchaProfit(prev => !prev)}
+                                title="Double-click to switch between Pakka and Kaccha bill profit"
+                            >
+                                ₹{netProfit.toLocaleString()}
                             </div>
-                            <div className="flex items-center mt-4 gap-4">
+                            <div className="flex items-center mt-4 gap-4 flex-wrap">
                                 <div className="flex items-center bg-white/20 backdrop-blur-md rounded-full px-3 py-1 text-sm font-semibold">
                                     <Percent className="w-3.5 h-3.5 mr-1" />
                                     {calculateMargin()}% Margin
                                 </div>
                                 <div className="text-blue-100 text-sm italic">
                                     Report for {format(new Date(startDate), 'MMM dd')} - {format(new Date(endDate), 'MMM dd, yyyy')}
+                                </div>
+                                <div className="text-blue-200/70 text-[10px] italic">
+                                    (Double-click amount to view {showKacchaProfit ? 'Pakka' : 'Kaccha'} bill profit)
                                 </div>
                             </div>
                         </div>

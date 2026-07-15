@@ -559,13 +559,13 @@ function drawChargeRow(doc, charge, y, rowH = 8) {
   const qX = ML + C[0] + C[1] + C[2] + C[3]/2;
   doc.text('-', qX, topBaselineY, { align: 'center' });
 
-  // GST — no GST on additional charges, shown as '-' (same as preview)
+  // GST % — dynamic per charge (same as preview)
   const gX = ML + C[0] + C[1] + C[2] + C[3] + C[4]/2;
-  doc.text('-', gX, topBaselineY, { align: 'center' });
+  doc.text((charge.gst ?? 18) + '%', gX, topBaselineY, { align: 'center' });
 
-  // Amount
+  // Amount — GST-inclusive (same as preview)
   const amtCx = ML + C[0] + C[1] + C[2] + C[3] + C[4] + C[5]/2;
-  doc.text(fmt(charge.price), amtCx, topBaselineY, { align: 'center' });
+  doc.text(fmt((charge.price || 0) * (1 + (charge.gst ?? 18) / 100)), amtCx, topBaselineY, { align: 'center' });
 
   return y + rowH;
 }
@@ -575,7 +575,8 @@ function drawChargeRow(doc, charge, y, rowH = 8) {
 function measureBillingHeight(doc,items,charges){
   const sub=items.reduce((s,it)=>s+(it.price||0)*(it.quantity||1),0)
            +(charges||[]).reduce((s,c)=>s+(c.price||0),0);
-  const gst=items.reduce((s,it)=>s+(it.price||0)*(it.quantity||1)*((it.gst||18)/100),0);
+  const gst=items.reduce((s,it)=>s+(it.price||0)*(it.quantity||1)*((it.gst||18)/100),0)
+           +(charges||[]).reduce((s,c)=>s+(c.price||0)*((c.gst??18)/100),0);
   const net=sub+gst;
   const wordStr=n2w(Math.round(net))+' (INR)';
   const wordLines=doc.splitTextToSize(wordStr,CW-6);
@@ -588,7 +589,8 @@ function measureBillingHeight(doc,items,charges){
 function drawBilling(doc,y,items,charges){
   const sub=items.reduce((s,it)=>s+(it.price||0)*(it.quantity||1),0)
            +(charges||[]).reduce((s,c)=>s+(c.price||0),0);
-  const gst=items.reduce((s,it)=>s+(it.price||0)*(it.quantity||1)*((it.gst||18)/100),0);
+  const gst=items.reduce((s,it)=>s+(it.price||0)*(it.quantity||1)*((it.gst||18)/100),0)
+           +(charges||[]).reduce((s,c)=>s+(c.price||0)*((c.gst??18)/100),0);
   const net=sub+gst;
 
   /* Right-edge x for labels and amounts */
@@ -691,12 +693,14 @@ function drawTermsAndNotes(doc,y,terms,notes,logoImg,cd){
 function drawBankAndSignatory(doc,y,bank,cd,user,stamp,logoImg){
   const G=5;
 
-  /* Bank details block */
+  /* Bank details block — values come from the company's saved bank details
+     (My Company module); unfilled fields render blank, no hardcoded fallback */
   const bkL=[
-    'NAME OF COMPANY- '+(bank.companyName||'SAMTEK ENGINEERING AND GIS SOLUTION PVT LTD.'),
-    'ACCOUNT NUMBER - '+(bank.accountNumber||'411505500062'),
-    'IFSC CODE - '+(bank.ifsc||'ICIC0004115'),
-    'BRANCH - '+(bank.branch||'NOIDA SECTOR 121(NOIDA)'),
+    'NAME OF COMPANY - '+(bank.companyName||''),
+    ...(bank.bankName?['BANK NAME - '+bank.bankName]:[]),
+    'ACCOUNT NUMBER - '+(bank.accountNumber||''),
+    'IFSC CODE - '+(bank.ifsc||''),
+    'BRANCH - '+(bank.branch||''),
   ];
   const bkH=bkL.length*5.5+16;
   /* Need bank + closing note (~22mm) + signature (~35mm) all on same page */

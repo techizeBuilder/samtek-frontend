@@ -134,6 +134,11 @@ const Leads = () => {
   });
   const existingMeetingRef = useRef(null); // ref for sync access in submit handler
 
+  // ─── Meeting Attempts Modal State ───────────────────────────────
+  const [isMeetingAttemptsOpen, setIsMeetingAttemptsOpen] = useState(false);
+  const [meetingAttemptsLead, setMeetingAttemptsLead] = useState(null);
+  const [attemptNote, setAttemptNote] = useState('');
+
   // Form State for Contact Person
   const [contactFormData, setContactFormData] = useState({
     contactPerson: '',
@@ -450,21 +455,19 @@ const Leads = () => {
 
   const handleStatusSubmit = () => {
     if (!statusLead) return;
+    // Optimistic — card updates instantly via mutation's onMutate; close modal right away
     updateLeadMutation.mutate(
       {
         id: statusLead._id,
         data: { status: selectedStatus }
       },
       {
-        onSuccess: (data) => {
-          // Invalidate and refetch leads data for real-time sync
-          queryClient.invalidateQueries({ queryKey: ['leads'] });
-          queryClient.refetchQueries({ queryKey: ['leads'] });
+        onSuccess: () => {
           toast({ title: "Success", description: "Status updated successfully" });
-          setIsStatusModalOpen(false);
         }
       }
     );
+    setIsStatusModalOpen(false);
   };
 
   const handleStageSubmit = () => {
@@ -482,20 +485,19 @@ const Leads = () => {
     }
     // Stage stores Hot/Warm/Cold/Pending/Star Lead/Followup in lead.stage field
     // Never overwrite system status (Won, New, etc.)
+    // Optimistic — card updates instantly via mutation's onMutate; close modal right away
     updateLeadMutation.mutate(
       {
         id: stageLead._id,
         data: { stage: selectedStage }
       },
       {
-        onSuccess: (data) => {
-          queryClient.invalidateQueries({ queryKey: ['leads'] });
-          queryClient.refetchQueries({ queryKey: ['leads'] });
+        onSuccess: () => {
           toast({ title: "Success", description: "Stage updated successfully" });
-          setIsStageModalOpen(false);
         }
       }
     );
+    setIsStageModalOpen(false);
   };
 
   const handleDisqualifySubmit = () => {
@@ -503,6 +505,7 @@ const Leads = () => {
       toast({ title: "Required", description: "Please select a reason", variant: "destructive" });
       return;
     }
+    // Optimistic — card updates instantly via mutation's onMutate; close modal right away
     updateLeadMutation.mutate(
       {
         id: disqualifyLead._id,
@@ -511,10 +514,10 @@ const Leads = () => {
       {
         onSuccess: () => {
           toast({ title: "Success", description: "Lead disqualified successfully" });
-          setIsDisqualifyModalOpen(false);
         }
       }
     );
+    setIsDisqualifyModalOpen(false);
   };
 
   const handleNoteSubmit = () => {
@@ -813,15 +816,49 @@ const assignableUsers = (usersData?.users || []).filter(
   const saveMeetingMutation = useMutation({
     mutationFn: ({ leadId, data, isUpdate }) =>
       isUpdate ? leadApi.updateMeeting(leadId, data) : leadApi.scheduleMeeting(leadId, data),
-    onSuccess: (_, { isUpdate }) => {
+    onSuccess: (_, { leadId, isUpdate }) => {
       toast({ title: 'Success', description: isUpdate ? 'Meeting updated successfully' : 'Meeting scheduled successfully' });
       queryClient.invalidateQueries({ queryKey: ['meeting', meetingLead?._id] });
+      queryClient.invalidateQueries({ queryKey: ['lead-meetings', leadId] });
       setIsMeetingModalOpen(false);
     },
     onError: (err) => {
       toast({ title: 'Error', description: err?.message || 'Failed to save meeting', variant: 'destructive' });
     }
   });
+
+  // ─── Meeting Attempts: all meetings of the lead (on-demand only — fetched
+  // when the modal opens, so the leads list API carries zero extra load) ────
+  const { data: leadMeetingsData, isLoading: leadMeetingsLoading } = useQuery({
+    queryKey: ['lead-meetings', meetingAttemptsLead?._id],
+    queryFn: () => leadApi.getMeetings(meetingAttemptsLead._id),
+    enabled: !!meetingAttemptsLead?._id && isMeetingAttemptsOpen,
+    staleTime: 30 * 1000,
+  });
+  const leadMeetings = leadMeetingsData?.meetings || [];
+  const pendingMeeting = leadMeetings.find(m => m.status !== 'Done') || null;
+  const doneMeetings = leadMeetings.filter(m => m.status === 'Done');
+
+  // ─── Meeting Attempts: save notes + mark Done ─────────────────
+  const completeMeetingMutation = useMutation({
+    mutationFn: ({ leadId, meetingId, note }) => leadApi.completeMeeting(leadId, meetingId, note),
+    onSuccess: (_, { leadId }) => {
+      toast({ title: 'Meeting Done', description: 'Notes saved — you can now schedule the next meeting' });
+      setAttemptNote('');
+      queryClient.invalidateQueries({ queryKey: ['lead-meetings', leadId] });
+      // Pending meeting is gone now — refresh the schedule-meeting modal cache too
+      queryClient.invalidateQueries({ queryKey: ['meeting', leadId] });
+    },
+    onError: (err) => {
+      toast({ title: 'Error', description: err?.message || 'Failed to complete meeting', variant: 'destructive' });
+    }
+  });
+
+  const handleOpenMeetingAttempts = (lead) => {
+    setMeetingAttemptsLead(lead);
+    setAttemptNote('');
+    setIsMeetingAttemptsOpen(true);
+  };
 
   // IndiaMart Sync Mutation
   const syncIndiamartMutation = useMutation({
@@ -886,17 +923,39 @@ const assignableUsers = (usersData?.users || []).filter(
 
   const updateLeadMutation = useMutation({
     mutationFn: ({ id, data }) => leadApi.update(id, data),
+    // Optimistic update — card reflects stage/status change instantly,
+    // server sync happens in background (rollback on error)
+    onMutate: async ({ id, data }) => {
+      await queryClient.cancelQueries({ queryKey: ['leads'] });
+      const previousQueries = queryClient.getQueriesData({ queryKey: ['leads'] });
+      queryClient.setQueriesData({ queryKey: ['leads'] }, (old) => {
+        if (!old?.leads) return old;
+        return {
+          ...old,
+          leads: old.leads.map((l) => (l._id === id ? { ...l, ...data } : l))
+        };
+      });
+      return { previousQueries };
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['leads'] });
       toast({ title: "Success", description: "Buyer details updated successfully" });
       setIsEditBuyerModalOpen(false);
     },
-    onError: (error) => {
+    onError: (error, _variables, context) => {
+      // Rollback optimistic update
+      if (context?.previousQueries) {
+        context.previousQueries.forEach(([key, data]) => {
+          queryClient.setQueryData(key, data);
+        });
+      }
       toast({
         title: "Error",
         description: error?.message || "Failed to update details",
         variant: "destructive"
       });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
     }
   });
 
@@ -1808,7 +1867,7 @@ const assignableUsers = (usersData?.users || []).filter(
                   <Button variant="outline" size="sm" className="h-8 text-xs bg-gray-50">Email Reply</Button>
                   <div className="flex gap-2">
                     <Button variant="outline" size="sm" className="h-8 text-xs rounded-full">Call Attempts</Button>
-                    <Button variant="outline" size="sm" className="h-8 text-xs rounded-full">Meeting Attempts</Button>
+                    <Button variant="outline" size="sm" className="h-8 text-xs rounded-full" onClick={() => handleOpenMeetingAttempts(lead)}>Meeting Attempts</Button>
                     <Button 
                       variant="default" 
                       size="sm" 
@@ -1944,7 +2003,6 @@ const assignableUsers = (usersData?.users || []).filter(
                             { id: lead._id, data: { assignedTo: val || null } },
                             {
                               onSuccess: () => {
-                                queryClient.invalidateQueries({ queryKey: ['leads'] });
                                 toast({ title: 'Assigned', description: val ? 'Lead assigned successfully' : 'Lead unassigned' });
                               }
                             }
@@ -3414,6 +3472,136 @@ const assignableUsers = (usersData?.users || []).filter(
               Acefone IVR enable karo desktop calling ke liye
             </p>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Meeting Attempts Modal ──────────────────────────────── */}
+      <Dialog open={isMeetingAttemptsOpen} onOpenChange={(o) => { if (!o) { setIsMeetingAttemptsOpen(false); setMeetingAttemptsLead(null); } }}>
+        <DialogContent className="max-w-lg p-0 overflow-hidden rounded-xl border border-gray-100 shadow-xl">
+          {/* Header */}
+          <div className="px-6 py-4 border-b flex justify-between items-center bg-white sticky top-0 z-10">
+            <DialogTitle className="text-lg font-bold text-gray-800 flex items-center gap-2">
+              <Handshake className="h-5 w-5 text-blue-600" />
+              Meeting Attempts — {meetingAttemptsLead?.contactPerson || meetingAttemptsLead?.companyName || ''}
+            </DialogTitle>
+            <button
+              onClick={() => { setIsMeetingAttemptsOpen(false); setMeetingAttemptsLead(null); }}
+              className="hover:bg-gray-100 p-1.5 rounded-full transition-colors text-gray-400"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+
+          {/* Body */}
+          <div className="p-6 space-y-5 max-h-[70vh] overflow-y-auto">
+            {leadMeetingsLoading ? (
+              <div className="space-y-3 animate-pulse">
+                <div className="h-24 bg-gray-100 rounded-lg" />
+                <div className="h-16 bg-gray-100 rounded-lg" />
+              </div>
+            ) : (
+              <>
+                {/* ── Current (pending) meeting: add notes → mark Done ── */}
+                {pendingMeeting ? (
+                  <div className="border border-blue-200 bg-blue-50/50 rounded-xl p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <Badge className="bg-blue-100 text-blue-800 border-blue-200 font-bold">Scheduled</Badge>
+                      <span className="text-xs text-gray-500">
+                        {pendingMeeting.meetingType === 'Online' ? '🌐 Online' : '🏢 Visit'}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-700">
+                      <span><strong>Date:</strong> {pendingMeeting.meetingDate ? new Date(pendingMeeting.meetingDate).toLocaleDateString('en-IN') : 'N/A'}</span>
+                      <span><strong>Time:</strong> {pendingMeeting.startTime}{pendingMeeting.endTime ? ` – ${pendingMeeting.endTime}` : ''}</span>
+                      <span><strong>With:</strong> {pendingMeeting.meetingWith || 'N/A'}</span>
+                      <span><strong>Assigned:</strong> {pendingMeeting.assignedTo?.fullName || pendingMeeting.assignedTo?.username || 'N/A'}</span>
+                      {pendingMeeting.meetingType === 'Online'
+                        ? <span className="col-span-2 truncate"><strong>URL:</strong> {pendingMeeting.onlineMeetingUrl || 'N/A'}</span>
+                        : <span className="col-span-2"><strong>Venue:</strong> {pendingMeeting.venue || 'N/A'}</span>}
+                      {pendingMeeting.remarks && <span className="col-span-2"><strong>Remarks:</strong> {pendingMeeting.remarks}</span>}
+                    </div>
+
+                    <div className="pt-1 space-y-2">
+                      <Label className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Meeting Notes *</Label>
+                      <textarea
+                        rows={3}
+                        value={attemptNote}
+                        onChange={(e) => setAttemptNote(e.target.value)}
+                        placeholder="Meeting kaisi rahi? Kya discuss hua, next step kya hai..."
+                        className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400 resize-y bg-white"
+                      />
+                      <Button
+                        className="w-full bg-green-600 hover:bg-green-700 font-bold"
+                        disabled={!attemptNote.trim() || completeMeetingMutation.isPending}
+                        onClick={() => completeMeetingMutation.mutate({
+                          leadId: meetingAttemptsLead._id,
+                          meetingId: pendingMeeting._id,
+                          note: attemptNote.trim()
+                        })}
+                      >
+                        {completeMeetingMutation.isPending ? 'Saving...' : (
+                          <span className="flex items-center gap-1.5"><CheckCircle2 className="h-4 w-4" /> Save Notes & Mark Done</span>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  /* ── No pending meeting → schedule a new one ── */
+                  <div className="border border-dashed border-gray-300 rounded-xl p-6 text-center space-y-3">
+                    <Handshake className="h-8 w-8 text-gray-300 mx-auto" />
+                    <p className="text-sm text-gray-500">
+                      {doneMeetings.length > 0 ? 'Last meeting is done — schedule the next one.' : 'No meeting scheduled for this lead yet.'}
+                    </p>
+                    <Button
+                      className="bg-blue-600 hover:bg-blue-700 font-bold"
+                      onClick={() => {
+                        const l = meetingAttemptsLead;
+                        setIsMeetingAttemptsOpen(false);
+                        setMeetingAttemptsLead(null);
+                        handleOpenMeetingModal(l);
+                      }}
+                    >
+                      <Plus className="h-4 w-4 mr-1" /> Schedule New Meeting
+                    </Button>
+                  </div>
+                )}
+
+                {/* ── Done meetings history (record hamesha dikhta rahe) ── */}
+                <div className="space-y-2">
+                  <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+                    <History className="h-3.5 w-3.5" /> Past Meetings ({doneMeetings.length})
+                  </h4>
+                  {doneMeetings.length === 0 ? (
+                    <p className="text-xs text-gray-400 italic">No completed meetings yet.</p>
+                  ) : (
+                    doneMeetings.map((m) => (
+                      <div key={m._id} className="border border-green-100 bg-green-50/40 rounded-lg p-3 space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <Badge className="bg-green-100 text-green-800 border-green-200 text-[10px] font-bold">✓ Done</Badge>
+                          <span className="text-[11px] text-gray-500">
+                            {m.meetingDate ? new Date(m.meetingDate).toLocaleDateString('en-IN') : 'N/A'} · {m.startTime}
+                            {m.meetingType === 'Online' ? ' · Online' : ' · Visit'}
+                          </span>
+                        </div>
+                        {(m.venue || m.onlineMeetingUrl) && (
+                          <p className="text-[11px] text-gray-500 truncate">
+                            {m.meetingType === 'Online' ? `URL: ${m.onlineMeetingUrl}` : `Venue: ${m.venue}`}
+                          </p>
+                        )}
+                        <p className="text-xs text-gray-700 bg-white border border-gray-100 rounded p-2 whitespace-pre-wrap">
+                          {m.attemptNote || '—'}
+                        </p>
+                        <p className="text-[10px] text-gray-400">
+                          Done on {m.completedAt ? formatNoteDate(m.completedAt) : 'N/A'}
+                          {m.completedBy ? ` by ${m.completedBy.fullName || m.completedBy.username}` : ''}
+                        </p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
 

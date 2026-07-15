@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, Fragment } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import {
@@ -41,6 +41,7 @@ import {
     Pencil,
     Info,
     Phone,
+    ClipboardList,
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
@@ -56,8 +57,18 @@ export default function CustomerMaster() {
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [editingCustomer, setEditingCustomer] = useState(null);
     const [cashAccessCustomer, setCashAccessCustomer] = useState(null);
+    // Order-wise financial breakdown modal — kis order ka kitna paid/advance/due
+    const [ordersCustomer, setOrdersCustomer] = useState(null);
     const { toast } = useToast();
     const queryClient = useQueryClient();
+
+    // Order-wise financials — fetched on-demand only when the Orders modal opens
+    const { data: orderFinResponse, isLoading: orderFinLoading } = useQuery({
+        queryKey: ['customer-order-financials', ordersCustomer?._id],
+        queryFn: () => apiRequest('GET', `/api/customers/${ordersCustomer._id}/order-financials`),
+        enabled: !!ordersCustomer?._id
+    });
+    const orderFin = orderFinResponse?.data;
 
     // Fetch customers
     const { data: customersResponse, isLoading, refetch } = useQuery({
@@ -247,7 +258,7 @@ export default function CustomerMaster() {
                                     </TableHead>
                                     <TableHead className="font-semibold text-right">Advance</TableHead>
                                     <TableHead className="font-semibold">Status</TableHead>
-                                    <TableHead className="text-right px-6 font-semibold">Action</TableHead>
+                                    <TableHead className="text-left px-6 font-semibold">Action</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -318,6 +329,15 @@ export default function CustomerMaster() {
                                                         onClick={() => setViewingCustomer(customer)}
                                                     >
                                                         <Eye className="h-4 w-4 mr-1" /> View
+                                                    </Button>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50"
+                                                        title="Order-wise Paid / Advance / Due breakdown"
+                                                        onClick={() => setOrdersCustomer(customer)}
+                                                    >
+                                                        <ClipboardList className="h-4 w-4 mr-1" /> Orders
                                                     </Button>
                                                     <Button
                                                         variant="ghost"
@@ -716,6 +736,139 @@ export default function CustomerMaster() {
                     onClose={() => setCashAccessCustomer(null)}
                 />
             )}
+
+            {/* ─── Order-wise Financial Breakdown Modal ─────────────────── */}
+            <Dialog open={!!ordersCustomer} onOpenChange={(o) => !o && setOrdersCustomer(null)}>
+                <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto rounded-2xl">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <ClipboardList className="h-5 w-5 text-indigo-600" />
+                            Order-wise Account — {ordersCustomer?.name}
+                        </DialogTitle>
+                        <DialogDescription>
+                            Har order ka Total aur Advance uske Order Form se aata hai — items ka Billing Amount (GST included) aur Payment section ka Advance
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    {orderFinLoading ? (
+                        <div className="py-12 text-center">
+                            <RefreshCw className="h-6 w-6 animate-spin text-indigo-500 mx-auto" />
+                            <p className="text-sm text-slate-400 mt-2">Loading order-wise breakdown...</p>
+                        </div>
+                    ) : (
+                        <div className="space-y-4">
+                            {(orderFin?.orders || []).length === 0 ? (
+                                <p className="text-center py-8 text-slate-400 text-sm">
+                                    {(orderFin?.ordersWithoutForm || 0) > 0
+                                        ? `${orderFin.ordersWithoutForm} order(s) hain lekin unka Order Form abhi submit nahi hua — form submit hone ke baad yahan dikhenge.`
+                                        : 'No orders found for this customer.'}
+                                </p>
+                            ) : (
+                                <div className="border rounded-xl overflow-hidden">
+                                    <Table>
+                                        <TableHeader className="bg-slate-50">
+                                            <TableRow>
+                                                <TableHead className="font-semibold">Order ID</TableHead>
+                                                <TableHead className="font-semibold">Date</TableHead>
+                                                <TableHead className="font-semibold text-right">Total</TableHead>
+                                                <TableHead className="font-semibold text-right">Advance</TableHead>
+                                                <TableHead className="font-semibold text-right">Received</TableHead>
+                                                <TableHead className="font-semibold text-right">Due</TableHead>
+                                                <TableHead className="font-semibold text-center">Status</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {(orderFin?.orders || []).map((o) => (
+                                                <Fragment key={o.orderId}>
+                                                    <TableRow>
+                                                        <TableCell>
+                                                            <div className="font-bold text-slate-900">{o.orderCode}</div>
+                                                            {o.productName && <div className="text-[10px] text-slate-400 max-w-[180px] truncate">{o.productName}</div>}
+                                                        </TableCell>
+                                                        <TableCell className="text-xs text-slate-500">
+                                                            {o.orderDate ? new Date(o.orderDate).toLocaleDateString('en-IN') : '—'}
+                                                        </TableCell>
+                                                        <TableCell className="text-right font-mono font-semibold">₹{(o.total || 0).toLocaleString('en-IN')}</TableCell>
+                                                        <TableCell className="text-right font-mono text-emerald-600">₹{(o.advance || 0).toLocaleString('en-IN')}</TableCell>
+                                                        <TableCell className="text-right font-mono text-emerald-600">₹{(o.paid || 0).toLocaleString('en-IN')}</TableCell>
+                                                        <TableCell className={cn("text-right font-mono font-bold", o.due > 0 ? "text-rose-600" : "text-slate-400")}>
+                                                            ₹{(o.due || 0).toLocaleString('en-IN')}
+                                                        </TableCell>
+                                                        <TableCell className="text-center">
+                                                            <Badge className={cn(
+                                                                "rounded-full border-0 text-[10px] font-bold",
+                                                                o.paymentStatus === 'Paid' ? 'bg-emerald-100 text-emerald-700'
+                                                                    : o.paymentStatus === 'Partially Paid' ? 'bg-amber-100 text-amber-700'
+                                                                        : 'bg-rose-100 text-rose-700'
+                                                            )}>
+                                                                {o.paymentStatus}
+                                                            </Badge>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                    {/* Order Form ke items — har item ka Billing Amount */}
+                                                    {(o.items || []).length > 0 && (
+                                                        <TableRow key={`${o.orderId}-items`} className="bg-indigo-50/40 hover:bg-indigo-50/40">
+                                                            <TableCell colSpan={7} className="py-2 px-6">
+                                                                <div className="space-y-1">
+                                                                    {o.items.map((it, idx) => (
+                                                                        <div key={idx} className="flex items-center justify-between text-xs">
+                                                                            <span className="text-slate-600">
+                                                                                <span className="font-semibold text-slate-800">{it.itemName || 'Item'}</span>
+                                                                                {it.specification && <span className="text-slate-400"> — {it.specification}</span>}
+                                                                                {it.qty > 0 && <span className="text-slate-400"> × {it.qty}</span>}
+                                                                            </span>
+                                                                            <span className="font-mono font-semibold text-slate-700">₹{(it.billAmount || 0).toLocaleString('en-IN')}</span>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            </TableCell>
+                                                        </TableRow>
+                                                    )}
+                                                </Fragment>
+                                            ))}
+                                            {/* Totals row */}
+                                            <TableRow className="bg-slate-50 font-bold">
+                                                <TableCell colSpan={2}>TOTAL ({(orderFin?.orders || []).length} orders)</TableCell>
+                                                <TableCell className="text-right font-mono">₹{(orderFin?.orders || []).reduce((s, o) => s + (o.total || 0), 0).toLocaleString('en-IN')}</TableCell>
+                                                <TableCell className="text-right font-mono text-emerald-700">₹{(orderFin?.orders || []).reduce((s, o) => s + (o.advance || 0), 0).toLocaleString('en-IN')}</TableCell>
+                                                <TableCell className="text-right font-mono text-emerald-700">₹{(orderFin?.orders || []).reduce((s, o) => s + (o.paid || 0), 0).toLocaleString('en-IN')}</TableCell>
+                                                <TableCell className="text-right font-mono text-rose-700">₹{(orderFin?.orders || []).reduce((s, o) => s + (o.due || 0), 0).toLocaleString('en-IN')}</TableCell>
+                                                <TableCell />
+                                            </TableRow>
+                                        </TableBody>
+                                    </Table>
+                                </div>
+                            )}
+
+                            {/* Orders whose Order Form is not submitted yet — not listed above */}
+                            {(orderFin?.orders || []).length > 0 && (orderFin?.ordersWithoutForm || 0) > 0 && (
+                                <p className="text-[11px] text-slate-400 px-1">
+                                    + {orderFin.ordersWithoutForm} order(s) ka Order Form abhi submit nahi hua — form aane par yahan dikhenge.
+                                </p>
+                            )}
+
+                            {/* Unallocated (general) receipts */}
+                            {(orderFin?.unallocated?.count || 0) > 0 && (
+                                <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm">
+                                    <span className="font-bold text-amber-800">General Receipts (kisi order se linked nahi): </span>
+                                    <span className="text-amber-700">
+                                        {orderFin.unallocated.count} receipt(s) — ₹{(orderFin.unallocated.total || 0).toLocaleString('en-IN')}
+                                    </span>
+                                    <p className="text-[11px] text-amber-600 mt-1">
+                                        Ye purane/general receipts hain — aage se payment karte time order select karo taaki tracking order-wise rahe.
+                                    </p>
+                                </div>
+                            )}
+
+                            {/* Customer-level reference */}
+                            <div className="flex gap-6 text-xs text-slate-500 px-1">
+                                <span>Customer Outstanding (master): <strong className="text-rose-600">₹{(orderFin?.customer?.outstandingAmount || 0).toLocaleString('en-IN')}</strong></span>
+                                <span>Customer Advance (master): <strong className="text-emerald-600">₹{(orderFin?.customer?.advancePayment || 0).toLocaleString('en-IN')}</strong></span>
+                            </div>
+                        </div>
+                    )}
+                </DialogContent>
+            </Dialog>
 
         </div>
     );

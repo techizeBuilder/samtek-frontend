@@ -17,6 +17,7 @@ import {
   Pencil,
   X,
   LogOut,
+  MapPin,
 } from "lucide-react";
 import Loader from "../../Loader";
 import { toast } from "@/pages/Alert/Toast";
@@ -41,6 +42,7 @@ interface UserType {
   username?: string;
   email: string;
   mobile?: string;
+  address?: string;
   gender?: string;
   dob?: string;
   joiningDate?: string;
@@ -94,6 +96,7 @@ export default function PersonalInformation() {
     dob: "",
     email: "",
     mobile: "",
+    address: "",
   });
 
   const fetchUser = async () => {
@@ -109,6 +112,7 @@ export default function PersonalInformation() {
         dob: userData.dob ? userData.dob.slice(0, 10) : "",
         email: userData.email || "",
         mobile: userData.mobile || "",
+        address: userData.address || "",
       });
     } catch (err) {
       console.error("Failed to fetch user", err);
@@ -292,6 +296,7 @@ export default function PersonalInformation() {
           >
             <Info label="Email" value={user.email} icon={<Mail />} />
             <Info label="Mobile" value={user.mobile} icon={<Phone />} />
+            <Info label="Address" value={user.address} icon={<MapPin />} />
           </Section>
 
           {/* -------- Job Information -------- */}
@@ -451,9 +456,19 @@ export default function PersonalInformation() {
             value={form.mobile}
             onChange={(e: any) => setForm({ ...form, mobile: e.target.value })}
           />
+          <div>
+            <label className="text-xs text-gray-500">Address</label>
+            <textarea
+              value={form.address}
+              onChange={(e) => setForm({ ...form, address: e.target.value })}
+              rows={3}
+              className="mt-1 w-full border rounded-md px-3 py-2 text-sm resize-none"
+              placeholder="Your residential address"
+            />
+          </div>
           <ModalActions
             onSave={() => {
-              updateUser({ email: form.email, mobile: form.mobile });
+              updateUser({ email: form.email, mobile: form.mobile, address: form.address });
               setOpenContact(false);
             }}
             onCancel={() => setOpenContact(false)}

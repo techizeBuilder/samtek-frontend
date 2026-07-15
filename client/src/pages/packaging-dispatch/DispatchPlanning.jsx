@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { Truck, Package, MapPin, X, Plus } from 'lucide-react';
+import { Truck, Package, MapPin, X, Plus, FileText } from 'lucide-react';
 
 const transportTypes = ['Local Transport', 'Transport Company', 'Courier'];
 
@@ -112,7 +112,12 @@ function CreateDispatchModal({ job, onClose }) {
             <div className="space-y-3">
               <div>
                 <Label>Invoice Number</Label>
-                <Input className="mt-1" value={form.invoiceNumber} onChange={e => set('invoiceNumber', e.target.value)} placeholder="INV-XXXX" />
+                {/* Auto-filled from the order's generated invoice — never manually
+                    editable, so dispatch always ties back to a real invoice. */}
+                <div className="mt-1 flex items-center gap-2 h-10 px-3 rounded-md border border-emerald-200 bg-emerald-50 text-emerald-700 font-medium text-sm">
+                  <FileText className="h-4 w-4" />
+                  {form.invoiceNumber || '—'}
+                </div>
               </div>
               <div>
                 <Label>Packing List Notes</Label>
@@ -147,9 +152,21 @@ export default function DispatchPlanning() {
   const packedJobs = jobs.filter(j => j.status === 'Packed');
 
   const handlePlanDispatch = (job) => {
+    // Invoice must exist for the order before dispatch can be planned — this
+    // is enforced again server-side, but checking here avoids opening the
+    // modal just to have it rejected on submit.
+    if (!job.invoiceNumber) {
+      toast({
+        title: 'Invoice Not Generated',
+        description: 'Accounts must generate the invoice (Pakka/Kachha) for this order before dispatch can be planned.',
+        variant: 'destructive'
+      });
+      return;
+    }
+
     // If there's no linked Sale (old packed jobs before NOC system), allow dispatch directly
     const hasSaleLinked = !!(job.customerName || job.nocStatus || job.gatePassStatus);
-    
+
     if (hasSaleLinked) {
       // New flow: must have NOC approved first
       if (job.nocStatus === 'Pending' || !job.nocStatus) {
@@ -208,7 +225,10 @@ export default function DispatchPlanning() {
                   <div className="flex gap-2"><MapPin className="h-3.5 w-3.5 text-slate-400 mt-0.5" /><span>SN: {job.serialNumber}</span></div>
                   <div className="flex gap-2"><Truck className="h-3.5 w-3.5 text-slate-400 mt-0.5" /><span>{job.packingType}</span></div>
                   
-                  <div className="flex gap-2 pt-2 mt-2 border-t border-slate-100">
+                  <div className="flex flex-wrap gap-2 pt-2 mt-2 border-t border-slate-100">
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${job.invoiceNumber ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
+                      {job.invoiceNumber ? `Invoice: ${job.invoiceNumber}` : 'Invoice: Not Generated'}
+                    </span>
                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${job.nocStatus === 'Approved' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
                       NOC: {job.nocStatus || 'Pending'}
                     </span>
@@ -217,11 +237,12 @@ export default function DispatchPlanning() {
                     </span>
                   </div>
                 </div>
-                <Button 
-                  className="w-full" 
-                  size="sm" 
+                <Button
+                  className="w-full"
+                  size="sm"
                   onClick={() => handlePlanDispatch(job)}
-                  variant={(job.nocStatus === 'Approved' && job.gatePassStatus === 'Generated') ? 'default' : 'secondary'}
+                  variant={(job.invoiceNumber && job.nocStatus === 'Approved' && job.gatePassStatus === 'Generated') ? 'default' : 'secondary'}
+                  title={!job.invoiceNumber ? 'Invoice not generated for this order yet' : undefined}
                 >
                   <Plus className="h-4 w-4 mr-1.5" />
                   Plan Dispatch

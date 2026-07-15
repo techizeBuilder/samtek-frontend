@@ -1,5 +1,6 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { loadImgCompressed } from './pdfImage';
 
 // ─── Safe number formatter (no Unicode symbols — jsPDF default font safe) ───
 function fmtAmt(n) {
@@ -51,21 +52,6 @@ function numberToWords(num) {
   return toW(rup) + ' Rupees' + (pai > 0 ? ' and ' + toW(pai) + ' Paise' : '') + ' Only';
 }
 
-/** Load a URL as base64 data-URL (returns null on failure) */
-async function urlToDataUrl(url) {
-  try {
-    const resp = await fetch(url);
-    if (!resp.ok) return null;
-    const blob = await resp.blob();
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result);
-      reader.onerror   = () => resolve(null);
-      reader.readAsDataURL(blob);
-    });
-  } catch (_) { return null; }
-}
-
 // ─── Colour helpers (RGB arrays) ────────────────────────────────────────────
 const NAVY   = [13,  71, 161];
 const BLUE   = [25, 118, 210];
@@ -107,17 +93,21 @@ export async function generateDueBillPDF(data, logoDataUrl) {
   } = data;
 
   // Use customer master values when available, else fall back to invoice values
+  // Order-wise figures — the due bill belongs to ONE order:
+  // Total = order invoice total, Paid = advance + receipts against this order
   const cmTotal   = displayTotal > 0 ? displayTotal : totalAmount;
   const cmPaid    = displayTotal > 0 ? displayPaid  : (advancedPaymentAmount + paidAmount);
   const cmDue     = displayTotal > 0 ? displayDue   : balanceAmount;
-  const cmAdvance = displayTotal > 0 ? customerAdvance : advancedPaymentAmount;
+  const cmAdvance = advancedPaymentAmount || 0;
 
-  // Fetch stamp image from server (company.stampUrl = '/uploads/company-stamps/xxx.png')
+  // Compress logo + stamp before embedding — raw embeds made the PDF ~16 MB;
+  // resized JPEG/PNG keeps the whole file in KBs
+  const logoImg = logoDataUrl ? await loadImgCompressed(logoDataUrl, 220, 'jpeg') : null;
   let stampDataUrl = null;
   if (company.stampUrl) {
     const baseUrl = window.location.origin;
     const stampPath = company.stampUrl.startsWith('http') ? company.stampUrl : baseUrl + company.stampUrl;
-    stampDataUrl = await urlToDataUrl(stampPath);
+    stampDataUrl = await loadImgCompressed(stampPath, 200, 'png');
   }
 
   let y = 0;
@@ -130,13 +120,13 @@ export async function generateDueBillPDF(data, logoDataUrl) {
   doc.rect(0, 0, PW, 5, 'F');
   y = 14;
 
-  // Logo
-  if (logoDataUrl) {
-    try { doc.addImage(logoDataUrl, 'WEBP', ML, y, 88, 52); } catch (_) {}
+  // Logo (compressed JPEG — keeps PDF size in KBs)
+  if (logoImg) {
+    try { doc.addImage(logoImg, 'JPEG', ML, y, 88, 52); } catch (_) {}
   }
 
   // Company block (right of logo)
-  const cx = logoDataUrl ? ML + 96 : ML;
+  const cx = logoImg ? ML + 96 : ML;
   const compName = (company.name || 'SAMTEK MACHINERY').toUpperCase();
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(17);
@@ -164,10 +154,11 @@ export async function generateDueBillPDF(data, logoDataUrl) {
   y += 34;
 
   // ── Meta info row ────────────────────────────────────────────────────────
+  const metaBoxH = 40; // taller box so long values (e.g. TEMP invoice numbers) can wrap to 2 lines
   doc.setFillColor(...LBLUE);
   doc.setDrawColor(...BLUE);
   doc.setLineWidth(0.5);
-  doc.rect(ML, y, MW, 32, 'FD');
+  doc.rect(ML, y, MW, metaBoxH, 'FD');
 
   const metaItems = [
     { label: 'Bill Date',   value: fmtDate(billDate || new Date()) },
@@ -179,20 +170,29 @@ export async function generateDueBillPDF(data, logoDataUrl) {
   const mW = MW / metaItems.length;
   metaItems.forEach((m, i) => {
     const mx = ML + i * mW + 5;
+    const maxValW = mW - 10; // keep value inside its own column — no overlap
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7);
     doc.setTextColor(...NAVY);
     doc.text(m.label, mx, y + 10);
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
     doc.setTextColor(...DGREY);
-    doc.text(String(m.value), mx, y + 23);
+    // Wrap long values within the column; shrink font if still over 2 lines
+    let valFs = 8;
+    doc.setFontSize(valFs);
+    let valLines = doc.splitTextToSize(String(m.value), maxValW);
+    if (valLines.length > 2) {
+      valFs = 6.5;
+      doc.setFontSize(valFs);
+      valLines = doc.splitTextToSize(String(m.value), maxValW);
+    }
+    doc.text(valLines.slice(0, 2), mx, y + 21);
     if (i < metaItems.length - 1) {
       doc.setDrawColor(...BORDER);
-      doc.line(ML + (i + 1) * mW, y + 4, ML + (i + 1) * mW, y + 28);
+      doc.line(ML + (i + 1) * mW, y + 4, ML + (i + 1) * mW, y + metaBoxH - 4);
     }
   });
-  y += 40;
+  y += metaBoxH + 8;
 
   // ══════════════════════════════════════════════════════════════════════════
   // CUSTOMER + ORDER DETAILS (two columns)
@@ -318,10 +318,10 @@ export async function generateDueBillPDF(data, logoDataUrl) {
 
   const totalPaid = cmPaid;
   const summaryRows = [
-    ['Total (Outstanding + Advance)',   fmtAmt(cmTotal)],
-    ['(-) Advance Paid',                fmtAmt(cmAdvance)],
-    ['Total Received',                  fmtAmt(cmPaid)],
-    ['AMOUNT DUE',                      fmtAmt(cmDue)],
+    ['Order Total (Incl. GST)',           fmtAmt(cmTotal)],
+    ['Advance Paid (this order)',         fmtAmt(cmAdvance)],
+    ['Total Received (Advance + Receipts)', fmtAmt(cmPaid)],
+    ['AMOUNT DUE (this order)',           fmtAmt(cmDue)],
   ];
 
   autoTable(doc, {

@@ -104,6 +104,7 @@ import PackedOrders from "@/pages/accounts/PackedOrders";
 import OrderForms from "@/pages/accounts/OrderForms";
 import HRMSDashboard from "@/pages/hrms/HRMSDashboard";
 import HRMSEmployees from "@/pages/hrms/Employee";
+import HRMSDocumentVerification from "@/pages/hrms/DocumentVerification";
 import HRMSAttendance from "@/pages/hrms/AttendanceReport";
 import HRMSSalaryStructure from "@/pages/hrms/Payroll/SalaryStructure";
 import HRMSPayrollRun from "@/pages/hrms/Payroll/PayrollRun";
@@ -285,6 +286,11 @@ function Router() {
       <Route exact path="/hrms/SuperAdmin/employees/profile/:id">
         <ProtectedRoute requiredRole={["HR-Admin", "Company Admin", "Manager"]}>
           <HRMSProfile />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/SuperAdmin/document-verification">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HRMSDocumentVerification />
         </ProtectedRoute>
       </Route>
       <Route exact path="/hrms/SuperAdmin/addUser">

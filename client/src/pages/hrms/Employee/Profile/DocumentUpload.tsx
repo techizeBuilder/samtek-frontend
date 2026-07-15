@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   Clock,
   XCircle,
+  Lock,
 } from "lucide-react";
 import Loader from "../../Loader";
 import { toast } from "@/pages/Alert/Toast";
@@ -21,7 +22,9 @@ const ViewAPI = API.replace("/api", "");
 
 /* ================= TYPES ================= */
 
-type DocumentType = "AADHAAR" | "PAN" | "MARKSHEET_12" | "PASSBOOK";
+// Document "type" is now a free-form key sourced from
+// AdminSettings.hrmsDocumentTypes (admin-configurable), not a fixed union.
+type DocumentType = string;
 type DocStatus = "UPLOADED" | "VERIFIED" | "REJECTED";
 
 interface UserDocument {
@@ -30,6 +33,14 @@ interface UserDocument {
   fileUrl: string;
   status: DocStatus;
   createdAt: string;
+  remarks?: string;
+}
+
+interface DocumentTypeConfig {
+  _id: string;
+  key: string;
+  label: string;
+  description: string;
 }
 
 interface UserType {
@@ -42,43 +53,14 @@ interface UserType {
   departmentId?: { name: string };
 }
 
-/* ================= REQUIRED DOCUMENTS CONFIG ================= */
-
-const REQUIRED_DOCUMENTS: {
-  key: DocumentType;
-  label: string;
-  field: string;
-  description: string;
-  icon: string;
-}[] = [
-  {
-    key: "AADHAAR",
-    label: "Aadhaar Card",
-    field: "aadhaar",
-    description: "Upload your Aadhaar Card (front & back)",
-    icon: "🪪",
-  },
-  {
-    key: "PAN",
-    label: "PAN Card",
-    field: "pan",
-    description: "Upload your PAN Card",
-    icon: "🗂️",
-  },
-  {
-    key: "MARKSHEET_12",
-    label: "12th Marksheet",
-    field: "marksheet10",
-    description: "Upload 10th/12th/Graduation Marksheet",
-    icon: "🎓",
-  },
-  {
-    key: "PASSBOOK",
-    label: "Bank Passbook",
-    field: "passbook",
-    description: "Upload first page of Bank Passbook",
-    icon: "🏦",
-  },
+// Fallback used only until the admin-settings request resolves (or if the
+// company has never opened Admin Settings > HRMS Setting > Upload Document
+// Setting yet, in which case the backend seeds these same defaults anyway).
+const REQUIRED_DOCUMENTS_FALLBACK: DocumentTypeConfig[] = [
+  { _id: "AADHAAR", key: "AADHAAR", label: "Aadhaar Card", description: "Upload your Aadhaar Card (front & back)" },
+  { _id: "PAN", key: "PAN", label: "PAN Card", description: "Upload your PAN Card" },
+  { _id: "MARKSHEET_12", key: "MARKSHEET_12", label: "12th Marksheet", description: "Upload 10th/12th/Graduation Marksheet" },
+  { _id: "PASSBOOK", key: "PASSBOOK", label: "Bank Passbook", description: "Upload first page of Bank Passbook" },
 ];
 
 /* ================= STATUS BADGE ================= */
@@ -125,6 +107,7 @@ export default function DocumentUpload() {
 
   const [user, setUser] = useState<UserType | null>(null);
   const [documents, setDocuments] = useState<UserDocument[]>([]);
+  const [docTypes, setDocTypes] = useState<DocumentTypeConfig[]>(REQUIRED_DOCUMENTS_FALLBACK);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState<string | null>(null);
 
@@ -144,6 +127,22 @@ export default function DocumentUpload() {
     }
   };
 
+  /* ================= FETCH DOCUMENT TYPE SETTINGS ================= */
+
+  const fetchDocTypes = async () => {
+    try {
+      const res = await axios.get(`${API}/admin-settings/hrms-document-types`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const list = res.data?.data;
+      if (Array.isArray(list) && list.length > 0) {
+        setDocTypes(list);
+      }
+    } catch (error) {
+      console.error("Failed to fetch document type settings, using defaults", error);
+    }
+  };
+
   /* ================= FETCH DOCUMENTS ================= */
 
   const fetchDocuments = async () => {
@@ -158,28 +157,42 @@ export default function DocumentUpload() {
   };
 
   useEffect(() => {
-    Promise.all([fetchUser(), fetchDocuments()]).finally(() =>
+    Promise.all([fetchUser(), fetchDocTypes(), fetchDocuments()]).finally(() =>
       setLoading(false)
     );
   }, []);
 
+  // Picks the most recently uploaded document of a given type — guards
+  // against stale duplicate rows left over from before re-upload was fixed
+  // to update in place instead of ever inserting a second copy.
   const getDocument = (type: DocumentType) =>
-    documents.find((d) => d.type === type);
+    documents
+      .filter((d) => d.type === type)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
 
   /* ================= UPLOAD HANDLER ================= */
 
   const handleUpload = async (
     file: File,
-    field: string,
     type: DocumentType
   ) => {
     try {
-      setUploading(field);
-
-      const formData = new FormData();
-      formData.append(field, file);
+      setUploading(type);
 
       const existingDoc = getDocument(type);
+
+      if (existingDoc?.status === "VERIFIED") {
+        toast({
+          type: "error",
+          title: "Locked",
+          message: "This document is already verified and cannot be re-uploaded",
+        });
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append("document", file);
+      formData.append("type", type);
 
       if (existingDoc) {
         // UPDATE existing document
@@ -218,7 +231,7 @@ export default function DocumentUpload() {
       }
 
       // Reset file input
-      const inputRef = fileInputRefs.current[field];
+      const inputRef = fileInputRefs.current[type];
       if (inputRef) inputRef.value = "";
 
       await fetchDocuments();
@@ -249,10 +262,26 @@ export default function DocumentUpload() {
     .toUpperCase()
     .slice(0, 2);
 
-  const uploadedCount = REQUIRED_DOCUMENTS.filter((d) =>
+  const uploadedCount = docTypes.filter((d) =>
     getDocument(d.key)
   ).length;
-  const progress = Math.round((uploadedCount / REQUIRED_DOCUMENTS.length) * 100);
+  const progress = docTypes.length > 0 ? Math.round((uploadedCount / docTypes.length) * 100) : 0;
+
+  // Some documents may have been uploaded under a type that isn't (or is no
+  // longer) in the admin-configured list — e.g. uploaded before this type was
+  // renamed/removed in Admin Settings. Show those too so an employee never
+  // loses visibility of something they already uploaded.
+  const configuredKeys = new Set(docTypes.map((d) => d.key));
+  const orphanedTypes = Array.from(
+    new Set(documents.filter((d) => !configuredKeys.has(d.type)).map((d) => d.type))
+  );
+  const orphanedTypeConfigs: DocumentTypeConfig[] = orphanedTypes.map((t) => ({
+    _id: t,
+    key: t,
+    label: t.replace(/_/g, " "),
+    description: "Previously uploaded document",
+  }));
+  const renderList: DocumentTypeConfig[] = [...docTypes, ...orphanedTypeConfigs];
 
   /* ================= UI ================= */
 
@@ -308,7 +337,7 @@ export default function DocumentUpload() {
               <div className="flex items-center justify-between text-xs text-gray-500 mb-2">
                 <span className="font-medium">Documents</span>
                 <span className="font-bold text-indigo-600">
-                  {uploadedCount}/{REQUIRED_DOCUMENTS.length}
+                  {uploadedCount}/{docTypes.length}
                 </span>
               </div>
               <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
@@ -332,10 +361,11 @@ export default function DocumentUpload() {
 
         {/* ================= DOCUMENT LIST ================= */}
         <div className="lg:col-span-3 space-y-4">
-          {REQUIRED_DOCUMENTS.map((doc) => {
+          {renderList.map((doc) => {
             const uploadedDoc = getDocument(doc.key);
             const isUploaded = !!uploadedDoc;
-            const isUploading = uploading === doc.field;
+            const isVerified = uploadedDoc?.status === "VERIFIED";
+            const isUploading = uploading === doc.key;
 
             return (
               <div
@@ -354,7 +384,7 @@ export default function DocumentUpload() {
                         isUploaded ? "bg-indigo-50" : "bg-gray-100"
                       }`}
                     >
-                      {doc.icon}
+                      <FileText size={20} className={isUploaded ? "text-indigo-500" : "text-gray-400"} />
                     </div>
 
                     <div className="space-y-1">
@@ -389,6 +419,12 @@ export default function DocumentUpload() {
                           </span>
                         </div>
                       )}
+
+                      {uploadedDoc?.status === "REJECTED" && uploadedDoc.remarks && (
+                        <p className="text-xs text-rose-600">
+                          Rejected: {uploadedDoc.remarks}
+                        </p>
+                      )}
                     </div>
                   </div>
 
@@ -407,43 +443,53 @@ export default function DocumentUpload() {
                       </a>
                     )}
 
-                    {/* UPLOAD / RE-UPLOAD */}
-                    <label
-                      className={`inline-flex items-center gap-1.5 px-4 py-2 text-sm rounded-lg cursor-pointer font-semibold transition-all shadow-sm active:scale-95 ${
-                        isUploading
-                          ? "bg-indigo-400 text-white cursor-not-allowed"
-                          : isUploaded
-                          ? "bg-gray-800 text-white hover:bg-gray-900"
-                          : "bg-indigo-600 text-white hover:bg-indigo-700"
-                      }`}
-                    >
-                      {isUploading ? (
-                        <>
-                          <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                          Uploading…
-                        </>
-                      ) : (
-                        <>
-                          {isUploaded ? (
-                            <RefreshCw size={14} />
-                          ) : (
-                            <Upload size={14} />
-                          )}
-                          {isUploaded ? "Re-Upload" : "Upload"}
-                        </>
-                      )}
-                      <input
-                        ref={(el) => (fileInputRefs.current[doc.field] = el)}
-                        type="file"
-                        accept=".pdf,.jpg,.jpeg,.png"
-                        hidden
-                        disabled={isUploading}
-                        onChange={(e) =>
-                          e.target.files &&
-                          handleUpload(e.target.files[0], doc.field, doc.key)
-                        }
-                      />
-                    </label>
+                    {/* UPLOAD / RE-UPLOAD / LOCKED */}
+                    {isVerified ? (
+                      <span
+                        className="inline-flex items-center gap-1.5 px-4 py-2 text-sm rounded-lg font-semibold bg-emerald-50 text-emerald-600 border border-emerald-200 cursor-not-allowed"
+                        title="Verified documents cannot be re-uploaded"
+                      >
+                        <Lock size={14} />
+                        Verified
+                      </span>
+                    ) : (
+                      <label
+                        className={`inline-flex items-center gap-1.5 px-4 py-2 text-sm rounded-lg cursor-pointer font-semibold transition-all shadow-sm active:scale-95 ${
+                          isUploading
+                            ? "bg-indigo-400 text-white cursor-not-allowed"
+                            : isUploaded
+                            ? "bg-gray-800 text-white hover:bg-gray-900"
+                            : "bg-indigo-600 text-white hover:bg-indigo-700"
+                        }`}
+                      >
+                        {isUploading ? (
+                          <>
+                            <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            Uploading…
+                          </>
+                        ) : (
+                          <>
+                            {isUploaded ? (
+                              <RefreshCw size={14} />
+                            ) : (
+                              <Upload size={14} />
+                            )}
+                            {isUploaded ? "Re-Upload" : "Upload"}
+                          </>
+                        )}
+                        <input
+                          ref={(el) => (fileInputRefs.current[doc.key] = el)}
+                          type="file"
+                          accept=".pdf,.jpg,.jpeg,.png"
+                          hidden
+                          disabled={isUploading}
+                          onChange={(e) =>
+                            e.target.files &&
+                            handleUpload(e.target.files[0], doc.key)
+                          }
+                        />
+                      </label>
+                    )}
                   </div>
                 </div>
               </div>
@@ -451,7 +497,7 @@ export default function DocumentUpload() {
           })}
 
           {/* ================= COMPLETION BANNER ================= */}
-          {uploadedCount === REQUIRED_DOCUMENTS.length && (
+          {docTypes.length > 0 && uploadedCount === docTypes.length && (
             <div className="flex items-center gap-3 p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-700">
               <CheckCircle size={20} className="shrink-0" />
               <div>

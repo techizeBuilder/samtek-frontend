@@ -279,6 +279,27 @@ export const leadApi = {
     return apiRequest(`/leads/${leadId}/meeting`, {
       headers: { 'Authorization': `Bearer ${token}` }
     });
+  },
+
+  // All meetings of a lead (pending + done history) — Meeting Attempts modal
+  getMeetings: (leadId) => {
+    const token = localStorage.getItem('token');
+    return apiRequest(`/leads/${leadId}/meetings`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+  },
+
+  // Save attempt notes + mark the meeting Done
+  completeMeeting: (leadId, meetingId, attemptNote) => {
+    const token = localStorage.getItem('token');
+    return apiRequest(`/leads/${leadId}/meeting/${meetingId}/complete`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ attemptNote })
+    });
   }
 };
 

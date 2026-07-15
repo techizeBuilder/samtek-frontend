@@ -141,7 +141,7 @@ const Quotation = () => {
   ];
 
   const ALL_SERVICE_CHARGES = (dynCharges && dynCharges.length > 0)
-    ? dynCharges.map(c => ({ id: c._id || c.name.toLowerCase().replace(/\s+/g, '_'), name: c.name, price: c.price || 0, gst: c.gst || 18 }))
+    ? dynCharges.map(c => ({ id: c._id || c.name.toLowerCase().replace(/\s+/g, '_'), name: c.name, price: c.price || 0, gst: c.gst ?? 18 }))
     : [
     { id: 'installation', name: 'Installation Charges', price: 10000, gst: 18 },
     { id: 'freight',      name: 'Freight Charges',      price: 3000,  gst: 18 },
@@ -283,6 +283,16 @@ const Quotation = () => {
   const companyName = companyData.name || companyData.unitName || 'Samtek Machinery';
   const companySocialLinks = companyData.socialLinks || [];
 
+  // Bank details from the salesman's company (set by Company Admin in My Company).
+  // Not set → fields stay empty on preview/print/download/email.
+  const companyBankDetails = {
+    companyName:   companyData.bankDetails?.companyName || '',
+    bankName:      companyData.bankDetails?.bankName || '',
+    accountNumber: companyData.bankDetails?.accountNumber || '',
+    ifsc:          companyData.bankDetails?.ifsc || '',
+    branch:        companyData.bankDetails?.branch || ''
+  };
+
   // ─── Helper: get icon SVG for social link type ──────────────────────────────
   const getSocialIcon = (type) => {
     const icons = {
@@ -314,7 +324,7 @@ const Quotation = () => {
       if (state.quotationType) setQuotationType(state.quotationType);
       if (state.selectedTerms?.length) setSelectedTerms(state.selectedTerms);
       if (state.selectedNotes?.length) setSelectedNotes(state.selectedNotes);
-      if (state.additionalCharges?.length) setAdditionalCharges(state.additionalCharges);
+      if (state.additionalCharges?.length) setAdditionalCharges(state.additionalCharges.map(c => ({ ...c, gst: c.gst ?? 18 })));
       // Jump straight to product selection — skip "Select Type" screen
       setStep('product_selection');
     } catch (e) { /* ignore */ }
@@ -1011,7 +1021,9 @@ const Quotation = () => {
   const persistQuotationSnapshot = () => {
     if (!leadId) return;
     leadApi.update(leadId, {
-      quotationItems: selectedItems,
+      // Normalize quantity so the Order Form's per-product QTY box always gets
+      // a real number (an in-progress cleared input can leave ''/NaN here)
+      quotationItems: selectedItems.map(it => ({ ...it, quantity: Number(it.quantity) || 1 })),
       quotationCharges: additionalCharges
     }).catch(err => console.error('Failed to save quotation snapshot on lead:', err));
   };
@@ -1046,12 +1058,7 @@ const Quotation = () => {
         additionalCharges,
         selectedTerms,
         selectedNotes,
-        bankDetails: {
-          companyName: 'SAMTEK ENGINEERING AND GIS SOLUTION PVT LTD.',
-          accountNumber: '411505500062',
-          ifsc: 'ICIC0004115',
-          branch: 'NOIDA SECTOR 121 (NOIDA)'
-        },
+        bankDetails: companyBankDetails,
         loggedInUser,
         fileName: `Quotation_${leadData?.leadCode || 'New'}.pdf`,
         returnBase64: false
@@ -1114,12 +1121,7 @@ const Quotation = () => {
         additionalCharges,
         selectedTerms,
         selectedNotes,
-        bankDetails: {
-          companyName: 'SAMTEK ENGINEERING AND GIS SOLUTION PVT LTD.',
-          accountNumber: '411505500062',
-          ifsc: 'ICIC0004115',
-          branch: 'NOIDA SECTOR 121 (NOIDA)'
-        },
+        bankDetails: companyBankDetails,
         loggedInUser,
         fileName: `Quotation_${leadData?.leadCode || 'New'}.pdf`,
         returnBase64: true
@@ -1183,12 +1185,7 @@ const Quotation = () => {
           additionalCharges,
           selectedTerms,
           selectedNotes,
-          bankDetails: {
-            companyName: 'SAMTEK ENGINEERING AND GIS SOLUTION PVT LTD.',
-            accountNumber: '411505500062',
-            ifsc: 'ICIC0004115',
-            branch: 'NOIDA SECTOR 121 (NOIDA)'
-          },
+          bankDetails: companyBankDetails,
           loggedInUser,
           fileName: `Quotation_${leadData?.leadCode || 'New'}.pdf`,
           returnBase64: true
@@ -1209,12 +1206,13 @@ const Quotation = () => {
         customerName: leadData.contactPerson || leadData.companyName,
         leadCode: leadData.leadCode,
         attachmentBase64: pdfBase64,
-        // Compute net amount (items + GST + additional charges, no GST on charges) — same formula as renderPreview
+        // Compute net amount (items + GST + additional charges incl. their GST) — same formula as renderPreview
         quotationFinalAmount: (() => {
           const itemsSubTotal = selectedItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
           const itemsGst = selectedItems.reduce((acc, item) => acc + (item.price * item.quantity * (item.gst / 100)), 0);
           const chargesSubTotal = additionalCharges.reduce((acc, c) => acc + c.price, 0);
-          return itemsSubTotal + itemsGst + chargesSubTotal;
+          const chargesGst = additionalCharges.reduce((acc, c) => acc + c.price * ((c.gst ?? 18) / 100), 0);
+          return itemsSubTotal + itemsGst + chargesSubTotal + chargesGst;
         })()
       }, {
         headers: { Authorization: `Bearer ${token}` },
@@ -1690,7 +1688,7 @@ const Quotation = () => {
         <Button variant="ghost" onClick={() => setStep('product_selection')} className="gap-2">
           <ArrowLeft className="h-4 w-4" /> Back to selection
         </Button>
-        <Button onClick={() => setStep('preview')} className="bg-green-600 hover:bg-green-700">
+        <Button onClick={() => { persistQuotationSnapshot(); setStep('preview'); }} className="bg-green-600 hover:bg-green-700">
           Preview Quotation <FileText className="h-4 w-4 ml-2" />
         </Button>
       </div>
@@ -1793,7 +1791,7 @@ const Quotation = () => {
                       <Input
                         type="number"
                         value={item.price}
-                        onChange={(e) => handleUpdateItem(item.id, 'price', parseFloat(e.target.value))}
+                        onChange={(e) => handleUpdateItem(item.id, 'price', parseFloat(e.target.value) || 0)}
                         className="h-8 text-center"
                       />
                     </td>
@@ -1801,7 +1799,7 @@ const Quotation = () => {
                       <Input
                         type="number"
                         value={item.quantity}
-                        onChange={(e) => handleUpdateItem(item.id, 'quantity', parseInt(e.target.value))}
+                        onChange={(e) => handleUpdateItem(item.id, 'quantity', parseInt(e.target.value) || 0)}
                         className="h-8 text-center"
                       />
                     </td>
@@ -1809,7 +1807,7 @@ const Quotation = () => {
                       <Input
                         type="number"
                         value={item.gst}
-                        onChange={(e) => handleUpdateItem(item.id, 'gst', parseInt(e.target.value))}
+                        onChange={(e) => handleUpdateItem(item.id, 'gst', parseInt(e.target.value) || 0)}
                         className="h-8 text-center"
                       />
                     </td>
@@ -1842,9 +1840,13 @@ const Quotation = () => {
                         className="h-8 text-center" />
                     </td>
                     <td className="px-4 py-3 text-center text-gray-400">-</td>
-                    <td className="px-4 py-3 text-center text-gray-400">-</td>
+                    <td className="px-4 py-3">
+                      <Input type="number" value={charge.gst ?? 18}
+                        onChange={(e) => setAdditionalCharges(prev => prev.map(c => c.id === charge.id ? {...c, gst: parseFloat(e.target.value)||0} : c))}
+                        className="h-8 text-center" />
+                    </td>
                     <td className="px-4 py-3 text-right font-bold">
-                      ₹{charge.price.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      ₹{(charge.price * (1 + (charge.gst ?? 18) / 100)).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                     </td>
                     <td></td>
                   </tr>
@@ -1856,7 +1858,7 @@ const Quotation = () => {
                   <td className="px-4 py-3 text-right text-lg text-blue-600">
                     ₹{(
                       selectedItems.reduce((acc, item) => acc + (item.price * item.quantity * (1 + item.gst / 100)), 0) +
-                      additionalCharges.reduce((acc, c) => acc + c.price, 0)
+                      additionalCharges.reduce((acc, c) => acc + c.price * (1 + (c.gst ?? 18) / 100), 0)
                     ).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                   </td>
                   <td></td>
@@ -1891,7 +1893,7 @@ const Quotation = () => {
               <div key={charge.id} className="flex items-center gap-3 bg-orange-50 border border-orange-100 rounded-md p-3">
                 <span className="text-xs font-black text-orange-600 bg-orange-100 px-2 py-0.5 rounded">S</span>
                 <span className="flex-1 text-sm font-bold text-gray-800">{charge.name}</span>
-                <span className="text-sm text-gray-500">₹{charge.price.toLocaleString()}</span>
+                <span className="text-sm text-gray-500">₹{charge.price.toLocaleString()} <span className="text-xs text-orange-600 font-semibold">+ {charge.gst ?? 18}% GST</span></span>
                 <button onClick={() => setAdditionalCharges(prev => prev.filter(c => c.id !== charge.id))}
                   className="text-red-400 hover:text-red-600 ml-1" title="Remove">
                   <X className="h-4 w-4" />
@@ -2153,8 +2155,9 @@ const Quotation = () => {
     const itemsSubTotal = selectedItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
     const itemsGst = selectedItems.reduce((acc, item) => acc + (item.price * item.quantity * (item.gst / 100)), 0);
     const chargesSubTotal = additionalCharges.reduce((acc, c) => acc + c.price, 0);
+    const chargesGst = additionalCharges.reduce((acc, c) => acc + c.price * ((c.gst ?? 18) / 100), 0);
     const subTotal = itemsSubTotal + chargesSubTotal;
-    const totalGst = itemsGst;
+    const totalGst = itemsGst + chargesGst;
     const totalAmount = subTotal + totalGst;
 
     return (
@@ -2318,8 +2321,8 @@ const Quotation = () => {
                           <div className="border border-gray-300 p-1 rounded font-bold">₹{charge.price.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
                         </td>
                         <td className="p-2 border-r border-gray-400 align-top text-center font-bold text-gray-400">-</td>
-                        <td className="p-2 border-r border-gray-400 align-top font-bold text-gray-400">-</td>
-                        <td className="p-2 align-top text-right font-black">₹{charge.price.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                        <td className="p-2 border-r border-gray-400 align-top font-bold">{charge.gst ?? 18}%</td>
+                        <td className="p-2 align-top text-right font-black">₹{(charge.price * (1 + (charge.gst ?? 18) / 100)).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -2387,10 +2390,11 @@ const Quotation = () => {
                 <div className="border border-gray-300 pdf-section">
                   <div className="bg-blue-100 p-2 text-[10px] font-black border-b border-gray-300 uppercase tracking-widest text-blue-900">BANK DETAILS</div>
                   <div className="p-4 text-[10px] font-bold text-gray-700 space-y-1">
-                    <p>NAME OF COMPANY - SAMTEK ENGINEERING AND GIS SOLUTION PVT LTD.</p>
-                    <p>ACCOUNT NUMBER - 411505500062</p>
-                    <p>IFSC CODE - ICIC0004115</p>
-                    <p>BRANCH - NOIDA SECTOR 121 (NOIDA)</p>
+                    <p>NAME OF COMPANY - {companyBankDetails.companyName}</p>
+                    {companyBankDetails.bankName && <p>BANK NAME - {companyBankDetails.bankName}</p>}
+                    <p>ACCOUNT NUMBER - {companyBankDetails.accountNumber}</p>
+                    <p>IFSC CODE - {companyBankDetails.ifsc}</p>
+                    <p>BRANCH - {companyBankDetails.branch}</p>
                   </div>
                 </div>
               </div>

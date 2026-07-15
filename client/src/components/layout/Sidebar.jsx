@@ -14,7 +14,7 @@ import {
   PieChart, ShoppingCart, CreditCard, RotateCcw, Calendar, Play, FileText, CheckCircle,
   BarChart, Clock, AlertTriangle, History, UserCheck, Target, Star, MessageSquare, Briefcase,
   ClipboardList, CalendarCheck, CheckSquare, UserCircle, Award, Layers, Beaker, ShieldAlert,
-  FolderOpen, Upload, Folder, Share2, Pen, User, Bell, Megaphone, Inbox
+  FolderOpen, Upload, Folder, Share2, Pen, User, Bell, Megaphone, Inbox, ShieldCheck
 } from 'lucide-react';
 
 // ============================================================
@@ -220,6 +220,7 @@ const hrAdminMenuItems = [
     ]
   },
   { label: 'Employee Management', path: '/hrms/SuperAdmin/employees', icon: Users, module: 'hrms' },
+  { label: 'Document Verification', path: '/hrms/SuperAdmin/document-verification', icon: ShieldCheck, module: 'hrms' },
   {
     label: 'Leave Management',
     path: '/hrms/SuperAdmin/leave-management',

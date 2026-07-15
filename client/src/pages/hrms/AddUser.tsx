@@ -133,6 +133,7 @@ export default function AddUser() {
     email: "",
     mobile: "",
     ivrNumber: "",
+    address: "",
     gender: "",
     dob: "",
     joiningDate: "",
@@ -319,6 +320,7 @@ export default function AddUser() {
       data.append("email", formData.email);
       data.append("mobile", formData.mobile);
       if (formData.ivrNumber) data.append("ivrNumber", formData.ivrNumber);
+      if (formData.address) data.append("address", formData.address);
       data.append("gender", formData.gender);
       data.append("dob", formData.dob);
       data.append("joiningDate", formData.joiningDate);
@@ -398,6 +400,7 @@ export default function AddUser() {
         email: "",
         mobile: "",
         ivrNumber: "",
+        address: "",
         gender: "",
         dob: "",
         joiningDate: "",
@@ -607,6 +610,17 @@ export default function AddUser() {
                 </button>
               </div>
               {errors.password && <p className="text-sm text-red-500">{errors.password}</p>}
+            </div>
+
+            <div className="col-span-2">
+              <Label>Address</Label>
+              <textarea
+                value={formData.address}
+                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                placeholder="Employee's residential address"
+                rows={2}
+                className="w-full border rounded-md px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#49A7F5]/40"
+              />
             </div>
           </div>
         </CardContent>

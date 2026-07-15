@@ -77,10 +77,12 @@ function itemsFromQuotation(lead) {
     itemName: orDash(it.name),
     specification: orDash(buildSpecText(it)),
     hsnCode: orDash(it.hsn),
-    qty: it.quantity ?? 1,
+    // Per-product quantity from the quotation — legacy snapshots may hold
+    // ''/null/NaN here, so coerce and fall back to 1 (never a blank box)
+    qty: num(it.quantity) || 1,
     billAmount: '',
     gstAmount: '',
-    quotationAmount: num(it.price) * num(it.quantity ?? 1),
+    quotationAmount: num(it.price) * (num(it.quantity) || 1),
     cashAmount: '',
     discountAmount: '',
     locked: true,
@@ -312,8 +314,8 @@ export default function OrderFormModal({ open, onOpenChange, orderId, order, lea
     }, { qty: 0, billAmount: 0, gstAmount: 0, quotationAmount: 0, cashAmount: 0, discountAmount: 0, chargesFolded: 0 });
     // Balance Amount = total Bill Amount + its 18% GST + total Cash Amount,
     // across every row (products and the quotation's additional charges alike) —
-    // minus whatever's already been Received.
-    t.balance = t.billAmount + t.gstAmount + t.cashAmount - num(fields.receivedAmount);
+    // minus the row-wise Discounts and whatever's already been Received.
+    t.balance = t.billAmount + t.gstAmount + t.cashAmount - t.discountAmount - num(fields.receivedAmount);
     return t;
   }, [items, fields.receivedAmount]);
 
@@ -439,7 +441,7 @@ export default function OrderFormModal({ open, onOpenChange, orderId, order, lea
                     disabled
                   />
                   {editing && (
-                    <p className="text-[10px] text-gray-400 mt-1">= (Bill Amt + GST + Cash Amount) − Received Amount</p>
+                    <p className="text-[10px] text-gray-400 mt-1">= (Bill Amt + GST + Cash Amount) − Discount − Received Amount</p>
                   )}
                 </div>
                 <SelectField label="Way of Payment" value={fields.wayOfPayment} onChange={v => setField('wayOfPayment', v)} disabled={disabled} options={WAY_OF_PAYMENT_OPTIONS} />
