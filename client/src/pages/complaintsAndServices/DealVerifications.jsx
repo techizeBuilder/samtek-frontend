@@ -814,6 +814,30 @@ const DealVerifications = () => {
                             ) : (
                               <p className="text-[11px] text-gray-400 mt-0.5">{cfg.desc}</p>
                             )}
+
+                            {/* Real warranty from Item master — so service team can compare
+                                against what the salesman promised */}
+                            {cfg.key === 'warranty' && (
+                              <div className="text-xs mt-1.5 bg-blue-50/70 border border-blue-100 rounded p-1.5">
+                                <span className="font-semibold text-blue-800">Real Warranty (Item Master):</span>
+                                {(verifyModal.order.products || []).length === 0 ? (
+                                  <span className="text-gray-500 ml-1">-</span>
+                                ) : (
+                                  (verifyModal.order.products || []).map((p, i) => {
+                                    const period = p.product?.warranty?.period;
+                                    const hasPeriod = period === 0 || (period != null && period !== '');
+                                    const wLabel = hasPeriod
+                                      ? `${period} Month${period === 1 ? '' : 's'}${p.product?.warranty?.type ? ` (${p.product.warranty.type})` : ''}`
+                                      : '-';
+                                    return (
+                                      <span key={p.product?._id || i} className="block text-gray-700 mt-0.5">
+                                        {p.product?.name || 'Item'}: <strong className="text-blue-700">{wLabel}</strong>
+                                      </span>
+                                    );
+                                  })
+                                )}
+                              </div>
+                            )}
                           </div>
 
                           <div className="flex-shrink-0">

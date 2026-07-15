@@ -42,46 +42,64 @@ import {
 } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 
+// Order Form fetch — 404 means "form not filled yet", not an error
+const fetchOrderForm = async (orderId) => {
+    try {
+        const res = await apiRequest('GET', `/api/order-forms/by-order/${orderId}`);
+        return res?.orderForm || null;
+    } catch (e) {
+        if (e.status === 404) return null;
+        throw e;
+    }
+};
+
+// Bill math from the Order Form — additional charges are already folded into
+// the items' Bill Amounts, so nothing is added separately. GST rides on top.
+//   Pakka  = Σ billAmount + Σ gstAmount
+//   Kachha = Σ billAmount + Σ gstAmount + Σ cashAmount
+const formCalc = (form) => {
+    if (!form || form.status !== 'Submitted') return null;
+    const rows = form.items || [];
+    const num = (v) => Number(v) || 0;
+    const visible = rows.filter(it => !it.hiddenCharge);
+    const bill = rows.reduce((s, it) => s + num(it.billAmount), 0);
+    const gst = rows.reduce((s, it) => s + num(it.gstAmount), 0);
+    const cash = rows.reduce((s, it) => s + num(it.cashAmount), 0);
+    return { visible, bill, gst, cash, pakkaTotal: bill + gst, kachhaTotal: bill + gst + cash };
+};
+
 const SalesOrders = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [viewOrder, setViewOrder] = useState(null);
-    const [approvingOrder, setApprovingOrder] = useState(null);
-    const [rejectingOrder, setRejectingOrder] = useState(null);
     const [billingOrder, setBillingOrder] = useState(null);
     const [selectedType, setSelectedType] = useState('Pakka');
-    const [remarks, setRemarks] = useState('');
     const { toast } = useToast();
 
-    // Fetch orders approved by salesman (for Account approval)
+    // Fetch orders approved by salesman
     const { data: ordersResponse, isLoading } = useQuery({
         queryKey: ['/api/accounts/sales/account/pending-orders'],
         queryFn: () => apiRequest('GET', '/api/accounts/sales/account/pending-orders')
     });
 
-    // Account Approval Mutation
-    const approveMutation = useMutation({
-        mutationFn: (orderId) => apiRequest('POST', '/api/accounts/sales/account/approve-order', { orderId, remarks }),
-        onSuccess: () => {
-            queryClient.invalidateQueries(['/api/accounts/sales/account/pending-orders']);
-            toast({ title: "Approved", description: "Order verified and approved by Accounts." });
-            setApprovingOrder(null);
-            setRemarks('');
-        }
+    // Order Form of the order being viewed / billed — source of truth for items & totals
+    const { data: viewForm, isLoading: viewFormLoading } = useQuery({
+        queryKey: ['order-form-by-order', viewOrder?._id],
+        queryFn: () => fetchOrderForm(viewOrder._id),
+        enabled: !!viewOrder?._id
     });
+    const { data: billingForm, isLoading: billingFormLoading } = useQuery({
+        queryKey: ['order-form-by-order', billingOrder?._id],
+        queryFn: () => fetchOrderForm(billingOrder._id),
+        enabled: !!billingOrder?._id
+    });
+    const viewCalc = formCalc(viewForm);
+    const billingCalc = formCalc(billingForm);
 
-    // Account Rejection Mutation
-    const rejectMutation = useMutation({
-        mutationFn: (orderId) => apiRequest('POST', '/api/accounts/sales/account/reject-order', { orderId, remarks }),
-        onSuccess: () => {
-            queryClient.invalidateQueries(['/api/accounts/sales/account/pending-orders']);
-            toast({ title: "Order Rejected", description: "The order has been rejected.", variant: "destructive" });
-            setRejectingOrder(null);
-            setRemarks('');
-        },
-        onError: (error) => {
-            toast({ title: "Rejection Failed", description: error.message, variant: "destructive" });
-        }
-    });
+    // Advance preview — Order Form ke Payment section se, warna lead advance
+    // (backend bhi isi order mein dekhta hai)
+    const billingAdvance = (billingForm?.paymentType === 'Advance Payment' && Number(billingForm?.receivedAmount) > 0)
+        ? Number(billingForm.receivedAmount)
+        : (billingOrder?.advancedPaymentAmount || 0);
 
     // Invoice Generation Mutation
     const generateInvoiceMutation = useMutation({
@@ -100,12 +118,23 @@ const SalesOrders = () => {
     const handleGenerateInvoice = () => {
         if (!billingOrder) return;
 
+        if (!billingCalc) {
+            toast({
+                title: "Order Form nahi mila",
+                description: "Is order ka Order Form abhi submit nahi hua — bill Order Form ke amounts se banta hai.",
+                variant: "destructive"
+            });
+            return;
+        }
+
         const order = billingOrder;
         const type = selectedType;
+        const isKachha = type === 'Kachha';
 
-        // Calculate tax based on type
-        const subtotal = order.totalAmount;
-        const taxAmount = type === 'Pakka' ? (subtotal * 0.18) : 0;
+        // Amounts straight from the Order Form (backend recomputes the same
+        // way — this payload just keeps the preview honest)
+        const subtotal = isKachha ? billingCalc.bill + billingCalc.cash : billingCalc.bill;
+        const taxAmount = billingCalc.gst;
         const totalAmount = subtotal + taxAmount;
 
         const invoiceData = {
@@ -114,20 +143,23 @@ const SalesOrders = () => {
             invoiceNo: `INV-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`,
             saleDate: format(new Date(), 'yyyy-MM-dd'),
             dueDate: format(addDays(new Date(), 15), 'yyyy-MM-dd'),
-            items: order.products.map(p => ({
-                item: p.product?._id,
-                productName: p.product?.name,
-                quantity: p.quantity,
-                unitPrice: p.price,
-                totalPrice: p.total,
-                tax: type === 'Pakka' ? 18 : 0
-            })),
+            items: billingCalc.visible.map(it => {
+                const qty = Number(it.qty) || 1;
+                const lineTotal = (Number(it.billAmount) || 0) + (Number(it.gstAmount) || 0) + (isKachha ? (Number(it.cashAmount) || 0) : 0);
+                return {
+                    productName: it.itemName,
+                    quantity: qty,
+                    unitPrice: Math.round((lineTotal / qty) * 100) / 100,
+                    totalPrice: lineTotal,
+                    tax: 0
+                };
+            }),
             subtotal,
             taxAmount,
             totalAmount,
             invoiceType: type,
             gstType: 'CGST_SGST',
-            notes: `Generated from Order ${order.orderCode}`
+            notes: `Generated from Order ${order.orderCode} (Order Form)`
         };
 
         generateInvoiceMutation.mutate(invoiceData);
@@ -154,8 +186,8 @@ const SalesOrders = () => {
                 <Card className="border-0 shadow-sm">
                     <CardContent className="p-4 flex items-center justify-between">
                         <div>
-                            <p className="text-xs text-slate-500 font-medium uppercase">Pending Review</p>
-                            <h3 className="text-xl font-bold text-slate-900">{orders.filter(o => o.accountApproval?.status !== 'approved').length}</h3>
+                            <p className="text-xs text-slate-500 font-medium uppercase">Not Invoiced</p>
+                            <h3 className="text-xl font-bold text-slate-900">{orders.filter(o => !o.generatedInvoices || o.generatedInvoices.length === 0).length}</h3>
                         </div>
                         <Clock className="h-8 w-8 text-amber-500 opacity-20" />
                     </CardContent>
@@ -206,8 +238,7 @@ const SalesOrders = () => {
                                     <TableHead className="font-semibold">Billing Status</TableHead>
                                     <TableHead className="text-right font-semibold">Amount</TableHead>
                                     <TableHead className="text-center font-semibold">Advanced Payment</TableHead>
-                                    <TableHead className="text-center font-semibold">Approval</TableHead>
-                                    <TableHead className="text-right px-6 font-semibold">Actions</TableHead>
+                                    <TableHead className="text-left px-6 font-semibold">Actions</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -255,35 +286,25 @@ const SalesOrders = () => {
                                                     <span className="text-[10px] text-slate-400 italic">No Advance</span>
                                                 )}
                                             </TableCell>
-                                            <TableCell className="text-center">
-                                                {order.accountApproval?.status === 'approved' ? (
-                                                    <Badge className="bg-blue-100 text-blue-700 uppercase text-[10px] px-3 py-1 font-bold">Approved</Badge>
-                                                ) : order.accountApproval?.status === 'rejected' ? (
-                                                    <Badge className="bg-red-100 text-red-700 uppercase text-[10px] px-3 py-1 font-bold">Rejected</Badge>
-                                                ) : (
-                                                    <Badge className="bg-amber-100 text-amber-700 uppercase text-[10px] px-3 py-1 font-bold">Pending</Badge>
-                                                )}
-                                            </TableCell>
                                             <TableCell className="text-right px-6">
                                                 <div className="flex justify-end gap-2">
                                                     <Button variant="ghost" size="sm" className="h-8 text-blue-600 hover:bg-blue-50" onClick={() => setViewOrder(order)}>
                                                         <Eye className="w-3.5 h-3.5 mr-1" /> View
                                                     </Button>
-                                                    {order.accountApproval?.status === 'approved' ? (
-                                                        <Button size="sm" className="h-8 bg-blue-600 text-white font-semibold" onClick={() => setBillingOrder(order)}>
+                                                    {order.generatedInvoices?.includes('Pakka') && order.generatedInvoices?.includes('Kachha') ? (
+                                                        <Badge className="bg-green-100 text-green-700 border-none text-[10px] px-3 py-1.5 font-bold">Fully Billed</Badge>
+                                                    ) : (
+                                                        <Button
+                                                            size="sm"
+                                                            className="h-8 bg-blue-600 text-white font-semibold"
+                                                            onClick={() => {
+                                                                setBillingOrder(order);
+                                                                // Jo type ban chuka hai use chhod ke doosra pre-select
+                                                                setSelectedType(order.generatedInvoices?.includes('Pakka') ? 'Kachha' : 'Pakka');
+                                                            }}
+                                                        >
                                                             Generate Invoice
                                                         </Button>
-                                                    ) : order.accountApproval?.status === 'rejected' ? (
-                                                        <span className="text-xs text-red-500 font-medium italic">Rejected</span>
-                                                    ) : (
-                                                        <div className="flex gap-2">
-                                                            <Button size="sm" className="h-8 bg-slate-900 text-white font-semibold" onClick={() => setApprovingOrder(order)}>
-                                                                Approve
-                                                            </Button>
-                                                            <Button size="sm" variant="destructive" className="h-8 font-semibold" onClick={() => setRejectingOrder(order)}>
-                                                                Reject
-                                                            </Button>
-                                                        </div>
                                                     )}
                                                 </div>
                                             </TableCell>
@@ -298,7 +319,7 @@ const SalesOrders = () => {
 
             {/* Modals */}
             <Dialog open={!!viewOrder} onOpenChange={() => setViewOrder(null)}>
-                <DialogContent className="max-w-3xl">
+                <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
                     <DialogHeader><DialogTitle>Order Preview</DialogTitle></DialogHeader>
                     <div className="space-y-6">
                         <div className="grid grid-cols-2 gap-4">
@@ -308,17 +329,29 @@ const SalesOrders = () => {
                                 <p className="text-sm text-slate-500 mt-1">{viewOrder?.customer?.address1}</p>
                             </div>
                             <div className="bg-slate-50 p-4 rounded-lg border">
-                                <p className="text-[10px] text-slate-400 uppercase font-bold mb-1">Financials</p>
-                                <p className="text-xl font-bold text-blue-600">₹{viewOrder?.totalAmount?.toLocaleString()}</p>
-                                <p className="text-xs text-slate-500 mt-1">Total items: {viewOrder?.products?.length}</p>
-                                {viewOrder?.advancedPaymentAmount > 0 && (
+                                <p className="text-[10px] text-slate-400 uppercase font-bold mb-1">Financials (Order Form se)</p>
+                                {viewFormLoading ? (
+                                    <p className="text-sm text-slate-400 italic">Loading Order Form...</p>
+                                ) : viewCalc ? (
+                                    <>
+                                        <p className="text-xl font-bold text-blue-600">₹{viewCalc.pakkaTotal.toLocaleString('en-IN')}</p>
+                                        <p className="text-[11px] text-slate-500">
+                                            Bill Amount ₹{viewCalc.bill.toLocaleString('en-IN')} + GST ₹{viewCalc.gst.toLocaleString('en-IN')}
+                                            <span className="text-slate-400"> (additional charges included)</span>
+                                        </p>
+                                        <p className="text-xs text-slate-500 mt-1">Total items: {viewCalc.visible.length}</p>
+                                    </>
+                                ) : (
+                                    <p className="text-sm text-amber-600 font-semibold">Order Form abhi submit nahi hua</p>
+                                )}
+                                {viewOrder?.advancedPaymentAmount > 0 && viewCalc && (
                                     <div className="mt-2 pt-2 border-t border-slate-200">
                                         <p className="text-xs text-emerald-600 font-semibold flex items-center gap-1">
                                             <CreditCard className="w-3 h-3" />
                                             Advanced Paid: ₹{viewOrder.advancedPaymentAmount.toLocaleString('en-IN')}
                                         </p>
                                         <p className="text-sm font-bold text-blue-700 mt-0.5">
-                                            Net Payable: ₹{Math.max(0, viewOrder.totalAmount - viewOrder.advancedPaymentAmount).toLocaleString('en-IN')}
+                                            Net Payable: ₹{Math.max(0, viewCalc.pakkaTotal - viewOrder.advancedPaymentAmount).toLocaleString('en-IN')}
                                         </p>
                                     </div>
                                 )}
@@ -343,23 +376,51 @@ const SalesOrders = () => {
                             </div>
                         )}
 
+                        {/* Items — Order Form se, har item ke aage sirf uska Billing Amount */}
                         <div className="border rounded-lg overflow-hidden">
                             <Table>
                                 <TableHeader className="bg-slate-50">
                                     <TableRow>
                                         <TableHead className="font-semibold px-4">Item Name</TableHead>
                                         <TableHead className="text-center font-semibold">Qty</TableHead>
-                                        <TableHead className="text-right font-semibold px-4">Total</TableHead>
+                                        <TableHead className="text-right font-semibold px-4">Billing Amount</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {viewOrder?.products?.map((item, idx) => (
-                                        <TableRow key={idx}>
-                                            <TableCell className="px-4 font-medium">{item.product?.name}</TableCell>
-                                            <TableCell className="text-center">{item.quantity}</TableCell>
-                                            <TableCell className="text-right px-4 font-bold">₹{item.total?.toLocaleString()}</TableCell>
+                                    {viewFormLoading ? (
+                                        <TableRow><TableCell colSpan={3} className="text-center h-20 text-slate-400 italic">Loading Order Form items...</TableCell></TableRow>
+                                    ) : !viewCalc ? (
+                                        <TableRow>
+                                            <TableCell colSpan={3} className="text-center h-20 text-amber-600 text-sm font-medium">
+                                                Is order ka Order Form abhi submit nahi hua — items Order Form se aate hain.
+                                            </TableCell>
                                         </TableRow>
-                                    ))}
+                                    ) : (
+                                        <>
+                                            {viewCalc.visible.map((it, idx) => (
+                                                <TableRow key={idx}>
+                                                    <TableCell className="px-4 font-medium">
+                                                        {it.itemName}
+                                                        {it.specification && <div className="text-[10px] text-slate-400 max-w-[320px] truncate">{it.specification}</div>}
+                                                    </TableCell>
+                                                    <TableCell className="text-center">{it.qty || '—'}</TableCell>
+                                                    <TableCell className="text-right px-4 font-bold">₹{(Number(it.billAmount) || 0).toLocaleString('en-IN')}</TableCell>
+                                                </TableRow>
+                                            ))}
+                                            <TableRow className="bg-slate-50">
+                                                <TableCell colSpan={2} className="px-4 text-right text-xs font-semibold text-slate-500">Bill Amount (incl. additional charges)</TableCell>
+                                                <TableCell className="text-right px-4 font-bold">₹{viewCalc.bill.toLocaleString('en-IN')}</TableCell>
+                                            </TableRow>
+                                            <TableRow className="bg-slate-50">
+                                                <TableCell colSpan={2} className="px-4 text-right text-xs font-semibold text-slate-500">GST Amount</TableCell>
+                                                <TableCell className="text-right px-4 font-bold">₹{viewCalc.gst.toLocaleString('en-IN')}</TableCell>
+                                            </TableRow>
+                                            <TableRow className="bg-blue-50">
+                                                <TableCell colSpan={2} className="px-4 text-right text-sm font-bold text-blue-900">Grand Total (Bill + GST)</TableCell>
+                                                <TableCell className="text-right px-4 font-bold text-blue-700">₹{viewCalc.pakkaTotal.toLocaleString('en-IN')}</TableCell>
+                                            </TableRow>
+                                        </>
+                                    )}
                                 </TableBody>
                             </Table>
                         </div>
@@ -388,67 +449,19 @@ const SalesOrders = () => {
                             </div>
                             <div className="flex gap-3">
                                 <Button variant="outline" onClick={() => setViewOrder(null)}>Close</Button>
-                                {viewOrder?.accountApproval?.status !== 'approved' && viewOrder?.accountApproval?.status !== 'rejected' && (
-                                    <div className="flex gap-2">
-                                        <Button variant="destructive" onClick={() => { setRejectingOrder(viewOrder); setViewOrder(null); }}>Reject</Button>
-                                        <Button className="bg-slate-900 text-white" onClick={() => { setApprovingOrder(viewOrder); setViewOrder(null); }}>Approve Now</Button>
-                                    </div>
+                                {!(viewOrder?.generatedInvoices?.includes('Pakka') && viewOrder?.generatedInvoices?.includes('Kachha')) && (
+                                    <Button
+                                        className="bg-blue-600 text-white"
+                                        onClick={() => {
+                                            setBillingOrder(viewOrder);
+                                            setSelectedType(viewOrder?.generatedInvoices?.includes('Pakka') ? 'Kachha' : 'Pakka');
+                                            setViewOrder(null);
+                                        }}
+                                    >
+                                        Generate Invoice
+                                    </Button>
                                 )}
                             </div>
-                        </div>
-                    </div>
-                </DialogContent>
-            </Dialog>
-
-            {/* Approval Dialog */}
-            <Dialog open={!!approvingOrder} onOpenChange={() => { setApprovingOrder(null); setRemarks(''); }}>
-                <DialogContent className="max-w-md">
-                    <DialogHeader>
-                        <DialogTitle>Confirm Approval</DialogTitle>
-                        <DialogDescription>Verify this order for official invoicing.</DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4 py-4">
-                        <div className="space-y-1.5">
-                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Internal Notes</label>
-                            <Input placeholder="Enter any notes here..." value={remarks} onChange={(e) => setRemarks(e.target.value)} />
-                        </div>
-                        <div className="flex gap-3 pt-2">
-                            <Button variant="outline" className="flex-1" onClick={() => { setApprovingOrder(null); setRemarks(''); }}>Cancel</Button>
-                            <Button className="flex-1 bg-blue-600 text-white" onClick={() => approveMutation.mutate(approvingOrder._id)} disabled={approveMutation.isLoading}>
-                                {approveMutation.isLoading ? 'Approving...' : 'Confirm Approval'}
-                            </Button>
-                        </div>
-                    </div>
-                </DialogContent>
-            </Dialog>
-
-            {/* Rejection Dialog */}
-            <Dialog open={!!rejectingOrder} onOpenChange={() => { setRejectingOrder(null); setRemarks(''); }}>
-                <DialogContent className="max-w-md">
-                    <DialogHeader>
-                        <DialogTitle className="text-red-600">Confirm Rejection</DialogTitle>
-                        <DialogDescription>Are you sure you want to reject this order? This action cannot be undone.</DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4 py-4">
-                        <div className="space-y-1.5">
-                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Rejection Reason (Required)</label>
-                            <Input
-                                placeholder="Enter rejection comment..."
-                                value={remarks}
-                                onChange={(e) => setRemarks(e.target.value)}
-                                className={cn(!remarks && "border-red-300 focus-visible:ring-red-400")}
-                            />
-                        </div>
-                        <div className="flex gap-3 pt-2">
-                            <Button variant="outline" className="flex-1" onClick={() => { setRejectingOrder(null); setRemarks(''); }}>Cancel</Button>
-                            <Button
-                                variant="destructive"
-                                className="flex-1"
-                                onClick={() => rejectMutation.mutate(rejectingOrder._id)}
-                                disabled={rejectMutation.isLoading || !remarks.trim()}
-                            >
-                                {rejectMutation.isLoading ? 'Rejecting...' : 'Confirm Reject'}
-                            </Button>
                         </div>
                     </div>
                 </DialogContent>
@@ -463,24 +476,51 @@ const SalesOrders = () => {
                     </DialogHeader>
                     <div className="py-6 space-y-6">
 
+                        {/* Order Form status / totals preview */}
+                        {billingFormLoading ? (
+                            <p className="text-sm text-slate-400 italic text-center">Loading Order Form...</p>
+                        ) : !billingCalc ? (
+                            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-700 font-medium">
+                                Is order ka Order Form abhi submit nahi hua — bill Order Form ke amounts se banta hai, pehle form submit karwao.
+                            </div>
+                        ) : (
+                            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-1">
+                                <p className="text-xs font-bold text-slate-500 uppercase">Order Form Totals</p>
+                                <div className="flex justify-between text-sm">
+                                    <span className="text-slate-600">Bill Amount (incl. additional charges)</span>
+                                    <span className="font-semibold">₹{billingCalc.bill.toLocaleString('en-IN')}</span>
+                                </div>
+                                <div className="flex justify-between text-sm">
+                                    <span className="text-slate-600">GST Amount</span>
+                                    <span className="font-semibold">₹{billingCalc.gst.toLocaleString('en-IN')}</span>
+                                </div>
+                                {selectedType === 'Kachha' && (
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-slate-600">Cash Amount</span>
+                                        <span className="font-semibold">₹{billingCalc.cash.toLocaleString('en-IN')}</span>
+                                    </div>
+                                )}
+                                <div className="flex justify-between text-sm font-bold text-blue-700 border-t border-slate-200 pt-1">
+                                    <span>{selectedType} Bill Total</span>
+                                    <span>₹{(selectedType === 'Kachha' ? billingCalc.kachhaTotal : billingCalc.pakkaTotal).toLocaleString('en-IN')}</span>
+                                </div>
+                            </div>
+                        )}
+
                         {/* Advanced Payment Notice */}
-                        {billingOrder?.advancedPaymentAmount > 0 && (
+                        {billingAdvance > 0 && billingCalc && (
                             <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 space-y-1">
                                 <p className="text-xs font-bold text-emerald-700 flex items-center gap-1">
                                     <CreditCard className="w-3.5 h-3.5" />
                                     Advanced Payment Applied
                                 </p>
-                                <div className="flex justify-between text-sm">
-                                    <span className="text-slate-600">Order Total</span>
-                                    <span className="font-semibold">₹{billingOrder.totalAmount?.toLocaleString('en-IN')}</span>
-                                </div>
                                 <div className="flex justify-between text-sm text-emerald-700">
                                     <span>Less: Advanced Paid</span>
-                                    <span className="font-semibold">- ₹{billingOrder.advancedPaymentAmount?.toLocaleString('en-IN')}</span>
+                                    <span className="font-semibold">- ₹{billingAdvance.toLocaleString('en-IN')}</span>
                                 </div>
                                 <div className="flex justify-between text-sm font-bold text-blue-700 border-t border-emerald-200 pt-1">
                                     <span>Net Payable</span>
-                                    <span>₹{Math.max(0, billingOrder.totalAmount - billingOrder.advancedPaymentAmount).toLocaleString('en-IN')}</span>
+                                    <span>₹{Math.max(0, (selectedType === 'Kachha' ? billingCalc.kachhaTotal : billingCalc.pakkaTotal) - billingAdvance).toLocaleString('en-IN')}</span>
                                 </div>
                             </div>
                         )}
@@ -489,28 +529,34 @@ const SalesOrders = () => {
                             <button
                                 className={cn(
                                     "flex flex-col items-center justify-center p-6 rounded-xl border-2 transition-all relative",
-                                    selectedType === 'Kachha' ? "border-slate-900 bg-slate-50 shadow-md" : "border-slate-100 hover:border-slate-200 bg-white"
+                                    billingOrder?.generatedInvoices?.includes('Kachha') ? "border-slate-100 bg-slate-50 opacity-50 cursor-not-allowed"
+                                        : selectedType === 'Kachha' ? "border-slate-900 bg-slate-50 shadow-md" : "border-slate-100 hover:border-slate-200 bg-white"
                                 )}
+                                disabled={billingOrder?.generatedInvoices?.includes('Kachha')}
                                 onClick={() => setSelectedType('Kachha')}
                             >
                                 <FileText className={cn("w-8 h-8 mb-2", selectedType === 'Kachha' ? "text-slate-900" : "text-slate-300")} />
                                 <span className={cn("font-bold text-sm", selectedType === 'Kachha' ? "text-slate-900" : "text-slate-400")}>Kachha Bill</span>
+                                {billingCalc && <span className="text-[10px] text-slate-500 mt-1">₹{billingCalc.kachhaTotal.toLocaleString('en-IN')}</span>}
                                 {billingOrder?.generatedInvoices?.includes('Kachha') && (
-                                    <div className="absolute top-2 right-2"><CheckSquare className="w-4 h-4 text-green-600" /></div>
+                                    <div className="absolute top-2 right-2 flex items-center gap-1 text-[9px] font-bold text-green-600"><CheckSquare className="w-4 h-4" /> Generated</div>
                                 )}
                             </button>
 
                             <button
                                 className={cn(
                                     "flex flex-col items-center justify-center p-6 rounded-xl border-2 transition-all relative",
-                                    selectedType === 'Pakka' ? "border-blue-600 bg-blue-50 shadow-md" : "border-slate-100 hover:border-slate-200 bg-white"
+                                    billingOrder?.generatedInvoices?.includes('Pakka') ? "border-slate-100 bg-slate-50 opacity-50 cursor-not-allowed"
+                                        : selectedType === 'Pakka' ? "border-blue-600 bg-blue-50 shadow-md" : "border-slate-100 hover:border-slate-200 bg-white"
                                 )}
+                                disabled={billingOrder?.generatedInvoices?.includes('Pakka')}
                                 onClick={() => setSelectedType('Pakka')}
                             >
                                 <ShieldCheck className={cn("w-8 h-8 mb-2", selectedType === 'Pakka' ? "text-blue-600" : "text-slate-300")} />
                                 <span className={cn("font-bold text-sm", selectedType === 'Pakka' ? "text-blue-600" : "text-slate-400")}>Pakka Bill</span>
+                                {billingCalc && <span className="text-[10px] text-slate-500 mt-1">₹{billingCalc.pakkaTotal.toLocaleString('en-IN')}</span>}
                                 {billingOrder?.generatedInvoices?.includes('Pakka') && (
-                                    <div className="absolute top-2 right-2"><CheckSquare className="w-4 h-4 text-green-600" /></div>
+                                    <div className="absolute top-2 right-2 flex items-center gap-1 text-[9px] font-bold text-green-600"><CheckSquare className="w-4 h-4" /> Generated</div>
                                 )}
                             </button>
                         </div>
@@ -518,7 +564,12 @@ const SalesOrders = () => {
                         <Button
                             className="w-full h-12 bg-blue-600 hover:bg-blue-700 text-white font-bold uppercase"
                             onClick={handleGenerateInvoice}
-                            disabled={generateInvoiceMutation.isLoading}
+                            disabled={
+                                generateInvoiceMutation.isLoading
+                                || billingFormLoading
+                                || !billingCalc
+                                || billingOrder?.generatedInvoices?.includes(selectedType)
+                            }
                         >
                             {generateInvoiceMutation.isLoading ? 'Generating...' : `Generate ${selectedType} Invoice`}
                         </Button>

@@ -140,8 +140,21 @@ export default function OrderManagement() {
   const statuses = ['All', 'Pending', 'BOM Pending', 'In Progress', 'Completed'];
   const sources = ['All', 'Store Orders', 'Rejected Items'];
 
+  // Real sales-order id (ORD-xxx) that this production belongs to:
+  //  - Store-triggered  → machineCode holds the sales orderCode
+  //  - QC_Rejected      → rejectionDetails.originalOrderId
+  //  - Stock production → no sales order (company stock)
+  const getRealOrderId = (o) => {
+    if (o.source === 'QC_Rejected') return o.rejectionDetails?.originalOrderId || o.machineCode || null;
+    if (!o.source || o.source === 'Store') return o.machineCode || null;
+    return null; // 'Stock'
+  };
+
   const filtered = orders.filter(o => {
-    const matchSearch = !search || (o.orderId || o.id || '').toLowerCase().includes(search.toLowerCase()) || o.machineName.toLowerCase().includes(search.toLowerCase());
+    const matchSearch = !search ||
+      (o.orderId || o.id || '').toLowerCase().includes(search.toLowerCase()) ||
+      (getRealOrderId(o) || '').toLowerCase().includes(search.toLowerCase()) ||
+      o.machineName.toLowerCase().includes(search.toLowerCase());
     const matchStatus = filterStatus === 'All' || o.status === filterStatus;
     const matchSource = filterSource === 'All' ||
       (filterSource === 'Store Orders' && (!o.source || o.source === 'Store')) ||
@@ -339,8 +352,23 @@ export default function OrderManagement() {
 
                   return (
                     <tr key={oid} className={`border-b border-slate-50 hover:bg-slate-50 transition-colors ${isRejected ? 'bg-red-50/30' : ''}`}>
-                      <td className="px-5 py-3.5 font-mono text-xs font-bold text-blue-700">
-                        {order.orderId || order.id}
+                      <td className="px-5 py-3.5 font-mono text-xs">
+                        {(() => {
+                          const realOrderId = getRealOrderId(order);
+                          return realOrderId ? (
+                            <>
+                              {/* Real sales order id — batata hai kis order ka item ban raha hai */}
+                              <span className="font-bold text-blue-700">{realOrderId}</span>
+                              {/* Production id — chhota, sirf reference ke liye */}
+                              <span className="block text-[10px] text-slate-400 mt-0.5">{order.orderId || order.id}</span>
+                            </>
+                          ) : (
+                            <>
+                              <span className="font-bold text-blue-700">{order.orderId || order.id}</span>
+                              <span className="block text-[10px] text-slate-400 mt-0.5">Stock Production</span>
+                            </>
+                          );
+                        })()}
                         {isRejected && <span className="block text-red-600 text-xs">REJECTED</span>}
                       </td>
                       <td className="px-5 py-3.5">
@@ -420,7 +448,10 @@ export default function OrderManagement() {
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2 text-slate-900">
                   <ClipboardList className="h-5 w-5 text-blue-600" />
-                  {detailOrderLive.orderId || detailOrderLive.id} — {detailOrderLive.machineName}
+                  {getRealOrderId(detailOrderLive) || detailOrderLive.orderId || detailOrderLive.id} — {detailOrderLive.machineName}
+                  {getRealOrderId(detailOrderLive) && (
+                    <span className="text-xs font-normal text-slate-400 font-mono">({detailOrderLive.orderId || detailOrderLive.id})</span>
+                  )}
                   {detailOrderLive.source === 'QC_Rejected' && (
                     <span className="ml-2 px-2 py-0.5 bg-red-100 text-red-700 text-xs font-semibold rounded-full border border-red-200">
                       QC REJECTED

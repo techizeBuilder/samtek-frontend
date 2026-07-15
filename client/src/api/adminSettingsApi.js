@@ -74,4 +74,9 @@ export const adminSettingsApi = {
   addQuotationNumberSetting: (body) => apiFetch('/quotation-number-settings', { method: 'POST', body: JSON.stringify(body) }),
   updateQuotationNumberSetting: (id, body) => apiFetch(`/quotation-number-settings/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   deleteQuotationNumberSetting: (id) => apiFetch(`/quotation-number-settings/${id}`, { method: 'DELETE' }),
+
+  // HRMS: Upload Document Settings
+  addHrmsDocumentType: (body) => apiFetch('/hrms-document-types', { method: 'POST', body: JSON.stringify(body) }),
+  updateHrmsDocumentType: (id, body) => apiFetch(`/hrms-document-types/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deleteHrmsDocumentType: (id) => apiFetch(`/hrms-document-types/${id}`, { method: 'DELETE' }),
 };

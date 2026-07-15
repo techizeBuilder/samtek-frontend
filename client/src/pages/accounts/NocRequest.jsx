@@ -9,7 +9,8 @@ import {
   RefreshCw,
   CheckCircle2,
   AlertCircle,
-  CreditCard
+  CreditCard,
+  Download
 } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -36,6 +37,7 @@ import { Label } from '@/components/ui/label';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { useSettings } from '@/hooks/useSettings';
+import { loadImgCompressed } from '@/utils/pdfImage';
 
 const NocRequest = () => {
   const { toast } = useToast();
@@ -178,27 +180,12 @@ const NocRequest = () => {
         doc.rect(x, y, w, h);
       };
 
-      // Load Samtek logo for PDF header
-      let logoBytes = null;
-      let logoFormat = 'WEBP';
+      // Load Samtek logo for PDF header (compressed — raw embed made the PDF ~16 MB)
       try {
-        const logoResponse = await fetch('/logo Semtek.webp');
-        if (logoResponse.ok) {
-          const logoBuffer = await logoResponse.arrayBuffer();
-          logoBytes = new Uint8Array(logoBuffer);
-          logoFormat = 'WEBP';
-        }
+        const logoImg = await loadImgCompressed('/logo Semtek.webp', 220, 'jpeg');
+        if (logoImg) doc.addImage(logoImg, 'JPEG', 14, 8, 22, 22);
       } catch (e) {
-        console.warn('Could not load logo for PDF:', e);
-      }
-
-      // Add logo to PDF header (top-left)
-      if (logoBytes) {
-        try {
-          doc.addImage(logoBytes, logoFormat, 14, 8, 22, 22);
-        } catch (e) {
-          console.warn('Could not add logo to PDF:', e);
-        }
+        console.warn('Could not add logo to PDF:', e);
       }
 
       // Company name & address (right of logo)
@@ -259,18 +246,12 @@ const NocRequest = () => {
       doc.setFont('helvetica', 'normal');
       doc.text(`Driver Name: ${dName}`, 108, 73);
       doc.text(`Contact: ${cNo}`, 108, 78);
-      doc.text(`Status: Verified for Dispatch`, 108, 83);
 
       const tableResult = autoTable(doc, {
         startY: 108,
-        head: [['Sr.', 'Description of Goods', 'Qty', 'Unit', 'Status']],
+        head: [['Sr.', 'Description of Goods', 'Qty', 'Unit']],
         body: [
-          ['1', `${data.machineName} (${data.machineCode})`, '1', 'Lot', 'Dispatched'],
-          ['', 'SN:', '', '', data.serialNumber],
-          ['', 'Total Amount', '', '', `INR ${(data.displayTotal || data.totalAmount || 0).toLocaleString('en-IN')}`],
-          ['', 'Paid (Advance)', '', '', `INR ${(data.displayPaid || data.customerAdvance || 0).toLocaleString('en-IN')}`],
-          ['', 'Balance Due', '', '', `INR ${(data.displayDue || 0).toLocaleString('en-IN')}`],
-          ['', 'Payment Status', '', '', (data.displayDue || 0) === 0 ? 'Paid' : (data.displayPaid || 0) > 0 ? 'Partially Paid' : 'Pending']
+          ['1', `${data.machineName} (${data.machineCode})\nSN: ${data.serialNumber}`, '1', 'Lot']
         ],
         theme: 'grid',
         headStyles: {
@@ -291,8 +272,7 @@ const NocRequest = () => {
         columnStyles: {
           0: { halign: 'center', width: 10 },
           2: { halign: 'center', width: 15 },
-          3: { halign: 'center', width: 15 },
-          4: { halign: 'right' }
+          3: { halign: 'center', width: 15 }
         }
       });
 
@@ -300,32 +280,12 @@ const NocRequest = () => {
 
       addBorder(14, finalY - 5, 182, 30);
 
-      // Load and add Samtek Stamp
-      let stampBytes = null;
-      let detectedFormat = 'JPEG';
+      // Load and add Samtek Stamp (compressed PNG — keeps transparency, tiny size)
       try {
-        const response = await fetch('/samtek_stamp.png');
-        if (response.ok) {
-          const arrayBuffer = await response.arrayBuffer();
-          stampBytes = new Uint8Array(arrayBuffer);
-          if (stampBytes[0] === 0x89 && stampBytes[1] === 0x50 && stampBytes[2] === 0x4E && stampBytes[3] === 0x47) {
-            detectedFormat = 'PNG';
-          } else if (stampBytes[0] === 0xFF && stampBytes[1] === 0xD8) {
-            detectedFormat = 'JPEG';
-          }
-        } else {
-          console.warn(`Failed to fetch stamp image: Status ${response.status}`);
-        }
+        const stampImg = await loadImgCompressed('/samtek_stamp.png', 200, 'png');
+        if (stampImg) doc.addImage(stampImg, 'PNG', 152, finalY - 3, 26, 26);
       } catch (e) {
-        console.error('Network error fetching stamp image:', e);
-      }
-
-      if (stampBytes) {
-        try {
-          doc.addImage(stampBytes, detectedFormat, 152, finalY - 3, 26, 26);
-        } catch (e) {
-          console.error('Failed to parse or add stamp to PDF:', e);
-        }
+        console.error('Failed to add stamp to PDF:', e);
       }
 
       doc.setFontSize(8);
@@ -349,6 +309,222 @@ const NocRequest = () => {
         description: error.message || "An error occurred during PDF generation.",
         variant: "destructive"
       });
+    }
+  };
+
+  // ─── NOC Certificate PDF (order → store → production → QC → packing flow) ──
+  const [nocPdfLoading, setNocPdfLoading] = useState(null); // saleId being generated
+
+  const buildNOCPDF = async (item) => {
+    // Full flow details fetched on-demand (list API stays light)
+    const response = await apiRequest('GET', `/api/orders/noc-details/${item.saleId}`);
+    const d = response.data?.data;
+    if (!d) throw new Error('NOC details not found');
+
+    const fmtD = (dt) => {
+      if (!dt) return '—';
+      const parsed = new Date(dt);
+      return isNaN(parsed.getTime()) ? String(dt) : parsed.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+    };
+
+    const doc = new jsPDF();
+
+    // ── Header: Samtek logo (compressed — keeps PDF in KBs) + company details ──
+    try {
+      const logoImg = await loadImgCompressed('/logo Semtek.webp', 220, 'jpeg');
+      if (logoImg) doc.addImage(logoImg, 'JPEG', 14, 8, 22, 22);
+    } catch (e) { console.warn('Could not load logo for NOC PDF:', e); }
+
+    doc.setFontSize(13);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(30, 41, 59);
+    doc.text(displayCompanyName, 40, 16);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(71, 85, 105);
+    doc.text(displayAddress, 40, 21, { maxWidth: 105 });
+    doc.text(`GST : ${displayGST}`, 40, 29);
+    doc.text(`Phone : ${displayPhone}  |  Email : ${displayEmail}`, 40, 33);
+
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(30, 41, 59);
+    doc.text(`NOC No. : NOC-${d.orderCode}`, 196, 16, { align: 'right' });
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Date : ${fmtD(d.nocApprovedAt || new Date())}`, 196, 21, { align: 'right' });
+    doc.text(`Order Ref. : ${d.orderCode}`, 196, 26, { align: 'right' });
+
+    doc.setDrawColor(200, 200, 200);
+    doc.line(14, 38, 196, 38);
+
+    // ── Title ──
+    doc.setFontSize(15);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(30, 41, 59);
+    doc.text('NO OBJECTION CERTIFICATE (NOC)', 105, 48, { align: 'center' });
+    const tw = doc.getTextWidth('NO OBJECTION CERTIFICATE (NOC)');
+    doc.setLineWidth(0.5);
+    doc.line(105 - tw / 2, 50, 105 + tw / 2, 50);
+
+    // ── Certificate statement ──
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(51, 65, 85);
+    const intro = `This is to certify that the goods described below, supplied against Order ${d.orderCode}, have successfully completed all internal processes of ${displayCompanyName} — order processing, store, production, quality control and packaging. The company has NO OBJECTION in releasing the said goods for dispatch to the consignee.`;
+    const introLines = doc.splitTextToSize(intro, 182);
+    doc.text(introLines, 14, 57);
+    let y = 57 + introLines.length * 4 + 4;
+
+    // ── Consignee + Item boxes ──
+    doc.setDrawColor(200, 200, 200);
+    doc.setLineWidth(0.2);
+    doc.rect(14, y, 89, 34);
+    doc.rect(107, y, 89, 34);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(100, 116, 139);
+    doc.text('CONSIGNEE DETAILS', 17, y + 6);
+    doc.text('ITEM / MACHINE DETAILS', 110, y + 6);
+    doc.setDrawColor(230, 230, 230);
+    doc.line(17, y + 8, 100, y + 8);
+    doc.line(110, y + 8, 193, y + 8);
+
+    doc.setFontSize(9);
+    doc.setTextColor(30, 41, 59);
+    doc.setFont('helvetica', 'bold');
+    doc.text(d.customerName, 17, y + 14, { maxWidth: 83 });
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.text(`Mobile: ${d.customerMobile}`, 17, y + 20);
+    if (d.customerEmail) doc.text(`Email: ${d.customerEmail}`, 17, y + 25, { maxWidth: 83 });
+    if (d.customerAddress) doc.text(`Address: ${d.customerAddress}`, 17, y + 30, { maxWidth: 83 });
+
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
+    doc.text(d.machineName, 110, y + 14, { maxWidth: 83 });
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.text(`Machine Code: ${d.machineCode}`, 110, y + 20);
+    doc.text(`Serial Number: ${d.serialNumber}`, 110, y + 25);
+    doc.text(`Order Date: ${fmtD(d.orderDate)}`, 110, y + 30);
+    y += 40;
+
+    // ── Item flow timeline ──
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(30, 41, 59);
+    doc.text('Item Process Flow', 14, y);
+    autoTable(doc, {
+      startY: y + 3,
+      head: [['#', 'Process Stage', 'Date', 'Details']],
+      body: (d.timeline || []).map((t, i) => [String(i + 1), t.step, fmtD(t.date), t.detail || '']),
+      theme: 'grid',
+      headStyles: { fillColor: [30, 41, 59], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
+      styles: { fontSize: 8, cellPadding: 3, textColor: [51, 65, 85], lineWidth: 0.1, lineColor: [200, 200, 200] },
+      columnStyles: {
+        0: { halign: 'center', cellWidth: 8 },
+        1: { fontStyle: 'bold', cellWidth: 48 },
+        2: { halign: 'center', cellWidth: 26 },
+      }
+    });
+    y = (doc.lastAutoTable?.finalY || y + 40) + 8;
+
+    // ── Financial summary (customer master: Total = Outstanding + Advance) ──
+    if (y > 220) { doc.addPage(); y = 20; }
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Payment Summary', 14, y);
+    autoTable(doc, {
+      startY: y + 3,
+      head: [['Description', 'Amount (INR)']],
+      body: [
+        ['Total Amount (Outstanding + Advance)', `${(d.displayTotal || 0).toLocaleString('en-IN')}`],
+        ['Paid (Advance)', `${(d.displayPaid || 0).toLocaleString('en-IN')}`],
+        ['Balance Due (Outstanding)', `${(d.displayDue || 0).toLocaleString('en-IN')}`],
+        ['Payment Status', (d.displayDue || 0) === 0 ? 'Paid' : (d.displayPaid || 0) > 0 ? 'Partially Paid' : 'Pending']
+      ],
+      theme: 'grid',
+      headStyles: { fillColor: [248, 250, 252], textColor: [30, 41, 59], fontStyle: 'bold', fontSize: 8 },
+      styles: { fontSize: 8.5, cellPadding: 3, textColor: [51, 65, 85], lineWidth: 0.1, lineColor: [200, 200, 200] },
+      columnStyles: { 1: { halign: 'right', fontStyle: 'bold' } }
+    });
+    y = (doc.lastAutoTable?.finalY || y + 30) + 8;
+
+    // ── Declaration ──
+    if (y > 215) { doc.addPage(); y = 20; }
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Declaration', 14, y);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(71, 85, 105);
+    const declarations = [
+      '1. The above goods have been inspected and approved by the Quality Control department.',
+      '2. The goods have been packed and verified as per the company dispatch checklist.',
+      `3. ${displayCompanyName} has no objection in dispatching the above goods to the consignee.`,
+      (d.displayDue || 0) > 0
+        ? '4. This NOC is issued subject to clearance of the balance due amount as per agreed payment terms.'
+        : '4. All payments against this order stand cleared as per the customer account.'
+    ];
+    let dy = y + 5;
+    declarations.forEach(line => {
+      const wrapped = doc.splitTextToSize(line, 182);
+      doc.text(wrapped, 14, dy);
+      dy += wrapped.length * 4 + 1;
+    });
+    y = dy + 6;
+
+    // ── Stamp + signatory ──
+    if (y > 240) { doc.addPage(); y = 30; }
+    try {
+      const stampImg = await loadImgCompressed('/samtek_stamp.png', 200, 'png');
+      if (stampImg) doc.addImage(stampImg, 'PNG', 152, y - 2, 26, 26);
+    } catch (e) { console.warn('Could not load stamp for NOC PDF:', e); }
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(30, 41, 59);
+    doc.text(`For, ${displayCompanyName}`, 192, y + 4, { align: 'right' });
+    doc.text('Authorised Signatory', 192, y + 26, { align: 'right' });
+
+    doc.setFontSize(7);
+    doc.setFont('helvetica', 'italic');
+    doc.setTextColor(120, 120, 120);
+    doc.text('This is a computer-generated NOC and does not require physical signature. E. & O. E.', 105, 288, { align: 'center' });
+
+    return { doc, orderCode: d.orderCode };
+  };
+
+  const handleNOCPdf = async (item, mode) => {
+    // View mode: window must open synchronously in the click event,
+    // otherwise browsers block it as a popup
+    let win = null;
+    if (mode === 'view') {
+      win = window.open('', '_blank');
+      if (win) {
+        win.document.write('<!DOCTYPE html><html><head><title>Loading NOC...</title><style>body{display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;color:#555;background:#f9f9f9;}</style></head><body><p>⏳ Generating NOC PDF, please wait...</p></body></html>');
+      }
+    }
+    setNocPdfLoading(item.saleId);
+    try {
+      const { doc, orderCode } = await buildNOCPDF(item);
+      if (mode === 'view') {
+        const blobUrl = doc.output('bloburl');
+        if (win) win.location.href = blobUrl;
+        else window.open(blobUrl, '_blank');
+      } else {
+        doc.save(`NOC_${orderCode}.pdf`);
+        toast({ title: 'Success', description: 'NOC PDF downloaded successfully!' });
+      }
+    } catch (error) {
+      console.error('Failed to generate NOC PDF:', error);
+      if (win) win.close();
+      toast({
+        title: 'NOC PDF Failed',
+        description: error.message || 'An error occurred during NOC PDF generation.',
+        variant: 'destructive'
+      });
+    } finally {
+      setNocPdfLoading(null);
     }
   };
 
@@ -480,6 +656,30 @@ const NocRequest = () => {
                               Generate Gate Pass
                             </Button>
                           )}
+                          {/* NOC Certificate — view opens PDF in a new tab, icon downloads it */}
+                          <div className="flex gap-1 w-full">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-8 flex-1 gap-1 bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100"
+                              onClick={() => handleNOCPdf(item, 'view')}
+                              disabled={nocPdfLoading === item.saleId}
+                            >
+                              {nocPdfLoading === item.saleId
+                                ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                : <Eye className="w-3.5 h-3.5" />} View NOC
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-8 w-8 p-0 bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100"
+                              title="Download NOC PDF"
+                              onClick={() => handleNOCPdf(item, 'download')}
+                              disabled={nocPdfLoading === item.saleId}
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
                         </>
                       ) : (
                         <Button
@@ -639,7 +839,6 @@ const NocRequest = () => {
                       <th className="text-left p-3 font-semibold text-slate-600 w-12 text-center">Sr.</th>
                       <th className="text-left p-3 font-semibold text-slate-600">Items & Details</th>
                       <th className="text-center p-3 font-semibold text-slate-600 w-16">Qty</th>
-                      <th className="text-right p-3 font-semibold text-slate-600 w-32">Status</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y text-slate-700">
@@ -651,60 +850,7 @@ const NocRequest = () => {
                         <div className="text-xs text-slate-500">SN: {gatePassData?.serialNumber || 'N/A'}</div>
                       </td>
                       <td className="p-3 text-center font-medium">1 Lot</td>
-                      <td className="p-3 text-right">
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-100">
-                          Dispatched
-                        </span>
-                      </td>
                     </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Payment Details Summary</h3>
-              <div className="border rounded-xl overflow-hidden bg-white shadow-sm">
-                <table className="w-full text-sm">
-                  <thead className="bg-slate-50 border-b">
-                    <tr>
-                      <th className="text-left p-3 font-semibold text-slate-600">Description</th>
-                      <th className="text-right p-3 font-semibold text-slate-600">Amount</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y text-slate-700">
-                    <tr>
-                      <td className="p-3 text-slate-600">Total Amount</td>
-                      <td className="p-3 text-right font-semibold text-slate-950">₹{(gatePassData?.displayTotal || gatePassData?.totalAmount || 0).toLocaleString('en-IN')}</td>
-                    </tr>
-                    {(gatePassData?.displayPaid || gatePassData?.customerAdvance || 0) > 0 && (
-                      <tr className="bg-emerald-50/50">
-                        <td className="p-3 text-emerald-800 flex items-center gap-1 font-medium">
-                          <CreditCard className="w-3.5 h-3.5 text-emerald-600" /> Paid (Advance)
-                        </td>
-                        <td className="p-3 text-right text-emerald-700 font-semibold">
-                          ₹{(gatePassData?.displayPaid || gatePassData?.customerAdvance || 0).toLocaleString('en-IN')}
-                        </td>
-                      </tr>
-                    )}
-                    <tr>
-                      <td className="p-3 text-slate-600">Payment Status</td>
-                      <td className="p-3 text-right">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                          (gatePassData?.displayDue || 0) === 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
-                        }`}>
-                          {(gatePassData?.displayDue || 0) === 0 ? 'Paid' : (gatePassData?.displayPaid || 0) > 0 ? 'Partially Paid' : 'Pending'}
-                        </span>
-                      </td>
-                    </tr>
-                    {(gatePassData?.displayDue || 0) > 0 && (
-                      <tr className="bg-rose-50/50 border-t-2">
-                        <td className="p-3 font-bold text-rose-900">Balance Due</td>
-                        <td className="p-3 text-right font-bold text-rose-900 text-base">
-                          ₹{(gatePassData?.displayDue || 0).toLocaleString('en-IN')}
-                        </td>
-                      </tr>
-                    )}
                   </tbody>
                 </table>
               </div>

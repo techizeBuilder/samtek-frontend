@@ -7,9 +7,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import { CalendarCheck, MapPin, CheckCircle, Package, User, Phone, MessageCircle, Mail, Send } from 'lucide-react';
+import { CalendarCheck, MapPin, CheckCircle, Package, User, Phone, MessageCircle, Mail, Send, ChevronDown } from 'lucide-react';
 
 export default function InstallationSchedule() {
   const { toast } = useToast();
@@ -19,8 +21,8 @@ export default function InstallationSchedule() {
   const [formState, setFormState] = useState({
     status: 'Scheduled',
     scheduledDate: '',
-    technicianName: '',
-    technicianId: '',
+    technicians: [], // [{ technicianId, technicianName }] — supports multiple technicians per installation
+    manualTechnicianName: '', // free-text fallback when no servicemen list is available
     remarks: ''
   });
 
@@ -72,13 +74,29 @@ export default function InstallationSchedule() {
 
   const openModal = (order) => {
     setSelectedOrder(order);
+
+    // Prefer the structured multi-technician array; fall back to splitting
+    // the legacy comma-joined technicianName string for older records,
+    // trying to recover each technician's id by matching against the
+    // servicemen list.
+    const existingTechnicians = Array.isArray(order.installation?.technicians) && order.installation.technicians.length > 0
+      ? order.installation.technicians
+      : (order.installation?.technicianName || '')
+          .split(',')
+          .map(n => n.trim())
+          .filter(Boolean)
+          .map(name => {
+            const match = servicemen.find(s => (s.fullName || s.name || s.username) === name);
+            return { technicianId: match ? (match._id || match.id) : '', technicianName: name };
+          });
+
     setFormState({
       status: order.installation?.status || 'Scheduled',
       scheduledDate: order.installation?.scheduledDate
         ? new Date(order.installation.scheduledDate).toISOString().split('T')[0]
         : '',
-      technicianName: order.installation?.technicianName || '',
-      technicianId: order.installation?.technicianId || '',
+      technicians: existingTechnicians,
+      manualTechnicianName: existingTechnicians.map(t => t.technicianName).join(', '),
       remarks: order.installation?.remarks || ''
     });
   };
@@ -96,13 +114,17 @@ export default function InstallationSchedule() {
       return;
     }
 
+    const technicians = servicemen.length > 0
+      ? formState.technicians
+      : formState.manualTechnicianName.split(',').map(n => n.trim()).filter(Boolean).map(name => ({ technicianId: '', technicianName: name }));
+
     updateMutation.mutate({
       id: selectedOrder._id,
       data: {
         status: formState.status,
         scheduledDate: formState.scheduledDate,
-        technicianName: formState.technicianName,
-        technicianId: formState.technicianId,
+        technicians,
+        technicianName: technicians.map(t => t.technicianName).join(', '),
         remarks: formState.remarks
       }
     });
@@ -309,46 +331,70 @@ export default function InstallationSchedule() {
                 <div className="space-y-2">
                   <Label className="text-sm font-medium text-slate-700">Technician / Serviceman</Label>
                   {servicemen.length > 0 ? (
-                    <Select
-                      value={formState.technicianId || ''}
-                      onValueChange={(value) => {
-                        const tech = servicemen.find(s => (s._id || s.id) === value);
-                        if (tech) {
-                          setFormState(f => ({
-                            ...f,
-                            technicianId: value,
-                            technicianName: tech.fullName || tech.name || tech.username || ''
-                          }));
-                        }
-                      }}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select technician">
-                          {formState.technicianName || 'Select technician'}
-                        </SelectValue>
-                      </SelectTrigger>
-                      <SelectContent>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button type="button" variant="outline" className="w-full justify-between font-normal">
+                          <span className="truncate text-left">
+                            {formState.technicians.length > 0
+                              ? formState.technicians.map(t => t.technicianName).join(', ')
+                              : 'Select technician(s)'}
+                          </span>
+                          <ChevronDown className="h-4 w-4 opacity-50 shrink-0 ml-2" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-[--radix-popover-trigger-width] p-2 max-h-64 overflow-y-auto" align="start">
                         {servicemen.map((s) => {
                           const id = s._id || s.id;
                           const name = s.fullName || s.name || s.username || 'Unknown';
                           const extra = s.designation || s.role || s.serviceZone || '';
+                          const checked = formState.technicians.some(t => t.technicianId === id);
                           return (
-                            <SelectItem key={id} value={id}>
-                              {name}{extra ? ` — ${extra}` : ''}
-                            </SelectItem>
+                            <label
+                              key={id}
+                              className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-slate-50 cursor-pointer text-sm"
+                            >
+                              <Checkbox
+                                checked={checked}
+                                onCheckedChange={(isChecked) => {
+                                  setFormState(f => ({
+                                    ...f,
+                                    technicians: isChecked
+                                      ? [...f.technicians, { technicianId: id, technicianName: name }]
+                                      : f.technicians.filter(t => t.technicianId !== id)
+                                  }));
+                                }}
+                              />
+                              <span className="text-slate-700">{name}{extra ? ` — ${extra}` : ''}</span>
+                            </label>
                           );
                         })}
-                      </SelectContent>
-                    </Select>
+                      </PopoverContent>
+                    </Popover>
                   ) : (
                     <Input
-                      value={formState.technicianName}
-                      onChange={e => setFormState(f => ({ ...f, technicianName: e.target.value }))}
-                      placeholder="Enter technician name"
+                      value={formState.manualTechnicianName}
+                      onChange={e => setFormState(f => ({ ...f, manualTechnicianName: e.target.value }))}
+                      placeholder="Enter technician name(s), comma separated"
                     />
                   )}
-                  {formState.technicianName && servicemen.length > 0 && (
-                    <p className="text-xs text-emerald-600">✓ {formState.technicianName}</p>
+                  {formState.technicians.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      {formState.technicians.map((t) => (
+                        <span
+                          key={t.technicianId || t.technicianName}
+                          className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full px-2 py-0.5 text-xs"
+                        >
+                          {t.technicianName}
+                          <button
+                            type="button"
+                            onClick={() => setFormState(f => ({ ...f, technicians: f.technicians.filter(x => x !== t) }))}
+                            className="hover:text-emerald-900"
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ))}
+                    </div>
                   )}
                 </div>
 

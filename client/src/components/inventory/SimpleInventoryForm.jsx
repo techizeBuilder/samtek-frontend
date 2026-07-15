@@ -73,6 +73,9 @@ export default function SimpleInventoryForm({
     importance: 'Normal', unitType: '', unit: '',
     qty: 0, minStock: 0, batch: '', leadTime: 0,
     stdCost: 0, purchaseCost: 0, salePrice: 0, mrp: 0, gst: 0, hsn: '',
+    // Auto-pricing bookkeeping (see itemPricingService.js) — 'Manual' until a
+    // real BOM build or purchase invoice resolves a cost for this item
+    costSource: 'Manual', costResolvedAt: null, costResolutionIssue: null,
     internalManufacturing: false, purchase: true, purchaseUnitType: '', purchaseUnit: '', internalNotes: '', image: '',
     specifications: [], applications: [], variants: [],
     warranty: { period: 12, type: 'Comprehensive', terms: '' }
@@ -175,6 +178,9 @@ export default function SimpleInventoryForm({
         leadTime: Number(item.leadTime) || 0,
         internalManufacturing: Boolean(item.internalManufacturing),
         purchase: Boolean(item.purchase !== false),
+        costSource: item.costSource || 'Manual',
+        costResolvedAt: item.costResolvedAt || null,
+        costResolutionIssue: item.costResolutionIssue || null,
         specifications: Array.isArray(item.specifications) ? item.specifications : [],
         applications: Array.isArray(item.applications) ? item.applications : [],
         variants: Array.isArray(item.variants)
@@ -611,12 +617,27 @@ export default function SimpleInventoryForm({
 
           {/* ── Financials & Tax (Restored) ──────────────────────────── */}
           <div className="border border-gray-200 rounded-lg p-4">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Pricing & Tax Information</h3>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">Pricing & Tax Information</h3>
+            {formData.costSource !== 'Manual' ? (
+              <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-md px-3 py-2 mb-4">
+                Auto-calculated from {formData.costSource === 'BOM' ? 'Bill of Materials (built cost)' : 'the latest Purchase price'}
+                {formData.costResolvedAt ? ` as of ${new Date(formData.costResolvedAt).toLocaleString()}` : ''}.
+                {' '}Formula: MRP = Cost + Profit%, Sale Price = Cost − Discount% (set in Company → My Company).
+              </p>
+            ) : formData.costResolutionIssue ? (
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 mb-4">
+                Not yet auto-calculated: {formData.costResolutionIssue}. Manual values below are being used until this is resolved.
+              </p>
+            ) : (formData.internalManufacturing || formData.purchase) ? (
+              <p className="text-xs text-gray-500 mb-4">
+                These values are R&D's manual estimate. Once this item is actually built (manufacturing) or purchased, Sale Price and MRP will be calculated automatically.
+              </p>
+            ) : null}
             <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
-              <div><Label className="text-sm font-medium text-gray-700">Standard Cost</Label><Input type="number" value={formData.stdCost} onChange={(e) => handleInputChange('stdCost', e.target.value)} className="mt-1" /></div>
-              <div><Label className="text-sm font-medium text-gray-700">Purchase Cost</Label><Input type="number" value={formData.purchaseCost} onChange={(e) => handleInputChange('purchaseCost', e.target.value)} className="mt-1" /></div>
-              <div><Label className="text-sm font-medium text-gray-700">Sale Price</Label><Input type="number" value={formData.salePrice} onChange={(e) => handleInputChange('salePrice', e.target.value)} className="mt-1" /></div>
-              <div><Label className="text-sm font-medium text-gray-700">MRP</Label><Input type="number" value={formData.mrp} onChange={(e) => handleInputChange('mrp', e.target.value)} className="mt-1" /></div>
+              <div><Label className="text-sm font-medium text-gray-700">Standard Cost</Label><Input type="number" disabled={formData.costSource === 'BOM'} value={formData.stdCost} onChange={(e) => handleInputChange('stdCost', e.target.value)} className="mt-1" /></div>
+              <div><Label className="text-sm font-medium text-gray-700">Purchase Cost</Label><Input type="number" disabled={formData.costSource === 'Purchase'} value={formData.purchaseCost} onChange={(e) => handleInputChange('purchaseCost', e.target.value)} className="mt-1" /></div>
+              <div><Label className="text-sm font-medium text-gray-700">Sale Price</Label><Input type="number" disabled={formData.costSource !== 'Manual'} value={formData.salePrice} onChange={(e) => handleInputChange('salePrice', e.target.value)} className="mt-1" /></div>
+              <div><Label className="text-sm font-medium text-gray-700">MRP</Label><Input type="number" disabled={formData.costSource !== 'Manual'} value={formData.mrp} onChange={(e) => handleInputChange('mrp', e.target.value)} className="mt-1" /></div>
               <div><Label className="text-sm font-medium text-gray-700">GST (%)</Label><Input type="number" value={formData.gst} onChange={(e) => handleInputChange('gst', e.target.value)} className="mt-1" /></div>
               <div><Label className="text-sm font-medium text-gray-700">HSN Code</Label><Input value={formData.hsn} onChange={(e) => handleInputChange('hsn', e.target.value)} className="mt-1 bg-white" /></div>
             </div>

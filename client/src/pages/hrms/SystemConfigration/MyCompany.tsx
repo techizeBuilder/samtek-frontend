@@ -4,7 +4,7 @@ import axios from "axios";
 import {
   Building2, MapPin, FileText, Globe, Mail, Facebook, Instagram,
   Linkedin, Twitter, Youtube, Link2, Edit2, Save, X, Upload,
-  Plus, Trash2, CheckCircle, Image as ImageIcon, Lock, Eye, EyeOff
+  Plus, Trash2, CheckCircle, Image as ImageIcon, Lock, Eye, EyeOff, Landmark, Percent
 } from "lucide-react";
 import { toast } from "../../Alert/Toast";
 
@@ -18,6 +18,14 @@ interface SocialLink {
   type: SocialType;
   label?: string;
   url: string;
+}
+
+interface BankDetails {
+  companyName?: string;   // account holder / name of company
+  bankName?: string;
+  accountNumber?: string;
+  ifsc?: string;
+  branch?: string;
 }
 
 interface CompanyData {
@@ -37,7 +45,11 @@ interface CompanyData {
   website?: string;
   stampUrl?: string;
   socialLinks?: SocialLink[];
+  bankDetails?: BankDetails;
   isActive?: boolean;
+  // Pricing rules for auto-calculated R&D item MRP/Sale Price
+  profitPercent?: number;
+  discountPercent?: number;
 }
 
 const SOCIAL_ICONS: Record<SocialType, JSX.Element> = {
@@ -242,6 +254,19 @@ export default function MyCompany() {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
+  };
+
+  // Bank details are nested under form.bankDetails
+  const handleBankChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setForm((f) => ({ ...f, bankDetails: { ...(f.bankDetails || {}), [name]: value } }));
+  };
+
+  // Profit %/Discount % are Number-typed on the schema — coerce here so an
+  // empty input doesn't get sent as "" (which fails Mongoose's Number cast).
+  const handlePercentChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setForm((f) => ({ ...f, [name]: value === "" ? 0 : Number(value) }));
   };
 
   // ── social link helpers ────────────────────────────────────────────────────
@@ -509,6 +534,65 @@ export default function MyCompany() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <InfoRow label="PAN Number" value={company.pan} />
             <InfoRow label="GST Number" value={company.gst} />
+          </div>
+        )}
+      </div>
+
+      {/* ── Bank Details (shown on Quotation PDFs) ────────────────────────── */}
+      <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+        <div className="flex items-center gap-2 mb-1">
+          <div className="w-8 h-8 bg-teal-100 rounded-lg flex items-center justify-center">
+            <Landmark className="w-4 h-4 text-teal-600" />
+          </div>
+          <h3 className="font-semibold text-gray-700 text-sm">Bank Details</h3>
+        </div>
+        <p className="text-xs text-gray-500 mb-4">
+          These details are printed in the "BANK DETAILS" section of every quotation your sales team
+          creates (preview, print, download &amp; email). Leave blank to show empty on the quotation.
+        </p>
+        {editing ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <EditField label="Name of Company (Account Holder)" name="companyName" value={form.bankDetails?.companyName || ""} onChange={handleBankChange} />
+            <EditField label="Bank Name" name="bankName" value={form.bankDetails?.bankName || ""} onChange={handleBankChange} />
+            <EditField label="Account Number" name="accountNumber" value={form.bankDetails?.accountNumber || ""} onChange={handleBankChange} />
+            <EditField label="IFSC Code" name="ifsc" value={form.bankDetails?.ifsc || ""} onChange={handleBankChange} />
+            <EditField label="Branch" name="branch" value={form.bankDetails?.branch || ""} onChange={handleBankChange} />
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <InfoRow label="Name of Company (Account Holder)" value={company.bankDetails?.companyName} />
+            <InfoRow label="Bank Name" value={company.bankDetails?.bankName} />
+            <InfoRow label="Account Number" value={company.bankDetails?.accountNumber} />
+            <InfoRow label="IFSC Code" value={company.bankDetails?.ifsc} />
+            <InfoRow label="Branch" value={company.bankDetails?.branch} />
+          </div>
+        )}
+      </div>
+
+      {/* ── Pricing Rules (auto MRP / Sale Price for R&D items) ───────────── */}
+      <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+        <div className="flex items-center gap-2 mb-1">
+          <div className="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center">
+            <Percent className="w-4 h-4 text-amber-600" />
+          </div>
+          <h3 className="font-semibold text-gray-700 text-sm">Pricing Rules</h3>
+        </div>
+        <p className="text-xs text-gray-500 mb-4">
+          Once an R&D item's real cost is known — from its Bill of Materials (once built) or an actual
+          purchase price (once purchased) — MRP and Sale Price are calculated automatically:
+          MRP = Cost + Profit%, Sale Price = Cost − Discount%.
+        </p>
+        {editing ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <EditField label="Profit % (for MRP)" name="profitPercent" type="number"
+              value={String(form.profitPercent ?? 0)} onChange={handlePercentChange} />
+            <EditField label="Discount % (for Sale Price)" name="discountPercent" type="number"
+              value={String(form.discountPercent ?? 0)} onChange={handlePercentChange} />
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <InfoRow label="Profit %" value={company.profitPercent != null ? `${company.profitPercent}%` : undefined} />
+            <InfoRow label="Discount %" value={company.discountPercent != null ? `${company.discountPercent}%` : undefined} />
           </div>
         )}
       </div>
