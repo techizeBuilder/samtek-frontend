@@ -59,7 +59,7 @@ function buildSpecText(item) {
   const parts = [];
   (item.specifications || []).forEach(s => { if (s.key && s.value) parts.push(`${s.key}: ${s.value}`); });
   const apps = item.applications || item.features || [];
-  if (apps.length) parts.push(`Usages: ${apps.join(', ')}`);
+  if (apps.length) parts.push(`Usage: ${apps[0]}`);
   return parts.join('; ');
 }
 
@@ -501,7 +501,7 @@ export default function OrderFormModal({ open, onOpenChange, orderId, order, lea
                           <TableCell className="align-top"><CellInput value={it.itemName} onChange={v => setItemField(originalIdx, 'itemName', v)} disabled={lockedDisabled} /></TableCell>
                           <TableCell className="align-top"><SpecCell value={it.specification} onChange={v => setItemField(originalIdx, 'specification', v)} disabled={lockedDisabled} /></TableCell>
                           <TableCell className="align-top"><CellInput value={it.hsnCode} onChange={v => setItemField(originalIdx, 'hsnCode', v)} disabled={lockedDisabled} size="lg" /></TableCell>
-                          <TableCell className="align-top"><CellInput type="number" value={it.qty} onChange={v => setItemField(originalIdx, 'qty', v)} disabled={lockedDisabled} className="text-right" size="lg" /></TableCell>
+                          <TableCell className="align-top"><QtyCell value={it.qty} onChange={v => setItemField(originalIdx, 'qty', v)} disabled={lockedDisabled} /></TableCell>
                           <TableCell className="align-top"><CellInput type="number" value={it.billAmount} onChange={v => setItemField(originalIdx, 'billAmount', v)} disabled={disabled} className="text-right" size="lg" /></TableCell>
                           <TableCell className="align-top"><CellInput type="number" value={it.gstAmount} onChange={() => {}} disabled title="Auto: 18% of Bill Amt" className="text-right" size="lg" /></TableCell>
                           <TableCell className="align-top"><CellInput type="number" value={it.quotationAmount} onChange={v => setItemField(originalIdx, 'quotationAmount', v)} disabled={lockedDisabled} className="text-right" size="lg" /></TableCell>
@@ -637,6 +637,24 @@ function CellInput({ value, onChange, disabled, type = 'text', title, className 
       title={title}
       className={`w-full border rounded ${sizeClasses} ${className}`}
     />
+  );
+}
+
+// Locked/auto-filled rows show QTY as a plain bold number (not a faint
+// disabled input) so it's actually readable at a glance across multiple
+// machine rows — the previous disabled <input> rendered so light it read
+// as a blank/dot even though the value was there (and summed correctly
+// into TOTAL).
+function QtyCell({ value, onChange, disabled }) {
+  if (disabled) {
+    return (
+      <div className="text-sm font-semibold text-right px-2.5 py-1.5">
+        {value || value === 0 ? value : '-'}
+      </div>
+    );
+  }
+  return (
+    <CellInput type="number" value={value} onChange={onChange} className="text-right" size="lg" />
   );
 }
 

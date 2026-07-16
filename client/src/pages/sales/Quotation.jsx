@@ -203,27 +203,30 @@ const Quotation = () => {
     }
   });
 
-  // Transform items data for price list
-  const PRICE_LIST_DATA = (priceListResponse?.items || []).map((item, index) => ({
-    id: item._id,
-    category: item.name,
-    code: item.code,
-    price: buyerType === 'Dealer' ? (item.dealerPrice || item.salePrice) : item.salePrice,
-    unit: item.unit || 1,
-    description: item.description || '',
-    features: item.applications || [],
-    products: (item.variants && item.variants.length > 0) ? item.variants.map(variant => ({
-      ...variant,
-      price: buyerType === 'Dealer' ? (variant.dealerPrice || variant.price) : variant.price
-    })) : [
-      { 
-        Capacity: item.name, 
-        price: buyerType === 'Dealer' ? (item.dealerPrice || item.salePrice) : item.salePrice 
-      }
-    ],
-    image: item.image,
-    specifications: item.specifications || []
-  }));
+  // Group items by SubCategory for the Price List (one entry per SubCategory,
+  // containing every Product item that belongs to it)
+  const priceOf = (item) => buyerType === 'Dealer' ? (item.dealerPrice || item.mrp || 0) : (item.mrp || 0);
+
+  const subCategoryMap = {};
+  (priceListResponse?.items || []).forEach((item) => {
+    const subCategory = (item.subCategory || '').trim();
+    if (!subCategory) return; // skip items with no subCategory - nothing to group them into
+    if (!subCategoryMap[subCategory]) subCategoryMap[subCategory] = [];
+    subCategoryMap[subCategory].push(item);
+  });
+
+  const PRICE_LIST_DATA = Object.keys(subCategoryMap).map((subCategory) => {
+    const products = [...subCategoryMap[subCategory]].sort((a, b) => (a.code || '').localeCompare(b.code || ''));
+    const prices = products.map(priceOf);
+    return {
+      id: subCategory,
+      subCategory,
+      products,
+      count: products.length,
+      minPrice: Math.min(...prices),
+      maxPrice: Math.max(...prices)
+    };
+  });
 
   const pdfRef = useRef();
   const pageRefs = useRef([]); // refs for individual page blocks
@@ -926,7 +929,7 @@ const Quotation = () => {
     setSelectedItems([...selectedItems, {
       ...product,
       id: product._id,
-      price: buyerType === 'Dealer' ? (product.dealerPrice || product.salePrice || 0) : (product.salePrice || 0),
+      price: buyerType === 'Dealer' ? (product.dealerPrice || product.mrp || 0) : (product.mrp || 0),
       quantity: 1,
       gst: 18
     }]);
@@ -1337,16 +1340,15 @@ const Quotation = () => {
                     <th className="px-4 py-3 text-left w-16">Select</th>
                     <th className="px-4 py-3 text-left w-16">Sno</th>
                     <th className="px-4 py-3 text-left">Product Category</th>
-                    <th className="px-4 py-3 text-left">Product Code</th>
-                    <th className="px-4 py-3 text-left">Price</th>
-                    <th className="px-4 py-3 text-left">Unit</th>
+                    <th className="px-4 py-3 text-left">No. of Products</th>
+                    <th className="px-4 py-3 text-left">Price Range</th>
                   </tr>
                 </thead>
                 <tbody>
                   {priceListLoading ? (
-                    <tr><td colSpan={6} className="text-center py-10 text-gray-500">Loading price list...</td></tr>
+                    <tr><td colSpan={5} className="text-center py-10 text-gray-500">Loading price list...</td></tr>
                   ) : PRICE_LIST_DATA.length === 0 ? (
-                    <tr><td colSpan={6} className="text-center py-10 text-gray-500">No products found for price list</td></tr>
+                    <tr><td colSpan={5} className="text-center py-10 text-gray-500">No products found for price list</td></tr>
                   ) : PRICE_LIST_DATA.map((item, idx) => (
                     <tr
                       key={item.id}
@@ -1362,10 +1364,13 @@ const Quotation = () => {
                         />
                       </td>
                       <td className="px-4 py-3">{idx + 1}</td>
-                      <td className="px-4 py-3 font-medium">{item.category}</td>
-                      <td className="px-4 py-3 text-gray-500">{item.code}</td>
-                      <td className="px-4 py-3">₹{item.price.toLocaleString()}</td>
-                      <td className="px-4 py-3">{item.unit}</td>
+                      <td className="px-4 py-3 font-medium">{item.subCategory}</td>
+                      <td className="px-4 py-3 text-gray-500">{item.count}</td>
+                      <td className="px-4 py-3">
+                        {item.minPrice === item.maxPrice
+                          ? `₹${item.minPrice.toLocaleString()}`
+                          : `₹${item.minPrice.toLocaleString()} - ₹${item.maxPrice.toLocaleString()}`}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -1414,7 +1419,7 @@ const Quotation = () => {
             ...p,
             id: p._id,
             quantity: 1,
-            price: quotationType === 'Dealer' ? (p.dealerPrice || p.salePrice || 0) : (p.salePrice || 0),
+            price: quotationType === 'Dealer' ? (p.dealerPrice || p.mrp || 0) : (p.mrp || 0),
             gst: p.gst || 18,
             description: p.description || ''
           }));
@@ -1658,7 +1663,7 @@ const Quotation = () => {
                       </td>
                       <td className="px-4 py-3 font-medium">{p.name}</td>
                       <td className="px-4 py-3 text-gray-500">{p.code || '-'}</td>
-                      <td className="px-4 py-3">₹{(p.salePrice || 0).toLocaleString()}</td>
+                      <td className="px-4 py-3">₹{(p.mrp || 0).toLocaleString()}</td>
                       <td className="px-4 py-3">{p.unit}</td>
                       <td className="px-4 py-3 text-center">
                         <Button
@@ -1750,7 +1755,7 @@ const Quotation = () => {
                             const buildSpecUsageText = (it) => {
                               const specParts = (it.specifications || []).map(s => `${s.key}: ${s.value}`);
                               const apps = it.applications || it.features || [];
-                              if (apps.length > 0) specParts.push(`Usage: ${apps.join(', ')}`);
+                              if (apps.length > 0) specParts.push(`Usage: ${apps[0]}`);
                               return specParts.join(' | ');
                             };
                             // Initialize specUsageText from item if not yet set
@@ -2278,7 +2283,7 @@ const Quotation = () => {
                                 const buildSpecUsageText = (it) => {
                                   const specParts = (it.specifications || []).map(s => `${s.key}: ${s.value}`);
                                   const apps = it.applications || it.features || [];
-                                  if (apps.length > 0) specParts.push(`Usage: ${apps.join(', ')}`);
+                                  if (apps.length > 0) specParts.push(`Usage: ${apps[0]}`);
                                   return specParts.join(' | ');
                                 };
                                 const rawText = item.specUsageText !== undefined ? item.specUsageText : buildSpecUsageText(item);
@@ -2447,28 +2452,22 @@ const Quotation = () => {
     const category = selectedPriceListCategory;
     if (!category) return null;
 
+    const products = category.products || [];
+    const firstProduct = products[0] || {};
+
+    // Table headers = ordered union of specification keys across every product in the subcategory
     let dynamicColumns = [];
-    if (category.products && category.products.length > 0) {
-      const keySet = new Set();
-      category.products.forEach(p => {
-        Object.keys(p).forEach(k => {
-          const lowerK = k.toLowerCase();
-          if (!['price', '_id', 'id', 'dealerprice', 'pricewithoutmotor', 'pricewithmotor', 'margin', 'name', 'capacity', 'createdat', 'updatedat', '__v', 'status'].includes(lowerK)) {
-             keySet.add(k);
-          }
-        });
+    const seenKeys = new Set();
+    products.forEach(p => {
+      (p.specifications || []).forEach(spec => {
+        const key = (spec.key || '').trim();
+        if (key && !seenKeys.has(key.toLowerCase())) {
+          seenKeys.add(key.toLowerCase());
+          dynamicColumns.push(key);
+        }
       });
-      let firstCols = [];
-      if (category.products.some(prod => prod.capacity || prod.Capacity)) firstCols.push('Capacity');
-      else if (category.products.some(prod => prod.name || prod.Name)) firstCols.push('Name');
-      
-      const otherCols = Array.from(keySet);
-      dynamicColumns = [...firstCols, ...otherCols];
-      
-      if (dynamicColumns.length === 0) {
-         dynamicColumns = ['Details']; // fallback
-      }
-    }
+    });
+    if (dynamicColumns.length === 0) dynamicColumns = ['Details'];
 
     return (
       <div className="space-y-6 pb-20">
@@ -2514,14 +2513,14 @@ const Quotation = () => {
               SINCE 2013
             </div>
             <div className="bg-blue-800 text-white flex-1 py-2 px-6 font-bold flex items-center justify-center text-center uppercase tracking-wide">
-              {category.category}
+              {category.subCategory}
             </div>
           </div>
 
           <div className="p-8">
             {/* Description Lines */}
             <div className="text-blue-800 font-bold space-y-1 mb-8 text-sm">
-              {category.description.split('\n').map((line, i) => (
+              {(firstProduct.description || '').split('\n').map((line, i) => (
                 <p key={i}>{line}</p>
               ))}
             </div>
@@ -2549,7 +2548,7 @@ const Quotation = () => {
 
                 {/* Checklist */}
                 <div className="border-2 border-blue-600 rounded-xl p-4 space-y-2">
-                  {category.features.map((feature, i) => (
+                  {(firstProduct.applications || []).map((feature, i) => (
                     <div key={i} className="flex items-center gap-2 text-xs font-bold text-blue-800">
                       <CheckCircle2 className="h-3 w-3 text-blue-600 shrink-0" />
                       <span>{feature}</span>
@@ -2559,7 +2558,7 @@ const Quotation = () => {
               </div>
 
               <div className="col-span-4 flex justify-center">
-                <img src={category.image || "/flour_mill_machine.png"} alt="Machine" className="max-h-[350px] w-auto object-contain" />
+                <img src={firstProduct.image || "/flour_mill_machine.png"} alt="Machine" className="max-h-[350px] w-auto object-contain" />
               </div>
             </div>
 
@@ -2579,18 +2578,18 @@ const Quotation = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {category.products.map((p, idx) => (
-                    <tr key={idx} className={`${idx % 2 === 0 ? "bg-orange-500 text-white" : "bg-white text-blue-800"} pdf-section`}>
+                  {products.map((p, idx) => (
+                    <tr key={p._id || idx} className={`${idx % 2 === 0 ? "bg-orange-500 text-white" : "bg-white text-blue-800"} pdf-section`}>
                       {dynamicColumns.map(col => {
-                        const actualKey = Object.keys(p).find(k => k.toLowerCase() === col.toLowerCase());
-                        const val = actualKey && p[actualKey] ? p[actualKey] : '-';
+                        const spec = (p.specifications || []).find(s => (s.key || '').trim().toLowerCase() === col.toLowerCase());
+                        const val = spec && spec.value ? spec.value : 'N/A';
                         return (
                           <td key={col} className="px-4 py-2 text-center font-bold border-r border-white/20 uppercase">
                             {val}
                           </td>
                         );
                       })}
-                      <td className="px-4 py-2 text-right font-black">{(p.price || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                      <td className="px-4 py-2 text-right font-black">{priceOf(p).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                     </tr>
                   ))}
                 </tbody>

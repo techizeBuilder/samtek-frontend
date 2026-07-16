@@ -422,7 +422,7 @@ function buildSpecLines(item){
   }else{
     (item.specifications||[]).forEach(s=>{if(s.key&&s.value)specs.push('# '+s.key+' : '+s.value);});
     const apps=item.applications||item.features||[];
-    if(apps.length)specs.push('# Usages: '+apps.join(', '));
+    if(apps.length)specs.push('# Usage: '+apps[0]);
   }
   return specs;
 }
