@@ -27,7 +27,7 @@ export default function DesignApproval() {
   const [selected, setSelected] = useState(null);
   const [rejectNote, setRejectNote] = useState('');
 
-  const active = machines.filter(m => !m.isDiscontinued);
+  const active = machines.filter(m => !m.isDiscontinued && m.forwardToNextPhase);
 
   const counts = {
     All: active.length,
@@ -82,6 +82,9 @@ export default function DesignApproval() {
             </React.Fragment>
           ))}
           <span className="text-xs text-slate-500 ml-2">→ Production gets access only after Approval</span>
+        </div>
+        <div className="mt-2 text-xs text-slate-500">
+          Only products marked <strong>"Forward to Design &amp; Prototype"</strong> in Product Master appear here.
         </div>
       </div>
 

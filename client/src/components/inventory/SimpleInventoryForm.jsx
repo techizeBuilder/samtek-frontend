@@ -12,11 +12,14 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import {
-  Loader2, Package, AlertCircle, Upload, Plus, X, Shield, Layers, Wrench, FlaskConical, Trash2, Copy
+  Loader2, Package, AlertCircle, Upload, Plus, X, Shield, Layers, Wrench, FlaskConical, Trash2, Copy,
+  Image as ImageIcon, FileText, Video, StickyNote
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { UNIT_TYPES, getUnitTypeForUnit, getUnitsForType } from '@/utils/unitTypes';
 import apiService from '@/services/api';
+import { apiRequest } from '@/lib/queryClient';
+import { config } from '@/config/environment';
 
 const ITEM_TYPES = ['Product', 'Material', 'Spares', 'Assemblies'];
 const IMPORTANCE_LEVELS = ['Low', 'Normal', 'High', 'Critical'];
@@ -66,6 +69,13 @@ export default function SimpleInventoryForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState({});
   const [imagePreview, setImagePreview] = useState(null);
+  const [imageUploading, setImageUploading] = useState(false);
+  const [brochureUploading, setBrochureUploading] = useState(false);
+  // Tracks a freshly-uploaded (this session) image/brochure URL that isn't attached to a
+  // saved item yet — if the user replaces it or cancels the dialog, we discard it from disk
+  // so it doesn't sit as an orphaned file. Cleared (without discarding) once the item saves.
+  const [pendingImageUpload, setPendingImageUpload] = useState(null);
+  const [pendingBrochureUpload, setPendingBrochureUpload] = useState(null);
 
   const emptyForm = {
     name: '', code: '', description: '', group: '',
@@ -77,6 +87,7 @@ export default function SimpleInventoryForm({
     // real BOM build or purchase invoice resolves a cost for this item
     costSource: 'Manual', costResolvedAt: null, costResolutionIssue: null,
     internalManufacturing: false, purchase: true, purchaseUnitType: '', purchaseUnit: '', internalNotes: '', image: '',
+    brochureUrl: '', videoUrl: '', otherInfo: '',
     specifications: [], applications: [], variants: [],
     warranty: { period: 12, type: 'Comprehensive', terms: '' }
   };
@@ -190,6 +201,8 @@ export default function SimpleInventoryForm({
       });
       setErrors({});
       setImagePreview(item.image || null);
+      setPendingImageUpload(null);
+      setPendingBrochureUpload(null);
     } else if (isOpen && !item) {
       resetForm();
     }
@@ -201,6 +214,22 @@ export default function SimpleInventoryForm({
     setImagePreview(null);
     setIsSubmitting(false);
     setCloneSourceCode('');
+    setImageUploading(false);
+    setBrochureUploading(false);
+    setPendingImageUpload(null);
+    setPendingBrochureUpload(null);
+  };
+
+  // Best-effort cleanup of this session's not-yet-saved uploads (dialog cancelled/closed).
+  const discardPendingMedia = () => {
+    [pendingImageUpload, pendingBrochureUpload].filter(Boolean).forEach(url => {
+      apiRequest('POST', '/api/items/media/delete', { url }).catch(() => {});
+    });
+  };
+
+  const handleCancel = () => {
+    discardPendingMedia();
+    onClose();
   };
 
   const handleInputChange = (field, value) => {
@@ -214,20 +243,70 @@ export default function SimpleInventoryForm({
     handleInputChange('specifications', newSpecs);
   };
 
-  const handleImageUpload = (event) => {
+  const handleImageUpload = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
     if (file.size > 5 * 1024 * 1024) {
       toast({ title: 'File too large', description: 'Please select an image under 5MB', variant: 'destructive' });
       return;
     }
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setImagePreview(reader.result);
-      handleInputChange('image', reader.result);
-    };
-    reader.readAsDataURL(file);
+    // Instant local preview while the real upload is in flight
+    setImagePreview(URL.createObjectURL(file));
+    setImageUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('image', file);
+      const res = await apiRequest('POST', '/api/items/upload-image', fd);
+      if (res.success && res.url) {
+        // Replacing an upload from this same session that was never saved — discard it
+        if (pendingImageUpload) {
+          apiRequest('POST', '/api/items/media/delete', { url: pendingImageUpload }).catch(() => {});
+        }
+        setPendingImageUpload(res.url);
+        handleInputChange('image', res.url);
+        setImagePreview(res.url);
+      }
+    } catch (error) {
+      toast({ title: 'Image Upload Failed', description: error?.message || 'Failed to upload image', variant: 'destructive' });
+      setImagePreview(formData.image || null);
+    } finally {
+      setImageUploading(false);
+    }
   };
+
+  const handleBrochureUpload = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    if (file.type !== 'application/pdf') {
+      toast({ title: 'Invalid file', description: 'Only PDF files are allowed for the brochure', variant: 'destructive' });
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast({ title: 'File too large', description: 'Please select a PDF under 10MB', variant: 'destructive' });
+      return;
+    }
+    setBrochureUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('brochure', file);
+      const res = await apiRequest('POST', '/api/items/upload-brochure', fd);
+      if (res.success && res.url) {
+        // Replacing an upload from this same session that was never saved — discard it
+        if (pendingBrochureUpload) {
+          apiRequest('POST', '/api/items/media/delete', { url: pendingBrochureUpload }).catch(() => {});
+        }
+        setPendingBrochureUpload(res.url);
+        handleInputChange('brochureUrl', res.url);
+        toast({ title: 'Brochure Uploaded', description: 'Brochure PDF uploaded successfully' });
+      }
+    } catch (error) {
+      toast({ title: 'Brochure Upload Failed', description: error?.message || 'Failed to upload brochure', variant: 'destructive' });
+    } finally {
+      setBrochureUploading(false);
+    }
+  };
+
+  const resolveMediaUrl = (url) => (!url ? '' : (url.startsWith('http') || url.startsWith('blob:') || url.startsWith('data:')) ? url : `${config.baseURL}${url}`);
 
   const handleSubmit = async () => {
     setIsSubmitting(true);
@@ -290,7 +369,7 @@ export default function SimpleInventoryForm({
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) handleCancel(); }}>
       <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -323,6 +402,57 @@ export default function SimpleInventoryForm({
               <div className="md:col-span-2">
                 <Label className="text-sm font-medium text-gray-700">Description</Label>
                 <Textarea value={formData.description} onChange={(e) => handleInputChange('description', e.target.value)} placeholder="Enter item description" rows={2} className="mt-1 bg-white" />
+              </div>
+            </div>
+          </div>
+
+          {/* ── Media & Documents ──────────────────────────────────────── */}
+          <div className="border border-gray-200 rounded-lg p-4">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">Media & Documents</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <Label className="text-sm font-medium text-gray-700 flex items-center gap-1.5 mb-2">
+                  <ImageIcon className="h-4 w-4 text-gray-500" /> Product Image
+                </Label>
+                <div className="flex items-center gap-3">
+                  {imagePreview ? (
+                    <img src={resolveMediaUrl(imagePreview)} alt="Product" className="h-16 w-16 object-cover rounded-lg border border-gray-200 flex-shrink-0" />
+                  ) : (
+                    <div className="h-16 w-16 rounded-lg border border-dashed border-gray-300 flex items-center justify-center text-gray-300 flex-shrink-0">
+                      <ImageIcon className="h-6 w-6" />
+                    </div>
+                  )}
+                  <div className="flex-1">
+                    <input type="file" accept="image/*" onChange={handleImageUpload} disabled={imageUploading} className="text-xs text-gray-600 file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
+                    {imageUploading && <p className="text-xs text-blue-600 flex items-center gap-1 mt-1"><Loader2 className="h-3 w-3 animate-spin" /> Uploading...</p>}
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-sm font-medium text-gray-700 flex items-center gap-1.5 mb-2">
+                  <FileText className="h-4 w-4 text-gray-500" /> Brochure (PDF)
+                </Label>
+                <input type="file" accept="application/pdf" onChange={handleBrochureUpload} disabled={brochureUploading} className="text-xs text-gray-600 file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
+                {brochureUploading && <p className="text-xs text-blue-600 flex items-center gap-1 mt-1"><Loader2 className="h-3 w-3 animate-spin" /> Uploading...</p>}
+                {formData.brochureUrl && !brochureUploading && (
+                  <a href={resolveMediaUrl(formData.brochureUrl)} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:underline mt-1.5 inline-block">View uploaded brochure</a>
+                )}
+              </div>
+
+              <div>
+                <Label className="text-sm font-medium text-gray-700 flex items-center gap-1.5 mb-2">
+                  <Video className="h-4 w-4 text-gray-500" /> Video URL
+                </Label>
+                <Input value={formData.videoUrl} onChange={(e) => handleInputChange('videoUrl', e.target.value)} placeholder="e.g. https://youtube.com/watch?v=..." className="bg-white" />
+                <p className="text-xs text-gray-400 mt-1">Not uploaded to the server — just a link (YouTube, Drive, etc.)</p>
+              </div>
+
+              <div>
+                <Label className="text-sm font-medium text-gray-700 flex items-center gap-1.5 mb-2">
+                  <StickyNote className="h-4 w-4 text-gray-500" /> Other Info
+                </Label>
+                <Input value={formData.otherInfo} onChange={(e) => handleInputChange('otherInfo', e.target.value)} placeholder="Any other notes for this item" className="bg-white" />
               </div>
             </div>
           </div>
@@ -688,7 +818,7 @@ export default function SimpleInventoryForm({
         </div>
 
         <div className="flex justify-end gap-3 border-t border-slate-100 pt-4 mt-6">
-          <Button variant="outline" onClick={onClose} disabled={isSubmitting}>Cancel</Button>
+          <Button variant="outline" onClick={handleCancel} disabled={isSubmitting}>Cancel</Button>
           <Button onClick={handleSubmit} disabled={isSubmitting} className="bg-blue-600 hover:bg-blue-700 text-white">
             {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             {item ? 'Update Master Item' : 'Create Master Item'}

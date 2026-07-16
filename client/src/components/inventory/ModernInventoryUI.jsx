@@ -56,7 +56,6 @@ import {
   FolderPlus,
   Tags,
   Users,
-  Building2,
   GripVertical,
   Scale
 } from 'lucide-react';
@@ -364,9 +363,10 @@ export default function ModernInventoryUI() {
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
+  const [selectedSubCategory, setSelectedSubCategory] = useState('all');
   const [selectedType, setSelectedType] = useState('all');
   const [selectedStore, setSelectedStore] = useState('all');
-  const [selectedLocation, setSelectedLocation] = useState('all');
+  const [selectedGroup, setSelectedGroup] = useState('all');
   const [sortBy, setSortBy] = useState('newest');
   const [sortOrder, setSortOrder] = useState('asc'); // Added sortOrder state
   const [currentPage, setCurrentPage] = useState(1);
@@ -381,7 +381,7 @@ export default function ModernInventoryUI() {
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearchTerm(searchTerm);
-    }, 300);
+    }, 500);
 
     return () => clearTimeout(timer);
   }, [searchTerm]);
@@ -400,16 +400,17 @@ export default function ModernInventoryUI() {
 
   // Data fetching with React Query - let API handle ALL filtering
   const { data: itemsData, isLoading: itemsLoading } = useQuery({
-    queryKey: [`${apiBasePath}/items`, debouncedSearchTerm, selectedCategory, selectedType, selectedStore, selectedLocation, sortBy, sortOrder],
+    queryKey: [`${apiBasePath}/items`, debouncedSearchTerm, selectedCategory, selectedSubCategory, selectedType, selectedStore, selectedGroup, sortBy, sortOrder],
     queryFn: () => {
       const params = new URLSearchParams({
         page: 1,
         limit: 100, // Fetch more items from API
         ...(debouncedSearchTerm && { search: debouncedSearchTerm }),
         ...(selectedCategory && selectedCategory !== 'all' && { category: selectedCategory }),
+        ...(selectedSubCategory && selectedSubCategory !== 'all' && { subCategory: selectedSubCategory }),
         ...(selectedType && selectedType !== 'all' && { type: selectedType }),
         ...(selectedStore && selectedStore !== 'all' && { store: selectedStore }),
-        ...(selectedLocation && selectedLocation !== 'all' && { location: selectedLocation }),
+        ...(selectedGroup && selectedGroup !== 'all' && { group: selectedGroup }),
         sortBy,
         sortOrder
       });
@@ -445,12 +446,6 @@ export default function ModernInventoryUI() {
     queryKey: ['/api/inventory/unit-types'],
   });
 
-  // Fetch companies for location dropdown - use authenticated endpoint
-  const { data: companiesData } = useQuery({
-    queryKey: ['companies-dropdown'],
-    queryFn: () => apiRequest('GET', '/api/companies/dropdown'),
-  });
-
   // Extract data from API response including pagination
   const items = Array.isArray(itemsData?.items) ? itemsData.items : [];
   const apiPagination = itemsData?.pagination || {};
@@ -458,10 +453,29 @@ export default function ModernInventoryUI() {
   const customerCategories = Array.isArray(customerCategoriesData?.customerCategories) ? customerCategoriesData.customerCategories : [];
   const groups = Array.isArray(groupsData?.groups) ? groupsData.groups : [];
   const unitTypes = Array.isArray(unitTypesData?.unitTypes) ? unitTypesData.unitTypes : [];
-  const companies = Array.isArray(companiesData?.companies) ? companiesData.companies : [];
+
+  // Sub Category filter is locked to a specific Category — no meaningful "all categories'
+  // subcategories" union, since sub-category names aren't unique across categories.
+  const availableFilterSubCategories = React.useMemo(() => {
+    if (selectedCategory === 'all') return [];
+    const cat = categories.find(c => c.name === selectedCategory);
+    return [...(cat?.subcategories || [])].sort();
+  }, [selectedCategory, categories]);
+
+  const hasActiveFilters = debouncedSearchTerm || searchTerm || selectedCategory !== 'all' || selectedSubCategory !== 'all' ||
+    selectedType !== 'all' || selectedGroup !== 'all';
+
+  const handleResetFilters = () => {
+    setSearchTerm('');
+    setDebouncedSearchTerm('');
+    setSelectedCategory('all');
+    setSelectedSubCategory('all');
+    setSelectedType('all');
+    setSelectedGroup('all');
+    setCurrentPage(1);
+  };
 
   console.log('API Response:', { items: items.length, pagination: apiPagination });
-  console.log('Companies data:', companies);
 
   // Mutations
   const deleteItemMutation = useMutation({
@@ -687,15 +701,7 @@ export default function ModernInventoryUI() {
   // Reset to first page when search or filter changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [debouncedSearchTerm, selectedCategory, selectedType, selectedStore, selectedLocation, sortBy, sortOrder]);
-
-  // Auto-select location for Unit Head users
-  useEffect(() => {
-    if (user?.role === 'Unit Head' && companies.length === 1) {
-      // If Unit Head has only one company (their assigned one), auto-select it
-      setSelectedLocation(companies[0].value);
-    }
-  }, [companies, user?.role]);
+  }, [debouncedSearchTerm, selectedCategory, selectedSubCategory, selectedType, selectedStore, selectedGroup, sortBy, sortOrder]);
 
   const handlePageChange = (page) => {
     setCurrentPage(page);
@@ -813,7 +819,7 @@ export default function ModernInventoryUI() {
                 />
               </div>
               <div className="flex flex-wrap gap-2">
-                <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                <Select value={selectedCategory} onValueChange={(v) => { setSelectedCategory(v); setSelectedSubCategory('all'); }}>
                   <SelectTrigger className="w-[110px] sm:w-[130px] h-9 border-gray-300 focus:border-blue-500 text-xs px-2">
                     <SelectValue placeholder="All Categories" />
                   </SelectTrigger>
@@ -829,6 +835,27 @@ export default function ModernInventoryUI() {
                         <div className="flex items-center gap-2">
                           <Tag className="h-4 w-4" />
                           {category.name}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={selectedSubCategory} onValueChange={setSelectedSubCategory} disabled={selectedCategory === 'all'}>
+                  <SelectTrigger className="w-[130px] sm:w-[150px] h-9 border-gray-300 focus:border-blue-500 text-xs px-2">
+                    <SelectValue placeholder={selectedCategory === 'all' ? 'Select Category first' : 'All Sub Categories'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">
+                      <div className="flex items-center gap-2">
+                        <Tag className="h-4 w-4" />
+                        All Sub Categories
+                      </div>
+                    </SelectItem>
+                    {availableFilterSubCategories.map((sub) => (
+                      <SelectItem key={sub} value={sub}>
+                        <div className="flex items-center gap-2">
+                          <Tag className="h-4 w-4" />
+                          {sub}
                         </div>
                       </SelectItem>
                     ))}
@@ -871,24 +898,22 @@ export default function ModernInventoryUI() {
                     </SelectItem>
                   </SelectContent>
                 </Select>
-                <Select value={selectedLocation} onValueChange={setSelectedLocation}>
-                  <SelectTrigger className="w-[140px] sm:w-[180px] h-9 border-gray-300 focus:border-blue-500 text-xs px-2">
-                    <SelectValue placeholder="All Locations" />
+                <Select value={selectedGroup} onValueChange={setSelectedGroup}>
+                  <SelectTrigger className="w-[120px] sm:w-[140px] h-9 border-gray-300 focus:border-blue-500 text-xs px-2">
+                    <SelectValue placeholder="All Groups" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">
                       <div className="flex items-center gap-2">
-                        <Building2 className="h-4 w-4" />
-                        All Locations
+                        <Tags className="h-4 w-4" />
+                        All Groups
                       </div>
                     </SelectItem>
-                    {companies.length > 0 && companies.map((company) => (
-                      <SelectItem key={company.value} value={company.value}>
-                        <div className="flex items-center gap-2 max-w-[240px]">
-                          <Building2 className="h-4 w-4 flex-shrink-0" />
-                          <span className="truncate" title={company.label}>
-                            {company.label}
-                          </span>
+                    {groups.length > 0 && [...groups].sort((a, b) => a.name.localeCompare(b.name)).map((group) => (
+                      <SelectItem key={group._id || group.name} value={group.name}>
+                        <div className="flex items-center gap-2">
+                          <Tags className="h-4 w-4" />
+                          {group.name}
                         </div>
                       </SelectItem>
                     ))}
@@ -919,6 +944,18 @@ export default function ModernInventoryUI() {
                     <SelectItem value="100">100 per page</SelectItem>
                   </SelectContent>
                 </Select>
+
+                {hasActiveFilters && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleResetFilters}
+                    className="h-9 text-xs border-gray-300 text-gray-600 hover:text-gray-800 hover:bg-gray-50 gap-1.5"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" />
+                    Reset Filters
+                  </Button>
+                )}
               </div>
             </div>
 
@@ -1094,7 +1131,6 @@ export default function ModernInventoryUI() {
           customerCategories={customerCategories}
           groups={groups}
           unitTypes={unitTypes}
-          companies={companies}
           onSubmit={handleFormSubmit}
           isLoading={createItemMutation.isPending || updateItemMutation.isPending}
           onOpenCategoryManagement={() => setCategoryManagementOpen(true)}

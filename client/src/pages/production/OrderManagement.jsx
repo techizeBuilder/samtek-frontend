@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useProduction } from '@/contexts/ProductionContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import {
   ClipboardList, Plus, CheckCircle, AlertTriangle, Clock, Package,
-  ChevronRight, FileCheck, Wrench, Send, Search, Filter, FileText, ExternalLink, ShoppingCart, ArrowDownToLine
+  ChevronRight, FileCheck, Wrench, Send, Search, Filter, FileText, ExternalLink, ShoppingCart, ArrowDownToLine, Eye
 } from 'lucide-react';
 import { useProduction as useProd } from '@/contexts/ProductionContext';
 import { apiRequest } from '@/lib/queryClient';
@@ -37,6 +37,12 @@ const UNITS = ['kg', 'pcs', 'ltr', 'm', 'set', 'nos'];
 const emptyOrder = { machineCode: '', machineName: '', priority: 'Normal', deliveryDate: '', source: 'Stock' };
 const emptyDemand = { materialCode: '', materialName: '', quantity: '', unit: 'kg' };
 
+const groupByLabel = (customFields) =>
+  (customFields || []).reduce((acc, cf) => {
+    (acc[cf.groupLabel] = acc[cf.groupLabel] || []).push(cf);
+    return acc;
+  }, {});
+
 export default function OrderManagement() {
   const {
     orders, addOrder, verifyBOM, verifyDesign, raiseRDRequest,
@@ -62,6 +68,12 @@ export default function OrderManagement() {
   const [returnQty, setReturnQty] = useState('');
   const [returnReason, setReturnReason] = useState('');
   const [returnType, setReturnType] = useState('Excess');
+
+  // R&D BOM lookup (by machine code) — powers the "View" eye button on each material
+  // demand row, so Production can see the full BOM entry (hierarchy, material type,
+  // Product Master snapshot, specs, custom fields) without leaving this page.
+  const [bomView, setBomView] = useState({ loading: false, bom: null, forCode: null });
+  const [viewMat, setViewMat] = useState(null);
 
   // ── NEW HANDLER ──
   const handleIssueMaterial = async () => {
@@ -224,6 +236,22 @@ export default function OrderManagement() {
 
   // Keep detailOrder in sync with updated orders state
   const detailOrderLive = detailOrder ? orders.find(o => String(o._id || o.id) === String(detailOrder._id || detailOrder.id)) : null;
+
+  // Fetch the R&D BOM for this order's machine once per code, so the "View" eye button
+  // on each material row can show the full BOM entry without an extra request per click.
+  useEffect(() => {
+    const code = detailOrderLive?.machineCode;
+    if (!code || bomView.forCode === code) return;
+    setBomView({ loading: true, bom: null, forCode: code });
+    apiRequest('GET', `/api/rd/boms/by-code/${encodeURIComponent(code)}`)
+      .then(res => setBomView({ loading: false, bom: res?.data?.bom || null, forCode: code }))
+      .catch(() => setBomView({ loading: false, bom: null, forCode: code }));
+  }, [detailOrderLive?.machineCode]);
+
+  const openMaterialView = (materialCode) => {
+    const bomMat = bomView.bom?.materials?.find(mm => (mm.code || '').toLowerCase() === (materialCode || '').toLowerCase());
+    setViewMat(bomMat ? { found: true, ...bomMat } : { found: false, code: materialCode });
+  };
 
   const handleRaiseRDRequest = async (id) => {
     try {
@@ -630,6 +658,13 @@ export default function OrderManagement() {
 
                               <td className="px-3 py-2">
                                 <div className="flex gap-2">
+                                  <button
+                                    onClick={() => openMaterialView(m.materialCode)}
+                                    className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 transition-colors"
+                                    title="View full BOM entry from R&D"
+                                  >
+                                    <Eye className="h-3 w-3" /> View
+                                  </button>
                                   {(m.status === 'Requested' || m.status === 'In Transit') && remaining > 0 && (
                                     <button
                                       onClick={() => {
@@ -922,6 +957,107 @@ export default function OrderManagement() {
             >
               Confirm Receipt
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* View BOM Entry Dialog (from R&D BOM Management) */}
+      <Dialog open={!!viewMat} onOpenChange={() => setViewMat(null)}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <span className="font-mono text-blue-600 text-base">{viewMat?.code}</span>
+              {viewMat?.found && <span>{viewMat.item}</span>}
+            </DialogTitle>
+          </DialogHeader>
+
+          {bomView.loading ? (
+            <p className="text-sm text-slate-400 text-center py-8">Loading BOM data from R&D…</p>
+          ) : viewMat && !viewMat.found ? (
+            <p className="text-sm text-slate-500 py-4 leading-relaxed">
+              No matching entry found in R&D's Bill of Materials for code <strong>{viewMat.code}</strong>.
+              This was likely added as an out-of-BOM material demand rather than sourced from the Master BOM.
+            </p>
+          ) : viewMat && (
+            <div className="space-y-4 py-2">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-xs text-slate-500 mb-1">Material Type</p>
+                  <p className="text-sm font-medium text-slate-800">{viewMat.itemType || 'N/A'}</p>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-xs text-slate-500 mb-1">BOM Quantity</p>
+                  <p className="text-sm font-medium text-slate-800">{viewMat.quantity} {viewMat.unit}</p>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-xs text-slate-500 mb-1">Hierarchy</p>
+                  <p className="text-sm font-medium text-slate-800">{[viewMat.childPart, viewMat.subChildPart].filter(Boolean).join(' > ') || '—'}</p>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-xs text-slate-500 mb-1">Status</p>
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${viewMat.isDiscontinued ? 'bg-red-100 text-red-600 border-red-200' : 'bg-emerald-100 text-emerald-700 border-emerald-200'}`}>
+                    {viewMat.isDiscontinued ? 'Discontinued' : 'Active'}
+                  </span>
+                </div>
+              </div>
+
+              {(viewMat.category || viewMat.pSourceType || viewMat.brand || viewMat.metrology || viewMat.description) && (
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-xs text-slate-500 mb-2 font-semibold">Product Master Snapshot</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {viewMat.category && <div><p className="text-[11px] text-slate-400">Category</p><p className="text-sm text-slate-800">{viewMat.category}</p></div>}
+                    {viewMat.pSourceType && <div><p className="text-[11px] text-slate-400">P-Source Type</p><p className="text-sm text-slate-800">{viewMat.pSourceType}</p></div>}
+                    {viewMat.brand && <div><p className="text-[11px] text-slate-400">Brand</p><p className="text-sm text-slate-800">{viewMat.brand}</p></div>}
+                    {viewMat.metrology && <div><p className="text-[11px] text-slate-400">Metrology</p><p className="text-sm text-slate-800">{viewMat.metrology}</p></div>}
+                  </div>
+                  {viewMat.description && (
+                    <div className="mt-2">
+                      <p className="text-[11px] text-slate-400">Description</p>
+                      <p className="text-sm text-slate-700">{viewMat.description}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {Array.isArray(viewMat.specifications) && viewMat.specifications.filter(s => s.key).length > 0 && (
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-xs text-slate-500 mb-2 font-semibold">Specifications</p>
+                  <div className="divide-y divide-slate-100">
+                    {viewMat.specifications.filter(s => s.key).map((s, i) => (
+                      <div key={i} className="flex items-center justify-between py-1.5">
+                        <span className="text-xs font-semibold text-slate-500 w-2/5">{s.key}</span>
+                        <span className="text-sm text-slate-800 font-medium">{s.value || '—'}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {Array.isArray(viewMat.customFields) && viewMat.customFields.length > 0 && (
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-xs text-slate-500 mb-2 font-semibold">Custom Fields</p>
+                  <div className="space-y-3">
+                    {Object.entries(groupByLabel(viewMat.customFields)).map(([groupLabel, fields]) => (
+                      <div key={groupLabel}>
+                        <p className="text-xs font-bold text-slate-600 mb-1">{groupLabel}</p>
+                        <div className="divide-y divide-slate-100">
+                          {fields.map((cf, i) => (
+                            <div key={i} className="flex items-center justify-between py-1.5">
+                              <span className="text-xs font-semibold text-slate-500 w-2/5">{cf.fieldName}</span>
+                              <span className="text-sm text-slate-800 font-medium">{cf.value || '—'}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setViewMat(null)}>Close</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

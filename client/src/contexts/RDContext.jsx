@@ -1,12 +1,19 @@
 import React, { createContext, useContext, useCallback, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
+import { useAuthContext } from '@/contexts/AuthContext';
 
 const RDContext = createContext(null);
 const BASE = '/api/rd';
 
 export function RDProvider({ children }) {
   const qc = useQueryClient();
+  // RDProvider is mounted once at the app root (before routing/auth resolve), so every
+  // query here must wait for a real session — otherwise the first fetch fires with no
+  // token, fails, and (with staleTime: Infinity + retry: false in queryClient.ts) that
+  // empty/failed result is cached for good and never auto-refetches after login. Only a
+  // hard refresh used to fix it because that recreates the QueryClient from scratch.
+  const { isAuthenticated } = useAuthContext();
 
   // ── Production Request Filters State ─────────────────────────────────────────
   // This state powers your tabs, search, and dropdown filters
@@ -18,44 +25,60 @@ export function RDProvider({ children }) {
   });
 
   // ── Queries ──────────────────────────────────────────────────────────────────
+  // `enabled: isAuthenticated` on every query below: RDProvider lives above the router,
+  // so these must not fire until there's a real session (see note above).
   const { data: machinesData, isLoading: machinesLoading } = useQuery({
     queryKey: ['rd-machines'],
     queryFn: () => apiRequest('GET', `${BASE}/machines`),
+    enabled: isAuthenticated,
   });
 
   const { data: bomsData, isLoading: bomsLoading } = useQuery({
     queryKey: ['rd-boms'],
     queryFn: () => apiRequest('GET', `${BASE}/boms`),
+    enabled: isAuthenticated,
   });
 
   const { data: prototypesData, isLoading: prototypesLoading } = useQuery({
     queryKey: ['rd-prototypes'],
     queryFn: () => apiRequest('GET', `${BASE}/prototypes`),
+    enabled: isAuthenticated,
   });
 
   const { data: changeRequestsData, isLoading: changeRequestsLoading } = useQuery({
     queryKey: ['rd-change-requests'],
     queryFn: () => apiRequest('GET', `${BASE}/change-requests`),
+    enabled: isAuthenticated,
   });
 
   const { data: toolProcessesData, isLoading: toolProcessesLoading } = useQuery({
     queryKey: ['rd-tool-processes'],
     queryFn: () => apiRequest('GET', `${BASE}/tool-processes`),
+    enabled: isAuthenticated,
   });
 
   const { data: qualityParamsData, isLoading: qualityParamsLoading } = useQuery({
     queryKey: ['rd-quality-params'],
     queryFn: () => apiRequest('GET', `${BASE}/quality-params`),
+    enabled: isAuthenticated,
   });
 
   const { data: documentsData, isLoading: documentsLoading } = useQuery({
     queryKey: ['rd-documents'],
     queryFn: () => apiRequest('GET', `${BASE}/documents`),
+    enabled: isAuthenticated,
   });
 
   const { data: masterOptionsData, isLoading: masterOptionsLoading } = useQuery({
     queryKey: ['rd-master-options'],
     queryFn: () => apiRequest('GET', `${BASE}/master-options`),
+    enabled: isAuthenticated,
+  });
+
+  const { data: customFieldTemplatesData, isLoading: customFieldTemplatesLoading } = useQuery({
+    queryKey: ['rd-custom-field-templates'],
+    queryFn: () => apiRequest('GET', `${BASE}/custom-field-templates`),
+    enabled: isAuthenticated,
   });
 
   // Production Requests Query (Watches reqFilters automatically)
@@ -65,6 +88,7 @@ export function RDProvider({ children }) {
       const params = new URLSearchParams(reqFilters).toString();
       return apiRequest('GET', `${BASE}/production-rnd-requests?${params}`);
     },
+    enabled: isAuthenticated,
   });
 
   const machines = machinesData?.data || [];
@@ -74,7 +98,8 @@ export function RDProvider({ children }) {
   const toolProcesses = toolProcessesData?.data || [];
   const qualityParams = qualityParamsData?.data || [];
   const documents = documentsData?.data || [];
-  const masterOptions = masterOptionsData?.data || { Category: [], PType: [], PSourceType: [] };
+  const masterOptions = masterOptionsData?.data || { Category: [], PType: [], PSourceType: [], Metrology: [], MaterialType: [] };
+  const customFieldTemplates = customFieldTemplatesData?.data || [];
   const productionRequests = productionRequestsData?.data || [];
   const productionRequestsPagination = productionRequestsData?.pagination || { page: 1, pages: 1, total: 0, limit: 20 };
 
@@ -88,11 +113,14 @@ export function RDProvider({ children }) {
   const invDocuments = inv('rd-documents');
   const invProductionRequests = inv('rd-production-requests');
   const invMasterOptions = inv('rd-master-options');
+  const invCustomFieldTemplates = inv('rd-custom-field-templates');
 
   // ── Machine mutations ────────────────────────────────────────────────────────
   const createMachineMut = useMutation({ mutationFn: (d) => apiRequest('POST', `${BASE}/machines`, d), onSuccess: invMachines });
   const updateMachineMut = useMutation({ mutationFn: ({ id, data }) => apiRequest('PUT', `${BASE}/machines/${id}`, data), onSuccess: invMachines });
   const addMasterOptionMut = useMutation({ mutationFn: (data) => apiRequest('POST', `${BASE}/master-options`, data), onSuccess: invMasterOptions });
+  const saveCustomFieldTemplateMut = useMutation({ mutationFn: (data) => apiRequest('POST', `${BASE}/custom-field-templates`, data), onSuccess: invCustomFieldTemplates });
+  const deleteCustomFieldTemplateMut = useMutation({ mutationFn: (id) => apiRequest('DELETE', `${BASE}/custom-field-templates/${id}`), onSuccess: invCustomFieldTemplates });
   const designStatusMut = useMutation({ mutationFn: ({ id, status, note }) => apiRequest('PUT', `${BASE}/machines/${id}/design-status`, { status, note }), onSuccess: invMachines });
   const releaseStatusMut = useMutation({ mutationFn: ({ id, status }) => apiRequest('PUT', `${BASE}/machines/${id}/release-status`, { status }), onSuccess: invMachines });
   const discontinueMachineMut = useMutation({ mutationFn: (id) => apiRequest('PUT', `${BASE}/machines/${id}/discontinue`), onSuccess: invMachines });
@@ -221,6 +249,17 @@ export function RDProvider({ children }) {
     return addMasterOptionMut.mutateAsync(data);
   }, []);
 
+  const saveCustomFieldTemplate = useCallback(async (data) => {
+    return saveCustomFieldTemplateMut.mutateAsync(data);
+  }, []);
+  const deleteCustomFieldTemplate = useCallback(async (id) => {
+    return deleteCustomFieldTemplateMut.mutateAsync(id);
+  }, []);
+  const getCustomFieldTemplate = useCallback((pType, category, pSourceType) => {
+    if (!pType || !category || !pSourceType) return null;
+    return customFieldTemplates.find(t => t.pType === pType && t.category === category && t.pSourceType === pSourceType) || null;
+  }, [customFieldTemplates]);
+
   // ── Computed stats ────────────────────────────────────────────────────────────
   const stats = {
     totalMachines: machines.filter(m => !m.isDiscontinued).length,
@@ -238,6 +277,7 @@ export function RDProvider({ children }) {
     <RDContext.Provider value={{
       machines, boms, prototypes, changeRequests, toolProcesses, qualityParams, documents, stats,
       masterOptions, masterOptionsLoading, addMasterOption,
+      customFieldTemplates, customFieldTemplatesLoading, saveCustomFieldTemplate, deleteCustomFieldTemplate, getCustomFieldTemplate,
 
       // Production Requests state
       productionRequests,

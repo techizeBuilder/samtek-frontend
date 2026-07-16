@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRD } from '@/contexts/RDContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import {
   Package, Plus, Search, Filter, Eye, Edit2, Ban, RefreshCw,
-  CheckCircle2, Clock, XCircle, FileText, Layers
+  CheckCircle2, Clock, XCircle, FileText, Layers, Settings2
 } from 'lucide-react';
 import { showSuccessToast, showSmartToast } from '@/lib/toast-utils';
 
@@ -17,8 +17,19 @@ const MACHINE_TYPES = ['Standard', 'Custom', 'Special Purpose Machine (SPM)'];
 const DEFAULT_OPTIONS = {
   'Category': ['Mixing Equipment', 'Miling Equipment', 'Crushing Equipment', 'Packing Equipment', 'Pumping Equipment', 'Welding Equipment', 'Construction Equipment', 'Agricultural Equipment', 'Special Purpose Machine'],
   'P-Type': ['Row Material', 'Assembly Material', 'Tool', 'Fabricated Child Part', 'Machining Material', 'Machine'],
-  'P-SourceType': ['In House Manufacturing', 'Purchase Machine', 'Job Work Seat Metal', 'Job Work Machining', 'Out Source Manufactured']
+  'P-SourceType': ['In House Manufacturing', 'Purchase Machine', 'Job Work Seat Metal', 'Job Work Machining', 'Out Source Manufactured'],
+  'Metrology': ['Vernier Caliper', 'Weighing Scale', 'Pressure Gauge', 'Thermometer', 'Flow Meter', 'Torque Wrench']
 };
+
+// Cascade: P-Type -> Category -> P-Source Type. Strict linking — a Category only shows
+// under the exact P-Type it was created under, and a P-Source Type only under the exact
+// Category it was created under (which is itself already scoped to one P-Type).
+const categoryOptionsFor = (pTypeVal, masterOptions) =>
+  (masterOptions.Category || []).filter(o => o.parentValue === pTypeVal);
+const pSourceOptionsFor = (categoryVal, masterOptions) =>
+  (masterOptions.PSourceType || []).filter(o => o.parentValue === categoryVal);
+
+const FIELD_KEY_MAP = { 'P-Type': 'pType', 'Category': 'category', 'P-SourceType': 'pSourceType', 'Metrology': 'metrology' };
 
 const machineTypeBadge = (type) => {
   if (type === 'Custom') return 'bg-purple-100 text-purple-700 border-purple-200';
@@ -40,10 +51,20 @@ const releaseStatusBadge = (status) => status === 'Released'
   ? 'bg-blue-100 text-blue-700 border-blue-200'
   : 'bg-slate-100 text-slate-500 border-slate-200';
 
-const emptyForm = { code: '', name: '', description: '', category: '', pType: '', pSourceType: '', specifications: [], brand: '', machineType: 'Standard' };
+const emptyForm = {
+  code: '', name: '', description: '', category: '', pType: '', pSourceType: '',
+  specifications: [], brand: '', machineType: 'Standard',
+  metrology: '', customFields: [], forwardToNextPhase: false
+};
+
+const emptyTemplateForm = { pType: '', category: '', pSourceType: '', groups: [] };
 
 export default function ProductMaster() {
-  const { machines, stats, addMachine, updateMachine, discontinueMachine, reactivateMachine, masterOptions, addMasterOption } = useRD();
+  const {
+    machines, stats, addMachine, updateMachine, discontinueMachine, reactivateMachine,
+    masterOptions, addMasterOption,
+    customFieldTemplates, getCustomFieldTemplate, saveCustomFieldTemplate, deleteCustomFieldTemplate,
+  } = useRD();
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('All');
   const [filterRelease, setFilterRelease] = useState('All');
@@ -55,24 +76,57 @@ export default function ProductMaster() {
   const [form, setForm] = useState(emptyForm);
   const [editForm, setEditForm] = useState(emptyForm);
   const [confirmDiscontinue, setConfirmDiscontinue] = useState(null);
-  const [newOptionModal, setNewOptionModal] = useState({ open: false, field: '', value: '' });
+  const [newOptionModal, setNewOptionModal] = useState({ open: false, field: '', value: '', parentValue: '' });
+  const [templateManagerOpen, setTemplateManagerOpen] = useState(false);
+  const [templateForm, setTemplateForm] = useState(emptyTemplateForm);
+  const [hierarchyInputs, setHierarchyInputs] = useState({ pType: '', category: '', pSourceType: '' });
 
   const handleAddOption = async () => {
     if (!newOptionModal.value) return;
     try {
-      await addMasterOption({ field: newOptionModal.field, value: newOptionModal.value });
-      const fieldKey = newOptionModal.field === 'Category' ? 'category' : newOptionModal.field === 'P-Type' ? 'pType' : 'pSourceType';
+      await addMasterOption({ field: newOptionModal.field, value: newOptionModal.value, parentValue: newOptionModal.parentValue || null });
+      const fieldKey = FIELD_KEY_MAP[newOptionModal.field];
       if (editOpen) {
         setEditForm(f => ({ ...f, [fieldKey]: newOptionModal.value }));
       } else {
         setForm(f => ({ ...f, [fieldKey]: newOptionModal.value }));
       }
-      setNewOptionModal({ open: false, field: '', value: '' });
+      setNewOptionModal({ open: false, field: '', value: '', parentValue: '' });
       showSuccessToast('Option Added', 'New option added successfully');
     } catch (e) {
       showSmartToast(e, 'Failed to add option');
     }
   };
+
+  // ── Seed / clear custom fields whenever the P-Type/Category/P-Source Type combo changes ──
+  const seedCustomFields = (state, setState) => {
+    const template = getCustomFieldTemplate(state.pType, state.category, state.pSourceType);
+    setState(f => {
+      if (!template) {
+        return f.customFields.length === 0 ? f : { ...f, customFields: [] };
+      }
+      const seeded = [];
+      template.groups.forEach(g => {
+        g.fields.forEach(fld => {
+          const existing = f.customFields.find(cf => cf.groupLabel === g.label && cf.fieldName === fld.name);
+          seeded.push({ groupLabel: g.label, fieldName: fld.name, value: existing?.value || '' });
+        });
+      });
+      return { ...f, customFields: seeded };
+    });
+  };
+
+  useEffect(() => {
+    if (!addOpen) return;
+    seedCustomFields(form, setForm);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.pType, form.category, form.pSourceType, addOpen]);
+
+  useEffect(() => {
+    if (!editOpen) return;
+    seedCustomFields(editForm, setEditForm);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editForm.pType, editForm.category, editForm.pSourceType, editOpen]);
 
   const filtered = machines.filter(m => {
     if (!showDiscontinued && m.isDiscontinued) return false;
@@ -103,7 +157,10 @@ export default function ProductMaster() {
       category: m.category || '', pType: m.pType || '', pSourceType: m.pSourceType || '',
       specifications: Array.isArray(m.specifications) ? m.specifications : [],
       brand: m.brand || '',
-      machineType: m.machineType || 'Standard'
+      machineType: m.machineType || 'Standard',
+      metrology: m.metrology || '',
+      customFields: Array.isArray(m.customFields) ? m.customFields : [],
+      forwardToNextPhase: !!m.forwardToNextPhase,
     });
     setEditOpen(true);
   };
@@ -163,30 +220,239 @@ export default function ProductMaster() {
     </div>
   );
 
-  const renderDropdownWithAdd = (label, field, fieldKey, options, state, setState) => (
-    <div>
-      <label className="text-xs font-semibold text-slate-600 mb-1 block">{label} *</label>
-      <div className="flex gap-2">
-        <select
-          className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-          value={state[fieldKey]}
-          onChange={e => setState(f => ({ ...f, [fieldKey]: e.target.value }))}
-        >
-          <option value="" disabled>Select...</option>
-          {options?.map(o => <option key={o} value={o}>{o}</option>)}
-        </select>
-        <Button
-          type="button"
-          size="icon"
-          variant="outline"
-          onClick={() => setNewOptionModal({ open: true, field: field, value: '' })}
-          className="flex-shrink-0 h-9 w-9 bg-white hover:bg-slate-50 text-slate-600"
-        >
-          <Plus className="h-4 w-4" />
-        </Button>
+  // ── Cascading dropdown, optionally with a "+" add-new button. `opts.resetKeys` clears
+  // dependent fields on change. `opts.showAddButton = false` renders a plain select — used
+  // for P-Type/Category/P-Source Type on the machine form, since that 3-level hierarchy is
+  // now only built via "Manage Custom Fields", not created ad-hoc while adding a product. ──
+  const renderDropdownWithAdd = (label, field, fieldKey, options, state, setState, opts = {}) => {
+    const { disabled = false, disabledHint = '', parentValueForAdd = '', resetKeys = [], required = true, showAddButton = true } = opts;
+    return (
+      <div>
+        <label className="text-xs font-semibold text-slate-600 mb-1 block">{label}{required && ' *'}</label>
+        <div className="flex gap-2">
+          <select
+            className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+            value={state[fieldKey]}
+            disabled={disabled}
+            onChange={e => {
+              const val = e.target.value;
+              setState(f => {
+                const next = { ...f, [fieldKey]: val };
+                resetKeys.forEach(k => { next[k] = Array.isArray(f[k]) ? [] : ''; });
+                return next;
+              });
+            }}
+          >
+            <option value="" disabled>{disabled ? disabledHint : 'Select...'}</option>
+            {options?.map(o => <option key={o.value} value={o.value}>{o.value}</option>)}
+          </select>
+          {showAddButton && (
+            <Button
+              type="button"
+              size="icon"
+              variant="outline"
+              disabled={disabled}
+              onClick={() => setNewOptionModal({ open: true, field, value: '', parentValue: parentValueForAdd })}
+              className="flex-shrink-0 h-9 w-9 bg-white hover:bg-slate-50 text-slate-600 disabled:opacity-50"
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
       </div>
+    );
+  };
+
+  // ── Custom fields block: renders parent label -> sub-field name -> value input ──
+  const renderCustomFieldsBlock = (state, setState) => {
+    if (!state.pType || !state.category || !state.pSourceType) return null;
+    const template = getCustomFieldTemplate(state.pType, state.category, state.pSourceType);
+
+    if (!template || template.groups.length === 0) {
+      return (
+        <div>
+          <label className="text-xs font-semibold text-slate-600 mb-1 block">Custom Fields</label>
+          <div className="bg-slate-50 border border-dashed border-slate-200 rounded-lg p-3 text-xs text-slate-400 italic text-center">
+            No custom fields configured for this P-Type / Category / P-Source Type combination. Use "Manage Custom Fields" to add some.
+          </div>
+        </div>
+      );
+    }
+
+    const updateFieldValue = (groupLabel, fieldName, value) => {
+      setState(f => ({
+        ...f,
+        customFields: f.customFields.map(cf =>
+          (cf.groupLabel === groupLabel && cf.fieldName === fieldName) ? { ...cf, value } : cf
+        )
+      }));
+    };
+
+    return (
+      <div className="space-y-3">
+        <label className="text-xs font-semibold text-slate-600 block">Custom Fields</label>
+        {template.groups.map(g => (
+          <div key={g.label} className="bg-slate-50 rounded-lg border border-slate-100 p-3">
+            <p className="text-xs font-bold text-slate-700 mb-2">{g.label}</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {g.fields.map(fld => {
+                const cf = state.customFields.find(c => c.groupLabel === g.label && c.fieldName === fld.name);
+                return (
+                  <div key={fld.name}>
+                    <label className="text-[11px] text-slate-500 mb-1 block">{fld.name}</label>
+                    <Input className="bg-white" value={cf?.value || ''} onChange={e => updateFieldValue(g.label, fld.name, e.target.value)} />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const renderForwardCheckbox = (state, setState, idPrefix) => (
+    <div className="flex items-start gap-2 bg-blue-50 border border-blue-200 rounded-lg p-3">
+      <input
+        type="checkbox"
+        id={`${idPrefix}-forward`}
+        className="mt-0.5"
+        checked={state.forwardToNextPhase}
+        onChange={e => setState(f => ({ ...f, forwardToNextPhase: e.target.checked }))}
+      />
+      <label htmlFor={`${idPrefix}-forward`} className="text-xs text-blue-800 leading-relaxed cursor-pointer">
+        <span className="font-semibold">Forward to Design &amp; Prototype.</span> When checked, this product will appear in the Design Approval and Prototype Testing queues.
+      </label>
     </div>
   );
+
+  // ── Custom Field Template Manager helpers ────────────────────────────────────
+  useEffect(() => {
+    if (!templateManagerOpen) return;
+    if (!templateForm.pType || !templateForm.category || !templateForm.pSourceType) {
+      setTemplateForm(f => (f.groups.length === 0 ? f : { ...f, groups: [] }));
+      return;
+    }
+    const existing = getCustomFieldTemplate(templateForm.pType, templateForm.category, templateForm.pSourceType);
+    setTemplateForm(f => ({
+      ...f,
+      groups: existing ? existing.groups.map(g => ({ label: g.label, fields: g.fields.map(fl => ({ name: fl.name })) })) : []
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [templateForm.pType, templateForm.category, templateForm.pSourceType, templateManagerOpen]);
+
+  const addTemplateGroup = () => setTemplateForm(f => ({ ...f, groups: [...f.groups, { label: '', fields: [] }] }));
+  const removeTemplateGroup = (idx) => setTemplateForm(f => ({ ...f, groups: f.groups.filter((_, i) => i !== idx) }));
+  const updateTemplateGroupLabel = (idx, label) => setTemplateForm(f => ({ ...f, groups: f.groups.map((g, i) => i === idx ? { ...g, label } : g) }));
+  const addTemplateField = (gIdx) => setTemplateForm(f => ({ ...f, groups: f.groups.map((g, i) => i === gIdx ? { ...g, fields: [...g.fields, { name: '' }] } : g) }));
+  const removeTemplateField = (gIdx, fIdx) => setTemplateForm(f => ({ ...f, groups: f.groups.map((g, i) => i === gIdx ? { ...g, fields: g.fields.filter((_, j) => j !== fIdx) } : g) }));
+  const updateTemplateFieldName = (gIdx, fIdx, name) => setTemplateForm(f => ({ ...f, groups: f.groups.map((g, i) => i === gIdx ? { ...g, fields: g.fields.map((fl, j) => j === fIdx ? { name } : fl) } : g) }));
+
+  // ── Classification Hierarchy panel: the only place P-Type/Category/P-Source Type get
+  // created. Clicking an item in a column selects it (and clears the deeper levels); the
+  // input+button under each column adds a new value scoped to the currently selected parent. ──
+  const selectHierarchyValue = (fieldKey, value) => {
+    setTemplateForm(f => {
+      const next = { ...f, [fieldKey]: value };
+      if (fieldKey === 'pType') { next.category = ''; next.pSourceType = ''; }
+      if (fieldKey === 'category') { next.pSourceType = ''; }
+      return next;
+    });
+  };
+
+  const handleAddHierarchyValue = async (field, fieldKey, parentValue) => {
+    const value = hierarchyInputs[fieldKey]?.trim();
+    if (!value) return;
+    try {
+      await addMasterOption({ field, value, parentValue: parentValue || null });
+      setHierarchyInputs(v => ({ ...v, [fieldKey]: '' }));
+      selectHierarchyValue(fieldKey, value);
+      showSuccessToast(`${label(field)} Added`, `"${value}" added successfully`);
+    } catch (e) {
+      showSmartToast(e, `Failed to add ${label(field)}`);
+    }
+  };
+
+  const label = (field) => field === 'P-SourceType' ? 'P-Source Type' : field;
+
+  const renderHierarchyColumn = ({ fieldLabel, field, fieldKey, options, disabled, disabledHint, parentValue }) => (
+    <div className={`rounded-lg border p-3 ${disabled ? 'bg-slate-50 border-slate-100' : 'bg-white border-slate-200'}`}>
+      <p className="text-xs font-bold text-slate-700 mb-2">{fieldLabel}</p>
+      {disabled ? (
+        <p className="text-xs text-slate-400 italic text-center py-6">{disabledHint}</p>
+      ) : (
+        <>
+          <div className="flex gap-1.5 mb-2">
+            <input
+              type="text"
+              list={`hierarchy-${fieldKey}-suggestions`}
+              className="flex-1 h-8 text-xs rounded-md border border-slate-200 bg-white px-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder={`New ${fieldLabel}...`}
+              value={hierarchyInputs[fieldKey]}
+              onChange={e => setHierarchyInputs(v => ({ ...v, [fieldKey]: e.target.value }))}
+              onKeyDown={e => e.key === 'Enter' && handleAddHierarchyValue(field, fieldKey, parentValue)}
+            />
+            <datalist id={`hierarchy-${fieldKey}-suggestions`}>
+              {DEFAULT_OPTIONS[field]?.map(opt => <option key={opt} value={opt} />)}
+            </datalist>
+            <Button type="button" size="icon" variant="outline" className="h-8 w-8 flex-shrink-0 bg-white" onClick={() => handleAddHierarchyValue(field, fieldKey, parentValue)}>
+              <Plus className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+          <div className="space-y-1 max-h-40 overflow-y-auto">
+            {options.length === 0 ? (
+              <p className="text-xs text-slate-400 italic text-center py-2">None yet</p>
+            ) : options.map(o => (
+              <button
+                type="button"
+                key={o.value}
+                onClick={() => selectHierarchyValue(fieldKey, o.value)}
+                className={`w-full text-left px-2 py-1.5 rounded-md text-xs font-medium transition-colors ${templateForm[fieldKey] === o.value ? 'bg-blue-600 text-white' : 'text-slate-700 hover:bg-slate-100'}`}
+              >
+                {o.value}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+
+  const templateExists = templateForm.pType && templateForm.category && templateForm.pSourceType
+    ? !!getCustomFieldTemplate(templateForm.pType, templateForm.category, templateForm.pSourceType)
+    : false;
+
+  const handleSaveTemplate = async () => {
+    try {
+      await saveCustomFieldTemplate({
+        pType: templateForm.pType, category: templateForm.category, pSourceType: templateForm.pSourceType,
+        groups: templateForm.groups
+      });
+      showSuccessToast('Template Saved', 'Custom field template saved successfully');
+      setTemplateManagerOpen(false);
+      setTemplateForm(emptyTemplateForm);
+    } catch (e) {
+      showSmartToast(e, 'Failed to save template');
+    }
+  };
+
+  const handleDeleteTemplate = async () => {
+    const existing = getCustomFieldTemplate(templateForm.pType, templateForm.category, templateForm.pSourceType);
+    if (!existing) return;
+    try {
+      await deleteCustomFieldTemplate(existing._id);
+      showSuccessToast('Template Deleted', 'Custom field template removed');
+      setTemplateForm(f => ({ ...f, groups: [] }));
+    } catch (e) {
+      showSmartToast(e, 'Failed to delete template');
+    }
+  };
+
+  const groupedCustomFields = (customFields) =>
+    (customFields || []).reduce((acc, cf) => {
+      (acc[cf.groupLabel] = acc[cf.groupLabel] || []).push(cf);
+      return acc;
+    }, {});
 
   return (
     <div className="p-6 space-y-6 bg-slate-50 min-h-screen">
@@ -197,9 +463,14 @@ export default function ProductMaster() {
           </h1>
           <p className="text-slate-500 text-sm mt-0.5">Central register of all machines — no machine exists in ERP without R&D entry</p>
         </div>
-        <Button onClick={() => setAddOpen(true)} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow">
-          <Plus className="h-4 w-4 mr-2" /> Add Machine
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setTemplateManagerOpen(true)} className="bg-white">
+            <Settings2 className="h-4 w-4 mr-2" /> Manage Classifications &amp; Fields
+          </Button>
+          <Button onClick={() => setAddOpen(true)} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow">
+            <Plus className="h-4 w-4 mr-2" /> Add Machine
+          </Button>
+        </div>
       </div>
 
       {/* Stats */}
@@ -306,7 +577,7 @@ export default function ProductMaster() {
 
       {/* Add Machine Dialog */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle className="text-xl">Add New</DialogTitle></DialogHeader>
 
           <div className="space-y-5 py-2">
@@ -321,13 +592,24 @@ export default function ProductMaster() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-slate-50 rounded-lg border border-slate-100">
-              {renderDropdownWithAdd('Category', 'Category', 'category', masterOptions.Category, form, setForm)}
-              {renderDropdownWithAdd('P-Type', 'P-Type', 'pType', masterOptions.PType, form, setForm)}
-              {renderDropdownWithAdd('P-Source Type', 'P-SourceType', 'pSourceType', masterOptions.PSourceType, form, setForm)}
+            <div className="p-4 bg-slate-50 rounded-lg border border-slate-100 space-y-2">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {renderDropdownWithAdd('P-Type', 'P-Type', 'pType', masterOptions.PType, form, setForm, {
+                  resetKeys: ['category', 'pSourceType'], showAddButton: false
+                })}
+                {renderDropdownWithAdd('Category', 'Category', 'category', categoryOptionsFor(form.pType, masterOptions), form, setForm, {
+                  disabled: !form.pType, disabledHint: 'Select P-Type first', resetKeys: ['pSourceType'], showAddButton: false
+                })}
+                {renderDropdownWithAdd('P-Source Type', 'P-SourceType', 'pSourceType', pSourceOptionsFor(form.category, masterOptions), form, setForm, {
+                  disabled: !form.category, disabledHint: 'Select Category first', showAddButton: false
+                })}
+              </div>
+              <p className="text-xs text-slate-400">
+                Don't see the P-Type / Category / P-Source Type you need? Add it via <strong>Manage Custom Fields</strong> above.
+              </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="text-xs font-semibold text-slate-600 mb-1 block">Brand</label>
                 <Input className="bg-white" placeholder="Enter brand" value={form.brand} onChange={e => setForm(f => ({ ...f, brand: e.target.value }))} />
@@ -338,14 +620,19 @@ export default function ProductMaster() {
                   {MACHINE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
+              {renderDropdownWithAdd('Metrology', 'Metrology', 'metrology', masterOptions.Metrology, form, setForm, { required: false })}
             </div>
 
             {renderSpecBuilder(form, setForm)}
+
+            {renderCustomFieldsBlock(form, setForm)}
 
             <div>
               <label className="text-xs font-semibold text-slate-600 mb-1 block">P-Description</label>
               <textarea className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none bg-white" rows={2} placeholder="Brief description..." value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
             </div>
+
+            {renderForwardCheckbox(form, setForm, 'add')}
 
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-700 leading-relaxed">
               New machine will be created with <strong>Draft</strong> design status and <strong>Not Released</strong>. It must go through design approval and prototype testing before production release.
@@ -361,7 +648,7 @@ export default function ProductMaster() {
 
       {/* Edit Dialog */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle className="text-xl">Edit Machine — {selected?.code}</DialogTitle></DialogHeader>
 
           <div className="space-y-5 py-2">
@@ -376,13 +663,24 @@ export default function ProductMaster() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-slate-50 rounded-lg border border-slate-100">
-              {renderDropdownWithAdd('Category', 'Category', 'category', masterOptions.Category, editForm, setEditForm)}
-              {renderDropdownWithAdd('P-Type', 'P-Type', 'pType', masterOptions.PType, editForm, setEditForm)}
-              {renderDropdownWithAdd('P-Source Type', 'P-SourceType', 'pSourceType', masterOptions.PSourceType, editForm, setEditForm)}
+            <div className="p-4 bg-slate-50 rounded-lg border border-slate-100 space-y-2">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {renderDropdownWithAdd('P-Type', 'P-Type', 'pType', masterOptions.PType, editForm, setEditForm, {
+                  resetKeys: ['category', 'pSourceType'], showAddButton: false
+                })}
+                {renderDropdownWithAdd('Category', 'Category', 'category', categoryOptionsFor(editForm.pType, masterOptions), editForm, setEditForm, {
+                  disabled: !editForm.pType, disabledHint: 'Select P-Type first', resetKeys: ['pSourceType'], showAddButton: false
+                })}
+                {renderDropdownWithAdd('P-Source Type', 'P-SourceType', 'pSourceType', pSourceOptionsFor(editForm.category, masterOptions), editForm, setEditForm, {
+                  disabled: !editForm.category, disabledHint: 'Select Category first', showAddButton: false
+                })}
+              </div>
+              <p className="text-xs text-slate-400">
+                Don't see the P-Type / Category / P-Source Type you need? Add it via <strong>Manage Custom Fields</strong> above.
+              </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="text-xs font-semibold text-slate-600 mb-1 block">Brand</label>
                 <Input className="bg-white" value={editForm.brand} onChange={e => setEditForm(f => ({ ...f, brand: e.target.value }))} />
@@ -393,14 +691,19 @@ export default function ProductMaster() {
                   {MACHINE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
+              {renderDropdownWithAdd('Metrology', 'Metrology', 'metrology', masterOptions.Metrology, editForm, setEditForm, { required: false })}
             </div>
 
             {renderSpecBuilder(editForm, setEditForm)}
+
+            {renderCustomFieldsBlock(editForm, setEditForm)}
 
             <div>
               <label className="text-xs font-semibold text-slate-600 mb-1 block">P-Description</label>
               <textarea className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none bg-white" rows={2} value={editForm.description} onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))} />
             </div>
+
+            {renderForwardCheckbox(editForm, setEditForm, 'edit')}
           </div>
 
           <DialogFooter>
@@ -412,7 +715,7 @@ export default function ProductMaster() {
 
       {/* View Dialog */}
       <Dialog open={viewOpen} onOpenChange={setViewOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <span className="font-mono text-blue-600 text-base">{selected?.code}</span>
@@ -438,16 +741,27 @@ export default function ProductMaster() {
 
                 {/* Dynamic Classifications */}
                 <div className="bg-slate-50 rounded-lg p-3">
-                  <p className="text-xs text-slate-500 mb-1">Category</p>
-                  <p className="text-sm font-medium text-slate-800">{selected.category}</p>
-                </div>
-                <div className="bg-slate-50 rounded-lg p-3">
                   <p className="text-xs text-slate-500 mb-1">P-Type</p>
                   <p className="text-sm font-medium text-slate-800">{selected.pType || 'N/A'}</p>
                 </div>
                 <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-xs text-slate-500 mb-1">Category</p>
+                  <p className="text-sm font-medium text-slate-800">{selected.category}</p>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-3">
                   <p className="text-xs text-slate-500 mb-1">P-Source Type</p>
                   <p className="text-sm font-medium text-slate-800">{selected.pSourceType || 'N/A'}</p>
+                </div>
+
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-xs text-slate-500 mb-1">Metrology</p>
+                  <p className="text-sm font-medium text-slate-800">{selected.metrology || 'N/A'}</p>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-xs text-slate-500 mb-1">Design &amp; Prototype</p>
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${selected.forwardToNextPhase ? 'bg-blue-100 text-blue-700 border-blue-200' : 'bg-slate-100 text-slate-500 border-slate-200'}`}>
+                    {selected.forwardToNextPhase ? 'Forwarded' : 'Not Forwarded'}
+                  </span>
                 </div>
 
                 {/* Specifications & Dates */}
@@ -476,6 +790,27 @@ export default function ProductMaster() {
                       <div key={i} className="flex items-center justify-between py-1.5">
                         <span className="text-xs font-semibold text-slate-500 w-2/5">{spec.key}</span>
                         <span className="text-sm text-slate-800 font-medium">{spec.value || '—'}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {Array.isArray(selected.customFields) && selected.customFields.length > 0 && (
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-xs text-slate-500 mb-2 font-semibold">Custom Fields</p>
+                  <div className="space-y-3">
+                    {Object.entries(groupedCustomFields(selected.customFields)).map(([groupLabel, fields]) => (
+                      <div key={groupLabel}>
+                        <p className="text-xs font-bold text-slate-600 mb-1">{groupLabel}</p>
+                        <div className="divide-y divide-slate-100">
+                          {fields.map((cf, i) => (
+                            <div key={i} className="flex items-center justify-between py-1.5">
+                              <span className="text-xs font-semibold text-slate-500 w-2/5">{cf.fieldName}</span>
+                              <span className="text-sm text-slate-800 font-medium">{cf.value || '—'}</span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -513,10 +848,13 @@ export default function ProductMaster() {
       </Dialog>
 
       {/* Add New Master Option Dialog (With Smart Suggestions via Datalist) */}
-      <Dialog open={newOptionModal.open} onOpenChange={(open) => !open && setNewOptionModal({ open: false, field: '', value: '' })}>
+      <Dialog open={newOptionModal.open} onOpenChange={(open) => !open && setNewOptionModal({ open: false, field: '', value: '', parentValue: '' })}>
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle>Add New {newOptionModal.field}</DialogTitle></DialogHeader>
           <div className="py-4">
+            {newOptionModal.parentValue && (
+              <p className="text-xs text-slate-500 mb-3">Linked under: <span className="font-semibold text-slate-700">{newOptionModal.parentValue}</span></p>
+            )}
             <label className="text-xs font-semibold text-slate-600 mb-1 block">Value to Save *</label>
 
             {/* Input linked to the datalist below */}
@@ -543,8 +881,118 @@ export default function ProductMaster() {
             </p>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setNewOptionModal({ open: false, field: '', value: '' })}>Cancel</Button>
+            <Button variant="outline" onClick={() => setNewOptionModal({ open: false, field: '', value: '', parentValue: '' })}>Cancel</Button>
             <Button onClick={handleAddOption} disabled={!newOptionModal.value} className="bg-blue-600 hover:bg-blue-700 text-white">Save Option</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Manage Custom Fields (Template Editor) Dialog */}
+      <Dialog open={templateManagerOpen} onOpenChange={(open) => { setTemplateManagerOpen(open); if (!open) setTemplateForm(emptyTemplateForm); }}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>Manage Classifications &amp; Custom Fields</DialogTitle></DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-xs text-slate-500">
+              This is the only place P-Type, Category and P-Source Type values are created. Click a P-Type to select it, which unlocks
+              its Categories; click a Category to unlock its P-Source Types. Use the input under each column to add a new value scoped
+              to whatever is selected in the column to its left. Once a full combination is selected below, you can also define extra
+              fields that appear when creating a product with that exact combination.
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {renderHierarchyColumn({
+                fieldLabel: 'P-Type', field: 'P-Type', fieldKey: 'pType',
+                options: masterOptions.PType || [], disabled: false, parentValue: null
+              })}
+              {renderHierarchyColumn({
+                fieldLabel: 'Category', field: 'Category', fieldKey: 'category',
+                options: categoryOptionsFor(templateForm.pType, masterOptions),
+                disabled: !templateForm.pType, disabledHint: 'Select a P-Type first', parentValue: templateForm.pType
+              })}
+              {renderHierarchyColumn({
+                fieldLabel: 'P-Source Type', field: 'P-SourceType', fieldKey: 'pSourceType',
+                options: pSourceOptionsFor(templateForm.category, masterOptions),
+                disabled: !templateForm.category, disabledHint: 'Select a Category first', parentValue: templateForm.category
+              })}
+            </div>
+
+            {(templateForm.pType || templateForm.category || templateForm.pSourceType) && (
+              <p className="text-xs text-slate-500 bg-slate-50 border border-slate-100 rounded-lg px-3 py-2">
+                Selected: <strong>{templateForm.pType || '—'}</strong> / <strong>{templateForm.category || '—'}</strong> / <strong>{templateForm.pSourceType || '—'}</strong>
+              </p>
+            )}
+
+            {templateForm.pType && templateForm.category && templateForm.pSourceType ? (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-slate-600">Field Groups</label>
+                  <button
+                    type="button"
+                    onClick={addTemplateGroup}
+                    className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-semibold px-2 py-1 rounded-md hover:bg-blue-50 transition-colors"
+                  >
+                    <Plus className="h-3 w-3" /> Add Group
+                  </button>
+                </div>
+
+                {templateForm.groups.length === 0 ? (
+                  <p className="text-xs text-slate-400 italic py-2 text-center border border-dashed border-slate-200 rounded-lg">
+                    No groups yet — click "Add Group" to start.
+                  </p>
+                ) : (
+                  templateForm.groups.map((g, gIdx) => (
+                    <div key={gIdx} className="bg-slate-50 rounded-lg border border-slate-100 p-3 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <Input
+                          className="bg-white flex-1"
+                          placeholder="Parent label (e.g. Motor Specifications)"
+                          value={g.label}
+                          onChange={e => updateTemplateGroupLabel(gIdx, e.target.value)}
+                        />
+                        <button type="button" onClick={() => removeTemplateGroup(gIdx)} className="text-slate-400 hover:text-red-500 transition-colors p-1 rounded">
+                          <XCircle className="h-4 w-4" />
+                        </button>
+                      </div>
+                      <div className="space-y-1.5 pl-2">
+                        {g.fields.map((fld, fIdx) => (
+                          <div key={fIdx} className="flex items-center gap-2">
+                            <Input
+                              className="bg-white flex-1"
+                              placeholder="Sub-field name (e.g. Voltage)"
+                              value={fld.name}
+                              onChange={e => updateTemplateFieldName(gIdx, fIdx, e.target.value)}
+                            />
+                            <button type="button" onClick={() => removeTemplateField(gIdx, fIdx)} className="text-slate-400 hover:text-red-500 transition-colors p-1 rounded">
+                              <XCircle className="h-4 w-4" />
+                            </button>
+                          </div>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => addTemplateField(gIdx)}
+                          className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-semibold px-2 py-1 rounded-md hover:bg-blue-50 transition-colors"
+                        >
+                          <Plus className="h-3 w-3" /> Add Field
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            ) : (
+              <p className="text-xs text-slate-400 italic text-center py-4">Select P-Type, Category and P-Source Type to manage fields for that combination.</p>
+            )}
+          </div>
+          <DialogFooter className="flex items-center justify-between sm:justify-between">
+            <div>
+              {templateExists && (
+                <Button variant="outline" className="text-red-600 border-red-200 hover:bg-red-50" onClick={handleDeleteTemplate}>Delete Template</Button>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setTemplateManagerOpen(false)}>Cancel</Button>
+              <Button onClick={handleSaveTemplate} disabled={!templateForm.pType || !templateForm.category || !templateForm.pSourceType} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">Save Template</Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>

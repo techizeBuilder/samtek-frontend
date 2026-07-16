@@ -48,7 +48,7 @@ export default function Prototype() {
   };
 
   const filtered = filterStatus === 'All' ? prototypes : prototypes.filter(p => p.status === filterStatus);
-  const approvedMachines = machines.filter(m => m.designStatus === 'Approved' && !m.isDiscontinued);
+  const approvedMachines = machines.filter(m => m.designStatus === 'Approved' && !m.isDiscontinued && m.forwardToNextPhase);
 
   const handleAdd = () => {
     if (!form.machineId || !form.prototypeName) return;

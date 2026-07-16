@@ -4,26 +4,39 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { ClipboardList, Lock, Plus, Trash2, Edit2, AlertTriangle, ChevronDown, Package, Ban, RefreshCw } from 'lucide-react';
+import { ClipboardList, Lock, Plus, Trash2, Edit2, Eye, AlertTriangle, ChevronDown, Package, Ban, RefreshCw } from 'lucide-react';
 import { UNIT_TYPES, getUnitTypeForUnit, getUnitsForType } from '@/utils/unitTypes';
 import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
+import { showSuccessToast, showSmartToast } from '@/lib/toast-utils';
 
-const ITEM_TYPES = ['Fabricated Item', 'Assembly Item', 'Job Work', 'Laser Cutting', 'Coating'];
-const emptyMaterial = { code: '', childPart: '', subChildPart: '', item: '', itemType: 'Fabricated Item', quantity: '', unitType: '', unit: '' };
+const MATERIAL_TYPE_SUGGESTIONS = ['Raw Material', 'Fabricated Part', 'Purchased Part', 'Assembly', 'Consumable', 'Packaging Material', 'Tool'];
+const emptyMaterial = {
+  code: '', childPart: '', subChildPart: '', item: '', itemType: '', quantity: '', unitType: '', unit: '',
+  // Product Master snapshot fields, silently captured on code match
+  category: '', pSourceType: '', brand: '', description: '', metrology: '', specifications: [], customFields: []
+};
+
+const groupByLabel = (customFields) =>
+  (customFields || []).reduce((acc, cf) => {
+    (acc[cf.groupLabel] = acc[cf.groupLabel] || []).push(cf);
+    return acc;
+  }, {});
 
 export default function BOMManagement() {
-  const { machines, boms, getBOMForMachine, addBOM, addMaterial, updateMaterial, deleteMaterial, lockBOM, discontinueMaterial, reactivateMaterial } = useRD();
+  const { machines, boms, getBOMForMachine, addBOM, addMaterial, updateMaterial, deleteMaterial, lockBOM, discontinueMaterial, reactivateMaterial, masterOptions, addMasterOption } = useRD();
   const [selectedMachineId, setSelectedMachineId] = useState('');
   const [addOpen, setAddOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [lockOpen, setLockOpen] = useState(false);
   const [newBOMOpen, setNewBOMOpen] = useState(false);
   const [deleteMat, setDeleteMat] = useState(null);
+  const [viewMat, setViewMat] = useState(null);
   const [form, setForm] = useState(emptyMaterial);
   const [editForm, setEditForm] = useState(emptyMaterial);
   const [editingMat, setEditingMat] = useState(null);
   const [bomVariant, setBomVariant] = useState('Standard');
+  const [newTypeModal, setNewTypeModal] = useState({ open: false, value: '' });
 
   // Query dynamic unit types
   const { data: unitTypesData } = useQuery({
@@ -50,6 +63,98 @@ export default function BOMManagement() {
     return getUnitsForType(unitTypeName, currentUnit);
   };
 
+  // Material Type is its own dynamic master list (RDMasterOption field "MaterialType"),
+  // deliberately separate from Product Master's P-Type so the two taxonomies can diverge.
+  const materialTypeOptions = masterOptions.MaterialType || [];
+
+  const handleAddMaterialType = async () => {
+    if (!newTypeModal.value) return;
+    try {
+      await addMasterOption({ field: 'MaterialType', value: newTypeModal.value });
+      if (editOpen) {
+        setEditForm(f => ({ ...f, itemType: newTypeModal.value }));
+      } else {
+        setForm(f => ({ ...f, itemType: newTypeModal.value }));
+      }
+      setNewTypeModal({ open: false, value: '' });
+      showSuccessToast('Material Type Added', 'New material type added successfully');
+    } catch (e) {
+      showSmartToast(e, 'Failed to add material type');
+    }
+  };
+
+  // Look up a Product Master entry by its code (all products, not just In House/Out Source machines —
+  // BOM materials reference raw materials, tools, fabricated parts etc. too). Material Type is its own
+  // independent list (not derived from Product Master's P-Type), but everything else Product Master
+  // knows about the item — category, source type, brand, description, metrology, specs, custom fields —
+  // is captured into the material record as a point-in-time snapshot, even though most of it has no
+  // dedicated input on this form. It's viewable later via the row's "eye" button.
+  const findProductByCode = (code) => {
+    const c = (code || '').trim().toLowerCase();
+    if (!c) return null;
+    return machines.find(m => (m.code || '').trim().toLowerCase() === c) || null;
+  };
+
+  const handleCodeBlur = (setState) => (e) => {
+    const match = findProductByCode(e.target.value);
+    if (!match) return;
+    setState(f => ({
+      ...f,
+      item: match.name || f.item,
+      category: match.category || '',
+      pSourceType: match.pSourceType || '',
+      brand: match.brand || '',
+      description: match.description || '',
+      metrology: match.metrology || '',
+      specifications: Array.isArray(match.specifications) ? match.specifications : [],
+      customFields: Array.isArray(match.customFields) ? match.customFields : [],
+    }));
+  };
+
+  const renderCodeMatchHint = (code) => {
+    if (!code) return null;
+    const match = findProductByCode(code);
+    if (!match) return <p className="text-[11px] text-amber-600 mt-1">No matching Product Master code found — enter details manually.</p>;
+    const extras = [];
+    if (match.category) extras.push('Category');
+    if (match.pSourceType) extras.push('P-Source Type');
+    if (match.brand) extras.push('Brand');
+    if (match.metrology) extras.push('Metrology');
+    if (Array.isArray(match.specifications) && match.specifications.length) extras.push(`${match.specifications.length} spec${match.specifications.length > 1 ? 's' : ''}`);
+    if (Array.isArray(match.customFields) && match.customFields.length) extras.push(`${match.customFields.length} custom field${match.customFields.length > 1 ? 's' : ''}`);
+    return (
+      <p className="text-[11px] text-emerald-600 mt-1">
+        ✓ Matched Product Master: {match.name}
+        {extras.length > 0 && <span className="text-slate-500"> — also captured: {extras.join(', ')}</span>}
+      </p>
+    );
+  };
+
+  const renderMaterialTypeSelect = (state, setState) => (
+    <div>
+      <label className="text-xs font-semibold text-slate-600 mb-1 block">Material Type *</label>
+      <div className="flex gap-2">
+        <select
+          className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+          value={state.itemType}
+          onChange={e => setState(f => ({ ...f, itemType: e.target.value }))}
+        >
+          <option value="" disabled>Select...</option>
+          {materialTypeOptions.map(o => <option key={o.value} value={o.value}>{o.value}</option>)}
+        </select>
+        <Button
+          type="button"
+          size="icon"
+          variant="outline"
+          onClick={() => setNewTypeModal({ open: true, value: '' })}
+          className="flex-shrink-0 h-9 w-9 bg-white hover:bg-slate-50 text-slate-600"
+        >
+          <Plus className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  );
+
   const activeMachines = machines.filter(m => !m.isDiscontinued && ['In House Manufacturing', 'Out Source Manufactured'].includes(m.pSourceType));
   const selectedMachine = activeMachines.find(m => String(m._id) === selectedMachineId);
   const bom = selectedMachineId ? getBOMForMachine(selectedMachineId) : null;
@@ -69,18 +174,27 @@ export default function BOMManagement() {
 
   const openEdit = (mat) => {
     setEditingMat(mat);
-    setEditForm({ 
+    setEditForm({
       code: mat.code || '',
-      childPart: mat.childPart || '', 
-      subChildPart: mat.subChildPart || '', 
-      item: mat.item || '', 
-      itemType: mat.itemType || 'Fabricated Item',
+      childPart: mat.childPart || '',
+      subChildPart: mat.subChildPart || '',
+      item: mat.item || '',
+      itemType: mat.itemType || '',
       quantity: String(mat.quantity),
       unitType: mat.unitType || getUnitTypeForUnit(mat.unit),
-      unit: mat.unit || ''
+      unit: mat.unit || '',
+      category: mat.category || '',
+      pSourceType: mat.pSourceType || '',
+      brand: mat.brand || '',
+      description: mat.description || '',
+      metrology: mat.metrology || '',
+      specifications: Array.isArray(mat.specifications) ? mat.specifications : [],
+      customFields: Array.isArray(mat.customFields) ? mat.customFields : [],
     });
     setEditOpen(true);
   };
+
+  const openView = (mat) => setViewMat(mat);
 
   const handleCreateBOM = () => {
     addBOM(selectedMachineId, bomVariant);
@@ -202,12 +316,12 @@ export default function BOMManagement() {
                       <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">#</th>
                       <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Material Code</th>
                       <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Hierarchy (Child &gt; Sub-Child)</th>
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Item Name</th>
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Item Type</th>
+                      <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Material Name</th>
+                      <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Material Type</th>
                       <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Qty</th>
                       <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Unit</th>
                       <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
-                      {!bom.isLocked && <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</th>}
+                      <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -229,21 +343,22 @@ export default function BOMManagement() {
                             ? <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-600 border border-red-200">Discontinued</span>
                             : <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700 border border-emerald-200">Active</span>}
                         </td>
-                        {!bom.isLocked && (
-                          <td className="px-5 py-3.5">
-                            <div className="flex gap-1">
-                              {mat.isDiscontinued ? (
+                        <td className="px-5 py-3.5">
+                          <div className="flex gap-1">
+                            <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-blue-600" title="View details" onClick={() => openView(mat)}><Eye className="h-3.5 w-3.5" /></Button>
+                            {!bom.isLocked && (
+                              mat.isDiscontinued ? (
                                 <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-emerald-600" title="Reactivate" onClick={() => reactivateMaterial(bom._id, mat._id)}><RefreshCw className="h-3.5 w-3.5" /></Button>
                               ) : (
                                 <>
-                                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-blue-600" onClick={() => openEdit(mat)}><Edit2 className="h-3.5 w-3.5" /></Button>
+                                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-purple-600" onClick={() => openEdit(mat)}><Edit2 className="h-3.5 w-3.5" /></Button>
                                   <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-red-600" onClick={() => setDeleteMat(mat)}><Trash2 className="h-3.5 w-3.5" /></Button>
                                   <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-orange-600" title="Discontinue" onClick={() => discontinueMaterial(bom._id, mat._id)}><Ban className="h-3.5 w-3.5" /></Button>
                                 </>
-                              )}
-                            </div>
-                          </td>
-                        )}
+                              )
+                            )}
+                          </div>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -261,7 +376,8 @@ export default function BOMManagement() {
           <div className="space-y-4 py-2">
             <div>
               <label className="text-xs font-semibold text-slate-600 mb-1 block">Material Code *</label>
-              <Input placeholder="e.g. STL-009" value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value }))} />
+              <Input placeholder="e.g. STL-009" value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value }))} onBlur={handleCodeBlur(setForm)} />
+              {renderCodeMatchHint(form.code)}
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -274,20 +390,15 @@ export default function BOMManagement() {
                 <Input placeholder="e.g. Side Panel" value={form.subChildPart} onChange={e => setForm(f => ({ ...f, subChildPart: e.target.value }))} />
               </div>
             </div>
-            
+
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Item Name *</label>
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">Material Name *</label>
                 <Input placeholder="e.g. Sheet Metal 5mm" value={form.item} onChange={e => setForm(f => ({ ...f, item: e.target.value }))} />
               </div>
-              <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Item Type *</label>
-                <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.itemType} onChange={e => setForm(f => ({ ...f, itemType: e.target.value }))}>
-                  {ITEM_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-              </div>
+              {renderMaterialTypeSelect(form, setForm)}
             </div>
-            
+
             <div>
               <label className="text-xs font-semibold text-slate-600 mb-1 block">Quantity *</label>
               <Input type="number" placeholder="0" min="0" value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} />
@@ -324,7 +435,8 @@ export default function BOMManagement() {
           <div className="space-y-4 py-2">
             <div>
               <label className="text-xs font-semibold text-slate-600 mb-1 block">Material Code *</label>
-              <Input placeholder="e.g. STL-009" value={editForm.code} onChange={e => setEditForm(f => ({ ...f, code: e.target.value }))} />
+              <Input placeholder="e.g. STL-009" value={editForm.code} onChange={e => setEditForm(f => ({ ...f, code: e.target.value }))} onBlur={handleCodeBlur(setEditForm)} />
+              {renderCodeMatchHint(editForm.code)}
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -339,15 +451,10 @@ export default function BOMManagement() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Item Name *</label>
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">Material Name *</label>
                 <Input value={editForm.item} onChange={e => setEditForm(f => ({ ...f, item: e.target.value }))} />
               </div>
-              <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Item Type *</label>
-                <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={editForm.itemType} onChange={e => setEditForm(f => ({ ...f, itemType: e.target.value }))}>
-                  {ITEM_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-              </div>
+              {renderMaterialTypeSelect(editForm, setEditForm)}
             </div>
             <div>
               <label className="text-xs font-semibold text-slate-600 mb-1 block">Quantity *</label>
@@ -426,6 +533,133 @@ export default function BOMManagement() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setNewBOMOpen(false)}>Cancel</Button>
             <Button onClick={handleCreateBOM} disabled={!bomVariant} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">Create BOM</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add New Material Type Dialog */}
+      <Dialog open={newTypeModal.open} onOpenChange={(open) => !open && setNewTypeModal({ open: false, value: '' })}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Add New Material Type</DialogTitle></DialogHeader>
+          <div className="py-4">
+            <label className="text-xs font-semibold text-slate-600 mb-1 block">Value to Save *</label>
+            <input
+              type="text"
+              list="material-type-suggestions"
+              autoFocus
+              className="flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+              placeholder="Type to search or add new..."
+              value={newTypeModal.value}
+              onChange={e => setNewTypeModal(prev => ({ ...prev, value: e.target.value }))}
+              onKeyDown={e => e.key === 'Enter' && handleAddMaterialType()}
+            />
+            <datalist id="material-type-suggestions">
+              {MATERIAL_TYPE_SUGGESTIONS.map(opt => <option key={opt} value={opt} />)}
+            </datalist>
+            <p className="text-xs text-slate-500 mt-2">
+              This list is specific to BOM Management and is independent of Product Master's P-Type.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNewTypeModal({ open: false, value: '' })}>Cancel</Button>
+            <Button onClick={handleAddMaterialType} disabled={!newTypeModal.value} className="bg-blue-600 hover:bg-blue-700 text-white">Save Type</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* View Material Dialog */}
+      <Dialog open={!!viewMat} onOpenChange={() => setViewMat(null)}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <span className="font-mono text-blue-600 text-base">{viewMat?.code}</span>
+              <span>{viewMat?.item}</span>
+            </DialogTitle>
+          </DialogHeader>
+          {viewMat && (
+            <div className="space-y-4 py-2">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-xs text-slate-500 mb-1">Material Type</p>
+                  <p className="text-sm font-medium text-slate-800">{viewMat.itemType || 'N/A'}</p>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-xs text-slate-500 mb-1">Quantity</p>
+                  <p className="text-sm font-medium text-slate-800">{viewMat.quantity} {viewMat.unit}</p>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-xs text-slate-500 mb-1">Hierarchy</p>
+                  <p className="text-sm font-medium text-slate-800">{[viewMat.childPart, viewMat.subChildPart].filter(Boolean).join(' > ') || '—'}</p>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-xs text-slate-500 mb-1">Status</p>
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${viewMat.isDiscontinued ? 'bg-red-100 text-red-600 border-red-200' : 'bg-emerald-100 text-emerald-700 border-emerald-200'}`}>
+                    {viewMat.isDiscontinued ? 'Discontinued' : 'Active'}
+                  </span>
+                </div>
+              </div>
+
+              {(viewMat.category || viewMat.pSourceType || viewMat.brand || viewMat.metrology || viewMat.description) && (
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-xs text-slate-500 mb-2 font-semibold">Product Master Snapshot</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {viewMat.category && <div><p className="text-[11px] text-slate-400">Category</p><p className="text-sm text-slate-800">{viewMat.category}</p></div>}
+                    {viewMat.pSourceType && <div><p className="text-[11px] text-slate-400">P-Source Type</p><p className="text-sm text-slate-800">{viewMat.pSourceType}</p></div>}
+                    {viewMat.brand && <div><p className="text-[11px] text-slate-400">Brand</p><p className="text-sm text-slate-800">{viewMat.brand}</p></div>}
+                    {viewMat.metrology && <div><p className="text-[11px] text-slate-400">Metrology</p><p className="text-sm text-slate-800">{viewMat.metrology}</p></div>}
+                  </div>
+                  {viewMat.description && (
+                    <div className="mt-2">
+                      <p className="text-[11px] text-slate-400">Description</p>
+                      <p className="text-sm text-slate-700">{viewMat.description}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {Array.isArray(viewMat.specifications) && viewMat.specifications.filter(s => s.key).length > 0 && (
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-xs text-slate-500 mb-2 font-semibold">Specifications</p>
+                  <div className="divide-y divide-slate-100">
+                    {viewMat.specifications.filter(s => s.key).map((s, i) => (
+                      <div key={i} className="flex items-center justify-between py-1.5">
+                        <span className="text-xs font-semibold text-slate-500 w-2/5">{s.key}</span>
+                        <span className="text-sm text-slate-800 font-medium">{s.value || '—'}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {Array.isArray(viewMat.customFields) && viewMat.customFields.length > 0 && (
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-xs text-slate-500 mb-2 font-semibold">Custom Fields</p>
+                  <div className="space-y-3">
+                    {Object.entries(groupByLabel(viewMat.customFields)).map(([groupLabel, fields]) => (
+                      <div key={groupLabel}>
+                        <p className="text-xs font-bold text-slate-600 mb-1">{groupLabel}</p>
+                        <div className="divide-y divide-slate-100">
+                          {fields.map((cf, i) => (
+                            <div key={i} className="flex items-center justify-between py-1.5">
+                              <span className="text-xs font-semibold text-slate-500 w-2/5">{cf.fieldName}</span>
+                              <span className="text-sm text-slate-800 font-medium">{cf.value || '—'}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {!viewMat.category && !viewMat.pSourceType && !viewMat.brand && !viewMat.metrology && !viewMat.description &&
+                (!viewMat.specifications || viewMat.specifications.length === 0) && (!viewMat.customFields || viewMat.customFields.length === 0) && (
+                <p className="text-xs text-slate-400 italic text-center py-2">No additional Product Master data was captured for this material.</p>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setViewMat(null)}>Close</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
