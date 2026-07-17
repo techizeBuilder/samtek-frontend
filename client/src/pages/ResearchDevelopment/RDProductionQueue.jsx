@@ -460,7 +460,7 @@ export default function RDProductionQueue() {
                                                     {reviewModal.data.bom.materials.map((mat, i) => (
                                                         <tr key={i} className="hover:bg-slate-50">
                                                             <td className="px-3 py-1 font-mono text-xs">{mat.code}</td>
-                                                            <td className="px-3 py-1">{mat.name}</td>
+                                                            <td className="px-3 py-1">{mat.item}</td>
                                                             <td className="px-3 py-1 text-right">{mat.quantity} {mat.unit}</td>
                                                         </tr>
                                                     ))}

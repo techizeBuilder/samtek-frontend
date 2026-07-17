@@ -25,14 +25,27 @@ function ExecuteDispatchModal({ dispatch, onClose }) {
     transportCompanyName: dispatch.transportCompanyName || '',
     notes: '',
   });
+  const [files, setFiles] = useState({ noc: null, ewayBill: null, invoice: null });
   const [loading, setLoading] = useState(false);
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const setFile = (field) => (file) => setFiles(f => ({ ...f, [field]: file }));
+  const allUploaded = files.noc && files.ewayBill && files.invoice;
 
   const handle = async () => {
+    if (!allUploaded) {
+      toast({ title: 'Documents required', description: 'Please upload NOC, E-Way Bill, and Invoice before dispatching.', variant: 'destructive' });
+      return;
+    }
     setLoading(true);
     try {
-      await executeDispatch(dispatch._id, form);
+      const formData = new FormData();
+      Object.entries(form).forEach(([k, v]) => formData.append(k, v));
+      formData.append('noc', files.noc);
+      formData.append('ewayBill', files.ewayBill);
+      formData.append('invoice', files.invoice);
+
+      await executeDispatch(dispatch._id, formData);
       toast({ title: 'Dispatched', description: `${dispatch.dispatchId} is now dispatched` });
       onClose();
     } catch (e) {
@@ -124,12 +137,62 @@ function ExecuteDispatchModal({ dispatch, onClose }) {
               placeholder="Loading notes, special instructions..."
             />
           </div>
+
+          {/* Delivery Documents — required before a dispatch can be executed */}
+          <div className="pt-3 border-t border-slate-100 space-y-4">
+            <div>
+              <p className="text-sm font-semibold text-slate-800">Delivery Documents</p>
+              <p className="text-xs text-slate-400 mt-0.5">Upload all 3 documents to execute the dispatch</p>
+            </div>
+            <div className="flex items-center gap-2 text-xs text-slate-500">
+              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-white text-xs font-bold ${files.noc ? 'bg-emerald-500' : 'bg-slate-200'}`}>
+                {files.noc ? '✓' : '1'}
+              </span>
+              <div className={`flex-1 h-0.5 ${files.noc ? 'bg-emerald-400' : 'bg-slate-200'}`} />
+              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-white text-xs font-bold ${files.ewayBill ? 'bg-emerald-500' : 'bg-slate-200'}`}>
+                {files.ewayBill ? '✓' : '2'}
+              </span>
+              <div className={`flex-1 h-0.5 ${files.ewayBill ? 'bg-emerald-400' : 'bg-slate-200'}`} />
+              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-white text-xs font-bold ${files.invoice ? 'bg-emerald-500' : 'bg-slate-200'}`}>
+                {files.invoice ? '✓' : '3'}
+              </span>
+            </div>
+
+            <FileUploadSlot
+              label="NOC (No Objection Certificate)"
+              fieldName="noc"
+              icon={FileText}
+              file={files.noc}
+              onChange={setFile('noc')}
+            />
+            <FileUploadSlot
+              label="E-Way Bill"
+              fieldName="ewayBill"
+              icon={FileText}
+              file={files.ewayBill}
+              onChange={setFile('ewayBill')}
+            />
+            <FileUploadSlot
+              label="Invoice"
+              fieldName="invoice"
+              icon={FileText}
+              file={files.invoice}
+              onChange={setFile('invoice')}
+            />
+
+            {allUploaded && (
+              <div className="flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-700">
+                <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
+                <span className="font-medium">All documents uploaded — ready to dispatch</span>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Footer — fixed */}
         <div className="px-7 pb-6 pt-4 border-t border-slate-100 flex gap-3 flex-shrink-0">
           <Button variant="outline" className="flex-1 h-11" onClick={onClose}>Cancel</Button>
-          <Button className="flex-1 h-11 bg-blue-600 hover:bg-blue-700" onClick={handle} disabled={loading}>
+          <Button className="flex-1 h-11 bg-blue-600 hover:bg-blue-700" onClick={handle} disabled={loading || !allUploaded}>
             {loading ? 'Dispatching...' : 'Confirm Dispatch'}
           </Button>
         </div>
@@ -188,28 +251,17 @@ function FileUploadSlot({ label, fieldName, icon: Icon, file, onChange }) {
 function DeliveryModal({ dispatch, onClose }) {
   const { confirmDelivery } = usePackagingDispatch();
   const { toast } = useToast();
-  const [files, setFiles] = useState({ noc: null, ewayBill: null, invoice: null });
   const [loading, setLoading] = useState(false);
 
-  const setFile = (field) => (file) => setFiles(f => ({ ...f, [field]: file }));
-
-  const allUploaded = files.noc && files.ewayBill && files.invoice;
+  const hasDocs = !!(dispatch.deliveryDocs && (
+    dispatch.deliveryDocs.noc || dispatch.deliveryDocs.ewayBill || dispatch.deliveryDocs.invoice
+  ));
 
   const handle = async () => {
-    if (!allUploaded) {
-      toast({ title: 'Documents required', description: 'Please upload NOC, E-Way Bill, and Invoice before confirming delivery.', variant: 'destructive' });
-      return;
-    }
     setLoading(true);
     try {
-      const formData = new FormData();
-      formData.append('noc', files.noc);
-      formData.append('ewayBill', files.ewayBill);
-      formData.append('invoice', files.invoice);
-      formData.append('deliveryOTPVerified', 'true');
-
-      await confirmDelivery(dispatch._id, formData);
-      toast({ title: 'Delivery confirmed', description: `${dispatch.dispatchId} marked as delivered` });
+      await confirmDelivery(dispatch._id, { deliveryOTPVerified: true });
+      toast({ title: 'Delivery confirmed', description: `${dispatch.dispatchId} delivered and moved to Dispatch History` });
       onClose();
     } catch (e) {
       toast({ title: 'Error', description: e.message, variant: 'destructive' });
@@ -220,12 +272,12 @@ function DeliveryModal({ dispatch, onClose }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col" style={{ maxHeight: 'calc(100vh - 60px)' }}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col">
         {/* Header */}
         <div className="flex justify-between items-center px-6 pt-6 pb-4 border-b border-slate-100 flex-shrink-0">
           <div>
             <h2 className="font-bold text-lg text-slate-800">Confirm Delivery</h2>
-            <p className="text-xs text-slate-400 mt-0.5">Upload all 3 documents to confirm delivery</p>
+            <p className="text-xs text-slate-400 mt-0.5">This closes the dispatch and moves it to Dispatch History</p>
           </div>
           <button onClick={onClose} className="p-1 rounded-lg hover:bg-slate-100">
             <X className="h-5 w-5 text-slate-400 hover:text-slate-600" />
@@ -233,54 +285,21 @@ function DeliveryModal({ dispatch, onClose }) {
         </div>
 
         {/* Body */}
-        <div className="overflow-y-auto flex-1 px-6 py-5 space-y-4">
-          {/* Order info */}
+        <div className="px-6 py-5 space-y-4">
           <div className="p-3 bg-slate-50 rounded-xl text-sm border border-slate-100">
             <p className="font-semibold text-slate-700">{dispatch.dispatchId}</p>
             <p className="text-slate-500 mt-0.5">{dispatch.machineName} → {dispatch.customerName || 'Customer'}</p>
           </div>
 
-          {/* Progress indicator */}
-          <div className="flex items-center gap-2 text-xs text-slate-500">
-            <span className={`w-5 h-5 rounded-full flex items-center justify-center text-white text-xs font-bold ${files.noc ? 'bg-emerald-500' : 'bg-slate-200'}`}>
-              {files.noc ? '✓' : '1'}
-            </span>
-            <div className={`flex-1 h-0.5 ${files.noc ? 'bg-emerald-400' : 'bg-slate-200'}`} />
-            <span className={`w-5 h-5 rounded-full flex items-center justify-center text-white text-xs font-bold ${files.ewayBill ? 'bg-emerald-500' : 'bg-slate-200'}`}>
-              {files.ewayBill ? '✓' : '2'}
-            </span>
-            <div className={`flex-1 h-0.5 ${files.ewayBill ? 'bg-emerald-400' : 'bg-slate-200'}`} />
-            <span className={`w-5 h-5 rounded-full flex items-center justify-center text-white text-xs font-bold ${files.invoice ? 'bg-emerald-500' : 'bg-slate-200'}`}>
-              {files.invoice ? '✓' : '3'}
-            </span>
-          </div>
-
-          <FileUploadSlot
-            label="NOC (No Objection Certificate)"
-            fieldName="noc"
-            icon={FileText}
-            file={files.noc}
-            onChange={setFile('noc')}
-          />
-          <FileUploadSlot
-            label="E-Way Bill"
-            fieldName="ewayBill"
-            icon={FileText}
-            file={files.ewayBill}
-            onChange={setFile('ewayBill')}
-          />
-          <FileUploadSlot
-            label="Invoice"
-            fieldName="invoice"
-            icon={FileText}
-            file={files.invoice}
-            onChange={setFile('invoice')}
-          />
-
-          {allUploaded && (
+          {hasDocs ? (
             <div className="flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-700">
-              <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
-              <span className="font-medium">All documents uploaded — ready to confirm delivery</span>
+              <FileCheck className="h-4 w-4 flex-shrink-0" />
+              <span className="font-medium">Delivery documents already uploaded at dispatch</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-700">
+              <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+              <span className="font-medium">No delivery documents found on this dispatch</span>
             </div>
           )}
         </div>
@@ -290,11 +309,7 @@ function DeliveryModal({ dispatch, onClose }) {
           <Button variant="outline" className="flex-1 h-11" onClick={onClose} disabled={loading}>
             Cancel
           </Button>
-          <Button
-            className={`flex-1 h-11 ${allUploaded ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-slate-300 cursor-not-allowed'}`}
-            onClick={handle}
-            disabled={loading || !allUploaded}
-          >
+          <Button className="flex-1 h-11 bg-emerald-600 hover:bg-emerald-700" onClick={handle} disabled={loading}>
             {loading ? 'Confirming...' : 'Confirm Delivery'}
           </Button>
         </div>
@@ -404,6 +419,12 @@ function DispatchCard({ dispatch }) {
             )}
             {dispatch.status === 'Dispatched' && (
               <>
+                {hasDocs && (
+                  <Button size="sm" variant="outline" className="flex-1" onClick={() => setModal('documents')}>
+                    <Eye className="h-4 w-4 mr-1.5" />
+                    Docs
+                  </Button>
+                )}
                 <Button size="sm" variant="outline" className="flex-1" onClick={handleInTransit} disabled={loading}>
                   Mark In Transit
                 </Button>
@@ -414,11 +435,21 @@ function DispatchCard({ dispatch }) {
               </>
             )}
             {dispatch.status === 'In Transit' && (
-              <Button size="sm" className="flex-1" onClick={() => setModal('deliver')}>
-                <CheckCircle2 className="h-4 w-4 mr-1.5" />
-                Confirm Delivery
-              </Button>
+              <>
+                {hasDocs && (
+                  <Button size="sm" variant="outline" className="flex-1" onClick={() => setModal('documents')}>
+                    <Eye className="h-4 w-4 mr-1.5" />
+                    Docs
+                  </Button>
+                )}
+                <Button size="sm" className="flex-1" onClick={() => setModal('deliver')}>
+                  <CheckCircle2 className="h-4 w-4 mr-1.5" />
+                  Confirm Delivery
+                </Button>
+              </>
             )}
+            {/* Legacy fallback: dispatches that reached 'Delivered' before this step was
+                merged into Confirm Delivery still need a way to close out. */}
             {dispatch.status === 'Delivered' && (
               <>
                 {hasDocs && (

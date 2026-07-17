@@ -125,8 +125,8 @@ export function ProductionProvider({ children }) {
   });
 
   const qcSubEntryMutation = useMutation({
-    mutationFn: ({ orderId, stepIndex, subEntryId, qcStatus }) =>
-      apiRequest('PUT', `${BASE}/orders/${orderId}/processes/${stepIndex}/sub-entries/${subEntryId}/qc`, { qcStatus }),
+    mutationFn: ({ orderId, stepIndex, subEntryId, qcStatus, qcBy, reason }) =>
+      apiRequest('PUT', `${BASE}/orders/${orderId}/processes/${stepIndex}/sub-entries/${subEntryId}/qc`, { qcStatus, qcBy, reason }),
     onSuccess: invalidateOrders,
   });
 
@@ -173,8 +173,8 @@ export function ProductionProvider({ children }) {
   const completeSubEntry = useCallback((orderId, stepName, subEntryId) =>
     completeSubEntryMutation.mutateAsync({ orderId, stepIndex: stepIndex(stepName), subEntryId }), []);
 
-  const qcSubEntry = useCallback((orderId, stepName, subEntryId, qcStatus) =>
-    qcSubEntryMutation.mutateAsync({ orderId, stepIndex: stepIndex(stepName), subEntryId, qcStatus }), []);
+  const qcSubEntry = useCallback((orderId, stepName, subEntryId, qcStatus, qcBy, reason) =>
+    qcSubEntryMutation.mutateAsync({ orderId, stepIndex: stepIndex(stepName), subEntryId, qcStatus, qcBy, reason }), []);
 
   // ── Computed helpers (same interface as before) ───────────────────────────
   const getOrderProgress = useCallback((orderId) => {
