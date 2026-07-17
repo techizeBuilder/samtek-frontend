@@ -265,7 +265,6 @@ export async function generateDueBillPDF(data, logoDataUrl) {
       fmtAmt(it.unitPrice),
       fmtAmt(it.total)
     ]),
-    foot: [['', { content: 'Sub-Total  (Excl. GST)', colSpan: 3, styles: { halign: 'right', fontStyle: 'bold' } }, fmtAmt(subtotal)]],
     styles: { font: 'helvetica', fontSize: 8.5, cellPadding: 5, lineColor: BORDER, lineWidth: 0.4, textColor: BLACK },
     headStyles: { fillColor: LGREY, textColor: BLACK, fontStyle: 'bold', fontSize: 8 },
     footStyles: { fillColor: LGREY, textColor: NAVY,  fontStyle: 'bold' },
