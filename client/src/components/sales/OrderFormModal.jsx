@@ -326,6 +326,17 @@ export default function OrderFormModal({ open, onOpenChange, orderId, order, lea
       toast({ title: 'Required fields missing', description: 'Customer Name and Mobile are required.', variant: 'destructive' });
       return;
     }
+    // Received Amount (the advance/payment collected) and Bill Amount are what
+    // make the Order Form meaningful to Accounts — without them there's
+    // nothing to reconcile against the order.
+    if (num(fields.receivedAmount) <= 0) {
+      toast({ title: 'Required fields missing', description: 'Received Amount (Advance Payment) is required.', variant: 'destructive' });
+      return;
+    }
+    if (visibleItems.some(({ it }) => num(it.billAmount) <= 0)) {
+      toast({ title: 'Required fields missing', description: 'Bill Amt is required for every item row.', variant: 'destructive' });
+      return;
+    }
     setSaving(true);
     try {
       // Balance Amount is always the live-computed total, never the stale typed value
@@ -430,7 +441,7 @@ export default function OrderFormModal({ open, onOpenChange, orderId, order, lea
               {/* ── Payment Details block ── */}
               <p className="text-sm font-semibold text-gray-700">Payment Details</p>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <Field type="number" label="Received Amount (INR)" value={fields.receivedAmount} onChange={v => setField('receivedAmount', v)} disabled={disabled} />
+                <Field type="number" label="Received Amount (INR)" value={fields.receivedAmount} onChange={v => setField('receivedAmount', v)} disabled={disabled} required />
                 <SelectField label="Payment Type" value={fields.paymentType} onChange={v => setField('paymentType', v)} disabled={disabled} options={PAYMENT_TYPES} />
                 <div>
                   <Field
@@ -480,7 +491,7 @@ export default function OrderFormModal({ open, onOpenChange, orderId, order, lea
                       <TableHead style={{ width: 320 }}>Spec.</TableHead>
                       <TableHead style={{ width: 90 }}>HSN Code</TableHead>
                       <TableHead style={{ width: 70 }}>QTY</TableHead>
-                      <TableHead style={{ width: 120 }}>Bill Amt</TableHead>
+                      <TableHead style={{ width: 120 }}>Bill Amt <span className="text-red-500">*</span></TableHead>
                       <TableHead style={{ width: 120 }}>GST Amt</TableHead>
                       <TableHead style={{ width: 120 }}>Quot. Amount</TableHead>
                       <TableHead style={{ width: 120 }}>Cash Amount</TableHead>
@@ -593,10 +604,10 @@ export default function OrderFormModal({ open, onOpenChange, orderId, order, lea
   );
 }
 
-function Field({ label, value, onChange, disabled, type = 'text', className = '' }) {
+function Field({ label, value, onChange, disabled, type = 'text', className = '', required = false }) {
   return (
     <div className={`space-y-1 ${className}`}>
-      <Label className="text-xs text-gray-500">{label}</Label>
+      <Label className="text-xs text-gray-500">{label}{required && <span className="text-red-500 ml-0.5">*</span>}</Label>
       <Input
         type={type}
         value={value ?? ''}

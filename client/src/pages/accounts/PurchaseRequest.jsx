@@ -8,7 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from '@/lib/queryClient';
 import { useAuth } from '@/hooks/useAuth';
 import { 
-  Loader2, Plus, Eye, Send, Check, Mail, Clock, ShieldCheck, 
+  Loader2, Plus, Eye, Check, Mail, Clock, ShieldCheck,
   MapPin, Notebook, Info, FileText, ChevronRight, Edit2, RotateCw,
   Upload, PackageCheck, AlertCircle, X, Search, Package, CheckCircle2, AlertTriangle
 } from 'lucide-react';
@@ -54,7 +54,6 @@ export default function PurchaseRequest() {
 
   // Local Action Loading states
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isSendingEmail, setIsSendingEmail] = useState(false);
 
   // ── Receive Modal state ─────────────────────────────────────────────────────
   const [isReceiveModalOpen, setIsReceiveModalOpen]   = useState(false);
@@ -358,7 +357,9 @@ export default function PurchaseRequest() {
       const poItem = po.items?.[0];
       setItemId(poItem?.item || '');
       setUnitPrice(poItem?.unitPrice || 0);
-      setGstPercent(po.taxAmount && po.totalAmount ? Math.round((po.taxAmount / po.totalAmount) * 100) : 18);
+      // Vendor-bid POs carry no GST (taxAmount is legitimately 0) — only fall
+      // back to a guessed rate when totalAmount itself is missing.
+      setGstPercent(po.totalAmount ? Math.round(((po.taxAmount || 0) / po.totalAmount) * 100) : 0);
       
       const dateStr = po.expectedDeliveryDate ? new Date(po.expectedDeliveryDate).toISOString().split('T')[0] : '';
       setExpectedDeliveryDate(dateStr);
@@ -433,37 +434,6 @@ export default function PurchaseRequest() {
     }
   };
 
-  // Send PO to Supplier by Email
-  const handleSendPOToVendor = async (request) => {
-    const poId = request.purchaseOrder?._id;
-    if (!poId) return;
-
-    setIsSendingEmail(true);
-    try {
-      const response = await apiRequest('POST', `/api/accounts/purchases/orders/${poId}/send-email`);
-      if (response.success) {
-        toast({
-          title: "Email Dispatched",
-          description: `Purchase Order sent successfully to ${request.purchaseOrder.supplier?.supplierName || 'Vendor'}`,
-        });
-        
-        // Refresh requests to show updated status
-        fetchPurchaseRequests();
-      } else {
-        throw new Error(response.message || 'Failed to dispatch email');
-      }
-    } catch (error) {
-      console.error("Failed to send PO:", error);
-      toast({
-        title: "Dispatch Failed",
-        description: error.message || "Could not email Purchase Order. Verify SMTP & Supplier email.",
-        variant: "destructive"
-      });
-    } finally {
-      setIsSendingEmail(false);
-    }
-  };
-
   const getStatusColor = (status) => {
     switch (status) {
       case 'Pending': return 'bg-amber-100 text-amber-800 border-amber-300';
@@ -530,8 +500,7 @@ export default function PurchaseRequest() {
                   ) : (
                     requests.map((request) => {
                       const hasPO = !!request.purchaseOrder;
-                      const isDraft = request.purchaseOrder?.status === 'Draft';
-                      
+
                       return (
                         <TableRow key={request._id} className="hover:bg-slate-50/50 transition-colors border-b">
                           <TableCell className="font-bold text-slate-900 pl-6">{request.requestId}</TableCell>
@@ -638,35 +607,15 @@ export default function PurchaseRequest() {
                                 </>
                               ) : (
                                 <>
-                                  {/* Accounts User: View PO + Send Email (no manual Create PO — PO auto-generates via RFQ/Vendor Bidding) */}
+                                  {/* Accounts User: View PO (no manual Create PO — PO auto-generates via RFQ/Vendor Bidding) */}
                                   {hasPO ? (
-                                    <>
-                                      <Button
-                                        onClick={() => handleOpenViewPO(request)}
-                                        variant="outline"
-                                        className="border-slate-200 text-slate-700 hover:bg-slate-100 font-semibold h-8 text-xs rounded-md"
-                                      >
-                                        <Eye className="w-3.5 h-3.5 mr-1" /> View PO
-                                      </Button>
-                                      {isDraft ? (
-                                        <Button
-                                          onClick={() => handleSendPOToVendor(request)}
-                                          disabled={isSendingEmail}
-                                          className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold h-8 text-xs rounded-md shadow-sm"
-                                        >
-                                          {isSendingEmail ? (
-                                            <Loader2 className="w-3 h-3 animate-spin mr-1" />
-                                          ) : (
-                                            <Send className="w-3.5 h-3.5 mr-1" />
-                                          )}
-                                          Send to Vendor
-                                        </Button>
-                                      ) : (
-                                        <Badge variant="success" className="bg-emerald-500 text-white hover:bg-emerald-600 font-bold h-8 text-xs px-2.5 rounded-lg flex items-center gap-1 border-0">
-                                          <Check className="w-3.5 h-3.5" /> Sent to Vendor
-                                        </Badge>
-                                      )}
-                                    </>
+                                    <Button
+                                      onClick={() => handleOpenViewPO(request)}
+                                      variant="outline"
+                                      className="border-slate-200 text-slate-700 hover:bg-slate-100 font-semibold h-8 text-xs rounded-md"
+                                    >
+                                      <Eye className="w-3.5 h-3.5 mr-1" /> View PO
+                                    </Button>
                                   ) : (
                                     <span className="text-xs text-slate-400 font-medium italic">
                                       Use RFQ Module →

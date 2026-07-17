@@ -61,6 +61,7 @@ export const getNavigationUrl = (notification, userRole = '') => {
   const { type, data, title, icon } = notification;
   const isSalesRole = ['Sales', 'Sales Employee', 'Sales Head'].includes(userRole);
   const isStoreRole = ['Store', 'Store Head', 'Store Employee'].includes(userRole);
+  const isAccountsRole = ['Accounts', 'Accounts Head', 'Account Employee'].includes(userRole);
   const isMarketingHead = userRole === 'Marketing Head';
 
   if (type === 'complaint' && (
@@ -91,13 +92,23 @@ export const getNavigationUrl = (notification, userRole = '') => {
     return '/store/orders';
   }
 
+  // Sales Order Form Submitted — Accounts reviews it on its own Order Forms
+  // screen, not the Sales module's order list (the generic orderId fallback
+  // below would otherwise send them there).
+  if (isAccountsRole && type === 'account' && title?.toLowerCase().includes('order form')) {
+    return '/accounts/sales/order-forms';
+  }
+
   if (data?.orderId) return `/sales/orders?highlight=${data.orderId}`;
   if (type === 'lead' && data?.leadId) return `/sales/leads?highlight=${data.leadId}`;
   if (type === 'account' && data?.orderCode) return `/accounts/sales/packed-orders`;
   if (type === 'purchase') return `/accounts/purchases/requests`;
   if (type === 'production') return `/production/orders`;
   if (type === 'store') return `/store/orders`;
-  if (type === 'dispatch') return `/dispatch/active`;
+  // "Packing Completed" is sent to Dispatch AND Accounts — Accounts has no
+  // access to the Dispatch module, so route them to their own packed-orders
+  // (NOC/payment clearance) screen instead.
+  if (type === 'dispatch') return isAccountsRole ? '/accounts/sales/packed-orders' : `/dispatch/active`;
   if (type === 'qc') return `/qc/jobs`;
   if (type === 'complaint' || type === 'task') return `/complaints/dashboard`;
   if (type === 'leave') return `/hrms/SuperAdmin/leave-requests`;
