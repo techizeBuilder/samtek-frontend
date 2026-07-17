@@ -397,6 +397,11 @@ export default function PendingRequestsTab() {
                     <p className="font-semibold text-xs text-slate-800">{item.productName}</p>
                     <div className="flex items-center gap-2 text-[11px] text-slate-400 font-mono">
                       <span>Code: {item.materialCode}</span>
+                      {item.productionOrderId && (
+                        <span className="bg-blue-50 px-1 rounded text-[10px] text-blue-600">
+                          Order: {item.productionOrderId}
+                        </span>
+                      )}
                       {item.storeOrderId && (
                         <span className="bg-slate-100 px-1 rounded text-[10px] text-slate-500">
                           Staged By: {item.stagedBy}
@@ -420,7 +425,7 @@ export default function PendingRequestsTab() {
           </div>
 
           {/* SECTION B: DYNAMIC LIVE AGGREGATED SUMMARY BAR AT BOTTOM */}
-          <div className="border-t-2 border-dashed border-slate-200 pt-4 bg-amber-50/40 p-4 rounded-xl border border-amber-100">
+          <div className="bg-amber-50/40 p-4 rounded-xl border border-amber-100">
             <div className="text-[11px] font-bold text-amber-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
               <ListChecks className="h-4 w-4 text-amber-600" />
               Consolidated Accounts Dispatch Summary

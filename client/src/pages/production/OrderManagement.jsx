@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useProduction } from '@/contexts/ProductionContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -49,6 +50,7 @@ export default function OrderManagement() {
     addMaterialDemand, updateMaterialStatus, markMaterialIssued,
     getOrderProgress,
   } = useProduction();
+  const queryClient = useQueryClient();
 
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('All');
@@ -86,11 +88,11 @@ export default function OrderManagement() {
         receivedQuantity: Number(issueQty)
       });
 
+      queryClient.invalidateQueries({ queryKey: ['production-mfg-orders'] });
       showSuccessToast('Material Received', `Successfully received ${issueQty} ${issueRow.unit}.`);
       setIssueModalOpen(false);
       setIssueRow(null);
       setIssueQty('');
-      // If you have a refresh function in your context, call it here (e.g., refreshOrders())
     } catch (error) {
       showSmartToast(error, 'Receive Material Failed');
     }
@@ -107,6 +109,7 @@ export default function OrderManagement() {
         returnType
       });
 
+      queryClient.invalidateQueries({ queryKey: ['production-mfg-orders'] });
       showSuccessToast('Return Requested', `Return request for ${returnQty} ${returnRow.unit} submitted.`);
       setReturnModalOpen(false);
       setReturnRow(null);
