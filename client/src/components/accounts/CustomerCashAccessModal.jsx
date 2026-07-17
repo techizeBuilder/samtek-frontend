@@ -67,7 +67,6 @@ export default function CustomerCashAccessModal({ customer, onClose }) {
             <div>
               <p
                 className="font-semibold text-slate-900 text-lg cursor-pointer select-none"
-                title="Double-click to view Cash details"
                 onDoubleClick={() => setStep('password')}
               >
                 {customer.name}

@@ -432,7 +432,6 @@ export default function FinancialSummary() {
                             <div
                                 className="text-4xl sm:text-6xl font-extrabold tracking-tight cursor-pointer select-none"
                                 onDoubleClick={() => setShowKacchaProfit(prev => !prev)}
-                                title="Double-click to switch between Pakka and Kaccha bill profit"
                             >
                                 ₹{netProfit.toLocaleString()}
                             </div>
@@ -443,9 +442,6 @@ export default function FinancialSummary() {
                                 </div>
                                 <div className="text-blue-100 text-sm italic">
                                     Report for {format(new Date(startDate), 'MMM dd')} - {format(new Date(endDate), 'MMM dd, yyyy')}
-                                </div>
-                                <div className="text-blue-200/70 text-[10px] italic">
-                                    (Double-click amount to view {showKacchaProfit ? 'Pakka' : 'Kaccha'} bill profit)
                                 </div>
                             </div>
                         </div>

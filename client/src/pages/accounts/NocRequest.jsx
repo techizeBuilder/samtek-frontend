@@ -318,7 +318,7 @@ const NocRequest = () => {
   const buildNOCPDF = async (item) => {
     // Full flow details fetched on-demand (list API stays light)
     const response = await apiRequest('GET', `/api/orders/noc-details/${item.saleId}`);
-    const d = response.data?.data;
+    const d = response.data;
     if (!d) throw new Error('NOC details not found');
 
     const fmtD = (dt) => {

@@ -156,10 +156,13 @@ export default function OrderManagement() {
   const sources = ['All', 'Store Orders', 'Rejected Items'];
 
   // Real sales-order id (ORD-xxx) that this production belongs to:
-  //  - Store-triggered  → machineCode holds the sales orderCode
-  //  - QC_Rejected      → rejectionDetails.originalOrderId
+  //  - orderCode        → set server-side from the linked Order at creation
+  //                       (Store-triggered and QC_Rejected rebuilds both resolve it)
+  //  - older records without orderCode fall back to the legacy fields so
+  //    nothing already in the DB goes blank
   //  - Stock production → no sales order (company stock)
   const getRealOrderId = (o) => {
+    if (o.orderCode) return o.orderCode;
     if (o.source === 'QC_Rejected') return o.rejectionDetails?.originalOrderId || o.machineCode || null;
     if (!o.source || o.source === 'Store') return o.machineCode || null;
     return null; // 'Stock'

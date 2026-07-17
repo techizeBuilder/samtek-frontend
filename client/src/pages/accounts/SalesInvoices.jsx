@@ -61,6 +61,7 @@ const SalesInvoices = () => {
     const [activeTab, setActiveTab] = useState('Pakka'); // 'Pakka' or 'Kachha'
     const [generatingInvoice, setGeneratingInvoice] = useState(null); // The order being invoiced
     const [viewOrder, setViewOrder] = useState(null);
+    const [printChoice, setPrintChoice] = useState(null); // { primary, sibling } when both Kachha & Pakka exist for the order
 
     const { data: invoicesResponse, isLoading: isInvoicesLoading } = useQuery({
         queryKey: ['/api/accounts/sales/account/invoices', searchTerm, activeTab],
@@ -212,6 +213,16 @@ const SalesInvoices = () => {
                 description: "There was an error generating the PDF. Please try again.",
                 variant: "destructive" 
             });
+        }
+    };
+
+    // If this order also has the other bill type generated, ask which one to
+    // download instead of guessing; otherwise just download the only one.
+    const handlePrintClick = (inv) => {
+        if (inv?.siblingInvoice) {
+            setPrintChoice({ primary: inv, sibling: inv.siblingInvoice });
+        } else {
+            handlePrintInvoice(inv);
         }
     };
 
@@ -389,7 +400,7 @@ const SalesInvoices = () => {
                                                             <Button variant="ghost" size="sm" className="h-8 text-blue-600 hover:bg-blue-50" onClick={() => setViewInvoice(inv)}>
                                                                 <Eye className="w-3.5 h-3.5 mr-1" /> View
                                                             </Button>
-                                                            <Button variant="ghost" size="sm" className="h-8 text-slate-500 hover:bg-slate-100" onClick={() => handlePrintInvoice(inv)}>
+                                                            <Button variant="ghost" size="sm" className="h-8 text-slate-500 hover:bg-slate-100" onClick={() => handlePrintClick(inv)}>
                                                                 <Printer className="w-3.5 h-3.5" />
                                                             </Button>
                                                         </div>
@@ -627,7 +638,7 @@ const SalesInvoices = () => {
 
                         <div className="flex justify-end gap-3 pt-6 border-t">
                             <Button variant="outline" onClick={() => setViewInvoice(null)}>Close</Button>
-                            <Button className="bg-slate-900 text-white" onClick={() => handlePrintInvoice(viewInvoice)}>
+                            <Button className="bg-slate-900 text-white" onClick={() => handlePrintClick(viewInvoice)}>
                                 <Printer className="w-4 h-4 mr-2" /> Print / Download PDF
                             </Button>
                         </div>
@@ -678,6 +689,34 @@ const SalesInvoices = () => {
                             <Button variant="outline" onClick={() => setViewOrder(null)}>Close</Button>
                             <Button className="bg-blue-600 text-white" onClick={() => { setGeneratingInvoice(viewOrder); setIsAddModalOpen(true); setViewOrder(null); }}>Proceed to Billing</Button>
                         </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* Print Choice Modal — shown only when both Kachha & Pakka bills exist for the order */}
+            <Dialog open={!!printChoice} onOpenChange={() => setPrintChoice(null)}>
+                <DialogContent className="max-w-sm">
+                    <DialogHeader>
+                        <DialogTitle>Which bill do you want?</DialogTitle>
+                        <DialogDescription>Both Kachha and Pakka bills are generated for this order.</DialogDescription>
+                    </DialogHeader>
+                    <div className="flex flex-col gap-3 pt-2">
+                        <Button
+                            variant="outline"
+                            className="h-14 justify-between px-4 border-blue-200 bg-blue-50 hover:bg-blue-100"
+                            onClick={() => { handlePrintInvoice(printChoice.primary); setPrintChoice(null); }}
+                        >
+                            <span className="font-bold text-blue-700">{printChoice?.primary?.invoiceType} Bill</span>
+                            <span className="text-xs text-slate-500">{printChoice?.primary?.invoiceNumber}</span>
+                        </Button>
+                        <Button
+                            variant="outline"
+                            className="h-14 justify-between px-4 border-slate-200 bg-slate-50 hover:bg-slate-100"
+                            onClick={() => { handlePrintInvoice(printChoice.sibling); setPrintChoice(null); }}
+                        >
+                            <span className="font-bold text-slate-700">{printChoice?.sibling?.invoiceType} Bill</span>
+                            <span className="text-xs text-slate-500">{printChoice?.sibling?.invoiceNumber}</span>
+                        </Button>
                     </div>
                 </DialogContent>
             </Dialog>
