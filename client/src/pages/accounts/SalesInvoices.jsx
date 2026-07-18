@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -42,7 +42,6 @@ import {
     TableRow,
     TableFooter
 } from '@/components/ui/table';
-import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { useAuthContext } from '@/contexts/AuthContext';
 
@@ -58,10 +57,18 @@ const SalesInvoices = () => {
     const [tdsPercent, setTdsPercent] = useState(0);
     const [gstType, setGstType] = useState('CGST_SGST');
 
-    const [activeTab, setActiveTab] = useState('Pakka'); // 'Pakka' or 'Kachha'
+    // Kachha is a hidden feature — this list only ever shows/creates Pakka
+    // invoices; Kachha bills are only reachable via the triple-click gesture
+    // on download (see handlePrintClick below).
+    const activeTab = 'Pakka';
     const [generatingInvoice, setGeneratingInvoice] = useState(null); // The order being invoiced
     const [viewOrder, setViewOrder] = useState(null);
-    const [printChoice, setPrintChoice] = useState(null); // { primary, sibling } when both Kachha & Pakka exist for the order
+
+    // Print/Download click-count gesture: 1 (or 2) clicks downloads the
+    // Pakka bill, 3 rapid clicks downloads the Kachha bill (if one exists
+    // for that order). Tracked per invoice id so clicking different rows
+    // doesn't merge their click counts.
+    const printClickRef = useRef({ id: null, count: 0, timer: null });
 
     const { data: invoicesResponse, isLoading: isInvoicesLoading } = useQuery({
         queryKey: ['/api/accounts/sales/account/invoices', searchTerm, activeTab],
@@ -216,24 +223,35 @@ const SalesInvoices = () => {
         }
     };
 
-    // If this order also has the other bill type generated, ask which one to
-    // download instead of guessing; otherwise just download the only one.
-    const handlePrintClick = (inv) => {
-        if (inv?.siblingInvoice) {
-            setPrintChoice({ primary: inv, sibling: inv.siblingInvoice });
-        } else {
-            handlePrintInvoice(inv);
-        }
-    };
+    const PRINT_CLICK_RESOLVE_MS = 400;
 
-    const getStatusBadge = (status) => {
-        const colors = {
-            'Pending': 'bg-amber-100 text-amber-800',
-            'Paid': 'bg-green-100 text-green-800',
-            'Partial': 'bg-blue-100 text-blue-800',
-            'Due': 'bg-red-100 text-red-800'
-        };
-        return <Badge className={cn("font-medium px-3 py-1", colors[status] || 'bg-slate-100')}>{status}</Badge>;
+    // 1 (or 2) clicks downloads this row's Pakka bill; 3 rapid clicks
+    // downloads the Kachha bill for the same order, if one has been
+    // generated. Resolved after a short pause so a triple-click doesn't
+    // also fire the single-click Pakka download along the way.
+    const handlePrintClick = (inv) => {
+        const state = printClickRef.current;
+        if (state.id !== inv._id) {
+            if (state.timer) clearTimeout(state.timer);
+            state.id = inv._id;
+            state.count = 0;
+        }
+        state.count += 1;
+        if (state.timer) clearTimeout(state.timer);
+        state.timer = setTimeout(() => {
+            const count = state.count;
+            state.count = 0;
+            state.id = null;
+            if (count >= 3) {
+                if (inv.siblingInvoice) {
+                    handlePrintInvoice(inv.siblingInvoice);
+                } else {
+                    toast({ title: "No Kachha bill", description: "No Kachha bill has been generated for this order yet." });
+                }
+            } else {
+                handlePrintInvoice(inv);
+            }
+        }, PRINT_CLICK_RESOLVE_MS);
     };
 
     return (
@@ -244,22 +262,6 @@ const SalesInvoices = () => {
                     <h1 className="text-2xl font-bold text-slate-900">Sales Invoices</h1>
                     <p className="text-slate-500 text-sm">Manage and generate customer invoices</p>
                 </div>
-                <div className="flex gap-3">
-                    <div className="bg-white p-1 rounded-lg border shadow-sm flex">
-                        <button 
-                            className={cn("px-4 py-2 rounded-md text-sm font-semibold transition-all", activeTab === 'Pakka' ? "bg-blue-600 text-white shadow-md" : "text-slate-600 hover:bg-slate-50")}
-                            onClick={() => setActiveTab('Pakka')}
-                        >
-                            Pakka Bill (GST)
-                        </button>
-                        <button 
-                            className={cn("px-4 py-2 rounded-md text-sm font-semibold transition-all", activeTab === 'Kachha' ? "bg-blue-600 text-white shadow-md" : "text-slate-600 hover:bg-slate-50")}
-                            onClick={() => setActiveTab('Kachha')}
-                        >
-                            Kachha Bill
-                        </button>
-                    </div>
-                </div>
             </div>
 
             {/* Stats Summary */}
@@ -268,7 +270,7 @@ const SalesInvoices = () => {
                     <CardContent className="p-4 flex items-center gap-4">
                         <div className="p-3 bg-blue-50 rounded-xl text-blue-600"><Receipt className="w-6 h-6" /></div>
                         <div>
-                            <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Total {activeTab}</p>
+                            <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Total Invoice</p>
                             <h3 className="text-xl font-bold text-slate-900">{invoicesResponse?.data?.invoices?.length || 0}</h3>
                         </div>
                     </CardContent>
@@ -332,14 +334,13 @@ const SalesInvoices = () => {
                                     <TableHead className="font-semibold">Customer</TableHead>
                                     <TableHead className="font-semibold">Date</TableHead>
                                     <TableHead className="text-right font-semibold">Amount</TableHead>
-                                    <TableHead className="text-center font-semibold">Status</TableHead>
                                     <TableHead className="text-right px-6 font-semibold">Actions</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
                                 {isInvoicesLoading ? (
                                     Array(5).fill(0).map((_, i) => (
-                                        <TableRow key={i}><TableCell colSpan={6} className="text-center h-24 text-slate-300 italic">Loading...</TableCell></TableRow>
+                                        <TableRow key={i}><TableCell colSpan={5} className="text-center h-24 text-slate-300 italic">Loading...</TableCell></TableRow>
                                     ))
                                 ) : (
                                     <>
@@ -360,7 +361,6 @@ const SalesInvoices = () => {
                                                 </TableCell>
                                                 <TableCell className="text-slate-500 text-sm">{format(new Date(order.orderDate), 'dd MMM yyyy')}</TableCell>
                                                 <TableCell className="text-right font-bold text-slate-900">₹{order.totalAmount.toLocaleString('en-IN')}</TableCell>
-                                                <TableCell className="text-center"><Badge className="bg-amber-100 text-amber-700 uppercase text-[10px]">Pending</Badge></TableCell>
                                                 <TableCell className="text-right px-6">
                                                     <div className="flex justify-end gap-2">
                                                         <Button variant="ghost" size="sm" className="h-8 text-blue-600 hover:bg-blue-50" onClick={() => setViewOrder(order)}>
@@ -376,7 +376,7 @@ const SalesInvoices = () => {
 
                                         {/* Render Existing Invoices */}
                                         {invoicesResponse?.data?.invoices?.length === 0 && invoicesResponse?.data?.pendingOrders?.length === 0 ? (
-                                            <TableRow><TableCell colSpan={6} className="text-center h-48 text-slate-400 italic">No records found.</TableCell></TableRow>
+                                            <TableRow><TableCell colSpan={5} className="text-center h-48 text-slate-400 italic">No records found.</TableCell></TableRow>
                                         ) : (
                                             invoicesResponse?.data?.invoices?.map((inv) => (
                                                 <TableRow key={inv._id} className="hover:bg-slate-50">
@@ -394,7 +394,6 @@ const SalesInvoices = () => {
                                                     </TableCell>
                                                     <TableCell className="text-slate-500 text-sm">{format(new Date(inv.saleDate), 'dd MMM yyyy')}</TableCell>
                                                     <TableCell className="text-right font-bold text-slate-900">₹{inv.totalAmount.toLocaleString('en-IN')}</TableCell>
-                                                    <TableCell className="text-center">{getStatusBadge(inv.paymentStatus)}</TableCell>
                                                     <TableCell className="text-right px-6">
                                                         <div className="flex justify-end gap-2">
                                                             <Button variant="ghost" size="sm" className="h-8 text-blue-600 hover:bg-blue-50" onClick={() => setViewInvoice(inv)}>
@@ -693,33 +692,6 @@ const SalesInvoices = () => {
                 </DialogContent>
             </Dialog>
 
-            {/* Print Choice Modal — shown only when both Kachha & Pakka bills exist for the order */}
-            <Dialog open={!!printChoice} onOpenChange={() => setPrintChoice(null)}>
-                <DialogContent className="max-w-sm">
-                    <DialogHeader>
-                        <DialogTitle>Which bill do you want?</DialogTitle>
-                        <DialogDescription>Both Kachha and Pakka bills are generated for this order.</DialogDescription>
-                    </DialogHeader>
-                    <div className="flex flex-col gap-3 pt-2">
-                        <Button
-                            variant="outline"
-                            className="h-14 justify-between px-4 border-blue-200 bg-blue-50 hover:bg-blue-100"
-                            onClick={() => { handlePrintInvoice(printChoice.primary); setPrintChoice(null); }}
-                        >
-                            <span className="font-bold text-blue-700">{printChoice?.primary?.invoiceType} Bill</span>
-                            <span className="text-xs text-slate-500">{printChoice?.primary?.invoiceNumber}</span>
-                        </Button>
-                        <Button
-                            variant="outline"
-                            className="h-14 justify-between px-4 border-slate-200 bg-slate-50 hover:bg-slate-100"
-                            onClick={() => { handlePrintInvoice(printChoice.sibling); setPrintChoice(null); }}
-                        >
-                            <span className="font-bold text-slate-700">{printChoice?.sibling?.invoiceType} Bill</span>
-                            <span className="text-xs text-slate-500">{printChoice?.sibling?.invoiceNumber}</span>
-                        </Button>
-                    </div>
-                </DialogContent>
-            </Dialog>
         </div>
     );
 };

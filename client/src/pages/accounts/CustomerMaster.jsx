@@ -788,7 +788,14 @@ export default function CustomerMaster() {
                                                         <TableCell className="text-xs text-slate-500">
                                                             {o.orderDate ? new Date(o.orderDate).toLocaleDateString('en-IN') : '—'}
                                                         </TableCell>
-                                                        <TableCell className="text-right font-mono font-semibold">₹{(o.total || 0).toLocaleString('en-IN')}</TableCell>
+                                                        <TableCell className="text-right font-mono font-semibold">
+                                                            ₹{(o.total || 0).toLocaleString('en-IN')}
+                                                            {o.additionalCharges > 0 && (
+                                                                <div className="text-[9px] font-normal text-slate-400">
+                                                                    (incl. ₹{o.additionalCharges.toLocaleString('en-IN')} add'l charges)
+                                                                </div>
+                                                            )}
+                                                        </TableCell>
                                                         <TableCell className="text-right font-mono text-emerald-600">₹{(o.advance || 0).toLocaleString('en-IN')}</TableCell>
                                                         <TableCell className="text-right font-mono text-emerald-600">₹{(o.paid || 0).toLocaleString('en-IN')}</TableCell>
                                                         <TableCell className={cn("text-right font-mono font-bold", o.due > 0 ? "text-rose-600" : "text-slate-400")}>

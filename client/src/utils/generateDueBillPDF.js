@@ -90,6 +90,7 @@ export async function generateDueBillPDF(data, logoDataUrl) {
     // Customer master fields (preferred for payment summary display)
     customerOutstanding = 0, customerAdvance = 0,
     displayTotal = 0, displayPaid = 0, displayDue = 0,
+    additionalCharges = 0,
   } = data;
 
   // Use customer master values when available, else fall back to invoice values
@@ -322,6 +323,12 @@ export async function generateDueBillPDF(data, logoDataUrl) {
     ['Total Received (Advance + Receipts)', fmtAmt(cmPaid)],
     ['AMOUNT DUE (this order)',           fmtAmt(cmDue)],
   ];
+  // Display-only — Additional Charges are already folded into Order Total
+  // above (see Order Form). Shown here just so it's visible on the bill,
+  // never added again into any of the totals.
+  if (additionalCharges > 0) {
+    summaryRows.push(['Additional Charges (incl. in Total)', fmtAmt(additionalCharges)]);
+  }
 
   autoTable(doc, {
     startY: y,

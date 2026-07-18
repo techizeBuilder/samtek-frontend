@@ -38,6 +38,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { useSettings } from '@/hooks/useSettings';
 import { loadImgCompressed } from '@/utils/pdfImage';
+import config from '@/config/environment';
 
 const NocRequest = () => {
   const { toast } = useToast();
@@ -54,6 +55,21 @@ const NocRequest = () => {
   const displayGST = userCompany.gst || settings?.company?.gstNumber || '27ABCDE1234F1Z5';
   const displayPhone = userCompany.mobile || settings?.company?.phone || '+91 98765 43210';
   const displayEmail = userCompany.email || settings?.company?.email || 'info@samtek.com';
+
+  // The NOC's stamp is whatever the Company Admin uploaded for this specific
+  // company — never a generic fallback. If nothing's uploaded, no stamp is
+  // drawn on the PDF at all.
+  const companyId = user?.companyId || userCompany.id;
+  const { data: companyResponse } = useQuery({
+    queryKey: ['company-stamp', companyId],
+    queryFn: () => apiRequest('GET', `/api/companies/${companyId}`),
+    enabled: !!companyId,
+    staleTime: 1000 * 60 * 10,
+  });
+  const companyStampUrl = companyResponse?.company?.stampUrl
+    ? `${config.baseURL}${companyResponse.company.stampUrl}`
+    : null;
+
   const [searchTerm, setSearchTerm] = useState('');
 
   // State for Gate Pass Modal
@@ -474,17 +490,23 @@ const NocRequest = () => {
     });
     y = dy + 6;
 
-    // ── Stamp + signatory ──
-    if (y > 240) { doc.addPage(); y = 30; }
-    try {
-      const stampImg = await loadImgCompressed('/samtek_stamp.png', 200, 'png');
-      if (stampImg) doc.addImage(stampImg, 'PNG', 152, y - 2, 26, 26);
-    } catch (e) { console.warn('Could not load stamp for NOC PDF:', e); }
+    // ── Stamp + signatory ── stacked vertically (text / stamp / text) so
+    // the stamp never overlaps the signatory lines regardless of how wide
+    // the company name renders. Stamp is the company's own uploaded one
+    // only; nothing drawn if the Company Admin hasn't uploaded one.
+    if (y > 230) { doc.addPage(); y = 30; }
     doc.setFontSize(8);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(30, 41, 59);
-    doc.text(`For, ${displayCompanyName}`, 192, y + 4, { align: 'right' });
-    doc.text('Authorised Signatory', 192, y + 26, { align: 'right' });
+    doc.text(`For, ${displayCompanyName}`, 192, y, { align: 'right' });
+
+    if (companyStampUrl) {
+      try {
+        const stampImg = await loadImgCompressed(companyStampUrl, 200, 'png');
+        if (stampImg) doc.addImage(stampImg, 'PNG', 166, y + 4, 26, 26);
+      } catch (e) { console.warn('Could not load stamp for NOC PDF:', e); }
+    }
+    doc.text('Authorised Signatory', 192, y + (companyStampUrl ? 36 : 12), { align: 'right' });
 
     doc.setFontSize(7);
     doc.setFont('helvetica', 'italic');

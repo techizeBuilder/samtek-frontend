@@ -45,6 +45,7 @@ export default function QCJobs() {
     const matchSource = sourceFilter === 'all' || j.source === sourceFilter;
     const matchSearch = !search ||
       j.qcJobId?.toLowerCase().includes(search.toLowerCase()) ||
+      j.orderCode?.toLowerCase().includes(search.toLowerCase()) ||
       j.itemName?.toLowerCase().includes(search.toLowerCase()) ||
       j.sourceRefId?.toLowerCase().includes(search.toLowerCase()) ||
       j.inspector?.toLowerCase().includes(search.toLowerCase());
@@ -136,11 +137,12 @@ export default function QCJobs() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <p className="font-semibold text-slate-800">{job.qcJobId}</p>
+                          <p className="font-semibold text-slate-800">{job.orderCode || job.qcJobId}</p>
                           <span className="text-slate-300">·</span>
                           <p className="text-slate-700 truncate">{job.itemName}</p>
                         </div>
                         <div className="flex items-center gap-3 mt-1 flex-wrap text-xs text-slate-500">
+                          {job.orderCode && <><span>QC ID: {job.qcJobId}</span><span>·</span></>}
                           <span>{job.source}</span>
                           <span>·</span>
                           <span>{job.category}</span>

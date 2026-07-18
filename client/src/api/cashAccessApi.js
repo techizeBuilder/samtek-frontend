@@ -22,4 +22,11 @@ export const cashAccessApi = {
 
   viewCash: (requestId) =>
     apiRequest(`/cash-access/${requestId}/view`, { headers: authHeaders() }),
+
+  markReceived: (requestId, orderId) =>
+    apiRequest(`/cash-access/${requestId}/mark-received`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ orderId })
+    }),
 };

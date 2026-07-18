@@ -62,6 +62,7 @@ export const getNavigationUrl = (notification, userRole = '') => {
   const isSalesRole = ['Sales', 'Sales Employee', 'Sales Head'].includes(userRole);
   const isStoreRole = ['Store', 'Store Head', 'Store Employee'].includes(userRole);
   const isAccountsRole = ['Accounts', 'Accounts Head', 'Account Employee'].includes(userRole);
+  const isDispatchRole = ['Dispatch', 'Dispatch Head', 'Dispatch Employee'].includes(userRole);
   const isMarketingHead = userRole === 'Marketing Head';
 
   if (type === 'complaint' && (
@@ -109,7 +110,10 @@ export const getNavigationUrl = (notification, userRole = '') => {
   // access to the Dispatch module, so route them to their own packed-orders
   // (NOC/payment clearance) screen instead.
   if (type === 'dispatch') return isAccountsRole ? '/accounts/sales/packed-orders' : `/dispatch/active`;
-  if (type === 'qc') return `/qc/jobs`;
+  // "QC Passed" is sent to Dispatch too (item is ready to be queued for
+  // packaging) — Dispatch has no access to the QC module, so route them to
+  // their own Packaging Queue instead of the QC Jobs screen.
+  if (type === 'qc') return isDispatchRole ? '/packaging/queue' : `/qc/jobs`;
   if (type === 'complaint' || type === 'task') return `/complaints/dashboard`;
   if (type === 'leave') return `/hrms/SuperAdmin/leave-requests`;
   if (type === 'attendance') return `/hrms/SuperAdmin/attendance-requests`;

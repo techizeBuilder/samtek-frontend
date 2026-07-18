@@ -425,12 +425,9 @@ export default function FinancialSummary() {
                         <div>
                             <p className="text-blue-100 font-medium mb-1 uppercase tracking-widest text-[10px] flex items-center gap-2">
                                 Consolidated Profit (Samtek & NERS)
-                                <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold tracking-wider normal-case ${showKacchaProfit ? 'bg-amber-400/30 text-amber-100' : 'bg-emerald-400/30 text-emerald-100'}`}>
-                                    {showKacchaProfit ? 'Kaccha Bill' : 'Pakka Bill'}
-                                </span>
                             </p>
                             <div
-                                className="text-4xl sm:text-6xl font-extrabold tracking-tight cursor-pointer select-none"
+                                className="text-4xl sm:text-6xl font-extrabold tracking-tight select-none"
                                 onDoubleClick={() => setShowKacchaProfit(prev => !prev)}
                             >
                                 ₹{netProfit.toLocaleString()}

@@ -232,10 +232,11 @@ export default function QCInspection() {
         </button>
         <div className="flex-1">
           <div className="flex items-center gap-3">
-            <h1 className="text-xl font-bold text-slate-900">{job.qcJobId}</h1>
+            <h1 className="text-xl font-bold text-slate-900">{job.orderCode || job.qcJobId}</h1>
             <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${statusColor[job.status]}`}>{job.status}</span>
           </div>
           <p className="text-slate-500 text-sm mt-0.5">{job.itemName} · {job.category}</p>
+          <p className="text-xs text-slate-400 mt-0.5">QC Job ID: {job.qcJobId}</p>
         </div>
       </div>
 
@@ -243,6 +244,7 @@ export default function QCInspection() {
       <Card className="border-none shadow-sm">
         <CardContent className="p-5">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            <div><p className="text-xs text-slate-400">Order ID</p><p className="font-medium mt-1">{job.orderCode || '—'}</p></div>
             <div><p className="text-xs text-slate-400">Source</p><div className="flex items-center gap-1.5 mt-1"><SrcIcon className="h-4 w-4 text-slate-500" /><span className="font-medium">{job.source}</span></div></div>
             <div><p className="text-xs text-slate-400">Ref ID</p><p className="font-medium mt-1">{job.sourceRefId || '—'}</p></div>
             <div><p className="text-xs text-slate-400">Sent By</p><p className="font-medium mt-1">{job.sentBy || '—'}</p></div>

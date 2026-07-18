@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -20,7 +20,6 @@ import {
     AlertCircle,
     XCircle,
     FileText,
-    ShieldCheck,
     Check,
     CreditCard
 } from 'lucide-react';
@@ -40,7 +39,6 @@ import {
     TableHeader,
     TableRow
 } from '@/components/ui/table';
-import { cn } from '@/lib/utils';
 
 // Order Form fetch — 404 means "form not filled yet", not an error
 const fetchOrderForm = async (orderId) => {
@@ -72,8 +70,15 @@ const SalesOrders = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [viewOrder, setViewOrder] = useState(null);
     const [billingOrder, setBillingOrder] = useState(null);
-    const [selectedType, setSelectedType] = useState('Pakka');
     const { toast } = useToast();
+
+    // Generate Invoice button is a hidden click-count gesture: 1 (or 2)
+    // clicks generates the Pakka bill, 3 rapid clicks generates the Kachha
+    // bill. Resolved after a short pause so a triple-click doesn't also
+    // fire the single-click Pakka path along the way.
+    const clickCountRef = useRef(0);
+    const clickTimerRef = useRef(null);
+    const CLICK_RESOLVE_MS = 400;
 
     // Fetch orders approved by salesman
     const { data: ordersResponse, isLoading } = useQuery({
@@ -115,20 +120,19 @@ const SalesOrders = () => {
         }
     });
 
-    const handleGenerateInvoice = () => {
+    const handleGenerateInvoice = (type) => {
         if (!billingOrder) return;
 
         if (!billingCalc) {
             toast({
-                title: "Order Form nahi mila",
-                description: "Is order ka Order Form abhi submit nahi hua — bill Order Form ke amounts se banta hai.",
+                title: "Order Form not found",
+                description: "This order's Order Form has not been submitted yet — the bill is generated from the Order Form's amounts.",
                 variant: "destructive"
             });
             return;
         }
 
         const order = billingOrder;
-        const type = selectedType;
         const isKachha = type === 'Kachha';
 
         // Amounts straight from the Order Form (backend recomputes the same
@@ -163,6 +167,19 @@ const SalesOrders = () => {
         };
 
         generateInvoiceMutation.mutate(invoiceData);
+    };
+
+    // Single entry point for the "Generate Invoice" button — counts clicks
+    // within a short window and resolves to Pakka (1-2 clicks) or Kachha
+    // (3+ clicks) once the user pauses.
+    const handleGenerateClick = () => {
+        clickCountRef.current += 1;
+        if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
+        clickTimerRef.current = setTimeout(() => {
+            const type = clickCountRef.current >= 3 ? 'Kachha' : 'Pakka';
+            clickCountRef.current = 0;
+            handleGenerateInvoice(type);
+        }, CLICK_RESOLVE_MS);
     };
 
     const orders = ordersResponse?.data || [];
@@ -291,21 +308,13 @@ const SalesOrders = () => {
                                                     <Button variant="ghost" size="sm" className="h-8 text-blue-600 hover:bg-blue-50" onClick={() => setViewOrder(order)}>
                                                         <Eye className="w-3.5 h-3.5 mr-1" /> View
                                                     </Button>
-                                                    {order.generatedInvoices?.includes('Pakka') && order.generatedInvoices?.includes('Kachha') ? (
-                                                        <Badge className="bg-green-100 text-green-700 border-none text-[10px] px-3 py-1.5 font-bold">Fully Billed</Badge>
-                                                    ) : (
-                                                        <Button
-                                                            size="sm"
-                                                            className="h-8 bg-blue-600 text-white font-semibold"
-                                                            onClick={() => {
-                                                                setBillingOrder(order);
-                                                                // Jo type ban chuka hai use chhod ke doosra pre-select
-                                                                setSelectedType(order.generatedInvoices?.includes('Pakka') ? 'Kachha' : 'Pakka');
-                                                            }}
-                                                        >
-                                                            Generate Invoice
-                                                        </Button>
-                                                    )}
+                                                    <Button
+                                                        size="sm"
+                                                        className="h-8 bg-blue-600 text-white font-semibold"
+                                                        onClick={() => setBillingOrder(order)}
+                                                    >
+                                                        Generate Invoice
+                                                    </Button>
                                                 </div>
                                             </TableCell>
                                         </TableRow>
@@ -342,7 +351,7 @@ const SalesOrders = () => {
                                         <p className="text-xs text-slate-500 mt-1">Total items: {viewCalc.visible.length}</p>
                                     </>
                                 ) : (
-                                    <p className="text-sm text-amber-600 font-semibold">Order Form abhi submit nahi hua</p>
+                                    <p className="text-sm text-amber-600 font-semibold">Order Form not submitted yet</p>
                                 )}
                                 {viewOrder?.advancedPaymentAmount > 0 && viewCalc && (
                                     <div className="mt-2 pt-2 border-t border-slate-200">
@@ -392,7 +401,7 @@ const SalesOrders = () => {
                                     ) : !viewCalc ? (
                                         <TableRow>
                                             <TableCell colSpan={3} className="text-center h-20 text-amber-600 text-sm font-medium">
-                                                Is order ka Order Form abhi submit nahi hua — items Order Form se aate hain.
+                                                This order's Order Form has not been submitted yet — items come from the Order Form.
                                             </TableCell>
                                         </TableRow>
                                     ) : (
@@ -449,18 +458,15 @@ const SalesOrders = () => {
                             </div>
                             <div className="flex gap-3">
                                 <Button variant="outline" onClick={() => setViewOrder(null)}>Close</Button>
-                                {!(viewOrder?.generatedInvoices?.includes('Pakka') && viewOrder?.generatedInvoices?.includes('Kachha')) && (
-                                    <Button
-                                        className="bg-blue-600 text-white"
-                                        onClick={() => {
-                                            setBillingOrder(viewOrder);
-                                            setSelectedType(viewOrder?.generatedInvoices?.includes('Pakka') ? 'Kachha' : 'Pakka');
-                                            setViewOrder(null);
-                                        }}
-                                    >
-                                        Generate Invoice
-                                    </Button>
-                                )}
+                                <Button
+                                    className="bg-blue-600 text-white"
+                                    onClick={() => {
+                                        setBillingOrder(viewOrder);
+                                        setViewOrder(null);
+                                    }}
+                                >
+                                    Generate Invoice
+                                </Button>
                             </div>
                         </div>
                     </div>
@@ -472,16 +478,16 @@ const SalesOrders = () => {
                 <DialogContent className="max-w-md">
                     <DialogHeader>
                         <DialogTitle>Generate Invoice</DialogTitle>
-                        <DialogDescription>Select the billing type for order {billingOrder?.orderCode}</DialogDescription>
+                        <DialogDescription>Order {billingOrder?.orderCode}</DialogDescription>
                     </DialogHeader>
                     <div className="py-6 space-y-6">
 
-                        {/* Order Form status / totals preview */}
+                        {/* Order Form status / totals preview — always Pakka figures */}
                         {billingFormLoading ? (
                             <p className="text-sm text-slate-400 italic text-center">Loading Order Form...</p>
                         ) : !billingCalc ? (
                             <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-700 font-medium">
-                                Is order ka Order Form abhi submit nahi hua — bill Order Form ke amounts se banta hai, pehle form submit karwao.
+                                This order's Order Form has not been submitted yet — the bill is generated from the Order Form's amounts. Please get the form submitted first.
                             </div>
                         ) : (
                             <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-1">
@@ -494,15 +500,9 @@ const SalesOrders = () => {
                                     <span className="text-slate-600">GST Amount</span>
                                     <span className="font-semibold">₹{billingCalc.gst.toLocaleString('en-IN')}</span>
                                 </div>
-                                {selectedType === 'Kachha' && (
-                                    <div className="flex justify-between text-sm">
-                                        <span className="text-slate-600">Cash Amount</span>
-                                        <span className="font-semibold">₹{billingCalc.cash.toLocaleString('en-IN')}</span>
-                                    </div>
-                                )}
                                 <div className="flex justify-between text-sm font-bold text-blue-700 border-t border-slate-200 pt-1">
-                                    <span>{selectedType} Bill Total</span>
-                                    <span>₹{(selectedType === 'Kachha' ? billingCalc.kachhaTotal : billingCalc.pakkaTotal).toLocaleString('en-IN')}</span>
+                                    <span>Bill Total</span>
+                                    <span>₹{billingCalc.pakkaTotal.toLocaleString('en-IN')}</span>
                                 </div>
                             </div>
                         )}
@@ -520,58 +520,21 @@ const SalesOrders = () => {
                                 </div>
                                 <div className="flex justify-between text-sm font-bold text-blue-700 border-t border-emerald-200 pt-1">
                                     <span>Net Payable</span>
-                                    <span>₹{Math.max(0, (selectedType === 'Kachha' ? billingCalc.kachhaTotal : billingCalc.pakkaTotal) - billingAdvance).toLocaleString('en-IN')}</span>
+                                    <span>₹{Math.max(0, billingCalc.pakkaTotal - billingAdvance).toLocaleString('en-IN')}</span>
                                 </div>
                             </div>
                         )}
 
-                        <div className="grid grid-cols-2 gap-4">
-                            <button
-                                className={cn(
-                                    "flex flex-col items-center justify-center p-6 rounded-xl border-2 transition-all relative",
-                                    billingOrder?.generatedInvoices?.includes('Kachha') ? "border-slate-100 bg-slate-50 opacity-50 cursor-not-allowed"
-                                        : selectedType === 'Kachha' ? "border-slate-900 bg-slate-50 shadow-md" : "border-slate-100 hover:border-slate-200 bg-white"
-                                )}
-                                disabled={billingOrder?.generatedInvoices?.includes('Kachha')}
-                                onClick={() => setSelectedType('Kachha')}
-                            >
-                                <FileText className={cn("w-8 h-8 mb-2", selectedType === 'Kachha' ? "text-slate-900" : "text-slate-300")} />
-                                <span className={cn("font-bold text-sm", selectedType === 'Kachha' ? "text-slate-900" : "text-slate-400")}>Kachha Bill</span>
-                                {billingCalc && <span className="text-[10px] text-slate-500 mt-1">₹{billingCalc.kachhaTotal.toLocaleString('en-IN')}</span>}
-                                {billingOrder?.generatedInvoices?.includes('Kachha') && (
-                                    <div className="absolute top-2 right-2 flex items-center gap-1 text-[9px] font-bold text-green-600"><CheckSquare className="w-4 h-4" /> Generated</div>
-                                )}
-                            </button>
-
-                            <button
-                                className={cn(
-                                    "flex flex-col items-center justify-center p-6 rounded-xl border-2 transition-all relative",
-                                    billingOrder?.generatedInvoices?.includes('Pakka') ? "border-slate-100 bg-slate-50 opacity-50 cursor-not-allowed"
-                                        : selectedType === 'Pakka' ? "border-blue-600 bg-blue-50 shadow-md" : "border-slate-100 hover:border-slate-200 bg-white"
-                                )}
-                                disabled={billingOrder?.generatedInvoices?.includes('Pakka')}
-                                onClick={() => setSelectedType('Pakka')}
-                            >
-                                <ShieldCheck className={cn("w-8 h-8 mb-2", selectedType === 'Pakka' ? "text-blue-600" : "text-slate-300")} />
-                                <span className={cn("font-bold text-sm", selectedType === 'Pakka' ? "text-blue-600" : "text-slate-400")}>Pakka Bill</span>
-                                {billingCalc && <span className="text-[10px] text-slate-500 mt-1">₹{billingCalc.pakkaTotal.toLocaleString('en-IN')}</span>}
-                                {billingOrder?.generatedInvoices?.includes('Pakka') && (
-                                    <div className="absolute top-2 right-2 flex items-center gap-1 text-[9px] font-bold text-green-600"><CheckSquare className="w-4 h-4" /> Generated</div>
-                                )}
-                            </button>
-                        </div>
-
                         <Button
                             className="w-full h-12 bg-blue-600 hover:bg-blue-700 text-white font-bold uppercase"
-                            onClick={handleGenerateInvoice}
+                            onClick={handleGenerateClick}
                             disabled={
                                 generateInvoiceMutation.isLoading
                                 || billingFormLoading
                                 || !billingCalc
-                                || billingOrder?.generatedInvoices?.includes(selectedType)
                             }
                         >
-                            {generateInvoiceMutation.isLoading ? 'Generating...' : `Generate ${selectedType} Invoice`}
+                            {generateInvoiceMutation.isLoading ? 'Generating...' : 'Generate Invoice'}
                         </Button>
                     </div>
                     {generateInvoiceMutation.isLoading && <div className="text-center text-xs font-bold text-blue-600 animate-pulse">Processing official record...</div>}

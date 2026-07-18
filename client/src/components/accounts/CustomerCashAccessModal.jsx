@@ -21,6 +21,7 @@ export default function CustomerCashAccessModal({ customer, onClose }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [cashData, setCashData] = useState(null);
+  const [markingOrderId, setMarkingOrderId] = useState(null);
 
   const handleVerifyPassword = async () => {
     setError('');
@@ -52,6 +53,24 @@ export default function CustomerCashAccessModal({ customer, onClose }) {
     }
   };
 
+  const handleMarkReceived = async (orderId) => {
+    setError('');
+    setMarkingOrderId(orderId);
+    try {
+      const res = await cashAccessApi.markReceived(requestId, orderId);
+      setCashData(prev => ({
+        ...prev,
+        breakdown: prev.breakdown.map(b =>
+          b.orderId === orderId ? { ...b, cashReceived: true, cashReceivedAt: res.cashReceivedAt } : b
+        ),
+      }));
+    } catch (e) {
+      setError(e.message || 'Failed to mark as received');
+    } finally {
+      setMarkingOrderId(null);
+    }
+  };
+
   return (
     <Dialog open onOpenChange={(v) => { if (!v) onClose(); }}>
       <DialogContent className="max-w-sm">
@@ -66,7 +85,7 @@ export default function CustomerCashAccessModal({ customer, onClose }) {
             </div>
             <div>
               <p
-                className="font-semibold text-slate-900 text-lg cursor-pointer select-none"
+                className="font-semibold text-slate-900 text-lg select-none"
                 onDoubleClick={() => setStep('password')}
               >
                 {customer.name}
@@ -153,12 +172,34 @@ export default function CustomerCashAccessModal({ customer, onClose }) {
             {cashData.breakdown?.length > 0 && (
               <div className="space-y-1.5">
                 {cashData.breakdown.map((b, i) => (
-                  <div key={i} className="flex justify-between text-sm text-slate-600 px-1">
+                  <div key={i} className="flex items-center justify-between text-sm text-slate-600 px-1 py-0.5">
                     <span>{b.orderCode}</span>
-                    <span className="font-medium">₹{b.cashAmount.toLocaleString('en-IN')}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">₹{b.cashAmount.toLocaleString('en-IN')}</span>
+                      {b.cashReceived ? (
+                        <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full font-medium whitespace-nowrap">
+                          Received{b.cashReceivedAt ? ` · ${new Date(b.cashReceivedAt).toLocaleDateString('en-IN')}` : ''}
+                        </span>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-6 px-2 text-[10px]"
+                          disabled={markingOrderId === b.orderId}
+                          onClick={() => handleMarkReceived(b.orderId)}
+                        >
+                          {markingOrderId === b.orderId ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Received'}
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
+            )}
+            {error && (
+              <p className="text-sm text-red-600 flex items-center justify-center gap-1.5">
+                <AlertCircle className="h-3.5 w-3.5" /> {error}
+              </p>
             )}
             <Button variant="outline" className="w-full" onClick={onClose}>Close</Button>
           </div>

@@ -125,6 +125,19 @@ export default function OrderFormModal({ open, onOpenChange, orderId, order, lea
   const [fields, setFields] = useState({});
   const [items, setItems] = useState([blankItem()]);
 
+  // Cash Amount is hidden from Accounts by default (per-item and the Total
+  // row) — double-clicking a masked cell reveals just that figure. No
+  // password/OTP gate here (unlike CustomerCashAccessModal); this is only
+  // about not putting the number in front of them until they deliberately
+  // ask for it. Reset whenever the modal (re)opens.
+  const [revealedCash, setRevealedCash] = useState(new Set());
+  const [totalCashRevealed, setTotalCashRevealed] = useState(false);
+  const toggleCashRow = (originalIdx) => setRevealedCash(prev => {
+    const next = new Set(prev);
+    if (next.has(originalIdx)) next.delete(originalIdx); else next.add(originalIdx);
+    return next;
+  });
+
   // ─── Company stamp (same pattern as Quotation.jsx) ───────────────────────
   const { data: companyResponse } = useQuery({
     queryKey: ['my-company'],
@@ -225,6 +238,8 @@ export default function OrderFormModal({ open, onOpenChange, orderId, order, lea
     setLoading(true);
     setShowReturnBox(false);
     setReturnRemark('');
+    setRevealedCash(new Set());
+    setTotalCashRevealed(false);
 
     (async () => {
       try {
@@ -516,7 +531,25 @@ export default function OrderFormModal({ open, onOpenChange, orderId, order, lea
                           <TableCell className="align-top"><CellInput type="number" value={it.billAmount} onChange={v => setItemField(originalIdx, 'billAmount', v)} disabled={disabled} className="text-right" size="lg" /></TableCell>
                           <TableCell className="align-top"><CellInput type="number" value={it.gstAmount} onChange={() => {}} disabled title="Auto: 18% of Bill Amt" className="text-right" size="lg" /></TableCell>
                           <TableCell className="align-top"><CellInput type="number" value={it.quotationAmount} onChange={v => setItemField(originalIdx, 'quotationAmount', v)} disabled={lockedDisabled} className="text-right" size="lg" /></TableCell>
-                          <TableCell className="align-top"><CellInput type="number" value={it.cashAmount} onChange={v => setItemField(originalIdx, 'cashAmount', v)} disabled={disabled} className="text-right" size="lg" /></TableCell>
+                          <TableCell
+                            className="align-top"
+                            onDoubleClick={() => isAccountsUser && toggleCashRow(originalIdx)}
+                          >
+                            {isAccountsUser && !revealedCash.has(originalIdx) ? (
+                              <div className="w-full h-10 select-none" />
+                            ) : isAccountsUser && disabled ? (
+                              // Revealed but view-only — plain text, not a disabled
+                              // <input>. Browsers never dispatch click/dblclick on
+                              // disabled form controls, so an <input disabled> here
+                              // would swallow the double-click that's supposed to
+                              // hide it again.
+                              <div className="w-full h-10 flex items-center justify-end px-2.5 text-sm">
+                                {it.cashAmount === '' || it.cashAmount == null ? '-' : Number(it.cashAmount).toLocaleString('en-IN')}
+                              </div>
+                            ) : (
+                              <CellInput type="number" value={it.cashAmount} onChange={v => setItemField(originalIdx, 'cashAmount', v)} disabled={disabled} className="text-right" size="lg" />
+                            )}
+                          </TableCell>
                           <TableCell className="align-top"><CellInput type="number" value={it.discountAmount} onChange={v => setItemField(originalIdx, 'discountAmount', v)} disabled={disabled} className="text-right" size="lg" /></TableCell>
                           {!disabled && (
                             <TableCell className="align-top pt-2.5">
@@ -541,7 +574,12 @@ export default function OrderFormModal({ open, onOpenChange, orderId, order, lea
                       <TableCell className="text-right">{totals.billAmount.toLocaleString('en-IN')}</TableCell>
                       <TableCell className="text-right">{totals.gstAmount.toLocaleString('en-IN')}</TableCell>
                       <TableCell className="text-right">{totals.quotationAmount.toLocaleString('en-IN')}</TableCell>
-                      <TableCell className="text-right">{totals.cashAmount.toLocaleString('en-IN')}</TableCell>
+                      <TableCell
+                        className="text-right"
+                        onDoubleClick={() => isAccountsUser && setTotalCashRevealed(prev => !prev)}
+                      >
+                        {isAccountsUser && !totalCashRevealed ? '' : totals.cashAmount.toLocaleString('en-IN')}
+                      </TableCell>
                       <TableCell className="text-right">{totals.discountAmount.toLocaleString('en-IN')}</TableCell>
                       {!disabled && <TableCell />}
                     </TableRow>

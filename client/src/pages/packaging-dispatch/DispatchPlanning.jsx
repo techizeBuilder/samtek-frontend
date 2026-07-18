@@ -221,6 +221,7 @@ export default function DispatchPlanning() {
                   <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700">Packed</span>
                 </div>
                 <div className="space-y-1.5 text-sm text-slate-600 mb-4">
+                  <div><span className="text-slate-400">Order:</span> {job.orderId}</div>
                   <div className="flex gap-2"><Package className="h-3.5 w-3.5 text-slate-400 mt-0.5" /><span>{job.machineCode}</span></div>
                   <div className="flex gap-2"><MapPin className="h-3.5 w-3.5 text-slate-400 mt-0.5" /><span>SN: {job.serialNumber}</span></div>
                   <div className="flex gap-2"><Truck className="h-3.5 w-3.5 text-slate-400 mt-0.5" /><span>{job.packingType}</span></div>
