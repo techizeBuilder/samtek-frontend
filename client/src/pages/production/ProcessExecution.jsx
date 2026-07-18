@@ -52,6 +52,9 @@ export default function ProcessExecution() {
   const [subEntryDialog, setSubEntryDialog] = useState(null); // { step }
   const [subEntryForm, setSubEntryForm] = useState({ parentPart: '', childPart: '', assignedMember: '', fabricationType: '' });
   const [customFabricationType, setCustomFabricationType] = useState('');
+  const [subQcDialog, setSubQcDialog] = useState(null); // { step, subEntryId, action: 'approve'|'reject' }
+  const [subQcBy, setSubQcBy] = useState('');
+  const [subRejectReason, setSubRejectReason] = useState('');
   const [assignDialog, setAssignDialog] = useState(null); // { step }
   const [selectedTeam, setSelectedTeam] = useState('');
 
@@ -75,6 +78,19 @@ export default function ProcessExecution() {
     setQcDialog(null);
     setQcBy('');
     setRejectReason('');
+  };
+
+  const handleSubQCSubmit = () => {
+    if (!subQcBy.trim()) return;
+    if (subQcDialog.action === 'reject' && !subRejectReason.trim()) return;
+    qcSubEntry(
+      selectedOrderId, subQcDialog.step, subQcDialog.subEntryId,
+      subQcDialog.action === 'approve' ? 'Approved' : 'Rejected',
+      subQcBy, subRejectReason
+    );
+    setSubQcDialog(null);
+    setSubQcBy('');
+    setSubRejectReason('');
   };
 
   const handleSaveNotes = () => {
@@ -304,47 +320,55 @@ export default function ProcessExecution() {
                         {proc.subEntries && proc.subEntries.length > 0 ? (
                           <div className="space-y-2">
                             {proc.subEntries.map(se => (
-                              <div key={se._id || se.id} className="flex flex-wrap md:flex-nowrap items-center justify-between bg-slate-50 border border-slate-200 rounded-lg p-3 gap-3">
-                                <div className="flex items-center gap-4 w-full md:w-auto">
-                                  <div>
-                                    <p className="text-xs text-slate-500 mb-0.5">Parent Part</p>
-                                    <p className="text-sm font-semibold text-slate-800">{se.parentPart}</p>
-                                  </div>
-                                  <div>
-                                    <p className="text-xs text-slate-500 mb-0.5">Child Part</p>
-                                    <p className="text-sm font-semibold text-slate-800">{se.childPart}</p>
-                                  </div>
-                                  <div>
-                                    <p className="text-xs text-slate-500 mb-0.5">Fabrication Type</p>
-                                    <span className="text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-full">{se.fabricationType || 'Other'}</span>
-                                  </div>
-                                  <div>
-                                    <p className="text-xs text-slate-500 mb-0.5">Assigned To</p>
-                                    <p className="text-sm font-medium text-slate-700">{se.assignedMember}</p>
-                                  </div>
-                                </div>
-                                
-                                <div className="flex items-center gap-2">
-                                  {se.status === 'Pending' ? (
-                                    <Button size="sm" className="h-7 text-xs bg-amber-600 hover:bg-amber-700 text-white" onClick={() => completeSubEntry(selectedOrderId, proc.step, se._id || se.id)}>
-                                      <CheckCircle className="h-3 w-3 mr-1" /> Mark Done
-                                    </Button>
-                                  ) : se.qcStatus === 'Pending' ? (
-                                    <div className="flex flex-wrap items-center gap-2">
-                                      <span className="text-xs font-semibold text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-200">Done - Pending QC</span>
-                                      <Button size="sm" className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => qcSubEntry(selectedOrderId, proc.step, se._id || se.id, 'Approved')}>
-                                        <ThumbsUp className="h-3 w-3 mr-1" /> QC Approve
-                                      </Button>
-                                      <Button size="sm" className="h-7 text-xs bg-red-600 hover:bg-red-700 text-white" onClick={() => qcSubEntry(selectedOrderId, proc.step, se._id || se.id, 'Rejected')}>
-                                        <ThumbsDown className="h-3 w-3 mr-1" /> Reject
-                                      </Button>
+                              <div key={se._id || se.id} className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+                                <div className="flex flex-wrap md:flex-nowrap items-center justify-between gap-3">
+                                  <div className="flex items-center gap-4 w-full md:w-auto">
+                                    <div>
+                                      <p className="text-xs text-slate-500 mb-0.5">Parent Part</p>
+                                      <p className="text-sm font-semibold text-slate-800">{se.parentPart}</p>
                                     </div>
-                                  ) : se.qcStatus === 'Approved' ? (
-                                    <span className="flex items-center gap-1 text-xs text-emerald-600 font-semibold px-2 py-1 bg-emerald-50 rounded border border-emerald-200">
-                                      <CheckCircle className="h-3 w-3" /> Approved
-                                    </span>
-                                  ) : null}
+                                    <div>
+                                      <p className="text-xs text-slate-500 mb-0.5">Child Part</p>
+                                      <p className="text-sm font-semibold text-slate-800">{se.childPart}</p>
+                                    </div>
+                                    <div>
+                                      <p className="text-xs text-slate-500 mb-0.5">Fabrication Type</p>
+                                      <span className="text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-full">{se.fabricationType || 'Other'}</span>
+                                    </div>
+                                    <div>
+                                      <p className="text-xs text-slate-500 mb-0.5">Assigned To</p>
+                                      <p className="text-sm font-medium text-slate-700">{se.assignedMember}</p>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-center gap-2">
+                                    {se.status === 'Pending' ? (
+                                      <Button size="sm" className="h-7 text-xs bg-amber-600 hover:bg-amber-700 text-white" onClick={() => completeSubEntry(selectedOrderId, proc.step, se._id || se.id)}>
+                                        <CheckCircle className="h-3 w-3 mr-1" /> Mark Done
+                                      </Button>
+                                    ) : se.qcStatus === 'Pending' ? (
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        <span className="text-xs font-semibold text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-200">Done - Pending QC</span>
+                                        <Button size="sm" className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => setSubQcDialog({ step: proc.step, subEntryId: se._id || se.id, action: 'approve' })}>
+                                          <ThumbsUp className="h-3 w-3 mr-1" /> QC Approve
+                                        </Button>
+                                        <Button size="sm" className="h-7 text-xs bg-red-600 hover:bg-red-700 text-white" onClick={() => setSubQcDialog({ step: proc.step, subEntryId: se._id || se.id, action: 'reject' })}>
+                                          <ThumbsDown className="h-3 w-3 mr-1" /> Reject
+                                        </Button>
+                                      </div>
+                                    ) : se.qcStatus === 'Approved' ? (
+                                      <span className="flex items-center gap-1 text-xs text-emerald-600 font-semibold px-2 py-1 bg-emerald-50 rounded border border-emerald-200">
+                                        <CheckCircle className="h-3 w-3" /> Approved
+                                      </span>
+                                    ) : null}
+                                  </div>
                                 </div>
+
+                                {se.reworks && se.reworks.length > 0 && (
+                                  <div className="mt-2 p-2 bg-red-50 border border-red-100 rounded text-xs text-red-700">
+                                    <strong>Reworks ({se.reworks.length}):</strong> {se.reworks.map(r => r.reason).join('; ')}
+                                  </div>
+                                )}
                               </div>
                             ))}
                           </div>
@@ -410,6 +434,46 @@ export default function ProcessExecution() {
               className={qcDialog?.action === 'approve' ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : 'bg-red-600 hover:bg-red-700 text-white'}
             >
               {qcDialog?.action === 'approve' ? 'Approve' : 'Reject & Send for Rework'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Sub-Entry QC Dialog */}
+      <Dialog open={!!subQcDialog} onOpenChange={() => setSubQcDialog(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className={subQcDialog?.action === 'approve' ? 'text-emerald-700' : 'text-red-700'}>
+              {subQcDialog?.action === 'approve' ? <ThumbsUp className="inline h-4 w-4 mr-2" /> : <ThumbsDown className="inline h-4 w-4 mr-2" />}
+              {subQcDialog?.action === 'approve' ? 'Approve Sub-Process QC' : 'Reject Sub-Process QC'}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div>
+              <label className="text-xs font-semibold text-slate-600 mb-1 block">Supervisor Name *</label>
+              <Input placeholder="Enter your name" value={subQcBy} onChange={e => setSubQcBy(e.target.value)} />
+            </div>
+            {subQcDialog?.action === 'reject' && (
+              <div>
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">Rejection Reason *</label>
+                <textarea
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                  rows={3}
+                  placeholder="Describe the issue requiring rework..."
+                  value={subRejectReason}
+                  onChange={e => setSubRejectReason(e.target.value)}
+                />
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSubQcDialog(null)}>Cancel</Button>
+            <Button
+              onClick={handleSubQCSubmit}
+              disabled={!subQcBy.trim() || (subQcDialog?.action === 'reject' && !subRejectReason.trim())}
+              className={subQcDialog?.action === 'approve' ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : 'bg-red-600 hover:bg-red-700 text-white'}
+            >
+              {subQcDialog?.action === 'approve' ? 'Approve' : 'Reject & Send for Rework'}
             </Button>
           </DialogFooter>
         </DialogContent>
