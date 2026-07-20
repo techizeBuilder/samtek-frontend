@@ -10,17 +10,24 @@ import { Truck, Package, MapPin, X, Plus, FileText } from 'lucide-react';
 
 const transportTypes = ['Local Transport', 'Transport Company', 'Courier'];
 
-function CreateDispatchModal({ job, siblings, onClose }) {
+// `group` is one consolidated order — `group.jobs` holds every packed
+// machine of that order. One "Create Dispatch Order" click plans dispatch
+// for the whole order in a single wrapper action: the backend still creates
+// one DispatchOrder per machine underneath (so Active Dispatches / Dispatch
+// History keep per-serial-number tracking), it's just no longer something
+// the planner has to trigger job-by-job.
+function CreateDispatchModal({ group, onClose }) {
   const { createDispatchOrder } = usePackagingDispatch();
   const { toast } = useToast();
+  const rep = group.jobs[0]; // representative job — shared order-level fields
   const [form, setForm] = useState({
-    customerName: job.customerName || '',
-    customerContact: job.customerContact || '',
+    customerName: rep.customerName || '',
+    customerContact: rep.customerContact || '',
     deliveryAddress: '',
     transportType: 'Transport Company',
     plannedDispatchDate: '',
     expectedDeliveryDate: '',
-    invoiceNumber: job.invoiceNumber || '',
+    invoiceNumber: rep.invoiceNumber || '',
     packingListNotes: '',
     notes: '',
   });
@@ -32,15 +39,14 @@ function CreateDispatchModal({ job, siblings, onClose }) {
     setLoading(true);
     try {
       await createDispatchOrder({
-        packagingJobId: job._id,
-        productionOrderId: job.productionOrderId,
-        orderId: job.orderId,
-        machineCode: job.machineCode,
-        machineName: job.machineName,
-        serialNumber: job.serialNumber,
+        packagingJobIds: group.jobs.map(j => j._id),
+        orderId: rep.orderId,
         ...form,
       });
-      toast({ title: 'Dispatch order created', description: `Dispatch planned for ${job.orderId}` });
+      toast({
+        title: 'Dispatch order created',
+        description: `Dispatch planned for ${rep.orderId} (${group.jobs.length} machine${group.jobs.length > 1 ? 's' : ''})`
+      });
       onClose();
     } catch (e) {
       toast({ title: 'Error', description: e.message, variant: 'destructive' });
@@ -58,24 +64,22 @@ function CreateDispatchModal({ job, siblings, onClose }) {
             <button onClick={onClose}><X className="h-5 w-5 text-slate-400 hover:text-slate-600" /></button>
           </div>
           <div className="mt-2 p-3 bg-slate-50 rounded-lg">
-            <p className="text-sm font-medium text-slate-700">{job.jobId} — {job.orderId}</p>
-            <p className="text-xs text-slate-500">{job.machineName} ({job.machineCode}) · SN: {job.serialNumber}</p>
+            <p className="text-sm font-medium text-slate-700">{rep.orderId} — {group.jobs.length} machine{group.jobs.length > 1 ? 's' : ''}</p>
           </div>
-          {/* Multi-item: everything of this order that dispatches together */}
-          {siblings && siblings.length > 1 && (
-            <div className="mt-2 p-3 bg-indigo-50 border border-indigo-100 rounded-lg">
-              <p className="text-[11px] font-semibold text-indigo-700 uppercase tracking-wide mb-1">
-                This order dispatches together ({siblings.length} packed jobs)
-              </p>
-              <ul className="space-y-0.5 max-h-24 overflow-y-auto">
-                {siblings.map(s => (
-                  <li key={s._id} className="text-xs text-indigo-800">
-                    {s.machineName}{(s.quantity || 1) > 1 ? ` ×${s.quantity}` : ''} · SN: {s.serialNumber}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+          {/* Every packed machine of this order — all get their own
+              DispatchOrder in this one action. */}
+          <div className="mt-2 p-3 bg-indigo-50 border border-indigo-100 rounded-lg">
+            <p className="text-[11px] font-semibold text-indigo-700 uppercase tracking-wide mb-1">
+              This order dispatches together ({group.jobs.length} packed job{group.jobs.length > 1 ? 's' : ''})
+            </p>
+            <ul className="space-y-0.5 max-h-24 overflow-y-auto">
+              {group.jobs.map(s => (
+                <li key={s._id} className="text-xs text-indigo-800">
+                  {s.machineName}{(s.quantity || 1) > 1 ? ` ×${s.quantity}` : ''} · SN: {s.serialNumber}
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
 
         <div className="px-6 py-4 space-y-4">
@@ -162,7 +166,7 @@ function CreateDispatchModal({ job, siblings, onClose }) {
 export default function DispatchPlanning() {
   const { jobs, jobsLoading } = usePackagingDispatch();
   const { toast } = useToast();
-  const [selected, setSelected] = useState(null);
+  const [selectedOrderId, setSelectedOrderId] = useState(null);
 
   const packedJobs = jobs.filter(j => j.status === 'Packed');
 
@@ -171,15 +175,28 @@ export default function DispatchPlanning() {
   const packedSiblings = (orderId) => jobsOfOrder(orderId).filter(j => j.status === 'Packed' || j.status === 'Dispatched');
   const unpackedSiblings = (orderId) => jobsOfOrder(orderId).filter(j => j.status === 'Pending' || j.status === 'In Progress');
 
-  const handlePlanDispatch = (job) => {
+  // One card per ORDER, not per packaging job — an order with 8 packed
+  // machines used to render 8 near-identical "waiting for NOC" cards.
+  // Accounts only needs to act on the NOC/Gate Pass/Plan Dispatch once per
+  // order; the individual machines are listed inside that one card.
+  const orderGroups = Object.values(
+    packedJobs.reduce((acc, job) => {
+      if (!acc[job.orderId]) acc[job.orderId] = { orderId: job.orderId, jobs: [] };
+      acc[job.orderId].jobs.push(job);
+      return acc;
+    }, {})
+  );
+
+  const handlePlanDispatch = (group) => {
+    const rep = group.jobs[0];
     // 🚧 The full order dispatches together — block planning while any
     // packaging job of the same order is still not Packed (server enforces
     // this too, plus the "every item QC-approved" readiness gate).
-    const stillPacking = unpackedSiblings(job.orderId);
+    const stillPacking = unpackedSiblings(group.orderId);
     if (stillPacking.length > 0) {
       toast({
         title: 'Order Not Fully Packed',
-        description: `${stillPacking.length} job(s) of order ${job.orderId} still packing: ${stillPacking.map(s => s.machineName).join(', ')}. The full order dispatches together.`,
+        description: `${stillPacking.length} job(s) of order ${group.orderId} still packing: ${stillPacking.map(s => s.machineName).join(', ')}. The full order dispatches together.`,
         variant: 'destructive'
       });
       return;
@@ -187,7 +204,7 @@ export default function DispatchPlanning() {
     // Invoice must exist for the order before dispatch can be planned — this
     // is enforced again server-side, but checking here avoids opening the
     // modal just to have it rejected on submit.
-    if (!job.invoiceNumber) {
+    if (!rep.invoiceNumber) {
       toast({
         title: 'Invoice Not Generated',
         description: 'Accounts must generate the invoice (Pakka/Kachha) for this order before dispatch can be planned.',
@@ -197,39 +214,42 @@ export default function DispatchPlanning() {
     }
 
     // If there's no linked Sale (old packed jobs before NOC system), allow dispatch directly
-    const hasSaleLinked = !!(job.customerName || job.nocStatus || job.gatePassStatus);
+    const hasSaleLinked = !!(rep.customerName || rep.nocStatus || rep.gatePassStatus);
 
     if (hasSaleLinked) {
       // New flow: must have NOC approved first
-      if (job.nocStatus === 'Pending' || !job.nocStatus) {
-        toast({ 
-          title: 'NOC Not Approved', 
-          description: 'Accounts department must approve the NOC request before dispatch planning.', 
-          variant: 'destructive' 
+      if (rep.nocStatus === 'Pending' || !rep.nocStatus) {
+        toast({
+          title: 'NOC Not Approved',
+          description: 'Accounts department must approve the NOC request before dispatch planning.',
+          variant: 'destructive'
         });
         return;
       }
       // Then must have Gate Pass
-      if (job.gatePassStatus !== 'Generated') {
-        toast({ 
-          title: 'Gate Pass Not Generated', 
-          description: 'Gate pass must be generated by Accounts before dispatch planning.', 
-          variant: 'destructive' 
+      if (rep.gatePassStatus !== 'Generated') {
+        toast({
+          title: 'Gate Pass Not Generated',
+          description: 'Gate pass must be generated by Accounts before dispatch planning.',
+          variant: 'destructive'
         });
         return;
       }
     }
     // Old packed jobs (no Sale linked) go directly to dispatch
-    setSelected(job);
+    setSelectedOrderId(group.orderId);
   };
+
+  const selectedGroup = selectedOrderId
+    ? { orderId: selectedOrderId, jobs: packedSiblings(selectedOrderId) }
+    : null;
 
   return (
     <div className="p-6 space-y-6 bg-slate-50 min-h-screen">
-      {selected && (
+      {selectedGroup && selectedGroup.jobs.length > 0 && (
         <CreateDispatchModal
-          job={selected}
-          siblings={packedSiblings(selected.orderId)}
-          onClose={() => setSelected(null)}
+          group={selectedGroup}
+          onClose={() => setSelectedOrderId(null)}
         />
       )}
 
@@ -240,7 +260,7 @@ export default function DispatchPlanning() {
 
       {jobsLoading ? (
         <div className="text-center text-slate-500 py-16">Loading...</div>
-      ) : packedJobs.length === 0 ? (
+      ) : orderGroups.length === 0 ? (
         <div className="text-center py-16">
           <Package className="h-12 w-12 text-slate-300 mx-auto mb-3" />
           <p className="text-slate-500 font-medium">No packed jobs ready for dispatch</p>
@@ -248,29 +268,32 @@ export default function DispatchPlanning() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {packedJobs.map(job => {
-            const siblingCount = packedSiblings(job.orderId).length;
-            const stillPacking = unpackedSiblings(job.orderId);
+          {orderGroups.map(group => {
+            const rep = group.jobs[0];
+            const stillPacking = unpackedSiblings(group.orderId);
+            const ready = rep.invoiceNumber && rep.nocStatus === 'Approved' && rep.gatePassStatus === 'Generated';
             return (
-            <Card key={job._id} className="border-none shadow-sm hover:shadow-md transition-all duration-200">
+            <Card key={group.orderId} className="border-none shadow-sm hover:shadow-md transition-all duration-200">
               <CardContent className="p-5">
                 <div className="flex justify-between items-start mb-3">
                   <div>
-                    <p className="font-semibold text-slate-800">{job.jobId}</p>
-                    <p className="text-sm text-slate-500">{job.machineName}{(job.quantity || 1) > 1 ? ` ×${job.quantity}` : ''}</p>
+                    <p className="font-semibold text-slate-800">{group.orderId}</p>
+                    <p className="text-sm text-slate-500">
+                      {group.jobs.length} machine{group.jobs.length > 1 ? 's' : ''} packed
+                    </p>
                   </div>
                   <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700">Packed</span>
                 </div>
                 <div className="space-y-1.5 text-sm text-slate-600 mb-4">
-                  <div><span className="text-slate-400">Order:</span> {job.orderId}</div>
-                  <div className="flex gap-2"><Package className="h-3.5 w-3.5 text-slate-400 mt-0.5" /><span>{job.machineCode}</span></div>
-                  <div className="flex gap-2"><MapPin className="h-3.5 w-3.5 text-slate-400 mt-0.5" /><span>SN: {job.serialNumber}</span></div>
-                  <div className="flex gap-2"><Truck className="h-3.5 w-3.5 text-slate-400 mt-0.5" /><span>{job.packingType}</span></div>
-                  {siblingCount > 1 && (
-                    <div className="text-xs text-indigo-600 font-medium">
-                      🚚 Dispatches together with {siblingCount - 1} other job(s) of this order
-                    </div>
-                  )}
+                  <div className="space-y-1 max-h-24 overflow-y-auto pr-1">
+                    {group.jobs.map(j => (
+                      <div key={j._id} className="flex items-start gap-2">
+                        <Package className="h-3.5 w-3.5 text-slate-400 mt-0.5 flex-shrink-0" />
+                        <span>{j.machineName}{(j.quantity || 1) > 1 ? ` ×${j.quantity}` : ''} — <span className="text-slate-400">SN: {j.serialNumber}</span></span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex gap-2"><Truck className="h-3.5 w-3.5 text-slate-400 mt-0.5" /><span>{rep.packingType}</span></div>
                   {stillPacking.length > 0 && (
                     <div className="text-xs text-amber-600 font-medium">
                       ⏳ Waiting: {stillPacking.length} job(s) of this order still packing
@@ -278,26 +301,26 @@ export default function DispatchPlanning() {
                   )}
 
                   <div className="flex flex-wrap gap-2 pt-2 mt-2 border-t border-slate-100">
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${job.invoiceNumber ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
-                      {job.invoiceNumber ? `Invoice: ${job.invoiceNumber}` : 'Invoice: Not Generated'}
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${rep.invoiceNumber ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
+                      {rep.invoiceNumber ? `Invoice: ${rep.invoiceNumber}` : 'Invoice: Not Generated'}
                     </span>
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${job.nocStatus === 'Approved' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
-                      NOC: {job.nocStatus || 'Pending'}
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${rep.nocStatus === 'Approved' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                      NOC: {rep.nocStatus || 'Pending'}
                     </span>
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${job.gatePassStatus === 'Generated' ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-500'}`}>
-                      GP: {job.gatePassStatus || 'Pending'}
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${rep.gatePassStatus === 'Generated' ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-500'}`}>
+                      GP: {rep.gatePassStatus || 'Pending'}
                     </span>
                   </div>
                 </div>
                 <Button
                   className="w-full"
                   size="sm"
-                  onClick={() => handlePlanDispatch(job)}
-                  variant={(job.invoiceNumber && job.nocStatus === 'Approved' && job.gatePassStatus === 'Generated') ? 'default' : 'secondary'}
-                  title={!job.invoiceNumber ? 'Invoice not generated for this order yet' : undefined}
+                  onClick={() => handlePlanDispatch(group)}
+                  variant={ready ? 'default' : 'secondary'}
+                  title={!rep.invoiceNumber ? 'Invoice not generated for this order yet' : undefined}
                 >
                   <Plus className="h-4 w-4 mr-1.5" />
-                  Plan Dispatch
+                  Plan Dispatch ({group.jobs.length})
                 </Button>
               </CardContent>
             </Card>

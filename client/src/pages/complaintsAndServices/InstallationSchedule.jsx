@@ -13,10 +13,29 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { CalendarCheck, MapPin, CheckCircle, Package, User, Phone, MessageCircle, Mail, Send, ChevronDown } from 'lucide-react';
 
+// One consolidated installation entity per sales order — a multi-machine
+// order used to render one card per machine, each needing its own schedule
+// even though one technician visit installs everything for the same
+// customer at once. Grouping by orderId means one schedule/status update
+// (and, on Completed, one feedback email) covers the whole order.
+const groupByOrder = (list) => Object.values(
+  (list || []).reduce((acc, o) => {
+    if (!acc[o.orderId]) acc[o.orderId] = { orderId: o.orderId, jobs: [] };
+    acc[o.orderId].jobs.push(o);
+    return acc;
+  }, {})
+);
+
+const groupInstallationStatus = (jobs) => {
+  if (jobs.every(j => j.installation?.status === 'Completed')) return 'Completed';
+  if (jobs.some(j => j.installation?.status === 'Scheduled')) return 'Scheduled';
+  return 'Pending';
+};
+
 export default function InstallationSchedule() {
   const { toast } = useToast();
   const qc = useQueryClient();
-  const [selectedOrder, setSelectedOrder] = useState(null);
+  const [selectedGroup, setSelectedGroup] = useState(null);
 
   const [formState, setFormState] = useState({
     status: 'Scheduled',
@@ -38,11 +57,11 @@ export default function InstallationSchedule() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }) =>
-      apiRequest('PUT', `/api/complaints/dispatched-orders/${id}/installation-schedule`, data),
+    mutationFn: ({ ids, data }) =>
+      apiRequest('PUT', `/api/complaints/dispatched-orders/bulk/installation-schedule`, { ids, ...data }),
     onSuccess: (response) => {
       qc.invalidateQueries({ queryKey: ['dispatched-orders'] });
-      setSelectedOrder(null);
+      setSelectedGroup(null);
 
       // Show specific toast based on whether feedback email was sent
       if (response?.emailSent) {
@@ -67,21 +86,25 @@ export default function InstallationSchedule() {
   const orders = ordersData?.data || [];
   const servicemen = servicemenData?.servicemen || servicemenData?.data || [];
 
-  const reachedOrders = orders.filter(o => o.customerConfirmation?.status === 'Reached Safely');
-  const pendingOrders = reachedOrders.filter(o => !o.installation || o.installation.status === 'Pending');
-  const scheduledOrders = reachedOrders.filter(o => o.installation?.status === 'Scheduled');
-  const completedOrders = reachedOrders.filter(o => o.installation?.status === 'Completed');
+  const groups = groupByOrder(orders);
+  // Installation can only proceed once every machine of the order has been
+  // confirmed as reached safely — a partially-confirmed order isn't ready yet.
+  const reachedGroups = groups.filter(g => g.jobs.every(o => o.customerConfirmation?.status === 'Reached Safely'));
+  const pendingOrders = reachedGroups.filter(g => groupInstallationStatus(g.jobs) === 'Pending');
+  const scheduledOrders = reachedGroups.filter(g => groupInstallationStatus(g.jobs) === 'Scheduled');
+  const completedOrders = reachedGroups.filter(g => groupInstallationStatus(g.jobs) === 'Completed');
 
-  const openModal = (order) => {
-    setSelectedOrder(order);
+  const openModal = (group) => {
+    setSelectedGroup(group);
+    const rep = group.jobs[0];
 
     // Prefer the structured multi-technician array; fall back to splitting
     // the legacy comma-joined technicianName string for older records,
     // trying to recover each technician's id by matching against the
     // servicemen list.
-    const existingTechnicians = Array.isArray(order.installation?.technicians) && order.installation.technicians.length > 0
-      ? order.installation.technicians
-      : (order.installation?.technicianName || '')
+    const existingTechnicians = Array.isArray(rep.installation?.technicians) && rep.installation.technicians.length > 0
+      ? rep.installation.technicians
+      : (rep.installation?.technicianName || '')
           .split(',')
           .map(n => n.trim())
           .filter(Boolean)
@@ -91,13 +114,13 @@ export default function InstallationSchedule() {
           });
 
     setFormState({
-      status: order.installation?.status || 'Scheduled',
-      scheduledDate: order.installation?.scheduledDate
-        ? new Date(order.installation.scheduledDate).toISOString().split('T')[0]
+      status: rep.installation?.status || 'Scheduled',
+      scheduledDate: rep.installation?.scheduledDate
+        ? new Date(rep.installation.scheduledDate).toISOString().split('T')[0]
         : '',
       technicians: existingTechnicians,
       manualTechnicianName: existingTechnicians.map(t => t.technicianName).join(', '),
-      remarks: order.installation?.remarks || ''
+      remarks: rep.installation?.remarks || ''
     });
   };
 
@@ -119,7 +142,7 @@ export default function InstallationSchedule() {
       : formState.manualTechnicianName.split(',').map(n => n.trim()).filter(Boolean).map(name => ({ technicianId: '', technicianName: name }));
 
     updateMutation.mutate({
-      id: selectedOrder._id,
+      ids: selectedGroup.jobs.map(j => j._id),
       data: {
         status: formState.status,
         scheduledDate: formState.scheduledDate,
@@ -130,15 +153,19 @@ export default function InstallationSchedule() {
     });
   };
 
-  const notifyCustomer = (order, e) => {
+  const notifyCustomer = (group, e) => {
     if (e) e.stopPropagation();
-    const text = `Hello ${order.customerName},\nYour installation for ${order.machineName} has been scheduled for ${order.installation?.scheduledDate ? new Date(order.installation.scheduledDate).toLocaleDateString() : 'upcoming dates'}.\nOur technician ${order.installation?.technicianName || ''} will contact you.`;
-    window.open(`https://wa.me/${(order.customerContact || '').replace(/[^0-9]/g, '')}?text=${encodeURIComponent(text)}`, '_blank');
+    const rep = group.jobs[0];
+    const machines = group.jobs.map(j => j.machineName).join(', ');
+    const text = `Hello ${rep.customerName},\nYour installation for ${machines} has been scheduled for ${rep.installation?.scheduledDate ? new Date(rep.installation.scheduledDate).toLocaleDateString() : 'upcoming dates'}.\nOur technician ${rep.installation?.technicianName || ''} will contact you.`;
+    window.open(`https://wa.me/${(rep.customerContact || '').replace(/[^0-9]/g, '')}?text=${encodeURIComponent(text)}`, '_blank');
   };
 
-  const handleWhatsApp = (phone, order, e) => {
+  const handleWhatsApp = (phone, group, e) => {
     if (e) e.stopPropagation();
-    const text = `Hello ${order.customerName},\nWe need to schedule the installation for your ${order.machineName}. When would be a convenient time for you?`;
+    const rep = group.jobs[0];
+    const machines = group.jobs.map(j => j.machineName).join(', ');
+    const text = `Hello ${rep.customerName},\nWe need to schedule the installation for your ${machines}. When would be a convenient time for you?`;
     window.open(`https://wa.me/${phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(text)}`, '_blank');
   };
 
@@ -147,10 +174,12 @@ export default function InstallationSchedule() {
     window.open(`tel:${phone}`);
   };
 
-  const handleEmail = (email, order, e) => {
+  const handleEmail = (email, group, e) => {
     if (e) e.stopPropagation();
-    const subject = `Installation Schedule: ${order.machineName}`;
-    const body = `Hello ${order.customerName},\n\nWe need to schedule the installation for your ${order.machineName}. Please let us know your preferred date and time.\n\nThank you,\nSamtek Team`;
+    const rep = group.jobs[0];
+    const machines = group.jobs.map(j => j.machineName).join(', ');
+    const subject = `Installation Schedule: ${machines}`;
+    const body = `Hello ${rep.customerName},\n\nWe need to schedule the installation for your ${machines}. Please let us know your preferred date and time.\n\nThank you,\nSamtek Team`;
     window.open(`mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
   };
 
@@ -166,7 +195,7 @@ export default function InstallationSchedule() {
       <div className="w-full space-y-4">
         {isLoading ? (
           <div className="text-center py-10 text-slate-500">Loading...</div>
-        ) : reachedOrders.length === 0 ? (
+        ) : reachedGroups.length === 0 ? (
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-16">
               <CalendarCheck className="h-12 w-12 text-slate-300 mb-4" />
@@ -197,7 +226,7 @@ export default function InstallationSchedule() {
               ) : (
                 <InstallationList
                   list={pendingOrders}
-                  setSelectedOrder={openModal}
+                  setSelectedGroup={openModal}
                   notifyCustomer={notifyCustomer}
                   handleWhatsApp={handleWhatsApp}
                   handleCall={handleCall}
@@ -216,7 +245,7 @@ export default function InstallationSchedule() {
               ) : (
                 <InstallationList
                   list={scheduledOrders}
-                  setSelectedOrder={openModal}
+                  setSelectedGroup={openModal}
                   notifyCustomer={notifyCustomer}
                   handleWhatsApp={handleWhatsApp}
                   handleCall={handleCall}
@@ -235,7 +264,7 @@ export default function InstallationSchedule() {
               ) : (
                 <InstallationList
                   list={completedOrders}
-                  setSelectedOrder={setSelectedOrder}
+                  setSelectedGroup={setSelectedGroup}
                   notifyCustomer={notifyCustomer}
                   handleWhatsApp={handleWhatsApp}
                   handleCall={handleCall}
@@ -249,7 +278,7 @@ export default function InstallationSchedule() {
       </div>
 
       {/* Modal */}
-      {!!selectedOrder && (
+      {!!selectedGroup && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col" style={{ maxHeight: 'calc(100vh - 80px)' }}>
 
@@ -257,9 +286,9 @@ export default function InstallationSchedule() {
             <div className="flex justify-between items-center px-7 pt-7 pb-5 border-b border-slate-100 flex-shrink-0">
               <div>
                 <h2 className="font-bold text-lg text-slate-800">Schedule Installation</h2>
-                <p className="text-xs text-slate-400 mt-0.5">Update installation details for {selectedOrder.customerName}</p>
+                <p className="text-xs text-slate-400 mt-0.5">Update installation details for {selectedGroup.jobs[0].customerName}</p>
               </div>
-              <button onClick={() => setSelectedOrder(null)} className="p-1 rounded-lg hover:bg-slate-100">
+              <button onClick={() => setSelectedGroup(null)} className="p-1 rounded-lg hover:bg-slate-100">
                 <span className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</span>
               </button>
             </div>
@@ -268,11 +297,11 @@ export default function InstallationSchedule() {
             <div className="overflow-y-auto flex-1 px-7 py-5">
               {/* Customer info card */}
               <div className="mb-5 p-3 bg-blue-50/50 rounded-lg border border-blue-100">
-                <p className="text-sm font-medium text-slate-800">{selectedOrder.customerName}</p>
-                <p className="text-xs text-slate-500 mt-1">{selectedOrder.machineName}</p>
-                <p className="text-xs text-slate-500">Contact: {selectedOrder.customerContact}</p>
-                {selectedOrder.customerEmail && (
-                  <p className="text-xs text-blue-600 mt-1">📧 {selectedOrder.customerEmail}</p>
+                <p className="text-sm font-medium text-slate-800">{selectedGroup.jobs[0].customerName}</p>
+                <p className="text-xs text-slate-500 mt-1">{selectedGroup.jobs.map(j => j.machineName).join(', ')}</p>
+                <p className="text-xs text-slate-500">Contact: {selectedGroup.jobs[0].customerContact}</p>
+                {selectedGroup.jobs[0].customerEmail && (
+                  <p className="text-xs text-blue-600 mt-1">📧 {selectedGroup.jobs[0].customerEmail}</p>
                 )}
               </div>
 
@@ -295,14 +324,14 @@ export default function InstallationSchedule() {
                 </div>
 
                 {/* Auto email notice when Completed is selected */}
-                {formState.status === 'Completed' && selectedOrder.installation?.status !== 'Completed' && (
+                {formState.status === 'Completed' && selectedGroup.jobs[0].installation?.status !== 'Completed' && (
                   <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
                     <Send className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
                     <div>
                       <p className="text-xs font-semibold text-amber-700">Feedback email will be sent automatically</p>
                       <p className="text-xs text-amber-600 mt-0.5">
-                        {selectedOrder.customerEmail
-                          ? `Email: ${selectedOrder.customerEmail}`
+                        {selectedGroup.jobs[0].customerEmail
+                          ? `Email: ${selectedGroup.jobs[0].customerEmail}`
                           : 'Customer email will be fetched from order records automatically.'}
                       </p>
                     </div>
@@ -411,8 +440,8 @@ export default function InstallationSchedule() {
 
             {/* Footer */}
             <div className="px-7 pb-6 pt-4 border-t border-slate-100 flex gap-3 flex-shrink-0">
-              {selectedOrder.installation?.status === 'Scheduled' && (
-                <Button type="button" variant="outline" className="flex-1 text-green-600 border-green-200" onClick={() => notifyCustomer(selectedOrder, null)}>
+              {selectedGroup.jobs[0].installation?.status === 'Scheduled' && (
+                <Button type="button" variant="outline" className="flex-1 text-green-600 border-green-200" onClick={() => notifyCustomer(selectedGroup, null)}>
                   Notify via WhatsApp
                 </Button>
               )}
@@ -427,59 +456,66 @@ export default function InstallationSchedule() {
   );
 }
 
-function InstallationList({ list, setSelectedOrder, notifyCustomer, handleWhatsApp, handleCall, handleEmail, canEdit = true }) {
+function InstallationList({ list, setSelectedGroup, notifyCustomer, handleWhatsApp, handleCall, handleEmail, canEdit = true }) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-      {list.map(order => (
+      {list.map(group => {
+        const rep = group.jobs[0];
+        const status = groupInstallationStatus(group.jobs);
+        return (
         <Card
-          key={order._id}
+          key={group.orderId}
           className={`transition-all ${canEdit ? 'cursor-pointer hover:border-blue-400 hover:shadow-md' : 'cursor-default opacity-90'}`}
-          onClick={() => canEdit && setSelectedOrder(order)}
+          onClick={() => canEdit && setSelectedGroup(group)}
         >
           <CardContent className="p-5">
             <div className="flex justify-between items-start mb-3">
               <div>
-                <h3 className="font-semibold text-slate-800">{order.customerName || 'Unknown Customer'}</h3>
-                <p className="text-sm text-slate-500">{order.orderId}</p>
+                <h3 className="font-semibold text-slate-800">{rep.customerName || 'Unknown Customer'}</h3>
+                <p className="text-sm text-slate-500">{rep.orderId}</p>
               </div>
               <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${
-                order.installation?.status === 'Completed' ? 'bg-green-100 text-green-700' :
-                order.installation?.status === 'Scheduled' ? 'bg-blue-100 text-blue-700' :
+                status === 'Completed' ? 'bg-green-100 text-green-700' :
+                status === 'Scheduled' ? 'bg-blue-100 text-blue-700' :
                 'bg-amber-100 text-amber-700'
               }`}>
-                {order.installation?.status || 'Pending'}
+                {status}
               </span>
             </div>
 
             <div className="space-y-2 text-sm mb-3">
-              <div className="flex items-center text-slate-600">
-                <Package className="w-4 h-4 mr-2 text-slate-400" />
-                {order.machineName}
+              <div className="space-y-1 max-h-20 overflow-y-auto">
+                {group.jobs.map(j => (
+                  <div key={j._id} className="flex items-center text-slate-600">
+                    <Package className="w-4 h-4 mr-2 text-slate-400 flex-shrink-0" />
+                    <span className="truncate">{j.machineName}</span>
+                  </div>
+                ))}
               </div>
               <div className="flex items-center text-slate-600">
                 <MapPin className="w-4 h-4 mr-2 text-slate-400" />
-                {order.deliveryAddress || 'Address not specified'}
+                {rep.deliveryAddress || 'Address not specified'}
               </div>
             </div>
 
-            {(order.installation?.status === 'Scheduled' || order.installation?.status === 'Completed') && (
+            {(rep.installation?.status === 'Scheduled' || rep.installation?.status === 'Completed') && (
               <div className="bg-slate-50 p-3 rounded-md text-sm border-t border-slate-100 pt-3 space-y-1">
                 <div className="flex items-center text-slate-700 font-medium">
                   <CalendarCheck className="w-3.5 h-3.5 mr-2 text-blue-500" />
-                  {order.installation.scheduledDate
-                    ? new Date(order.installation.scheduledDate).toLocaleDateString()
+                  {rep.installation.scheduledDate
+                    ? new Date(rep.installation.scheduledDate).toLocaleDateString()
                     : 'TBD'}
                 </div>
                 <div className="flex items-center text-slate-600">
                   <User className="w-3.5 h-3.5 mr-2 text-slate-400" />
-                  Tech: {order.installation.technicianName || 'TBD'}
+                  Tech: {rep.installation.technicianName || 'TBD'}
                 </div>
-                {order.installation?.status === 'Scheduled' && (
+                {rep.installation?.status === 'Scheduled' && (
                   <Button
                     variant="outline"
                     size="sm"
                     className="w-full mt-2 text-green-600 border-green-200"
-                    onClick={(e) => { e.stopPropagation(); notifyCustomer(order, e); }}
+                    onClick={(e) => { e.stopPropagation(); notifyCustomer(group, e); }}
                   >
                     Notify Customer
                   </Button>
@@ -488,15 +524,15 @@ function InstallationList({ list, setSelectedOrder, notifyCustomer, handleWhatsA
             )}
 
             {/* Communication buttons for pending orders */}
-            {(!order.installation || order.installation.status === 'Pending') && (
+            {(!rep.installation || rep.installation.status === 'Pending') && (
               <div className="flex gap-2 border-t pt-3 mt-3">
-                <Button variant="outline" size="sm" className="flex-1 bg-green-50 text-green-600 hover:bg-green-100 border-green-200" onClick={(e) => handleWhatsApp(order.customerContact, order, e)}>
+                <Button variant="outline" size="sm" className="flex-1 bg-green-50 text-green-600 hover:bg-green-100 border-green-200" onClick={(e) => handleWhatsApp(rep.customerContact, group, e)}>
                   <MessageCircle className="w-4 h-4 mr-1.5" /> WA
                 </Button>
-                <Button variant="outline" size="sm" className="flex-1 bg-blue-50 text-blue-600 hover:bg-blue-100 border-blue-200" onClick={(e) => handleCall(order.customerContact, e)}>
+                <Button variant="outline" size="sm" className="flex-1 bg-blue-50 text-blue-600 hover:bg-blue-100 border-blue-200" onClick={(e) => handleCall(rep.customerContact, e)}>
                   <Phone className="w-4 h-4 mr-1.5" /> Call
                 </Button>
-                <Button variant="outline" size="sm" className="flex-1 bg-slate-50 text-slate-600 hover:bg-slate-100 border-slate-200" onClick={(e) => handleEmail('customer@example.com', order, e)}>
+                <Button variant="outline" size="sm" className="flex-1 bg-slate-50 text-slate-600 hover:bg-slate-100 border-slate-200" onClick={(e) => handleEmail('customer@example.com', group, e)}>
                   <Mail className="w-4 h-4 mr-1.5" /> Mail
                 </Button>
               </div>
@@ -507,7 +543,8 @@ function InstallationList({ list, setSelectedOrder, notifyCustomer, handleWhatsA
             )}
           </CardContent>
         </Card>
-      ))}
+        );
+      })}
     </div>
   );
 }

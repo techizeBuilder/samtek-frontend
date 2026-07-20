@@ -858,7 +858,7 @@ const NocRequest = () => {
                 <table className="w-full text-sm">
                   <thead className="bg-slate-50 border-b">
                     <tr>
-                      <th className="text-left p-3 font-semibold text-slate-600 w-12 text-center">Sr.</th>
+                      <th className="p-3 font-semibold text-slate-600 w-12 text-center">Sr.</th>
                       <th className="text-left p-3 font-semibold text-slate-600">Items & Details</th>
                       <th className="text-center p-3 font-semibold text-slate-600 w-16">Qty</th>
                     </tr>

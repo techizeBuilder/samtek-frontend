@@ -75,58 +75,63 @@ export function ProductionProvider({ children }) {
   });
 
   // ── Process mutations ──────────────────────────────────────────────────────
+  // `unitNumber` (1-based) selects which physical machine of a multi-quantity
+  // order the action applies to. It's sent as a `?unit=` query param and
+  // defaults to 1 everywhere below, so any call site that doesn't pass it
+  // keeps behaving exactly as before (operates on the order's original,
+  // single process pipeline).
   const assignTeamMutation = useMutation({
-    mutationFn: ({ orderId, stepIndex, teamId }) =>
-      apiRequest('PUT', `${BASE}/orders/${orderId}/processes/${stepIndex}/assign-team`, { teamId }),
+    mutationFn: ({ orderId, stepIndex, teamId, unitNumber = 1 }) =>
+      apiRequest('PUT', `${BASE}/orders/${orderId}/processes/${stepIndex}/assign-team?unit=${unitNumber}`, { teamId }),
     onSuccess: invalidateOrders,
   });
 
   const startProcessMutation = useMutation({
-    mutationFn: ({ orderId, stepIndex }) =>
-      apiRequest('PUT', `${BASE}/orders/${orderId}/processes/${stepIndex}/start`),
+    mutationFn: ({ orderId, stepIndex, unitNumber = 1 }) =>
+      apiRequest('PUT', `${BASE}/orders/${orderId}/processes/${stepIndex}/start?unit=${unitNumber}`),
     onSuccess: invalidateOrders,
   });
 
   const markProcessCompleteMutation = useMutation({
-    mutationFn: ({ orderId, stepIndex }) =>
-      apiRequest('PUT', `${BASE}/orders/${orderId}/processes/${stepIndex}/complete`),
+    mutationFn: ({ orderId, stepIndex, unitNumber = 1 }) =>
+      apiRequest('PUT', `${BASE}/orders/${orderId}/processes/${stepIndex}/complete?unit=${unitNumber}`),
     onSuccess: invalidateOrders,
   });
 
   const approveQCMutation = useMutation({
-    mutationFn: ({ orderId, stepIndex, qcBy }) =>
-      apiRequest('PUT', `${BASE}/orders/${orderId}/processes/${stepIndex}/approve-qc`, { qcBy }),
+    mutationFn: ({ orderId, stepIndex, qcBy, unitNumber = 1 }) =>
+      apiRequest('PUT', `${BASE}/orders/${orderId}/processes/${stepIndex}/approve-qc?unit=${unitNumber}`, { qcBy }),
     onSuccess: invalidateOrders,
   });
 
   const rejectQCMutation = useMutation({
-    mutationFn: ({ orderId, stepIndex, qcBy, reason }) =>
-      apiRequest('PUT', `${BASE}/orders/${orderId}/processes/${stepIndex}/reject-qc`, { qcBy, reason }),
+    mutationFn: ({ orderId, stepIndex, qcBy, reason, unitNumber = 1 }) =>
+      apiRequest('PUT', `${BASE}/orders/${orderId}/processes/${stepIndex}/reject-qc?unit=${unitNumber}`, { qcBy, reason }),
     onSuccess: invalidateOrders,
   });
 
   const updateProcessNotesMutation = useMutation({
-    mutationFn: ({ orderId, stepIndex, notes }) =>
-      apiRequest('PUT', `${BASE}/orders/${orderId}/processes/${stepIndex}/notes`, { notes }),
+    mutationFn: ({ orderId, stepIndex, notes, unitNumber = 1 }) =>
+      apiRequest('PUT', `${BASE}/orders/${orderId}/processes/${stepIndex}/notes?unit=${unitNumber}`, { notes }),
     onSuccess: invalidateOrders,
   });
 
   // ── Sub-Entries mutations ──────────────────────────────────────────────────
   const addSubEntryMutation = useMutation({
-    mutationFn: ({ orderId, stepIndex, payload }) =>
-      apiRequest('POST', `${BASE}/orders/${orderId}/processes/${stepIndex}/sub-entries`, payload),
+    mutationFn: ({ orderId, stepIndex, payload, unitNumber = 1 }) =>
+      apiRequest('POST', `${BASE}/orders/${orderId}/processes/${stepIndex}/sub-entries?unit=${unitNumber}`, payload),
     onSuccess: invalidateOrders,
   });
 
   const completeSubEntryMutation = useMutation({
-    mutationFn: ({ orderId, stepIndex, subEntryId }) =>
-      apiRequest('PUT', `${BASE}/orders/${orderId}/processes/${stepIndex}/sub-entries/${subEntryId}/complete`),
+    mutationFn: ({ orderId, stepIndex, subEntryId, unitNumber = 1 }) =>
+      apiRequest('PUT', `${BASE}/orders/${orderId}/processes/${stepIndex}/sub-entries/${subEntryId}/complete?unit=${unitNumber}`),
     onSuccess: invalidateOrders,
   });
 
   const qcSubEntryMutation = useMutation({
-    mutationFn: ({ orderId, stepIndex, subEntryId, qcStatus, qcBy, reason }) =>
-      apiRequest('PUT', `${BASE}/orders/${orderId}/processes/${stepIndex}/sub-entries/${subEntryId}/qc`, { qcStatus, qcBy, reason }),
+    mutationFn: ({ orderId, stepIndex, subEntryId, qcStatus, qcBy, reason, unitNumber = 1 }) =>
+      apiRequest('PUT', `${BASE}/orders/${orderId}/processes/${stepIndex}/sub-entries/${subEntryId}/qc?unit=${unitNumber}`, { qcStatus, qcBy, reason }),
     onSuccess: invalidateOrders,
   });
 
@@ -146,50 +151,85 @@ export function ProductionProvider({ children }) {
   const updateMaterialStatus = useCallback((orderId, materialId, status) => updateMaterialStatusMutation.mutate({ orderId, materialId, status }), []);
   const addTeam = useCallback((data) => addTeamMutation.mutate(data), []);
 
-  // Process callbacks — convert stepName to stepIndex
+  // Process callbacks — convert stepName to stepIndex. Every one takes an
+  // optional trailing `unitNumber` (1-based, default 1) so existing call
+  // sites that never pass it keep targeting the order's original pipeline.
   const stepIndex = (stepName) => PROCESS_STEPS.indexOf(stepName);
 
-  const assignTeam = useCallback((orderId, stepName, teamId) =>
-    assignTeamMutation.mutate({ orderId, stepIndex: stepIndex(stepName), teamId }), []);
+  const assignTeam = useCallback((orderId, stepName, teamId, unitNumber = 1) =>
+    assignTeamMutation.mutate({ orderId, stepIndex: stepIndex(stepName), teamId, unitNumber }), []);
 
-  const startProcess = useCallback((orderId, stepName) =>
-    startProcessMutation.mutate({ orderId, stepIndex: stepIndex(stepName) }), []);
+  const startProcess = useCallback((orderId, stepName, unitNumber = 1) =>
+    startProcessMutation.mutate({ orderId, stepIndex: stepIndex(stepName), unitNumber }), []);
 
-  const markProcessComplete = useCallback((orderId, stepName) =>
-    markProcessCompleteMutation.mutate({ orderId, stepIndex: stepIndex(stepName) }), []);
+  const markProcessComplete = useCallback((orderId, stepName, unitNumber = 1) =>
+    markProcessCompleteMutation.mutate({ orderId, stepIndex: stepIndex(stepName), unitNumber }), []);
 
-  const approveQC = useCallback((orderId, stepName, qcBy) =>
-    approveQCMutation.mutate({ orderId, stepIndex: stepIndex(stepName), qcBy }), []);
+  const approveQC = useCallback((orderId, stepName, qcBy, unitNumber = 1) =>
+    approveQCMutation.mutate({ orderId, stepIndex: stepIndex(stepName), qcBy, unitNumber }), []);
 
-  const rejectQC = useCallback((orderId, stepName, qcBy, reason) =>
-    rejectQCMutation.mutate({ orderId, stepIndex: stepIndex(stepName), qcBy, reason }), []);
+  const rejectQC = useCallback((orderId, stepName, qcBy, reason, unitNumber = 1) =>
+    rejectQCMutation.mutate({ orderId, stepIndex: stepIndex(stepName), qcBy, reason, unitNumber }), []);
 
-  const updateProcessNotes = useCallback((orderId, stepName, notes) =>
-    updateProcessNotesMutation.mutate({ orderId, stepIndex: stepIndex(stepName), notes }), []);
+  const updateProcessNotes = useCallback((orderId, stepName, notes, unitNumber = 1) =>
+    updateProcessNotesMutation.mutate({ orderId, stepIndex: stepIndex(stepName), notes, unitNumber }), []);
 
-  const addSubEntry = useCallback((orderId, stepName, payload) =>
-    addSubEntryMutation.mutateAsync({ orderId, stepIndex: stepIndex(stepName), payload }), []);
+  const addSubEntry = useCallback((orderId, stepName, payload, unitNumber = 1) =>
+    addSubEntryMutation.mutateAsync({ orderId, stepIndex: stepIndex(stepName), payload, unitNumber }), []);
 
-  const completeSubEntry = useCallback((orderId, stepName, subEntryId) =>
-    completeSubEntryMutation.mutateAsync({ orderId, stepIndex: stepIndex(stepName), subEntryId }), []);
+  const completeSubEntry = useCallback((orderId, stepName, subEntryId, unitNumber = 1) =>
+    completeSubEntryMutation.mutateAsync({ orderId, stepIndex: stepIndex(stepName), subEntryId, unitNumber }), []);
 
-  const qcSubEntry = useCallback((orderId, stepName, subEntryId, qcStatus, qcBy, reason) =>
-    qcSubEntryMutation.mutateAsync({ orderId, stepIndex: stepIndex(stepName), subEntryId, qcStatus, qcBy, reason }), []);
+  const qcSubEntry = useCallback((orderId, stepName, subEntryId, qcStatus, qcBy, reason, unitNumber = 1) =>
+    qcSubEntryMutation.mutateAsync({ orderId, stepIndex: stepIndex(stepName), subEntryId, qcStatus, qcBy, reason, unitNumber }), []);
+
+  // ── Multi-unit helpers ─────────────────────────────────────────────────────
+  // How many physical machines this order builds (>= 1).
+  const getOrderUnitCount = useCallback((orderId) => {
+    const order = orders.find(o => o._id === orderId || o.id === orderId);
+    return Math.max(1, Number(order?.orderQuantity) || 1);
+  }, [orders]);
+
+  // Fresh, all-Pending process steps — mirrors the backend's buildProcessSteps(),
+  // used as a display-only placeholder for a unit the backend hasn't
+  // materialized into `extraUnits` yet (nothing has been done on it so far).
+  const buildDefaultProcesses = () => PROCESS_STEPS.map(step => ({
+    step, type: PROCESS_TYPE_MAP[step], status: 'Pending', assignedTeam: null,
+    startDate: null, endDate: null, qcStatus: 'Pending', qcBy: null, qcDate: null,
+    notes: '', reworks: [], subEntries: [],
+  }));
+
+  // Process-steps array for a given 1-based unit number of an order. Unit 1
+  // is always `order.processes`; units 2..N come from `order.extraUnits`.
+  const getUnitProcesses = useCallback((orderId, unitNumber = 1) => {
+    const order = orders.find(o => o._id === orderId || o.id === orderId);
+    if (!order) return [];
+    if (unitNumber <= 1) return order.processes;
+    const extra = order.extraUnits?.[unitNumber - 2];
+    return extra ? extra.processes : buildDefaultProcesses();
+  }, [orders]);
 
   // ── Computed helpers (same interface as before) ───────────────────────────
   const getOrderProgress = useCallback((orderId) => {
     const order = orders.find(o => o._id === orderId || o.id === orderId);
     if (!order) return 0;
-    const done = order.processes.filter(p => p.status === 'Completed').length;
-    return Math.round((done / order.processes.length) * 100);
+    const buildQty = Math.max(1, Number(order.orderQuantity) || 1);
+    const stepsPerUnit = order.processes.length;
+    const doneInMain = order.processes.filter(p => p.status === 'Completed').length;
+    const doneInExtra = (order.extraUnits || []).reduce(
+      (sum, u) => sum + (u.processes || []).filter(p => p.status === 'Completed').length, 0
+    );
+    const totalSteps = stepsPerUnit * buildQty;
+    return totalSteps ? Math.round(((doneInMain + doneInExtra) / totalSteps) * 100) : 0;
   }, [orders]);
 
   const getPendingQC = useCallback(() => {
-    return orders.flatMap(o =>
-      o.processes
+    return orders.flatMap(o => {
+      const allProcesses = [...o.processes, ...(o.extraUnits || []).flatMap(u => u.processes || [])];
+      return allProcesses
         .filter(p => p.status === 'QC Pending')
-        .map(p => ({ orderId: o._id, machineName: o.machineName, machineCode: o.machineCode, priority: o.priority, ...p }))
-    );
+        .map(p => ({ orderId: o._id, machineName: o.machineName, machineCode: o.machineCode, priority: o.priority, ...p }));
+    });
   }, [orders]);
 
   const getTeamById = useCallback((teamId) => {
@@ -201,7 +241,8 @@ export function ProductionProvider({ children }) {
   const getActiveProcessForOrder = useCallback((orderId) => {
     const order = orders.find(o => o._id === orderId || o.id === orderId);
     if (!order) return null;
-    return order.processes.find(p => p.status === 'In Progress' || p.status === 'QC Pending') || null;
+    const allProcesses = [...order.processes, ...(order.extraUnits || []).flatMap(u => u.processes || [])];
+    return allProcesses.find(p => p.status === 'In Progress' || p.status === 'QC Pending') || null;
   }, [orders]);
 
   return (
@@ -231,6 +272,8 @@ export function ProductionProvider({ children }) {
       getPendingQC,
       getTeamById,
       getActiveProcessForOrder,
+      getOrderUnitCount,
+      getUnitProcesses,
     }}>
       {children}
     </ProductionContext.Provider>

@@ -421,7 +421,12 @@ export default function OrderManagement() {
                         </span>
                       </td>
                       <td className="px-5 py-3.5">
-                        <div className="font-medium text-slate-900">{order.machineName}</div>
+                        <div className="font-medium text-slate-900 flex items-center gap-1.5">
+                          {order.machineName}
+                          {(order.orderQuantity || 1) > 1 && (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-700">×{order.orderQuantity}</span>
+                          )}
+                        </div>
                         <div className="text-xs text-slate-400">{order.machineCode}</div>
                         {isRejected && order.rejectionDetails?.rejectionReason && (
                           <div className="text-xs text-red-600 mt-1">Reason: {order.rejectionDetails.rejectionReason}</div>
@@ -525,7 +530,11 @@ export default function OrderManagement() {
                 )}
 
                 {/* Order Info */}
-                <div className="grid grid-cols-3 gap-3 text-sm">
+                <div className="grid grid-cols-4 gap-3 text-sm">
+                  <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
+                    <p className="text-xs text-blue-500 mb-1">Quantity</p>
+                    <p className="font-bold text-blue-800 text-base">{detailOrderLive.orderQuantity || 1} unit{(detailOrderLive.orderQuantity || 1) > 1 ? 's' : ''}</p>
+                  </div>
                   <div className="bg-slate-50 rounded-lg p-3">
                     <p className="text-xs text-slate-400 mb-1">Priority</p>
                     <span className={`px-2 py-0.5 rounded-full text-xs font-semibold border ${priorityColor[detailOrderLive.priority]}`}>{detailOrderLive.priority}</span>

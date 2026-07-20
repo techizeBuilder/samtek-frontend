@@ -40,10 +40,14 @@ export default function ProcessExecution() {
     orders, teams, getOrderProgress, getTeamById,
     assignTeam, startProcess, markProcessComplete,
     approveQC, rejectQC, updateProcessNotes,
-    addSubEntry, completeSubEntry, qcSubEntry
+    addSubEntry, completeSubEntry, qcSubEntry,
+    getOrderUnitCount, getUnitProcesses
   } = useProduction();
 
   const [selectedOrderId, setSelectedOrderId] = useState('');
+  // Which physical machine (1-based) of a multi-quantity order is shown —
+  // only relevant when the order's orderQuantity > 1 (tabs render then).
+  const [activeUnit, setActiveUnit] = useState(1);
   const [qcDialog, setQcDialog] = useState(null); // { step, action: 'approve'|'reject' }
   const [qcBy, setQcBy] = useState('');
   const [rejectReason, setRejectReason] = useState('');
@@ -62,6 +66,15 @@ export default function ProcessExecution() {
   const selectedOrder = orders.find(o => String(o._id || o.id) === selectedOrderId);
   const progress = selectedOrder ? getOrderProgress(selectedOrder._id || selectedOrder.id) : 0;
 
+  // How many physical machines this order builds, and which one is on screen.
+  const unitCount = selectedOrder ? getOrderUnitCount(selectedOrder._id || selectedOrder.id) : 1;
+  const activeProcesses = selectedOrder ? getUnitProcesses(selectedOrderId, activeUnit) : [];
+
+  const selectOrder = (id) => {
+    setSelectedOrderId(id);
+    setActiveUnit(1); // reset to Unit 1 whenever the order selection changes
+  };
+
   // A step can only start if the previous step is Completed (QC Approved)
   const canStart = (processes, stepIndex) => {
     if (stepIndex === 0) return true;
@@ -71,9 +84,9 @@ export default function ProcessExecution() {
   const handleQCSubmit = () => {
     if (!qcBy.trim()) return;
     if (qcDialog.action === 'approve') {
-      approveQC(selectedOrderId, qcDialog.step, qcBy);
+      approveQC(selectedOrderId, qcDialog.step, qcBy, activeUnit);
     } else {
-      rejectQC(selectedOrderId, qcDialog.step, qcBy, rejectReason);
+      rejectQC(selectedOrderId, qcDialog.step, qcBy, rejectReason, activeUnit);
     }
     setQcDialog(null);
     setQcBy('');
@@ -86,7 +99,7 @@ export default function ProcessExecution() {
     qcSubEntry(
       selectedOrderId, subQcDialog.step, subQcDialog.subEntryId,
       subQcDialog.action === 'approve' ? 'Approved' : 'Rejected',
-      subQcBy, subRejectReason
+      subQcBy, subRejectReason, activeUnit
     );
     setSubQcDialog(null);
     setSubQcBy('');
@@ -94,13 +107,13 @@ export default function ProcessExecution() {
   };
 
   const handleSaveNotes = () => {
-    updateProcessNotes(selectedOrderId, notesDialog.step, notesValue);
+    updateProcessNotes(selectedOrderId, notesDialog.step, notesValue, activeUnit);
     setNotesDialog(null);
   };
 
   const handleAssignTeam = () => {
     if (!selectedTeam) return;
-    assignTeam(selectedOrderId, assignDialog.step, selectedTeam);
+    assignTeam(selectedOrderId, assignDialog.step, selectedTeam, activeUnit);
     setAssignDialog(null);
     setSelectedTeam('');
   };
@@ -124,7 +137,7 @@ export default function ProcessExecution() {
             <select
               className="w-full border border-slate-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white appearance-none pr-8"
               value={selectedOrderId}
-              onChange={e => setSelectedOrderId(e.target.value)}
+              onChange={e => selectOrder(e.target.value)}
             >
               <option value="">-- Select an order --</option>
               {orders.map(o => (
@@ -161,6 +174,9 @@ export default function ProcessExecution() {
                       <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${selectedOrder.priority === 'Urgent' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-600'}`}>
                         {selectedOrder.priority}
                       </span>
+                      {unitCount > 1 && (
+                        <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-700">Qty: {unitCount}</span>
+                      )}
                     </div>
                     <p className="text-xs text-slate-500 mt-0.5">Delivery: {selectedOrder.deliveryDate} · {selectedOrder.status}</p>
                   </div>
@@ -190,10 +206,46 @@ export default function ProcessExecution() {
             </CardContent>
           </Card>
 
+          {/* Machine / Unit Tabs — only shown when this order builds more than
+              one physical machine, so single-quantity orders look exactly as
+              before. Each tab tracks its own independent process pipeline. */}
+          {unitCount > 1 && (
+            <Card className="border-none shadow-sm">
+              <CardContent className="p-3">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-semibold text-slate-500 pl-1">Machine:</span>
+                  {Array.from({ length: unitCount }, (_, i) => i + 1).map(unitNo => {
+                    const unitProcs = getUnitProcesses(selectedOrderId, unitNo);
+                    const unitDone = unitProcs.filter(p => p.status === 'Completed').length;
+                    const unitComplete = unitDone === unitProcs.length;
+                    return (
+                      <button
+                        key={unitNo}
+                        onClick={() => setActiveUnit(unitNo)}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${activeUnit === unitNo
+                            ? 'bg-blue-600 text-white border-blue-600'
+                            : unitComplete
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:border-emerald-300'
+                              : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300'
+                          }`}
+                      >
+                        {unitComplete && <CheckCircle className="h-3 w-3" />}
+                        Unit {unitNo}
+                        <span className={`text-[10px] ${activeUnit === unitNo ? 'text-blue-100' : 'text-slate-400'}`}>
+                          {unitDone}/{unitProcs.length}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Process Steps */}
           <div className="space-y-3">
-            {selectedOrder.processes.map((proc, idx) => {
-              const unlocked = canStart(selectedOrder.processes, idx);
+            {activeProcesses.map((proc, idx) => {
+              const unlocked = canStart(activeProcesses, idx);
               const team = proc.assignedTeam ? getTeamById(proc.assignedTeam) : null;
               return (
                 <Card key={proc.step} className={`border-2 shadow-sm transition-all ${stepColor[proc.status]} ${!unlocked && proc.status === 'Pending' ? 'opacity-60' : ''}`}>
@@ -265,13 +317,13 @@ export default function ProcessExecution() {
                           return (
                             <>
                               {proc.status === 'Pending' && unlocked && (
-                                <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white text-xs" onClick={() => startProcess(selectedOrderId, proc.step)}>
+                                <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white text-xs" onClick={() => startProcess(selectedOrderId, proc.step, activeUnit)}>
                                   <Play className="h-3.5 w-3.5 mr-1" /> Start
                                 </Button>
                               )}
                               {proc.status === 'In Progress' && (
                                 <>
-                                  <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white text-xs" onClick={() => markProcessComplete(selectedOrderId, proc.step)} disabled={isFabricationLocked}>
+                                  <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white text-xs" onClick={() => markProcessComplete(selectedOrderId, proc.step, activeUnit)} disabled={isFabricationLocked}>
                                     <CheckCircle className="h-3.5 w-3.5 mr-1" /> Mark Complete
                                   </Button>
                                   <Button size="sm" variant="outline" className="text-xs" onClick={() => { setNotesDialog({ step: proc.step }); setNotesValue(proc.notes); }}>
@@ -343,7 +395,7 @@ export default function ProcessExecution() {
 
                                   <div className="flex items-center gap-2">
                                     {se.status === 'Pending' ? (
-                                      <Button size="sm" className="h-7 text-xs bg-amber-600 hover:bg-amber-700 text-white" onClick={() => completeSubEntry(selectedOrderId, proc.step, se._id || se.id)}>
+                                      <Button size="sm" className="h-7 text-xs bg-amber-600 hover:bg-amber-700 text-white" onClick={() => completeSubEntry(selectedOrderId, proc.step, se._id || se.id, activeUnit)}>
                                         <CheckCircle className="h-3 w-3 mr-1" /> Mark Done
                                       </Button>
                                     ) : se.qcStatus === 'Pending' ? (
@@ -605,7 +657,7 @@ export default function ProcessExecution() {
                   const finalType = subEntryForm.fabricationType === 'Other'
                     ? customFabricationType.trim()
                     : subEntryForm.fabricationType;
-                  await addSubEntry(selectedOrderId, subEntryDialog.step, { ...subEntryForm, fabricationType: finalType });
+                  await addSubEntry(selectedOrderId, subEntryDialog.step, { ...subEntryForm, fabricationType: finalType }, activeUnit);
                   setSubEntryDialog(null);
                   setCustomFabricationType('');
                 } catch (err) {}

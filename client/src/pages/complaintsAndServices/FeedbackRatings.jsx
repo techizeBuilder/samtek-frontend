@@ -10,10 +10,23 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { useToast } from '@/hooks/use-toast';
 import { Star, CheckCircle, User, Package, Phone, MessageCircle, Mail, BadgeCheck, Link2 } from 'lucide-react';
 
+// One consolidated feedback entity per sales order — a multi-machine order
+// used to render one feedback card per machine, asking the same customer to
+// rate the same visit multiple times. Grouping by orderId means one rating
+// covers the whole order (see bulkUpdateInstallationSchedule, which shares
+// one feedback token/email across every machine of the order too).
+const groupByOrder = (list) => Object.values(
+  (list || []).reduce((acc, o) => {
+    if (!acc[o.orderId]) acc[o.orderId] = { orderId: o.orderId, jobs: [] };
+    acc[o.orderId].jobs.push(o);
+    return acc;
+  }, {})
+);
+
 export default function FeedbackRatings() {
   const { toast } = useToast();
   const qc = useQueryClient();
-  const [selectedOrder, setSelectedOrder] = useState(null);
+  const [selectedGroup, setSelectedGroup] = useState(null);
   const [rating, setRating] = useState(0);
 
   const { data: ordersData, isLoading } = useQuery({
@@ -22,10 +35,10 @@ export default function FeedbackRatings() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }) => apiRequest('PUT', `/api/complaints/dispatched-orders/${id}/feedback`, data),
+    mutationFn: ({ ids, data }) => apiRequest('PUT', `/api/complaints/dispatched-orders/bulk/feedback`, { ids, ...data }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['dispatched-orders'] });
-      setSelectedOrder(null);
+      setSelectedGroup(null);
       setRating(0);
       toast({ title: 'Success', description: 'Feedback and rating saved' });
     },
@@ -35,11 +48,12 @@ export default function FeedbackRatings() {
   });
 
   const orders = ordersData?.data || [];
+  const groups = groupByOrder(orders);
 
-  // Filter for orders where installation is completed
-  const completedOrders = orders.filter(o => o.installation?.status === 'Completed');
-  const pendingFeedback = completedOrders.filter(o => !o.feedback?.rating);
-  const receivedFeedback = completedOrders.filter(o => o.feedback?.rating > 0);
+  // Feedback only makes sense once every machine of the order is installed.
+  const completedOrders = groups.filter(g => g.jobs.every(o => o.installation?.status === 'Completed'));
+  const pendingFeedback = completedOrders.filter(g => !g.jobs[0].feedback?.rating);
+  const receivedFeedback = completedOrders.filter(g => g.jobs[0].feedback?.rating > 0);
 
   const handleUpdate = (e) => {
     e.preventDefault();
@@ -49,19 +63,21 @@ export default function FeedbackRatings() {
     }
     const fd = new FormData(e.target);
     updateMutation.mutate({
-      id: selectedOrder._id,
+      ids: selectedGroup.jobs.map(j => j._id),
       data: { rating, comments: fd.get('comments') }
     });
   };
 
-  const handleSelectOrder = (order) => {
-    setSelectedOrder(order);
-    setRating(order.feedback?.rating || 0);
+  const handleSelectGroup = (group) => {
+    setSelectedGroup(group);
+    setRating(group.jobs[0].feedback?.rating || 0);
   };
 
-  const handleWhatsApp = (phone, order, e) => {
+  const handleWhatsApp = (phone, group, e) => {
     if (e) e.stopPropagation();
-    const text = `Hello ${order.customerName},\nWe would love to get your feedback on the installation of your ${order.machineName}. How was your experience with our technician and the product?`;
+    const rep = group.jobs[0];
+    const machines = group.jobs.map(j => j.machineName).join(', ');
+    const text = `Hello ${rep.customerName},\nWe would love to get your feedback on the installation of your ${machines}. How was your experience with our technician and the product?`;
     window.open(`https://wa.me/${phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(text)}`, '_blank');
   };
 
@@ -70,10 +86,12 @@ export default function FeedbackRatings() {
     window.open(`tel:${phone}`);
   };
 
-  const handleEmail = (email, order, e) => {
+  const handleEmail = (email, group, e) => {
     if (e) e.stopPropagation();
-    const subject = `Feedback Request: ${order.machineName}`;
-    const body = `Hello ${order.customerName},\n\nWe hope you are satisfied with the installation of your ${order.machineName}. We would appreciate your feedback on our service and product quality.\n\nThank you,\nSamtek Team`;
+    const rep = group.jobs[0];
+    const machines = group.jobs.map(j => j.machineName).join(', ');
+    const subject = `Feedback Request: ${machines}`;
+    const body = `Hello ${rep.customerName},\n\nWe hope you are satisfied with the installation of your ${machines}. We would appreciate your feedback on our service and product quality.\n\nThank you,\nSamtek Team`;
     window.open(`mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
   };
 
@@ -115,9 +133,9 @@ export default function FeedbackRatings() {
                   <p className="text-lg font-medium text-slate-600">All feedback collected!</p>
                 </CardContent></Card>
               ) : (
-                <FeedbackList 
-                  list={pendingFeedback} 
-                  handleSelectOrder={handleSelectOrder}
+                <FeedbackList
+                  list={pendingFeedback}
+                  handleSelectGroup={handleSelectGroup}
                   handleWhatsApp={handleWhatsApp}
                   handleCall={handleCall}
                   handleEmail={handleEmail}
@@ -133,9 +151,9 @@ export default function FeedbackRatings() {
                   <p className="text-lg font-medium text-slate-600">No feedback received yet</p>
                 </CardContent></Card>
               ) : (
-                <FeedbackList 
-                  list={receivedFeedback} 
-                  handleSelectOrder={handleSelectOrder}
+                <FeedbackList
+                  list={receivedFeedback}
+                  handleSelectGroup={handleSelectGroup}
                   handleWhatsApp={handleWhatsApp}
                   handleCall={handleCall}
                   handleEmail={handleEmail}
@@ -148,21 +166,21 @@ export default function FeedbackRatings() {
       </div>
 
       {/* Dialog Modal */}
-      <Dialog open={!!selectedOrder} onOpenChange={(open) => { if (!open) { setSelectedOrder(null); setRating(0); } }}>
+      <Dialog open={!!selectedGroup} onOpenChange={(open) => { if (!open) { setSelectedGroup(null); setRating(0); } }}>
         <DialogContent className="sm:max-w-[420px]">
           <DialogHeader>
             <DialogTitle>Customer Feedback</DialogTitle>
             <DialogDescription>
-              Collect feedback from {selectedOrder?.customerName}
+              Collect feedback from {selectedGroup?.jobs[0]?.customerName}
             </DialogDescription>
           </DialogHeader>
 
-          {selectedOrder && (
+          {selectedGroup && (
             <div className="pt-2">
               <div className="mb-5 p-3 bg-amber-50/50 rounded-lg border border-amber-100">
-                <p className="text-sm font-medium text-slate-800">{selectedOrder.customerName}</p>
-                <p className="text-xs text-slate-500 mt-1">{selectedOrder.machineName}</p>
-                <p className="text-xs text-slate-500">Installed by: {selectedOrder.installation?.technicianName || 'Unknown'}</p>
+                <p className="text-sm font-medium text-slate-800">{selectedGroup.jobs[0].customerName}</p>
+                <p className="text-xs text-slate-500 mt-1">{selectedGroup.jobs.map(j => j.machineName).join(', ')}</p>
+                <p className="text-xs text-slate-500">Installed by: {selectedGroup.jobs[0].installation?.technicianName || 'Unknown'}</p>
               </div>
 
               <form onSubmit={handleUpdate} className="space-y-5">
@@ -197,7 +215,7 @@ export default function FeedbackRatings() {
                   <Textarea
                     name="comments"
                     rows={3}
-                    defaultValue={selectedOrder.feedback?.comments}
+                    defaultValue={selectedGroup.jobs[0].feedback?.comments}
                     placeholder="What did the customer say about the product and installation?"
                   />
                 </div>
@@ -218,24 +236,26 @@ export default function FeedbackRatings() {
   );
 }
 
-function FeedbackList({ list, handleSelectOrder, handleWhatsApp, handleCall, handleEmail, canEdit = true }) {
+function FeedbackList({ list, handleSelectGroup, handleWhatsApp, handleCall, handleEmail, canEdit = true }) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-      {list.map(order => (
+      {list.map(group => {
+        const rep = group.jobs[0];
+        return (
         <Card
-          key={order._id}
+          key={group.orderId}
           className={`transition-all ${canEdit ? 'cursor-pointer hover:border-amber-400 hover:shadow-md' : 'cursor-default opacity-90'}`}
-          onClick={() => canEdit && handleSelectOrder(order)}
+          onClick={() => canEdit && handleSelectGroup(group)}
         >
           <CardContent className="p-5">
             <div className="flex justify-between items-start mb-3">
               <div>
-                <h3 className="font-semibold text-slate-800">{order.customerName || 'Unknown Customer'}</h3>
-                <p className="text-sm text-slate-500">{order.orderId}</p>
+                <h3 className="font-semibold text-slate-800">{rep.customerName || 'Unknown Customer'}</h3>
+                <p className="text-sm text-slate-500">{rep.orderId}</p>
               </div>
-              {order.feedback?.rating ? (
+              {rep.feedback?.rating ? (
                 <div className="flex bg-amber-50 text-amber-600 px-2.5 py-1 rounded-full items-center text-xs font-medium gap-1">
-                  {order.feedback.rating}
+                  {rep.feedback.rating}
                   <Star className="w-3.5 h-3.5 fill-amber-500 text-amber-500" />
                 </div>
               ) : (
@@ -246,18 +266,22 @@ function FeedbackList({ list, handleSelectOrder, handleWhatsApp, handleCall, han
             </div>
 
             <div className="space-y-2 text-sm mb-3">
-              <div className="flex items-center text-slate-600">
-                <Package className="w-4 h-4 mr-2 text-slate-400" />
-                {order.machineName}
+              <div className="space-y-1 max-h-20 overflow-y-auto">
+                {group.jobs.map(j => (
+                  <div key={j._id} className="flex items-center text-slate-600">
+                    <Package className="w-4 h-4 mr-2 text-slate-400 flex-shrink-0" />
+                    <span className="truncate">{j.machineName}</span>
+                  </div>
+                ))}
               </div>
               <div className="flex items-center text-slate-600">
                 <User className="w-4 h-4 mr-2 text-slate-400" />
-                Tech: {order.installation?.technicianName || 'Unknown'}
+                Tech: {rep.installation?.technicianName || 'Unknown'}
               </div>
             </div>
 
             {/* Show if feedback was submitted by customer via form */}
-            {order.feedback?.submittedViaForm && (
+            {rep.feedback?.submittedViaForm && (
               <div className="flex items-center gap-1.5 text-xs text-emerald-600 bg-emerald-50 rounded-full px-3 py-1 mb-2 w-fit">
                 <BadgeCheck className="w-3.5 h-3.5" />
                 Submitted by customer
@@ -265,38 +289,39 @@ function FeedbackList({ list, handleSelectOrder, handleWhatsApp, handleCall, han
             )}
 
             {/* Show if feedback link was sent (pending feedback) */}
-            {!order.feedback?.rating && order.feedback?.feedbackToken && (
+            {!rep.feedback?.rating && rep.feedback?.feedbackToken && (
               <div className="flex items-center gap-1.5 text-xs text-blue-600 bg-blue-50 rounded-full px-3 py-1 mb-2 w-fit">
                 <Link2 className="w-3.5 h-3.5" />
                 Feedback link sent
               </div>
             )}
 
-            {order.feedback?.comments && (
-              <p className="text-xs text-slate-500 mt-3 italic border-t pt-2">"{order.feedback.comments}"</p>
+            {rep.feedback?.comments && (
+              <p className="text-xs text-slate-500 mt-3 italic border-t pt-2">"{rep.feedback.comments}"</p>
             )}
 
             {/* Communication buttons for pending feedback only */}
-            {!order.feedback?.rating && (
+            {!rep.feedback?.rating && (
               <div className="flex gap-2 border-t pt-3 mt-3">
-                <Button variant="outline" size="sm" className="flex-1 bg-green-50 text-green-600 hover:bg-green-100 border-green-200" onClick={(e) => handleWhatsApp(order.customerContact, order, e)}>
+                <Button variant="outline" size="sm" className="flex-1 bg-green-50 text-green-600 hover:bg-green-100 border-green-200" onClick={(e) => handleWhatsApp(rep.customerContact, group, e)}>
                   <MessageCircle className="w-4 h-4 mr-1.5" /> WA
                 </Button>
-                <Button variant="outline" size="sm" className="flex-1 bg-blue-50 text-blue-600 hover:bg-blue-100 border-blue-200" onClick={(e) => handleCall(order.customerContact, e)}>
+                <Button variant="outline" size="sm" className="flex-1 bg-blue-50 text-blue-600 hover:bg-blue-100 border-blue-200" onClick={(e) => handleCall(rep.customerContact, e)}>
                   <Phone className="w-4 h-4 mr-1.5" /> Call
                 </Button>
-                <Button variant="outline" size="sm" className="flex-1 bg-slate-50 text-slate-600 hover:bg-slate-100 border-slate-200" onClick={(e) => handleEmail('customer@example.com', order, e)}>
+                <Button variant="outline" size="sm" className="flex-1 bg-slate-50 text-slate-600 hover:bg-slate-100 border-slate-200" onClick={(e) => handleEmail('customer@example.com', group, e)}>
                   <Mail className="w-4 h-4 mr-1.5" /> Mail
                 </Button>
               </div>
             )}
 
             {canEdit && (
-              <p className="text-xs text-slate-400 mt-3 text-center">Click to {order.feedback?.rating ? 'update' : 'add'} feedback</p>
+              <p className="text-xs text-slate-400 mt-3 text-center">Click to {rep.feedback?.rating ? 'update' : 'add'} feedback</p>
             )}
           </CardContent>
         </Card>
-      ))}
+        );
+      })}
     </div>
   );
 }

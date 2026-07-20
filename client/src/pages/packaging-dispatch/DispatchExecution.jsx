@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { Truck, CheckCircle2, AlertTriangle, X, MapPin, Clock, Upload, FileText, FileCheck, Eye } from 'lucide-react';
+import { Truck, CheckCircle2, AlertTriangle, X, MapPin, Clock, Upload, FileText, FileCheck, Eye, Package } from 'lucide-react';
 import DocumentViewerModal from '@/components/DocumentViewerModal';
 
 const statusColor = {
@@ -15,14 +15,21 @@ const statusColor = {
   Delivered: 'bg-emerald-100 text-emerald-700',
 };
 
-function ExecuteDispatchModal({ dispatch, onClose }) {
+// `group.jobs` is every DispatchOrder (one per machine) of a single sales
+// order that's still eligible for this action. One form submit here drives
+// all of them together — the same vehicle/driver/documents apply to the
+// whole shipment, since it physically travels as one truckload — while each
+// machine keeps its own DispatchOrder record underneath for serial-number
+// tracking in the card list and Dispatch History.
+function ExecuteDispatchModal({ group, onClose }) {
   const { executeDispatch } = usePackagingDispatch();
   const { toast } = useToast();
+  const rep = group.jobs[0];
   const [form, setForm] = useState({
-    vehicleNumber: dispatch.vehicleNumber || dispatch.gatePassVehicleNumber || '',
-    driverName: dispatch.driverName || dispatch.gatePassDriverName || '',
-    driverContact: dispatch.driverContact || dispatch.gatePassContactNumber || '',
-    transportCompanyName: dispatch.transportCompanyName || '',
+    vehicleNumber: rep.vehicleNumber || rep.gatePassVehicleNumber || '',
+    driverName: rep.driverName || rep.gatePassDriverName || '',
+    driverContact: rep.driverContact || rep.gatePassContactNumber || '',
+    transportCompanyName: rep.transportCompanyName || '',
     notes: '',
   });
   const [files, setFiles] = useState({ noc: null, ewayBill: null, invoice: null });
@@ -39,14 +46,23 @@ function ExecuteDispatchModal({ dispatch, onClose }) {
     }
     setLoading(true);
     try {
-      const formData = new FormData();
-      Object.entries(form).forEach(([k, v]) => formData.append(k, v));
-      formData.append('noc', files.noc);
-      formData.append('ewayBill', files.ewayBill);
-      formData.append('invoice', files.invoice);
+      // Upload the 3 documents ONCE, against the first machine's dispatch
+      // record — the rest of the order's machines (`siblingIds`) share that
+      // same NOC/E-Way Bill/Invoice set server-side, instead of the browser
+      // re-uploading identical files once per machine.
+      const [first, ...siblings] = group.jobs;
+      const fd = new FormData();
+      Object.entries(form).forEach(([k, v]) => fd.append(k, v));
+      fd.append('noc', files.noc);
+      fd.append('ewayBill', files.ewayBill);
+      fd.append('invoice', files.invoice);
+      if (siblings.length) fd.append('siblingIds', JSON.stringify(siblings.map(j => j._id)));
 
-      await executeDispatch(dispatch._id, formData);
-      toast({ title: 'Dispatched', description: `${dispatch.dispatchId} is now dispatched` });
+      await executeDispatch(first._id, fd);
+      toast({
+        title: 'Dispatched',
+        description: `Order ${rep.orderId} is now dispatched (${group.jobs.length} machine${group.jobs.length > 1 ? 's' : ''})`
+      });
       onClose();
     } catch (e) {
       toast({ title: 'Error', description: e.message, variant: 'destructive' });
@@ -55,7 +71,7 @@ function ExecuteDispatchModal({ dispatch, onClose }) {
     }
   };
 
-  const hasGatePass = dispatch.gatePassGenerated;
+  const hasGatePass = rep.gatePassGenerated;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6">
@@ -75,10 +91,17 @@ function ExecuteDispatchModal({ dispatch, onClose }) {
         <div className="overflow-y-auto flex-1 px-7 py-5 space-y-4">
           {/* Dispatch Info */}
           <div className="p-4 bg-slate-50 rounded-xl text-sm border border-slate-100">
-            <p className="font-semibold text-slate-700">{dispatch.dispatchId}</p>
-            <p className="text-slate-500 mt-0.5">{dispatch.machineName} → {dispatch.customerName || 'Customer'}</p>
-            {dispatch.deliveryAddress && (
-              <p className="text-slate-400 text-xs mt-1">{dispatch.deliveryAddress}</p>
+            <p className="font-semibold text-slate-700">{rep.orderId} — {group.jobs.length} machine{group.jobs.length > 1 ? 's' : ''}</p>
+            <p className="text-slate-500 mt-0.5">{rep.customerName || 'Customer'}</p>
+            {rep.deliveryAddress && (
+              <p className="text-slate-400 text-xs mt-1">{rep.deliveryAddress}</p>
+            )}
+            {group.jobs.length > 1 && (
+              <ul className="mt-2 pt-2 border-t border-slate-200 space-y-0.5">
+                {group.jobs.map(j => (
+                  <li key={j._id} className="text-xs text-slate-500">{j.machineName} · SN: {j.serialNumber}</li>
+                ))}
+              </ul>
             )}
           </div>
 
@@ -87,7 +110,7 @@ function ExecuteDispatchModal({ dispatch, onClose }) {
             <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-lg">
               <CheckCircle2 className="h-4 w-4 text-emerald-600 flex-shrink-0" />
               <p className="text-xs text-emerald-700 font-medium">
-                Gate Pass details auto-filled — {dispatch.gatePassNumber}
+                Gate Pass details auto-filled — {rep.gatePassNumber}
               </p>
             </div>
           )}
@@ -248,20 +271,24 @@ function FileUploadSlot({ label, fieldName, icon: Icon, file, onChange }) {
   );
 }
 
-function DeliveryModal({ dispatch, onClose }) {
+function DeliveryModal({ group, onClose }) {
   const { confirmDelivery } = usePackagingDispatch();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
+  const rep = group.jobs[0];
 
-  const hasDocs = !!(dispatch.deliveryDocs && (
-    dispatch.deliveryDocs.noc || dispatch.deliveryDocs.ewayBill || dispatch.deliveryDocs.invoice
+  const hasDocs = group.jobs.some(d => d.deliveryDocs && (
+    d.deliveryDocs.noc || d.deliveryDocs.ewayBill || d.deliveryDocs.invoice
   ));
 
   const handle = async () => {
     setLoading(true);
     try {
-      await confirmDelivery(dispatch._id, { deliveryOTPVerified: true });
-      toast({ title: 'Delivery confirmed', description: `${dispatch.dispatchId} delivered and moved to Dispatch History` });
+      await Promise.all(group.jobs.map(j => confirmDelivery(j._id, { deliveryOTPVerified: true })));
+      toast({
+        title: 'Delivery confirmed',
+        description: `Order ${rep.orderId} delivered and moved to Dispatch History (${group.jobs.length} machine${group.jobs.length > 1 ? 's' : ''})`
+      });
       onClose();
     } catch (e) {
       toast({ title: 'Error', description: e.message, variant: 'destructive' });
@@ -287,8 +314,8 @@ function DeliveryModal({ dispatch, onClose }) {
         {/* Body */}
         <div className="px-6 py-5 space-y-4">
           <div className="p-3 bg-slate-50 rounded-xl text-sm border border-slate-100">
-            <p className="font-semibold text-slate-700">{dispatch.dispatchId}</p>
-            <p className="text-slate-500 mt-0.5">{dispatch.machineName} → {dispatch.customerName || 'Customer'}</p>
+            <p className="font-semibold text-slate-700">{rep.orderId} — {group.jobs.length} machine{group.jobs.length > 1 ? 's' : ''}</p>
+            <p className="text-slate-500 mt-0.5">{rep.customerName || 'Customer'}</p>
           </div>
 
           {hasDocs ? (
@@ -318,25 +345,39 @@ function DeliveryModal({ dispatch, onClose }) {
   );
 }
 
-function DispatchCard({ dispatch }) {
+// One card per ORDER — `group.jobs` is every DispatchOrder (one per machine)
+// of that order that's still active. Bulk actions below only ever touch the
+// subset of `group.jobs` that's actually eligible for a given transition
+// (e.g. only the ones still 'Dispatched' for Mark In Transit), so a slightly
+// out-of-sync sibling never blocks or errors the whole order's action.
+function DispatchGroupCard({ group }) {
   const { markInTransit, closeDispatch } = usePackagingDispatch();
   const { toast } = useToast();
   const [modal, setModal] = useState(null);
   const [loading, setLoading] = useState(false);
 
+  const rep = group.jobs[0];
   const today = new Date().toISOString().split('T')[0];
-  const isDelayed = dispatch.expectedDeliveryDate && dispatch.expectedDeliveryDate < today &&
-    ['Dispatched', 'In Transit'].includes(dispatch.status);
+  const isDelayed = group.jobs.some(d => d.expectedDeliveryDate && d.expectedDeliveryDate < today &&
+    ['Dispatched', 'In Transit'].includes(d.status));
 
-  const hasDocs = !!(dispatch.deliveryDocs && (
-    dispatch.deliveryDocs.noc || dispatch.deliveryDocs.ewayBill || dispatch.deliveryDocs.invoice
+  const hasDocs = group.jobs.some(d => d.deliveryDocs && (
+    d.deliveryDocs.noc || d.deliveryDocs.ewayBill || d.deliveryDocs.invoice
   ));
+
+  const readyJobs = group.jobs.filter(d => d.status === 'Ready');
+  const dispatchedJobs = group.jobs.filter(d => d.status === 'Dispatched');
+  const transitJobs = group.jobs.filter(d => d.status === 'In Transit');
+  const deliveredJobs = group.jobs.filter(d => d.status === 'Delivered'); // legacy fallback
+
+  const statusCounts = group.jobs.reduce((acc, d) => { acc[d.status] = (acc[d.status] || 0) + 1; return acc; }, {});
+  const uniformStatus = Object.keys(statusCounts).length === 1 ? group.jobs[0].status : null;
 
   const handleInTransit = async () => {
     setLoading(true);
     try {
-      await markInTransit(dispatch._id);
-      toast({ title: 'Status updated', description: `${dispatch.dispatchId} is In Transit` });
+      await Promise.all(dispatchedJobs.map(d => markInTransit(d._id)));
+      toast({ title: 'Status updated', description: `Order ${rep.orderId} is In Transit` });
     } catch (e) {
       toast({ title: 'Error', description: e.message, variant: 'destructive' });
     } finally {
@@ -347,8 +388,8 @@ function DispatchCard({ dispatch }) {
   const handleClose = async () => {
     setLoading(true);
     try {
-      await closeDispatch(dispatch._id);
-      toast({ title: 'Dispatch closed', description: `${dispatch.dispatchId} is closed` });
+      await Promise.all(deliveredJobs.map(d => closeDispatch(d._id)));
+      toast({ title: 'Dispatch closed', description: `Order ${rep.orderId} is closed` });
     } catch (e) {
       toast({ title: 'Error', description: e.message, variant: 'destructive' });
     } finally {
@@ -358,15 +399,15 @@ function DispatchCard({ dispatch }) {
 
   return (
     <>
-      {modal === 'execute' && <ExecuteDispatchModal dispatch={dispatch} onClose={() => setModal(null)} />}
-      {modal === 'deliver' && <DeliveryModal dispatch={dispatch} onClose={() => setModal(null)} />}
+      {modal === 'execute' && <ExecuteDispatchModal group={{ ...group, jobs: readyJobs }} onClose={() => setModal(null)} />}
+      {modal === 'deliver' && <DeliveryModal group={{ ...group, jobs: [...dispatchedJobs, ...transitJobs] }} onClose={() => setModal(null)} />}
       {modal === 'documents' && (
         <DocumentViewerModal
-          title={`${dispatch.dispatchId} — Delivery Documents`}
+          title={`${rep.orderId} — Delivery Documents`}
           documents={[
-            { label: 'NOC (No Objection Certificate)', path: dispatch.deliveryDocs?.noc },
-            { label: 'E-Way Bill', path: dispatch.deliveryDocs?.ewayBill },
-            { label: 'Invoice', path: dispatch.deliveryDocs?.invoice },
+            { label: 'NOC (No Objection Certificate)', path: rep.deliveryDocs?.noc },
+            { label: 'E-Way Bill', path: rep.deliveryDocs?.ewayBill },
+            { label: 'Invoice', path: rep.deliveryDocs?.invoice },
           ]}
           onClose={() => setModal(null)}
         />
@@ -377,47 +418,64 @@ function DispatchCard({ dispatch }) {
           <div className="flex justify-between items-start mb-3">
             <div>
               <div className="flex items-center gap-2">
-                <p className="font-semibold text-slate-800">{dispatch.dispatchId}</p>
+                <p className="font-semibold text-slate-800">{rep.orderId}</p>
                 {isDelayed && <AlertTriangle className="h-4 w-4 text-red-500" />}
               </div>
-              <p className="text-sm text-slate-500">{dispatch.machineName} — {dispatch.machineCode}</p>
+              <p className="text-sm text-slate-500">{group.jobs.length} machine{group.jobs.length > 1 ? 's' : ''}</p>
             </div>
-            <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${statusColor[dispatch.status]}`}>
-              {dispatch.status}
-            </span>
+            {uniformStatus ? (
+              <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${statusColor[uniformStatus]}`}>
+                {uniformStatus}
+              </span>
+            ) : (
+              <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-600" title={Object.entries(statusCounts).map(([s, n]) => `${n} ${s}`).join(', ')}>
+                Mixed
+              </span>
+            )}
           </div>
 
           <div className="space-y-1.5 text-sm text-slate-600 mb-4">
+            <div className="space-y-1 max-h-24 overflow-y-auto pr-1">
+              {group.jobs.map(d => (
+                <div key={d._id} className="flex items-start gap-2">
+                  <Package className="h-3.5 w-3.5 text-slate-400 mt-0.5 flex-shrink-0" />
+                  <span>{d.machineName} — <span className="text-slate-400">SN: {d.serialNumber}</span></span>
+                  {!uniformStatus && (
+                    <span className={`ml-auto text-[10px] font-medium px-1.5 py-0.5 rounded-full ${statusColor[d.status]}`}>{d.status}</span>
+                  )}
+                </div>
+              ))}
+            </div>
             <div className="flex gap-2 items-start">
               <MapPin className="h-3.5 w-3.5 text-slate-400 mt-0.5 flex-shrink-0" />
-              <span>{dispatch.customerName || '—'}{dispatch.deliveryAddress ? ` · ${dispatch.deliveryAddress.slice(0, 40)}...` : ''}</span>
+              <span>{rep.customerName || '—'}{rep.deliveryAddress ? ` · ${rep.deliveryAddress.slice(0, 40)}...` : ''}</span>
             </div>
             <div className="flex gap-2">
               <Truck className="h-3.5 w-3.5 text-slate-400 mt-0.5" />
-              <span>{dispatch.transportType}{dispatch.vehicleNumber ? ` · ${dispatch.vehicleNumber}` : ''}</span>
+              <span>{rep.transportType}{rep.vehicleNumber ? ` · ${rep.vehicleNumber}` : ''}</span>
             </div>
-            {dispatch.trackingId && (
+            {rep.trackingId && (
               <div className="flex gap-2">
                 <Clock className="h-3.5 w-3.5 text-slate-400 mt-0.5" />
-                <span className="font-mono text-xs">{dispatch.trackingId}</span>
+                <span className="font-mono text-xs">{rep.trackingId}</span>
               </div>
             )}
-            {dispatch.expectedDeliveryDate && (
+            {rep.expectedDeliveryDate && (
               <div className={`flex gap-2 ${isDelayed ? 'text-red-600 font-medium' : ''}`}>
                 <Clock className="h-3.5 w-3.5 mt-0.5" />
-                <span>Expected: {new Date(dispatch.expectedDeliveryDate).toLocaleDateString('en-IN')}{isDelayed ? ' (DELAYED)' : ''}</span>
+                <span>Expected: {new Date(rep.expectedDeliveryDate).toLocaleDateString('en-IN')}{isDelayed ? ' (DELAYED)' : ''}</span>
               </div>
             )}
           </div>
 
           <div className="flex gap-2 flex-wrap">
-            {dispatch.status === 'Ready' && (
+            {readyJobs.length > 0 && (
               <Button size="sm" className="flex-1" onClick={() => setModal('execute')}>
                 <Truck className="h-4 w-4 mr-1.5" />
-                Execute Dispatch
+                Execute Dispatch{readyJobs.length > 1 ? ` (${readyJobs.length})` : ''}
               </Button>
             )}
-            {dispatch.status === 'Dispatched' && (
+            {dispatchedJobs.length > 0 && (
               <>
                 {hasDocs && (
                   <Button size="sm" variant="outline" className="flex-1" onClick={() => setModal('documents')}>
@@ -426,31 +484,25 @@ function DispatchCard({ dispatch }) {
                   </Button>
                 )}
                 <Button size="sm" variant="outline" className="flex-1" onClick={handleInTransit} disabled={loading}>
-                  Mark In Transit
-                </Button>
-                <Button size="sm" className="flex-1" onClick={() => setModal('deliver')}>
-                  <CheckCircle2 className="h-4 w-4 mr-1.5" />
-                  Confirm Delivery
+                  Mark In Transit{dispatchedJobs.length > 1 ? ` (${dispatchedJobs.length})` : ''}
                 </Button>
               </>
             )}
-            {dispatch.status === 'In Transit' && (
-              <>
-                {hasDocs && (
-                  <Button size="sm" variant="outline" className="flex-1" onClick={() => setModal('documents')}>
-                    <Eye className="h-4 w-4 mr-1.5" />
-                    Docs
-                  </Button>
-                )}
-                <Button size="sm" className="flex-1" onClick={() => setModal('deliver')}>
-                  <CheckCircle2 className="h-4 w-4 mr-1.5" />
-                  Confirm Delivery
-                </Button>
-              </>
+            {(dispatchedJobs.length > 0 || transitJobs.length > 0) && (
+              <Button size="sm" className="flex-1" onClick={() => setModal('deliver')}>
+                <CheckCircle2 className="h-4 w-4 mr-1.5" />
+                Confirm Delivery{(dispatchedJobs.length + transitJobs.length) > 1 ? ` (${dispatchedJobs.length + transitJobs.length})` : ''}
+              </Button>
+            )}
+            {transitJobs.length > 0 && hasDocs && dispatchedJobs.length === 0 && (
+              <Button size="sm" variant="outline" className="flex-1" onClick={() => setModal('documents')}>
+                <Eye className="h-4 w-4 mr-1.5" />
+                Docs
+              </Button>
             )}
             {/* Legacy fallback: dispatches that reached 'Delivered' before this step was
                 merged into Confirm Delivery still need a way to close out. */}
-            {dispatch.status === 'Delivered' && (
+            {deliveredJobs.length > 0 && (
               <>
                 {hasDocs && (
                   <Button size="sm" variant="outline" className="flex-1" onClick={() => setModal('documents')}>
@@ -459,7 +511,7 @@ function DispatchCard({ dispatch }) {
                   </Button>
                 )}
                 <Button size="sm" variant="outline" className="flex-1" onClick={handleClose} disabled={loading}>
-                  Close Dispatch
+                  Close Dispatch{deliveredJobs.length > 1 ? ` (${deliveredJobs.length})` : ''}
                 </Button>
               </>
             )}
@@ -481,6 +533,19 @@ export default function DispatchExecution() {
     if (filter === 'all') return activeStatuses.includes(d.status);
     return d.status === filter;
   });
+
+  // One card per ORDER, not per machine — an order with 8 machines used to
+  // render 8 near-identical "Active Dispatch" cards, each needing its own
+  // Execute/In-Transit/Confirm-Delivery clicks. Grouping here still keeps
+  // each machine's own DispatchOrder underneath (for serial-number tracking)
+  // — only the action buttons are now one entity per order.
+  const orderGroups = Object.values(
+    filtered.reduce((acc, d) => {
+      if (!acc[d.orderId]) acc[d.orderId] = { orderId: d.orderId, jobs: [] };
+      acc[d.orderId].jobs.push(d);
+      return acc;
+    }, {})
+  );
 
   return (
     <div className="p-6 space-y-6 bg-slate-50 min-h-screen">
@@ -511,7 +576,7 @@ export default function DispatchExecution() {
 
       {dispatchOrdersLoading ? (
         <div className="text-center text-slate-500 py-16">Loading...</div>
-      ) : filtered.length === 0 ? (
+      ) : orderGroups.length === 0 ? (
         <div className="text-center py-16">
           <Truck className="h-12 w-12 text-slate-300 mx-auto mb-3" />
           <p className="text-slate-500 font-medium">No active dispatches</p>
@@ -519,7 +584,7 @@ export default function DispatchExecution() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {filtered.map(d => <DispatchCard key={d._id} dispatch={d} />)}
+          {orderGroups.map(group => <DispatchGroupCard key={group.orderId} group={group} />)}
         </div>
       )}
     </div>

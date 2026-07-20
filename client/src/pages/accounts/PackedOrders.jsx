@@ -426,24 +426,51 @@ const PackedOrders = () => {
                           }) : 'N/A'}
                         </TableCell>
 
-                        {/* Items Packed */}
-                        <TableCell>
-                          <div className="space-y-1">
-                            <div className="font-medium text-slate-800 text-sm">
-                              {item.machineName}
-                            </div>
-                            {item.itemsPacked && item.itemsPacked.length > 0 && (
-                              <div className="text-[10px] text-slate-400 bg-slate-100/60 p-1 rounded border border-slate-100 max-w-[180px]">
-                                {/* <span className="font-semibold">Items: </span>
-                                {item.itemsPacked.map((p, idx) => (
-                                  <span key={idx}>
-                                    {p.productName} (x{p.quantity})
-                                    {idx < item.itemsPacked.length - 1 ? ', ' : ''}
-                                  </span>
-                                ))} */}
+                        {/* Items Packed — one order can bundle several packed
+                            machines. Keep the row compact (one line + count)
+                            and reveal the full per-machine/SN list on hover,
+                            instead of stacking every machine inline and
+                            blowing out the row height. */}
+                        <TableCell className="max-w-[220px] align-top">
+                          {(() => {
+                            const list = item.packedJobs && item.packedJobs.length > 0 ? item.packedJobs : [item];
+                            const first = list[0];
+                            const extra = list.length - 1;
+                            return (
+                              // `group` + `relative` sit on this inner, content-sized wrapper
+                              // (not the <td>, which stretches to the tall row height) so the
+                              // popup anchors flush against the visible text — no dead-space
+                              // gap the mouse has to cross (which was breaking the hover chain
+                              // before the pointer ever reached the scrollable list).
+                              <div className="relative inline-block group cursor-pointer">
+                                <div className="truncate">
+                                  <span className="font-medium text-slate-800 text-sm">{first.machineName}</span>
+                                  {extra > 0 && (
+                                    <span className="ml-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 align-middle">
+                                      +{extra} more
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-[10px] text-slate-400 truncate">SN: {first.serialNumber || 'N/A'}</div>
+
+                                {list.length > 1 && (
+                                  <div className="absolute left-0 top-full invisible opacity-0 -translate-y-1 group-hover:visible group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-150 z-50 bg-slate-900 text-slate-100 text-xs p-3 rounded-lg shadow-xl w-64 whitespace-normal break-words border border-slate-800">
+                                    <div className="font-semibold text-slate-400 mb-1.5 sticky top-0 bg-slate-900">
+                                      Packed Machines ({list.length}):
+                                    </div>
+                                    <div className="space-y-1.5 max-h-56 overflow-y-auto">
+                                      {list.map((pj, idx) => (
+                                        <div key={pj.jobId || idx} className="leading-normal">
+                                          <div className="font-medium text-slate-100">{pj.machineName}</div>
+                                          <div className="text-slate-400">SN: {pj.serialNumber || 'N/A'}</div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
                               </div>
-                            )}
-                          </div>
+                            );
+                          })()}
                         </TableCell>
 
                         {/* Finance Status */}
@@ -676,17 +703,18 @@ const PackedOrders = () => {
                           : '—'}
                       </div>
                     </div>
-                    <div>
-                      <div className="text-[10px] text-slate-400 uppercase font-semibold">Machine</div>
-                      <div className="text-sm font-bold text-slate-800 mt-0.5">{viewDetailItem.machineName || '—'}</div>
-                    </div>
-                    <div>
-                      <div className="text-[10px] text-slate-400 uppercase font-semibold">Machine Code</div>
-                      <div className="text-sm font-mono font-medium text-slate-600 mt-0.5">{viewDetailItem.machineCode || '—'}</div>
-                    </div>
-                    <div>
-                      <div className="text-[10px] text-slate-400 uppercase font-semibold">Serial Number</div>
-                      <div className="text-sm font-mono font-medium text-slate-600 mt-0.5">{viewDetailItem.serialNumber || '—'}</div>
+                    <div className="col-span-2">
+                      <div className="text-[10px] text-slate-400 uppercase font-semibold mb-1.5">
+                        Packed Machines ({(viewDetailItem.packedJobs || []).length || 1})
+                      </div>
+                      <div className="space-y-1.5">
+                        {(viewDetailItem.packedJobs && viewDetailItem.packedJobs.length > 0 ? viewDetailItem.packedJobs : [viewDetailItem]).map((pj, idx) => (
+                          <div key={pj.jobId || idx} className="flex items-center justify-between text-sm bg-white rounded-lg border border-slate-100 px-3 py-1.5">
+                            <span className="font-bold text-slate-800">{pj.machineName || '—'}</span>
+                            <span className="font-mono text-xs text-slate-500">{pj.machineCode} · SN: {pj.serialNumber || 'N/A'}</span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                     <div>
                       <div className="text-[10px] text-slate-400 uppercase font-semibold">Payment Status</div>
