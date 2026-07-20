@@ -15,7 +15,8 @@ import {
   ArrowRightCircle,
   ShoppingCart,
   Factory,
-  Wrench
+  Wrench,
+  ListChecks
 } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -38,14 +39,42 @@ import {
   DialogFooter,
   DialogDescription
 } from '@/components/ui/dialog';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from '@/components/ui/select';
-import { Label } from '@/components/ui/label';
+
+// Status chip config shared by the per-item status column
+const STATUS_CONFIG = {
+  'Goes to QC': { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200', icon: <ArrowRightCircle className="w-3 h-3" /> },
+  'Approved from QC': { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', icon: <CheckCheck className="w-3 h-3" /> },
+  'Rejected from QC': { bg: 'bg-rose-50', text: 'text-rose-700', border: 'border-rose-200', icon: <XCircle className="w-3 h-3" /> },
+  'Goes to Purchase': { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', icon: <ShoppingCart className="w-3 h-3" /> },
+  'Purchase Completed': { bg: 'bg-teal-50', text: 'text-teal-700', border: 'border-teal-200', icon: <CheckCircle2 className="w-3 h-3" /> },
+  'Goes to Production': { bg: 'bg-violet-50', text: 'text-violet-700', border: 'border-violet-200', icon: <Factory className="w-3 h-3" /> },
+  'Production Completed': { bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-200', icon: <Wrench className="w-3 h-3" /> },
+};
+
+const StatusChip = ({ status }) => {
+  if (!status) return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-500 border border-slate-200">
+      —
+    </span>
+  );
+  const cfg = STATUS_CONFIG[status] || { bg: 'bg-slate-100', text: 'text-slate-600', border: 'border-slate-200', icon: null };
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium w-fit ${cfg.bg} ${cfg.text} border ${cfg.border}`}>
+      {cfg.icon}{status}
+    </span>
+  );
+};
+
+// When can an item be (re-)checked? Same rules as the old single-item flow.
+const itemCheckState = (qcStatus) => {
+  if (qcStatus === 'Goes to QC') return { disabled: true, reason: 'Item is in QC' };
+  if (qcStatus === 'Approved from QC') return { disabled: true, reason: 'QC Approved' };
+  if (qcStatus === 'Goes to Production') return { disabled: true, reason: 'In Production' };
+  if (qcStatus === 'Production Completed') return { disabled: true, reason: 'Production Done' };
+  if (qcStatus === 'Goes to Purchase') return { disabled: true, reason: 'Purchase Pending' };
+  // null / 'Rejected from QC' / 'Purchase Completed' → allowed
+  return { disabled: false, reason: '' };
+};
 
 const StoreOrders = () => {
   const { toast } = useToast();
@@ -54,9 +83,7 @@ const StoreOrders = () => {
   const [selectedOrderDetails, setSelectedOrderDetails] = useState(null);
   const [isLoadingOrderDetails, setIsLoadingOrderDetails] = useState(false);
   const [loadingItemId, setLoadingItemId] = useState(null);
-  const [storeInfoLoading, setStoreInfoLoading] = useState(null); // saleId of the one being saved
-  const [localStoreInfo, setLocalStoreInfo] = useState({}); // saleId -> { productType, isAvailableInInventory }
-  const [checkingInventory, setCheckingInventory] = useState(null); // itemId being auto-checked
+  const [checkingKey, setCheckingKey] = useState(null); // `${orderRowId}` (all) or `${orderRowId}:${itemKey}`
 
   const { data: trackingData, isLoading, refetch } = useQuery({
     queryKey: ['/api/orders/get-tracking'],
@@ -70,19 +97,110 @@ const StoreOrders = () => {
 
   // Filter for orders that are service-verified (pending) or fully approved
   const storeOrders = orders
-  .filter(item => {
-    const isVisible =
-      item.orderStatus === 'approved' ||
-      item.orderStatus === 'pending' ||
-      item.paymentStatus === 'Paid';
+    .filter(item => {
+      const isVisible =
+        item.orderStatus === 'approved' ||
+        item.orderStatus === 'pending' ||
+        item.paymentStatus === 'Paid';
 
-    const matchesSearch =
-      (item.orderCode || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (item.customerName || '').toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesSearch =
+        (item.orderCode || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (item.customerName || '').toLowerCase().includes(searchTerm.toLowerCase());
 
-    return isVisible && matchesSearch;
-  })
-  .sort((a, b) => new Date(b.orderDate) - new Date(a.orderDate));
+      return isVisible && matchesSearch;
+    })
+    .sort((a, b) => new Date(b.orderDate) - new Date(a.orderDate));
+
+  // Build a uniform per-item row list for an order:
+  //  - saleItems (multi-item scoreboard) when the Sale exists
+  //  - order.products as fallback (Store hasn't touched the order yet)
+  const getRowItems = (item) => {
+    const saleItems = (item.saleItems || []).filter(si => (si.quantity || 0) > 0);
+    if (saleItems.length > 0) {
+      const hasPerItemFlow = saleItems.some(si => si.storeQCStatus || si.isAvailableInInventory || si.productType);
+      return saleItems.map(si => ({
+        key: si._id,
+        saleItemId: si._id,
+        name: si.productName,
+        qty: si.quantity,
+        spec: '',
+        productType: si.productType || (!hasPerItemFlow ? item.productType : null),
+        availability: si.isAvailableInInventory || (!hasPerItemFlow ? item.isAvailableInInventory : null),
+        qcStatus: si.storeQCStatus || (!hasPerItemFlow ? item.storeQCStatus : null),
+      }));
+    }
+    return (item.products || []).map((p, idx) => ({
+      key: `${item._id}-p${idx}`,
+      saleItemId: null,
+      name: p.product?.name || '—',
+      qty: p.quantity,
+      spec: p.product?.specification || '',
+      productType: null,
+      availability: null,
+      qcStatus: null,
+    }));
+  };
+
+  const storeInfoEndpoint = (item) =>
+    item.source === 'sale'
+      ? `/api/orders/sale/${item._id}/store-info`
+      : `/api/orders/order/${item.orderId}/store-info`;
+
+  const summarizeResults = (items) => {
+    if (!Array.isArray(items) || !items.length) return '';
+    return items
+      .map(r => `${r.productName}: ${r.storeQCStatus || r.error || '—'}`)
+      .join(' | ');
+  };
+
+  // Check + auto-route ONE item of the order
+  const handleCheckItem = async (item, row) => {
+    setCheckingKey(`${item._id}:${row.key}`);
+    try {
+      const decision = row.saleItemId
+        ? { saleItemId: row.saleItemId, autoCheck: true }
+        : { productName: row.name, autoCheck: true };
+      const response = await apiRequest('PATCH', storeInfoEndpoint(item), { items: [decision] });
+      const results = response?.data?.items || [];
+      toast({
+        title: 'Item Checked',
+        description: summarizeResults(results) || `${row.name} processed.`,
+      });
+      await refetch();
+    } catch (error) {
+      console.error('Item check error:', error);
+      toast({
+        title: 'Check Failed',
+        description: error.response?.data?.message || 'Could not check this item.',
+        variant: 'destructive'
+      });
+    } finally {
+      setCheckingKey(null);
+    }
+  };
+
+  // Check + auto-route ALL items of the order in one shot
+  const handleCheckAll = async (item) => {
+    setCheckingKey(item._id);
+    try {
+      const response = await apiRequest('PATCH', storeInfoEndpoint(item), { autoCheck: true });
+      const results = response?.data?.items || [];
+      toast({
+        title: 'All Items Checked',
+        description: summarizeResults(results) || 'All items processed.',
+      });
+      await refetch();
+    } catch (error) {
+      console.error('Check-all error:', error);
+      toast({
+        title: 'Check Failed',
+        description: error.response?.data?.message || 'Could not check items.',
+        variant: 'destructive'
+      });
+    } finally {
+      setCheckingKey(null);
+    }
+  };
 
   const handleViewOrder = async (item) => {
     if (!item.orderId) {
@@ -104,123 +222,6 @@ const StoreOrders = () => {
     }
   };
 
-  const handleUpdateStoreInfo = async (itemId, updates) => {
-    if (!updates) return;
-    setStoreInfoLoading(itemId);
-    try {
-      // Find the item to determine if it's a Sale or Order
-      const item = orders.find(o => o._id === itemId);
-      
-      let response;
-      if (item.source === 'sale') {
-        // This is a Sale record, use the sale endpoint
-        response = await apiRequest('PATCH', `/api/orders/sale/${itemId}/store-info`, updates);
-      } else {
-        // This is an Order record, use the order endpoint
-        response = await apiRequest('PATCH', `/api/orders/order/${item.orderId}/store-info`, updates);
-      }
-      
-      setLocalStoreInfo(prev => ({
-        ...prev,
-        [itemId]: {
-          ...(prev[itemId] || {}),
-          ...updates,
-          // Carry forward storeQCStatus from server response if available
-          storeQCStatus: response?.data?.storeQCStatus ?? prev[itemId]?.storeQCStatus
-        }
-      }));
-
-      // Refetch data to get updated values from backend
-      await refetch();
-
-      if (updates.isAvailableInInventory === 'Available') {
-        toast({ title: "Sent to QC", description: "Order has been successfully sent to QC department." });
-      } else if (updates.isAvailableInInventory === 'Not Available' || updates.productType === 'In-house Manufactured') {
-        // If the combined condition is met (taking local state into account)
-        const currentAvailability = updates.isAvailableInInventory || localStoreInfo[itemId]?.isAvailableInInventory || orders.find(o => o._id === itemId)?.isAvailableInInventory;
-        const currentType = updates.productType || localStoreInfo[itemId]?.productType || orders.find(o => o._id === itemId)?.productType;
-
-        if (currentAvailability === 'Not Available' && currentType === 'In-house Manufactured') {
-          toast({
-            title: "Production Triggered",
-            description: "Product is not available and in-house manufactured. A Production Order has been created.",
-            variant: "default"
-          });
-        } else {
-          toast({ title: "Saved", description: "Store information updated successfully" });
-        }
-      } else {
-        toast({ title: "Saved", description: "Store information updated successfully" });
-      }
-    } catch (error) {
-      console.error('Store info update error:', error);
-      toast({ 
-        title: "Error", 
-        description: error.response?.data?.message || "Failed to update store info", 
-        variant: "destructive" 
-      });
-    } finally {
-      setStoreInfoLoading(null);
-    }
-  };
-
-  // Auto-fetch productType and inventory status from Inventory for a row
-  const handleCheckInventory = async (item) => {
-    if (!item.products || item.products.length === 0) {
-      toast({ title: 'No Products', description: 'This order has no products linked to inventory.', variant: 'destructive' });
-      return;
-    }
-
-    setCheckingInventory(item._id);
-    try {
-      let overallAvailable = true;
-      let resolvedProductType = null;
-
-      for (const p of item.products) {
-        const productId = p.product?._id || p.product;
-        if (!productId) continue;
-
-        const requiredQty = p.quantity || 1;
-        const response = await apiRequest('GET', `/api/orders/check-inventory?itemId=${productId}&requiredQty=${requiredQty}`);
-        const data = response.data || response;
-
-        // If any product is not available → overall Not Available
-        if (data.isAvailableInInventory === 'Not Available') {
-          overallAvailable = false;
-        }
-
-        // Use the productType of the first product
-        if (!resolvedProductType) {
-          resolvedProductType = data.productType;
-        }
-      }
-
-      const finalAvailability = overallAvailable ? 'Available' : 'Not Available';
-      const updates = {
-        productType: resolvedProductType,
-        isAvailableInInventory: finalAvailability
-      };
-
-      // Update local state immediately so UI reflects it
-      setLocalStoreInfo(prev => ({
-        ...prev,
-        [item._id]: { ...(prev[item._id] || {}), ...updates }
-      }));
-
-      // Save to backend — triggers QC / Production / Purchase flow
-      await handleUpdateStoreInfo(item._id, updates);
-    } catch (error) {
-      console.error('Inventory check error:', error);
-      toast({
-        title: 'Check Failed',
-        description: error.response?.data?.message || 'Could not fetch inventory data.',
-        variant: 'destructive'
-      });
-    } finally {
-      setCheckingInventory(null);
-    }
-  };
-
   return (
     <div className="p-6 space-y-6 bg-slate-50 min-h-screen">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -228,7 +229,7 @@ const StoreOrders = () => {
           <h1 className="text-3xl font-bold tracking-tight text-slate-900">
             Store Orders
           </h1>
-          <p className="text-slate-500">Manage and track orders ready for final dispatch.</p>
+          <p className="text-slate-500">Each item of an order is checked and routed separately (QC / Production / Purchase).</p>
         </div>
         <Button onClick={() => refetch()} variant="outline" className="gap-2">
           <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} /> Refresh List
@@ -256,267 +257,195 @@ const StoreOrders = () => {
           <Table>
             <TableHeader className="bg-slate-50">
               <TableRow>
-                <TableHead className="w-[160px]">Order & Date</TableHead>
-                <TableHead className="w-[120px]">Status</TableHead>
-                <TableHead>Product Name</TableHead>
-                <TableHead className="w-[80px] text-center">Qty</TableHead>
-                <TableHead>Specification</TableHead>
+                <TableHead className="w-[150px]">Order & Date</TableHead>
+                <TableHead className="w-[110px]">Status</TableHead>
+                <TableHead>Items (per-item flow)</TableHead>
                 <TableHead className="w-[130px]">Delivery Date</TableHead>
-                <TableHead className="w-[180px]">Product Type</TableHead>
-                <TableHead className="w-[180px]">Inventory Status</TableHead>
-                <TableHead className="w-[180px]">Store Status</TableHead>
-                <TableHead className="text-center w-[160px]">Actions</TableHead>
+                <TableHead className="text-center w-[170px]">Order Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={10} className="text-center py-12">
+                  <TableCell colSpan={5} className="text-center py-12">
                     <div className="flex flex-col items-center gap-2">
                       <RefreshCw className="h-6 w-6 animate-spin text-blue-600" />
                       <p className="text-slate-500 text-sm">Loading orders...</p>
                     </div>
-                  </TableCell>                </TableRow>
+                  </TableCell>
+                </TableRow>
               ) : storeOrders.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={10} className="text-center py-12 text-slate-500">
+                  <TableCell colSpan={5} className="text-center py-12 text-slate-500">
                     No approved orders found in store
                   </TableCell>
                 </TableRow>
-              ) : storeOrders.map((item) => (
-                <TableRow key={item._id} className="hover:bg-slate-50/50">
-                  {/* Order & Date */}
-                  <TableCell>
-                    <div className="font-semibold text-slate-900">{item.orderCode}</div>
-                    <div className="text-xs text-slate-500">{new Date(item.orderDate).toLocaleDateString()}</div>
-                  </TableCell>
-                  {/* Status Column */}
-                  <TableCell>
-                    {item.orderStatus === 'approved' ? (
-                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                        <PackageCheck className="w-3 h-3" /> Approved
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
-                        <Clock className="w-3 h-3" /> Service Verified
-                      </span>
-                    )}
-                  </TableCell>
-                  {/* Product Name Column */}
-                  <TableCell>
-                    {item.products && item.products.length > 0 ? (
-                      <div className="space-y-0.5">
-                        {item.products.map((p, idx) => (
-                          <div key={idx} className="text-sm font-medium text-slate-800">
-                            {p.product?.name || '—'}
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <span className="text-slate-400 text-xs">—</span>
-                    )}
-                  </TableCell>
-                  {/* Qty Column */}
-                  <TableCell className="text-center">
-                    {item.products && item.products.length > 0 ? (
-                      <div className="space-y-0.5">
-                        {item.products.map((p, idx) => (
-                          <div key={idx}>
-                            <span className="bg-slate-100 text-slate-700 text-xs font-medium px-2 py-0.5 rounded">
-                              {p.quantity ?? '—'}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <span className="text-slate-400 text-xs">—</span>
-                    )}
-                  </TableCell>
-                  {/* Specification Column */}
-                  <TableCell>
-                    {item.products && item.products.length > 0 ? (
-                      <div className="space-y-0.5">
-                        {item.products.map((p, idx) => (
-                          <div key={idx} className="text-xs text-slate-500">
-                            {p.product?.specification || '—'}
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <span className="text-slate-400 text-xs">—</span>
-                    )}
-                  </TableCell>
-                  {/* Delivery Date Column */}
-                  <TableCell>
-                    {item.requestedDeliveryDate ? (
-                      <span className="text-sm text-slate-700">
-                        {new Date(item.requestedDeliveryDate).toLocaleDateString('en-IN')}
-                      </span>
-                    ) : (
-                      <span className="text-slate-400 text-xs">—</span>
-                    )}
-                  </TableCell>
-                  {/* Product Type Column */}
-                  <TableCell>
-                    <div className="flex flex-col gap-1.5">
-                      {!(localStoreInfo[item._id]?.isAvailableInInventory ?? item.isAvailableInInventory) ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium w-fit bg-slate-100 text-slate-600 border border-slate-200">
-                          Not Checked
+              ) : storeOrders.map((item) => {
+                const rowItems = getRowItems(item);
+                const readyCount = rowItems.filter(r => r.qcStatus === 'Approved from QC').length;
+                const isCheckingAll = checkingKey === item._id;
+
+                return (
+                  <TableRow key={item._id} className="hover:bg-slate-50/50 align-top">
+                    {/* Order & Date */}
+                    <TableCell>
+                      <div className="font-semibold text-slate-900">{item.orderCode}</div>
+                      <div className="text-xs text-slate-500">{new Date(item.orderDate).toLocaleDateString()}</div>
+                      <div className="text-xs text-slate-400 mt-1">{item.customerName}</div>
+                      {rowItems.length > 1 && (
+                        <span className={`mt-1.5 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold border ${
+                          readyCount === rowItems.length
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : 'bg-slate-100 text-slate-600 border-slate-200'
+                        }`}>
+                          {readyCount}/{rowItems.length} ready
+                        </span>
+                      )}
+                    </TableCell>
+                    {/* Status Column */}
+                    <TableCell>
+                      {item.orderStatus === 'approved' ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          <PackageCheck className="w-3 h-3" /> Approved
                         </span>
                       ) : (
-                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium w-fit ${
-                          (localStoreInfo[item._id]?.productType ?? item.productType) === 'In-house Manufactured'
-                            ? 'bg-violet-50 text-violet-700 border border-violet-200'
-                            : 'bg-blue-50 text-blue-700 border border-blue-200'
-                        }`}>
-                          {(localStoreInfo[item._id]?.productType ?? item.productType) === 'In-house Manufactured'
-                            ? '🏭 In-house'
-                            : '🛒 Purchased'}
+                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                          <Clock className="w-3 h-3" /> Service Verified
                         </span>
                       )}
-                    </div>
-                  </TableCell>
-                  {/* Inventory Availability Column */}
-                  <TableCell>
-                    <div className="flex items-center gap-1.5">
-                      {!(localStoreInfo[item._id]?.isAvailableInInventory ?? item.isAvailableInInventory) ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium w-fit bg-slate-100 text-slate-600 border border-slate-200">
-                          Not Checked
+                    </TableCell>
+                    {/* Per-item table */}
+                    <TableCell className="p-2">
+                      <div className="border border-slate-100 rounded-lg overflow-hidden divide-y divide-slate-100">
+                        {rowItems.length === 0 ? (
+                          <div className="px-3 py-2 text-xs text-slate-400">No items</div>
+                        ) : rowItems.map((row) => {
+                          const chk = itemCheckState(row.qcStatus);
+                          const isCheckingThis = checkingKey === `${item._id}:${row.key}`;
+                          const busy = isCheckingThis || isCheckingAll;
+                          return (
+                            <div key={row.key} className="flex flex-wrap items-center gap-2 px-3 py-2 bg-white">
+                              <div className="min-w-[140px] flex-1">
+                                <div className="text-sm font-medium text-slate-800">{row.name}</div>
+                                {row.spec && <div className="text-[11px] text-slate-400">{row.spec}</div>}
+                              </div>
+                              <span className="bg-slate-100 text-slate-700 text-xs font-medium px-2 py-0.5 rounded">
+                                Qty: {row.qty ?? '—'}
+                              </span>
+                              {/* Product type chip */}
+                              {row.productType ? (
+                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${
+                                  row.productType === 'In-house Manufactured'
+                                    ? 'bg-violet-50 text-violet-700 border border-violet-200'
+                                    : 'bg-blue-50 text-blue-700 border border-blue-200'
+                                }`}>
+                                  {row.productType === 'In-house Manufactured' ? '🏭 In-house' : '🛒 Purchased'}
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-500 border border-slate-200">
+                                  Not Checked
+                                </span>
+                              )}
+                              {/* Availability chip */}
+                              {row.availability && (
+                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${
+                                  row.availability === 'Available'
+                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                    : 'bg-rose-50 text-rose-700 border border-rose-200'
+                                }`}>
+                                  {row.availability === 'Available'
+                                    ? <><CheckCheck className="w-3.5 h-3.5" /> Available</>
+                                    : <><XCircle className="w-3.5 h-3.5" /> Not Available</>}
+                                </span>
+                              )}
+                              {/* Store status chip */}
+                              <StatusChip status={row.qcStatus} />
+                              {/* Per-item Check button */}
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className={`h-7 px-2 text-xs gap-1 ml-auto transition-colors ${
+                                  busy
+                                    ? 'text-blue-500 border-blue-300'
+                                    : chk.disabled
+                                      ? 'text-slate-400 border-slate-200 cursor-not-allowed opacity-50'
+                                      : row.qcStatus === 'Rejected from QC'
+                                        ? 'text-rose-600 border-rose-300 hover:bg-rose-50'
+                                        : row.qcStatus === 'Purchase Completed'
+                                          ? 'text-teal-600 border-teal-300 hover:bg-teal-50'
+                                          : 'text-indigo-600 border-indigo-200 hover:bg-indigo-50'
+                                }`}
+                                onClick={() => !chk.disabled && !busy && handleCheckItem(item, row)}
+                                disabled={chk.disabled || busy}
+                                title={chk.disabled ? chk.reason : `Check inventory & route "${row.name}"`}
+                              >
+                                {busy
+                                  ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                  : <ScanSearch className="w-3.5 h-3.5" />}
+                                {busy ? '...' : 'Check'}
+                              </Button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </TableCell>
+                    {/* Delivery Date Column */}
+                    <TableCell>
+                      {item.requestedDeliveryDate ? (
+                        <span className="text-sm text-slate-700">
+                          {new Date(item.requestedDeliveryDate).toLocaleDateString('en-IN')}
                         </span>
                       ) : (
-                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium w-fit ${
-                          (localStoreInfo[item._id]?.isAvailableInInventory ?? item.isAvailableInInventory) === 'Available'
-                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                            : 'bg-rose-50 text-rose-700 border border-rose-200'
-                        }`}>
-                          {(localStoreInfo[item._id]?.isAvailableInInventory ?? item.isAvailableInInventory) === 'Available'
-                            ? <><CheckCheck className="w-3.5 h-3.5" /> Available</>
-                            : <><XCircle className="w-3.5 h-3.5" /> Not Available</>}
-                        </span>
+                        <span className="text-slate-400 text-xs">—</span>
                       )}
-                      {(storeInfoLoading === item._id || checkingInventory === item._id) && (
-                        <RefreshCw className="w-3.5 h-3.5 animate-spin text-blue-500 shrink-0" />
-                      )}
-                    </div>
-                  </TableCell>
-                  {/* Store Status Column */}
-                  <TableCell>
-                    {(() => {
-                      const qcStatus = localStoreInfo[item._id]?.storeQCStatus ?? item.storeQCStatus;
-                      if (!qcStatus) return (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-500 border border-slate-200">
-                          —
-                        </span>
-                      );
-                      const statusConfig = {
-                        'Goes to QC': { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200', icon: <ArrowRightCircle className="w-3 h-3" /> },
-                        'Approved from QC': { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', icon: <CheckCheck className="w-3 h-3" /> },
-                        'Rejected from QC': { bg: 'bg-rose-50', text: 'text-rose-700', border: 'border-rose-200', icon: <XCircle className="w-3 h-3" /> },
-                        'Goes to Purchase': { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', icon: <ShoppingCart className="w-3 h-3" /> },
-                        'Purchase Completed': { bg: 'bg-teal-50', text: 'text-teal-700', border: 'border-teal-200', icon: <CheckCircle2 className="w-3 h-3" /> },
-                        'Goes to Production': { bg: 'bg-violet-50', text: 'text-violet-700', border: 'border-violet-200', icon: <Factory className="w-3 h-3" /> },
-                        'Production Completed': { bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-200', icon: <Wrench className="w-3 h-3" /> },
-                      };
-                      const cfg = statusConfig[qcStatus] || { bg: 'bg-slate-100', text: 'text-slate-600', border: 'border-slate-200', icon: null };
-                      return (
-                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium w-fit ${cfg.bg} ${cfg.text} border ${cfg.border}`}>
-                          {cfg.icon}{qcStatus}
-                        </span>
-                      );
-                    })()}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex justify-center gap-1">
-                      {/* Check Inventory Button - smart enable/disable logic */}
-                      {(() => {
-                        const qcStatus = localStoreInfo[item._id]?.storeQCStatus ?? item.storeQCStatus;
-                        const productType = localStoreInfo[item._id]?.productType ?? item.productType;
-                        // Disable cases:
-                        // 1. Currently loading
-                        // 2. Goes to QC / In QC (not rejected yet)
-                        // 3. Approved from QC (done)
-                        // 4. Goes to Production (only status shown, no re-check)
-                        // 5. Production Completed (only status shown)
-                        // Enable cases:
-                        // 1. Not checked yet (no qcStatus)
-                        // 2. Rejected from QC (re-check for retry)
-                        // 3. Purchase Completed (item now in inventory, can go to QC)
-                        const isLoading_ = checkingInventory === item._id || storeInfoLoading === item._id;
-                        const isProductionPath = productType === 'In-house Manufactured' || qcStatus === 'Goes to Production' || qcStatus === 'Production Completed';
-                        const isPurchasePath = productType === 'Purchased (Trading Product)' || qcStatus === 'Goes to Purchase';
-                        
-                        let isDisabled = isLoading_;
-                        let disabledReason = '';
-
-                        if (!isLoading_) {
-                          if (qcStatus === 'Goes to QC') { isDisabled = true; disabledReason = 'Item is in QC'; }
-                          else if (qcStatus === 'Approved from QC') { isDisabled = true; disabledReason = 'QC Approved'; }
-                          else if (qcStatus === 'Goes to Production') { isDisabled = true; disabledReason = 'In Production'; }
-                          else if (qcStatus === 'Production Completed') { isDisabled = true; disabledReason = 'Production Done'; }
-                          else if (qcStatus === 'Goes to Purchase') { isDisabled = true; disabledReason = 'Purchase Pending'; }
-                          // 'Rejected from QC' → enabled (retry)
-                          // 'Purchase Completed' → enabled (item in inventory, re-check to go to QC)
-                          // null / no status → enabled
-                        }
-
-                        return (
+                    </TableCell>
+                    {/* Order actions */}
+                    <TableCell>
+                      <div className="flex flex-col items-center gap-1.5">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className={`h-8 px-2 text-xs gap-1 w-full ${
+                            isCheckingAll
+                              ? 'text-blue-500 border-blue-300'
+                              : 'text-indigo-600 border-indigo-200 hover:bg-indigo-50'
+                          }`}
+                          onClick={() => !isCheckingAll && handleCheckAll(item)}
+                          disabled={isCheckingAll || rowItems.every(r => itemCheckState(r.qcStatus).disabled)}
+                          title="Check inventory & route every unprocessed item"
+                        >
+                          {isCheckingAll
+                            ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            : <ListChecks className="w-3.5 h-3.5" />}
+                          {isCheckingAll ? 'Checking...' : 'Check All Items'}
+                        </Button>
+                        <div className="flex gap-1">
                           <Button
-                            variant="outline"
-                            size="sm"
-                            className={`h-8 px-2 text-xs gap-1 transition-colors ${
-                              isLoading_
-                                ? 'text-blue-500 border-blue-300'
-                                : isDisabled
-                                  ? 'text-slate-400 border-slate-200 cursor-not-allowed opacity-50'
-                                  : qcStatus === 'Rejected from QC'
-                                    ? 'text-rose-600 border-rose-300 hover:bg-rose-50'
-                                    : qcStatus === 'Purchase Completed'
-                                      ? 'text-teal-600 border-teal-300 hover:bg-teal-50'
-                                      : 'text-indigo-600 border-indigo-200 hover:bg-indigo-50'
-                            }`}
-                            onClick={() => !isDisabled && handleCheckInventory(item)}
-                            disabled={isDisabled}
-                            title={
-                              isDisabled
-                                ? disabledReason
-                                : qcStatus === 'Rejected from QC'
-                                  ? 'Re-check Inventory (QC Rejected)'
-                                  : qcStatus === 'Purchase Completed'
-                                    ? 'Check Inventory (Purchase Received)'
-                                    : 'Check Inventory'
-                            }
+                            variant="ghost"
+                            size="icon"
+                            className={`h-8 w-8 transition-colors ${loadingItemId === item._id ? 'text-blue-500' : 'text-slate-400 hover:text-blue-600'}`}
+                            onClick={() => handleViewOrder(item)}
+                            disabled={loadingItemId === item._id}
                           >
-                            {isLoading_
-                              ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                              : <ScanSearch className="w-3.5 h-3.5" />}
-                            {isLoading_ ? 'Checking...' : 'Check Inv.'}
+                            {loadingItemId === item._id
+                              ? <RefreshCw className="w-4 h-4 animate-spin" />
+                              : <Eye className="w-4 h-4" />
+                            }
                           </Button>
-                        );
-                      })()}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className={`h-8 w-8 transition-colors ${loadingItemId === item._id ? 'text-blue-500' : 'text-slate-400 hover:text-blue-600'}`}
-                        onClick={() => handleViewOrder(item)}
-                        disabled={loadingItemId === item._id}
-                      >
-                        {loadingItemId === item._id
-                          ? <RefreshCw className="w-4 h-4 animate-spin" />
-                          : <Eye className="w-4 h-4" />
-                        }
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-slate-400 hover:text-emerald-600"
-                        onClick={() => window.print()}
-                      >
-                        <Printer className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-slate-400 hover:text-emerald-600"
+                            onClick={() => window.print()}
+                          >
+                            <Printer className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </CardContent>
@@ -647,4 +576,3 @@ const StoreOrders = () => {
 };
 
 export default StoreOrders;
-

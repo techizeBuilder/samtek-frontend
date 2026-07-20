@@ -10,7 +10,7 @@ import { Truck, Package, MapPin, X, Plus, FileText } from 'lucide-react';
 
 const transportTypes = ['Local Transport', 'Transport Company', 'Courier'];
 
-function CreateDispatchModal({ job, onClose }) {
+function CreateDispatchModal({ job, siblings, onClose }) {
   const { createDispatchOrder } = usePackagingDispatch();
   const { toast } = useToast();
   const [form, setForm] = useState({
@@ -61,6 +61,21 @@ function CreateDispatchModal({ job, onClose }) {
             <p className="text-sm font-medium text-slate-700">{job.jobId} — {job.orderId}</p>
             <p className="text-xs text-slate-500">{job.machineName} ({job.machineCode}) · SN: {job.serialNumber}</p>
           </div>
+          {/* Multi-item: everything of this order that dispatches together */}
+          {siblings && siblings.length > 1 && (
+            <div className="mt-2 p-3 bg-indigo-50 border border-indigo-100 rounded-lg">
+              <p className="text-[11px] font-semibold text-indigo-700 uppercase tracking-wide mb-1">
+                This order dispatches together ({siblings.length} packed jobs)
+              </p>
+              <ul className="space-y-0.5 max-h-24 overflow-y-auto">
+                {siblings.map(s => (
+                  <li key={s._id} className="text-xs text-indigo-800">
+                    {s.machineName}{(s.quantity || 1) > 1 ? ` ×${s.quantity}` : ''} · SN: {s.serialNumber}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
 
         <div className="px-6 py-4 space-y-4">
@@ -151,7 +166,24 @@ export default function DispatchPlanning() {
 
   const packedJobs = jobs.filter(j => j.status === 'Packed');
 
+  // Multi-item: all packaging jobs of the same order travel together
+  const jobsOfOrder = (orderId) => jobs.filter(j => j.orderId === orderId);
+  const packedSiblings = (orderId) => jobsOfOrder(orderId).filter(j => j.status === 'Packed' || j.status === 'Dispatched');
+  const unpackedSiblings = (orderId) => jobsOfOrder(orderId).filter(j => j.status === 'Pending' || j.status === 'In Progress');
+
   const handlePlanDispatch = (job) => {
+    // 🚧 The full order dispatches together — block planning while any
+    // packaging job of the same order is still not Packed (server enforces
+    // this too, plus the "every item QC-approved" readiness gate).
+    const stillPacking = unpackedSiblings(job.orderId);
+    if (stillPacking.length > 0) {
+      toast({
+        title: 'Order Not Fully Packed',
+        description: `${stillPacking.length} job(s) of order ${job.orderId} still packing: ${stillPacking.map(s => s.machineName).join(', ')}. The full order dispatches together.`,
+        variant: 'destructive'
+      });
+      return;
+    }
     // Invoice must exist for the order before dispatch can be planned — this
     // is enforced again server-side, but checking here avoids opening the
     // modal just to have it rejected on submit.
@@ -193,7 +225,13 @@ export default function DispatchPlanning() {
 
   return (
     <div className="p-6 space-y-6 bg-slate-50 min-h-screen">
-      {selected && <CreateDispatchModal job={selected} onClose={() => setSelected(null)} />}
+      {selected && (
+        <CreateDispatchModal
+          job={selected}
+          siblings={packedSiblings(selected.orderId)}
+          onClose={() => setSelected(null)}
+        />
+      )}
 
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Dispatch Planning</h1>
@@ -210,13 +248,16 @@ export default function DispatchPlanning() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {packedJobs.map(job => (
+          {packedJobs.map(job => {
+            const siblingCount = packedSiblings(job.orderId).length;
+            const stillPacking = unpackedSiblings(job.orderId);
+            return (
             <Card key={job._id} className="border-none shadow-sm hover:shadow-md transition-all duration-200">
               <CardContent className="p-5">
                 <div className="flex justify-between items-start mb-3">
                   <div>
                     <p className="font-semibold text-slate-800">{job.jobId}</p>
-                    <p className="text-sm text-slate-500">{job.machineName}</p>
+                    <p className="text-sm text-slate-500">{job.machineName}{(job.quantity || 1) > 1 ? ` ×${job.quantity}` : ''}</p>
                   </div>
                   <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700">Packed</span>
                 </div>
@@ -225,7 +266,17 @@ export default function DispatchPlanning() {
                   <div className="flex gap-2"><Package className="h-3.5 w-3.5 text-slate-400 mt-0.5" /><span>{job.machineCode}</span></div>
                   <div className="flex gap-2"><MapPin className="h-3.5 w-3.5 text-slate-400 mt-0.5" /><span>SN: {job.serialNumber}</span></div>
                   <div className="flex gap-2"><Truck className="h-3.5 w-3.5 text-slate-400 mt-0.5" /><span>{job.packingType}</span></div>
-                  
+                  {siblingCount > 1 && (
+                    <div className="text-xs text-indigo-600 font-medium">
+                      🚚 Dispatches together with {siblingCount - 1} other job(s) of this order
+                    </div>
+                  )}
+                  {stillPacking.length > 0 && (
+                    <div className="text-xs text-amber-600 font-medium">
+                      ⏳ Waiting: {stillPacking.length} job(s) of this order still packing
+                    </div>
+                  )}
+
                   <div className="flex flex-wrap gap-2 pt-2 mt-2 border-t border-slate-100">
                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${job.invoiceNumber ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
                       {job.invoiceNumber ? `Invoice: ${job.invoiceNumber}` : 'Invoice: Not Generated'}
@@ -250,7 +301,8 @@ export default function DispatchPlanning() {
                 </Button>
               </CardContent>
             </Card>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
