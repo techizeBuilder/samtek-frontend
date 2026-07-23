@@ -108,7 +108,11 @@ export const getNavigationUrl = (notification, userRole = '') => {
   if (type === 'store') return `/store/orders`;
   // "Packing Completed" is sent to Dispatch AND Accounts — Accounts has no
   // access to the Dispatch module, so route them to their own packed-orders
-  // (NOC/payment clearance) screen instead.
+  // (NOC/payment clearance) screen instead. Dispatch needs to go plan the
+  // newly packed item's dispatch, not the generic active-dispatch list.
+  if (type === 'dispatch' && title?.toLowerCase().includes('packing completed')) {
+    return isAccountsRole ? '/accounts/sales/packed-orders' : '/dispatch/planning';
+  }
   if (type === 'dispatch') return isAccountsRole ? '/accounts/sales/packed-orders' : `/dispatch/active`;
   // "QC Passed" is sent to Dispatch too (item is ready to be queued for
   // packaging) — Dispatch has no access to the QC module, so route them to

@@ -141,6 +141,16 @@ export default function InstallationSchedule() {
       ? formState.technicians
       : formState.manualTechnicianName.split(',').map(n => n.trim()).filter(Boolean).map(name => ({ technicianId: '', technicianName: name }));
 
+    // Technician is required for Scheduled and Completed status
+    if ((formState.status === 'Scheduled' || formState.status === 'Completed') && technicians.length === 0) {
+      toast({
+        title: 'Technician Required',
+        description: 'Please select at least one technician/serviceman before saving.',
+        variant: 'destructive'
+      });
+      return;
+    }
+
     updateMutation.mutate({
       ids: selectedGroup.jobs.map(j => j._id),
       data: {
@@ -358,11 +368,24 @@ export default function InstallationSchedule() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label className="text-sm font-medium text-slate-700">Technician / Serviceman</Label>
+                  <Label className="text-sm font-medium text-slate-700">
+                    Technician / Serviceman
+                    {(formState.status === 'Scheduled' || formState.status === 'Completed') && (
+                      <span className="text-red-500 ml-1">*</span>
+                    )}
+                  </Label>
                   {servicemen.length > 0 ? (
                     <Popover>
                       <PopoverTrigger asChild>
-                        <Button type="button" variant="outline" className="w-full justify-between font-normal">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className={`w-full justify-between font-normal ${
+                            formState.technicians.length === 0 && (formState.status === 'Scheduled' || formState.status === 'Completed')
+                              ? 'border-red-300 focus-visible:ring-red-400'
+                              : ''
+                          }`}
+                        >
                           <span className="truncate text-left">
                             {formState.technicians.length > 0
                               ? formState.technicians.map(t => t.technicianName).join(', ')
@@ -404,7 +427,12 @@ export default function InstallationSchedule() {
                       value={formState.manualTechnicianName}
                       onChange={e => setFormState(f => ({ ...f, manualTechnicianName: e.target.value }))}
                       placeholder="Enter technician name(s), comma separated"
+                      className={!formState.manualTechnicianName.trim() && (formState.status === 'Scheduled' || formState.status === 'Completed') ? 'border-red-300 focus-visible:ring-red-400' : ''}
                     />
+                  )}
+                  {((servicemen.length > 0 && formState.technicians.length === 0) || (servicemen.length === 0 && !formState.manualTechnicianName.trim())) &&
+                    (formState.status === 'Scheduled' || formState.status === 'Completed') && (
+                    <p className="text-xs text-red-500">Technician is required to schedule installation</p>
                   )}
                   {formState.technicians.length > 0 && (
                     <div className="flex flex-wrap gap-1.5 pt-1">

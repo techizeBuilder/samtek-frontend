@@ -101,7 +101,14 @@ export default function RFQManagement() {
   const autoSendMutation = useMutation({
     mutationFn: (payload) => apiRequest('POST', '/api/rfq', payload),
     onSuccess: (data) => {
-      toast({ title: '✅ RFQ Sent!', description: data.message });
+      // Some vendor emails may still have failed even though the RFQ itself
+      // was created (at least one vendor got it) — surface that honestly
+      // instead of a blanket "sent to everyone" success toast.
+      if (data.partialEmailFailure) {
+        toast({ title: '⚠️ RFQ Sent Partially', description: data.message, variant: 'destructive' });
+      } else {
+        toast({ title: '✅ RFQ Sent!', description: data.message });
+      }
       setSendingPRId(null);
       invalidateAll();
     },
@@ -129,7 +136,11 @@ export default function RFQManagement() {
   const manualSendMutation = useMutation({
     mutationFn: (payload) => apiRequest('POST', '/api/rfq', payload),
     onSuccess: (data) => {
-      toast({ title: '✅ RFQ Sent!', description: data.message });
+      if (data.partialEmailFailure) {
+        toast({ title: '⚠️ RFQ Sent Partially', description: data.message, variant: 'destructive' });
+      } else {
+        toast({ title: '✅ RFQ Sent!', description: data.message });
+      }
       setManualModal(false);
       setManualPR(null);
       setManualVendorIds([]);

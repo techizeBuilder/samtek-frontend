@@ -522,6 +522,19 @@ export default function SuperAdminApiSettings() {
                             </div>
                           </div>
 
+                          {/* Webhook URL — register this in IndiaMART's Lead Manager /
+                              CRM Integration push settings so leads arrive here in real
+                              time, instead of relying on the 10-min poll (which needs
+                              this server's IP whitelisted with IndiaMART to work at all). */}
+                          {account.authKey && (
+                            <div className="space-y-1.5">
+                              <Label className="text-xs font-medium text-gray-700">Webhook URL (give this to IndiaMART / your account manager)</Label>
+                              <div className="p-3 bg-gray-100 rounded-lg font-mono text-xs text-gray-700 break-all">
+                                {`${window.location.origin}/api/leads/indiamart-webhook?q=${account.authKey}`}
+                              </div>
+                            </div>
+                          )}
+
                           {account.lastSyncedAt && (
                             <div className="text-xs text-green-700 flex items-center gap-1.5 mt-2 bg-green-50/50 p-2 rounded border border-green-100">
                               <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />

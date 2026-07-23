@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -47,6 +47,12 @@ export default function PurchaseRequest() {
   const [itemId, setItemId] = useState('');
   const [unitPrice, setUnitPrice] = useState(0);
   const [gstPercent, setGstPercent] = useState(18);
+  // Quantity actually multiplied against Unit Price for the Grand Total.
+  // When the item has a Purchase Unit different from its storage unit (e.g.
+  // bought by the kg, stocked by the piece), this is the kg quantity the
+  // vendor is quoting for — NOT the base-unit request quantity — so it must
+  // be entered separately (mirrors the RFQ flow's "Order Quantity" input).
+  const [poQuantity, setPoQuantity] = useState(0);
   const [expectedDeliveryDate, setExpectedDeliveryDate] = useState('');
   const [deliveryAddress, setDeliveryAddress] = useState('Main Warehouse, Samtek Factory');
   const [terms, setTerms] = useState('Delivery within 7 days. Payment within 30 days of receipt.');
@@ -80,6 +86,17 @@ export default function PurchaseRequest() {
   const [invCheckResult, setInvCheckResult]       = useState(null);
   const [isCheckingInv, setIsCheckingInv]         = useState(false);
   // ─────────────────────────────────────────────────────────────────────────────
+
+  // The currently mapped inventory item's Purchase Unit (e.g. "kg"), if it
+  // has one defined — works for both Create (itemId just auto-matched) and
+  // View/Edit (itemId is the PO's saved item reference) since both paths
+  // set `itemId` before this derives. Falls back to the PurchaseRequest's
+  // own persisted purchaseUnit (set at PO-save time) so it still shows up
+  // even if the inventory item can't be re-matched for some reason.
+  const itemPurchaseUnit = useMemo(() => {
+    const matched = inventoryItems.find(i => i._id === itemId);
+    return matched?.purchaseUnit || selectedRequest?.purchaseUnit || null;
+  }, [itemId, inventoryItems, selectedRequest]);
 
   useEffect(() => {
     fetchPurchaseRequests();
@@ -322,10 +339,18 @@ export default function PurchaseRequest() {
     // If exact match not found, default to first item in inventory to ensure validity in DB
     const finalItemId = matchedItem?._id || (inventoryItems[0]?._id || '');
     setItemId(finalItemId);
-    
+
     setUnitPrice(matchedItem?.purchaseCost || 0);
     setGstPercent(matchedItem?.gst || 18);
     setSupplierId('');
+
+    // If this item is bought in a different unit than it's stocked in (e.g.
+    // ordered by the kg, stored by the piece), the accounts person must type
+    // how many purchase-units they're actually placing the order for —
+    // that quantity, not the base request quantity, is what the vendor
+    // quotes against. Otherwise (no distinct purchase unit) fall back to the
+    // exact old behavior: multiply by the requested base quantity.
+    setPoQuantity(matchedItem?.purchaseUnit ? '' : request.quantity);
 
     const nextWeek = new Date();
     nextWeek.setDate(nextWeek.getDate() + 7);
@@ -357,6 +382,9 @@ export default function PurchaseRequest() {
       const poItem = po.items?.[0];
       setItemId(poItem?.item || '');
       setUnitPrice(poItem?.unitPrice || 0);
+      // The quantity actually saved on the PO — authoritative regardless of
+      // whether it was a purchase-unit or base-unit order.
+      setPoQuantity(poItem?.quantity ?? request.quantity);
       // Vendor-bid POs carry no GST (taxAmount is legitimately 0) — only fall
       // back to a guessed rate when totalAmount itself is missing.
       setGstPercent(po.totalAmount ? Math.round(((po.taxAmount || 0) / po.totalAmount) * 100) : 0);
@@ -388,16 +416,24 @@ export default function PurchaseRequest() {
       toast({ title: "Validation Error", description: "Unit price must be greater than zero", variant: "destructive" });
       return;
     }
+    // The quantity that gets multiplied by Unit Price for the Grand Total:
+    // the purchase-unit quantity when this item has one defined, otherwise
+    // the requested base quantity (unchanged old behavior).
+    const effectiveQty = itemPurchaseUnit ? Number(poQuantity) : selectedRequest.quantity;
+    if (itemPurchaseUnit && !(effectiveQty > 0)) {
+      toast({ title: "Validation Error", description: `Please enter the Purchase Quantity in ${itemPurchaseUnit}`, variant: "destructive" });
+      return;
+    }
 
     setIsSubmitting(true);
     try {
       const itemsPayload = [{
         item: itemId,
-        quantity: selectedRequest.quantity,
+        quantity: effectiveQty,
         unitPrice: parseFloat(unitPrice)
       }];
 
-      const totalAmt = parseFloat(unitPrice) * selectedRequest.quantity;
+      const totalAmt = parseFloat(unitPrice) * effectiveQty;
       const taxAmt = totalAmt * (parseFloat(gstPercent) / 100);
 
       const payload = {
@@ -408,6 +444,9 @@ export default function PurchaseRequest() {
         deliveryAddress,
         terms,
         notes,
+        // Lets the backend sync "Ordered: X kg" back onto the Purchase
+        // Request for the Receive screen — see createPurchase/updatePurchase.
+        ...(itemPurchaseUnit ? { purchaseQuantity: effectiveQty, purchaseUnit: itemPurchaseUnit } : {}),
       };
 
       let response;
@@ -865,15 +904,21 @@ export default function PurchaseRequest() {
               <div className="p-6 space-y-6">
                 
                 {/* Information Card */}
-                <div className="bg-slate-50 rounded-lg p-4 border border-slate-200 grid grid-cols-2 gap-4">
+                <div className={`bg-slate-50 rounded-lg p-4 border border-slate-200 grid gap-4 ${itemPurchaseUnit ? 'grid-cols-3' : 'grid-cols-2'}`}>
                   <div>
                     <label className="text-[10px] font-semibold text-slate-500 uppercase">Product to Purchase</label>
                     <p className="font-semibold text-slate-800 text-sm mt-0.5">{selectedRequest.productName}</p>
                   </div>
                   <div>
-                    <label className="text-[10px] font-semibold text-slate-500 uppercase">Order Quantity</label>
+                    <label className="text-[10px] font-semibold text-slate-500 uppercase">Requested Quantity</label>
                     <p className="font-bold text-slate-900 text-sm mt-0.5">{selectedRequest.quantity} Unit(s)</p>
                   </div>
+                  {itemPurchaseUnit && (
+                    <div>
+                      <label className="text-[10px] font-semibold text-violet-500 uppercase">Purchased In</label>
+                      <p className="font-bold text-violet-700 text-sm mt-0.5">{itemPurchaseUnit} (vendor's unit)</p>
+                    </div>
+                  )}
                 </div>
 
                 {poModalMode === 'view' ? (
@@ -890,7 +935,13 @@ export default function PurchaseRequest() {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-4 border-y py-4 my-2">
+                    <div className="grid grid-cols-4 gap-4 border-y py-4 my-2">
+                      <div className="text-center border-r">
+                        <label className="text-[10px] font-semibold text-slate-500 uppercase">Purchased Qty</label>
+                        <p className="text-lg font-semibold text-slate-800 mt-1">
+                          {poQuantity} {itemPurchaseUnit || 'Unit(s)'}
+                        </p>
+                      </div>
                       <div className="text-center border-r">
                         <label className="text-[10px] font-semibold text-slate-500 uppercase">Negotiated Price</label>
                         <p className="text-lg font-semibold text-slate-800 mt-1">₹{parseFloat(unitPrice).toLocaleString()}</p>
@@ -902,7 +953,7 @@ export default function PurchaseRequest() {
                       <div className="text-center">
                         <label className="text-[10px] font-semibold text-slate-500 uppercase">Grand Total</label>
                         <p className="text-lg font-bold text-slate-900 mt-1">
-                          ₹{(parseFloat(unitPrice) * selectedRequest.quantity * (1 + parseFloat(gstPercent)/100)).toLocaleString(undefined, {maximumFractionDigits: 2})}
+                          ₹{(parseFloat(unitPrice) * (Number(poQuantity) || 0) * (1 + parseFloat(gstPercent)/100)).toLocaleString(undefined, {maximumFractionDigits: 2})}
                         </p>
                       </div>
                     </div>
@@ -963,10 +1014,40 @@ export default function PurchaseRequest() {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                    {itemPurchaseUnit && (
+                      <div className="p-3 rounded-lg bg-violet-50 border border-violet-200 flex items-start gap-2">
+                        <AlertCircle className="w-4 h-4 text-violet-500 mt-0.5 shrink-0" />
+                        <p className="text-xs text-violet-700">
+                          This item is purchased in <strong>{itemPurchaseUnit}</strong>, not {selectedRequest.unit || 'the storage unit'}.
+                          Enter the Unit Price per {itemPurchaseUnit} and how many {itemPurchaseUnit} you're ordering — the Grand Total
+                          uses this quantity, not the {selectedRequest.quantity} Unit(s) originally requested.
+                        </p>
+                      </div>
+                    )}
+
+                    <div className={`grid gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200 ${itemPurchaseUnit ? 'grid-cols-4' : 'grid-cols-3'}`}>
+                      {/* Purchase quantity — only shown when the item has a distinct Purchase Unit */}
+                      {itemPurchaseUnit && (
+                        <div className="space-y-1">
+                          <label className="text-xs font-semibold text-slate-600 uppercase">Purchase Qty ({itemPurchaseUnit})*</label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={poQuantity}
+                            onChange={(e) => setPoQuantity(e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
+                            placeholder={`e.g. 2 (${itemPurchaseUnit})`}
+                            required
+                            className="font-semibold border-violet-200 focus:ring-violet-500"
+                          />
+                        </div>
+                      )}
+
                       {/* Price negotiated */}
                       <div className="space-y-1">
-                        <label className="text-xs font-semibold text-slate-600 uppercase">Unit Price (₹)*</label>
+                        <label className="text-xs font-semibold text-slate-600 uppercase">
+                          Unit Price (₹{itemPurchaseUnit ? ` / ${itemPurchaseUnit}` : ''})*
+                        </label>
                         <Input
                           type="number"
                           step="0.01"
@@ -996,7 +1077,7 @@ export default function PurchaseRequest() {
                       <div className="space-y-1 text-right flex flex-col justify-center">
                         <span className="text-[10px] font-semibold text-slate-400 uppercase">Calculated Grand Total</span>
                         <span className="text-xl font-bold text-slate-900">
-                          ₹{(unitPrice * selectedRequest.quantity * (1 + gstPercent/100)).toLocaleString(undefined, {maximumFractionDigits: 2})}
+                          ₹{(unitPrice * (Number(poQuantity) || 0) * (1 + gstPercent/100)).toLocaleString(undefined, {maximumFractionDigits: 2})}
                         </span>
                       </div>
                     </div>

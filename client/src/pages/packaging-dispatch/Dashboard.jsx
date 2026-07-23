@@ -5,7 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
   Package, Truck, Clock, CheckCircle2, AlertTriangle,
-  ClipboardList, ArrowRight, MapPin, BarChart3
+  ClipboardList, ArrowRight, MapPin, BarChart3, Receipt
 } from 'lucide-react';
 
 const statusColor = {
@@ -47,6 +47,7 @@ export default function PackagingDispatchDashboard() {
     { label: 'Dispatch Planning', path: '/dispatch/planning', icon: MapPin, desc: 'Create & plan dispatch orders', color: 'text-purple-600', bg: 'bg-purple-50' },
     { label: 'Active Dispatches', path: '/dispatch/active', icon: Truck, desc: 'Track in-transit deliveries', color: 'text-emerald-600', bg: 'bg-emerald-50' },
     { label: 'Dispatch History', path: '/dispatch/history', icon: BarChart3, desc: 'Completed & closed dispatches', color: 'text-slate-600', bg: 'bg-slate-100' },
+    { label: 'Expenses', path: '/packaging-dispatch/expenses', icon: Receipt, desc: 'Log packing/dispatch costs', color: 'text-rose-600', bg: 'bg-rose-50' },
   ];
 
   if (dashboardLoading) {

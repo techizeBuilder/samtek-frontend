@@ -44,7 +44,15 @@ const VendorPayments = () => {
             queryClient.invalidateQueries({ queryKey: ['/api/accounts/purchases/invoices'] });
             queryClient.invalidateQueries({ queryKey: ['/api/accounts/purchases/outstanding'] });
             queryClient.invalidateQueries({ queryKey: ['/api/accounts/purchases/payments/stats'] });
+            queryClient.invalidateQueries({ queryKey: ['/api/accounts/bank-cash/summary'] });
             toast({ title: "Success", description: "Payment recorded successfully" });
+        },
+        onError: (error) => {
+            toast({
+                title: "Payment Failed",
+                description: error?.message || "Something went wrong while recording the payment.",
+                variant: "destructive"
+            });
         }
     });
 

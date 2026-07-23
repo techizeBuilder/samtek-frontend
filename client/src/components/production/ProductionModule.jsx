@@ -10,6 +10,7 @@ import WorkPlanning from '@/pages/production/WorkPlanning';
 import JobCards from '@/pages/production/JobCards';
 import ProcessExecution from '@/pages/production/ProcessExecution';
 import ManpowerTracking from '@/pages/production/ManpowerTracking';
+import ProductionExpenses from '@/pages/production/ProductionExpenses';
 
 export default function ProductionModule() {
   return (
@@ -25,6 +26,7 @@ export default function ProductionModule() {
         <Route path="/production/reports"><ProductionReports /></Route>
         <Route path="/production/production-group"><ProductionGroup /></Route>
         <Route path="/production/production-sheet"><ProductionShift /></Route>
+        <Route path="/production/expenses"><ProductionExpenses /></Route>
         <Route path="/production"><Redirect to="/production/dashboard" /></Route>
 
         {/* Super Admin production routes */}

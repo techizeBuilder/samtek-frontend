@@ -979,6 +979,14 @@ export default function AdminSettings() {
                               </div>
                             </div>
                           </div>
+                          {acc.authKey && (
+                            <div>
+                              <Label className="text-xs mb-1 block">Webhook URL (give this to IndiaMART / your account manager)</Label>
+                              <div className="p-2 bg-gray-100 rounded font-mono text-[11px] text-gray-700 break-all">
+                                {`${window.location.origin}/api/leads/indiamart-webhook?q=${acc.authKey}`}
+                              </div>
+                            </div>
+                          )}
                           {acc.lastSyncedAt && <p className="text-xs text-green-600 flex items-center gap-1"><CheckCircle2 className="h-3 w-3" />Last Synced: {new Date(acc.lastSyncedAt).toLocaleString('en-IN')}</p>}
                         </div>
                       ))
