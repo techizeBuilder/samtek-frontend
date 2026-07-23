@@ -30,7 +30,10 @@ export default function TechnicianActionModal({ ticket, onClose }: { ticket: any
         setLoadingSpares(true);
         try {
           const token = localStorage.getItem('token');
-          const res = await axios.get(`${API_BASE}/items?type=Spares&limit=100`, {
+          // No `type` filter — a service visit can consume a Spare, a whole
+          // Product (e.g. a replacement motor), a raw Material, or an
+          // Assembly, not just catalog "Spares".
+          const res = await axios.get(`${API_BASE}/items?limit=200`, {
             headers: { Authorization: `Bearer ${token}` }
           });
           setInventorySpares(res.data.items || []);
@@ -194,13 +197,13 @@ export default function TechnicianActionModal({ ticket, onClose }: { ticket: any
                       value={currentPartId}
                       onChange={(e) => setCurrentPartId(e.target.value)}
                     >
-                      <option value="">Select a spare part...</option>
+                      <option value="">Select a part/item...</option>
                       {loadingSpares ? (
                         <option disabled>Loading inventory...</option>
                       ) : (
                         inventorySpares.map(spare => (
                           <option key={spare._id} value={spare._id}>
-                            {spare.name} ({spare.code}) - Stock: {spare.qty}
+                            {spare.name} ({spare.code}) [{spare.type}] - Stock: {spare.qty}
                           </option>
                         ))
                       )}

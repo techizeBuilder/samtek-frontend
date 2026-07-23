@@ -122,7 +122,7 @@ export default function TicketDetailModal({ ticketId, onClose }: { ticketId: str
                 <p><span className="font-medium text-gray-800">Model:</span> {ticket.machine.model || 'N/A'}</p>
                 <p><span className="font-medium text-gray-800">Serial No:</span> {ticket.machine.serialNumber || 'N/A'}</p>
                 <div className="border-t border-gray-100 pt-2 mt-2">
-                  <p><span className="font-medium text-gray-800">Warranty:</span> <span className={ticket.machine.warrantyStatus === 'Active' ? 'text-green-600 font-medium' : ''}>{ticket.machine.warrantyStatus || 'Unknown'}</span></p>
+                  <p><span className="font-medium text-gray-800">Warranty:</span> <span className={ticket.machine.warrantyStatus?.startsWith('Active') ? 'text-green-600 font-medium' : ''}>{ticket.machine.warrantyStatus || 'Unknown'}</span></p>
                   <p><span className="font-medium text-gray-800">AMC:</span> {ticket.machine.amcStatus || 'Unknown'}</p>
                 </div>
               </div>

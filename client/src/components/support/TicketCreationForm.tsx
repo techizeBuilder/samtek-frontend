@@ -36,7 +36,7 @@ const HistorySidebar = ({ history, onSelectMachine }: { history: any, onSelectMa
               </div>
               <div className="flex justify-between items-center mt-2 pt-2 border-t border-gray-50">
                 <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${
-                  p.warrantyStatus === 'Active' ? 'bg-green-100 text-green-700' : 'bg-red-50 text-red-600'
+                  p.warrantyStatus?.startsWith('Active') ? 'bg-green-100 text-green-700' : 'bg-red-50 text-red-600'
                 }`}>
                   Warranty: {p.warrantyStatus}
                 </span>

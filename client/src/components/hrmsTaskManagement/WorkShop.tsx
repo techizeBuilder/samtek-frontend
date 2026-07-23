@@ -75,6 +75,21 @@ const TaskWorkspaceView = ({ refreshTrigger, myTasksOnly = false }: { refreshTri
   const [totalPages, setTotalPages] = useState(1);
   const limit = 10;
 
+  // --- Kanban: paginated "Load More" that appends onto what's already loaded ---
+  const [kanbanTasks, setKanbanTasks] = useState<Task[]>([]);
+  const [kanbanPage, setKanbanPage] = useState(1);
+  const [kanbanTotalPages, setKanbanTotalPages] = useState(1);
+  const [kanbanLoadingMore, setKanbanLoadingMore] = useState(false);
+  const kanbanLimit = 10;
+
+  // --- Calendar: fetch the full current month in one go (no pagination) ---
+  const [calendarTasks, setCalendarTasks] = useState<Task[]>([]);
+  const [calendarLoading, setCalendarLoading] = useState(false);
+  const now = new Date();
+  const calendarYear = now.getFullYear();
+  const calendarMonth = now.getMonth();
+  const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
+
   const isTopAdmin = TOP_LEVEL_ADMINS.includes(user?.role);
   const isDeptHead = DEPT_HEADS.includes(user?.role);
   
@@ -144,11 +159,85 @@ const TaskWorkspaceView = ({ refreshTrigger, myTasksOnly = false }: { refreshTri
   useEffect(() => { setPage(1); }, [search, status, priority, taskType, assignedTo, date, department]);
   useEffect(() => { fetchTasks(); }, [page, search, status, priority, taskType, assignedTo, date, department, refreshTrigger]);
 
-  useEffect(() => { 
+  // Kanban has its own accumulating page cursor: filters/refresh reset it back to page 1
+  // and replace the board, while "Load More" appends the next page onto what's shown.
+  const fetchKanbanTasks = async (pageToLoad: number, append: boolean) => {
+    try {
+      if (append) setKanbanLoadingMore(true); else setLoading(true);
+      const token = localStorage.getItem("token");
+      const response = await axios.get(`${API_BASE}/hrms/tasks/all`, {
+        params: { search, status, priority, taskType, assignedTo, date, department, page: pageToLoad, limit: kanbanLimit },
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (response.data.success) {
+        setKanbanTasks(prev => append ? [...prev, ...(response.data.data || [])] : (response.data.data || []));
+        setKanbanTotalPages(response.data.totalPages || 1);
+      }
+    } catch (err) {
+      console.error("Error fetching kanban tasks:", err);
+      if (!append) setKanbanTasks([]);
+    } finally {
+      if (append) setKanbanLoadingMore(false); else setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (viewMode !== "kanban") return;
+    setKanbanPage(1);
+    fetchKanbanTasks(1, false);
+  }, [viewMode, search, status, priority, taskType, assignedTo, date, department, refreshTrigger]);
+
+  const handleLoadMoreKanban = async () => {
+    const nextPage = kanbanPage + 1;
+    await fetchKanbanTasks(nextPage, true);
+    setKanbanPage(nextPage);
+  };
+
+  // Calendar fetches every task due in the visible month in one request (no pagination),
+  // scoped by companyId/department/etc. server-side same as list/kanban.
+  const fetchCalendarTasks = async () => {
+    try {
+      setCalendarLoading(true);
+      const token = localStorage.getItem("token");
+      const start = new Date(calendarYear, calendarMonth, 1);
+      const end = new Date(calendarYear, calendarMonth, daysInMonth);
+      const response = await axios.get(`${API_BASE}/hrms/tasks/all`, {
+        params: {
+          search, status, priority, taskType, assignedTo, department,
+          startDate: start.toISOString(), endDate: end.toISOString(),
+          page: 1, limit: 1000
+        },
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (response.data.success) setCalendarTasks(response.data.data || []);
+    } catch (err) {
+      console.error("Error fetching calendar tasks:", err);
+      setCalendarTasks([]);
+    } finally { setCalendarLoading(false); }
+  };
+
+  useEffect(() => {
+    if (viewMode !== "calendar") return;
+    fetchCalendarTasks();
+  }, [viewMode, search, status, priority, taskType, assignedTo, department, refreshTrigger]);
+
+  useEffect(() => {
     if (!myTasksOnly) {
-      setAssignedTo(""); 
+      setAssignedTo("");
     }
   }, [department, myTasksOnly]);
+
+  // Refreshes whichever view is currently visible (used after a status change in the details drawer).
+  const handleTaskUpdated = () => {
+    if (viewMode === "kanban") {
+      setKanbanPage(1);
+      fetchKanbanTasks(1, false);
+    } else if (viewMode === "calendar") {
+      fetchCalendarTasks();
+    } else {
+      fetchTasks();
+    }
+  };
 
   const handleDeleteTask = async (taskId: string) => {
     if (!window.confirm("Are you sure you want to delete this task?")) return;
@@ -339,46 +428,68 @@ const TaskWorkspaceView = ({ refreshTrigger, myTasksOnly = false }: { refreshTri
             )}
 
             {viewMode === "kanban" && (
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                {["Pending", "In Progress", "Completed", "Hold"].map(colStatus => (
-                  <div key={colStatus} className="bg-gray-100/50 p-3 rounded-xl border border-gray-200 min-h-[500px]">
-                    <div className="flex justify-between items-center mb-4 px-1">
-                      <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest">{colStatus}</h3>
-                      <span className="text-[10px] bg-gray-200 text-gray-500 px-2 py-0.5 rounded-full font-bold">{tasks?.filter(t => t.status === colStatus).length}</span>
-                    </div>
-                    <div className="space-y-3">
-                      {tasks?.filter(t => t.status === colStatus).map(task => (
-                        <div key={task._id} onClick={() => handleTaskClick(task)} className="bg-white p-4 rounded-lg shadow-sm border border-gray-200 hover:border-indigo-400 transition-all cursor-pointer group">
-                          <div className="flex justify-between items-start mb-1">
-                            <div className="text-[10px] font-bold text-indigo-500 uppercase">{task.taskType}</div>
-                            {task.file && (
-                              <button onClick={(e) => handleFilePreview(e, task.file!)} className="text-gray-400 hover:text-indigo-600 transition-colors">
-                                <Paperclip className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-                          </div>
-                          
-                          <div className="text-sm font-semibold text-gray-800 group-hover:text-indigo-600 transition-colors leading-tight mb-3">{task.title}</div>
-                          <div className="flex items-center justify-between pt-3 border-t border-gray-50">
-                            <div className="flex -space-x-2">
-                              {task.assignedTo.map((u, i) => <div key={i} className="w-6 h-6 rounded-full border-2 border-white bg-indigo-100 flex items-center justify-center text-[8px] font-bold text-indigo-600 uppercase">{u.username[0]}</div>)}
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  {["Pending", "In Progress", "Completed", "Hold"].map(colStatus => (
+                    <div key={colStatus} className="bg-gray-100/50 p-3 rounded-xl border border-gray-200 min-h-[500px]">
+                      <div className="flex justify-between items-center mb-4 px-1">
+                        <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest">{colStatus}</h3>
+                        <span className="text-[10px] bg-gray-200 text-gray-500 px-2 py-0.5 rounded-full font-bold">{kanbanTasks?.filter(t => t.status === colStatus).length}</span>
+                      </div>
+                      <div className="space-y-3">
+                        {kanbanTasks?.filter(t => t.status === colStatus).map(task => (
+                          <div key={task._id} onClick={() => handleTaskClick(task)} className="bg-white p-4 rounded-lg shadow-sm border border-gray-200 hover:border-indigo-400 transition-all cursor-pointer group">
+                            <div className="flex justify-between items-start mb-1">
+                              <div className="text-[10px] font-bold text-indigo-500 uppercase">{task.taskType}</div>
+                              {task.file && (
+                                <button onClick={(e) => handleFilePreview(e, task.file!)} className="text-gray-400 hover:text-indigo-600 transition-colors">
+                                  <Paperclip className="w-3.5 h-3.5" />
+                                </button>
+                              )}
                             </div>
-                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${task.priority === 'High' ? 'bg-red-50 text-red-500' : 'bg-blue-50 text-blue-500'}`}>{task.priority}</span>
+
+                            <div className="text-sm font-semibold text-gray-800 group-hover:text-indigo-600 transition-colors leading-tight mb-3">{task.title}</div>
+                            <div className="flex items-center justify-between pt-3 border-t border-gray-50">
+                              <div className="flex -space-x-2">
+                                {task.assignedTo.map((u, i) => <div key={i} className="w-6 h-6 rounded-full border-2 border-white bg-indigo-100 flex items-center justify-center text-[8px] font-bold text-indigo-600 uppercase">{u.username[0]}</div>)}
+                              </div>
+                              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${task.priority === 'High' ? 'bg-red-50 text-red-500' : 'bg-blue-50 text-blue-500'}`}>{task.priority}</span>
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
+                  ))}
+                </div>
+                {kanbanPage < kanbanTotalPages && (
+                  <div className="flex justify-center pt-4">
+                    <button
+                      onClick={handleLoadMoreKanban}
+                      disabled={kanbanLoadingMore}
+                      className="px-5 py-2 bg-white border border-gray-200 rounded-lg text-sm font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50 shadow-sm"
+                    >
+                      {kanbanLoadingMore ? "Loading..." : "Load More"}
+                    </button>
                   </div>
-                ))}
-              </div>
+                )}
+              </>
             )}
 
             {viewMode === "calendar" && (
               <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
+                <div className="flex items-center justify-between mb-3 px-1">
+                  <h3 className="text-sm font-bold text-gray-700">
+                    {new Date(calendarYear, calendarMonth).toLocaleString(undefined, { month: 'long', year: 'numeric' })}
+                  </h3>
+                  {calendarLoading && <span className="text-xs text-gray-400 animate-pulse">Loading full month...</span>}
+                </div>
                 <div className="grid grid-cols-7 border-t border-l border-gray-200">
                   {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => <div key={d} className="p-3 text-[10px] font-bold text-gray-400 uppercase text-center border-r border-b border-gray-200 bg-gray-50">{d}</div>)}
-                  {[...Array(31)].map((_, i) => {
-                    const dayTasks = tasks?.filter(t => new Date(t.dueDate).getDate() === i + 1);
+                  {[...Array(daysInMonth)].map((_, i) => {
+                    const dayTasks = calendarTasks?.filter(t => {
+                      const d = new Date(t.dueDate);
+                      return d.getDate() === i + 1 && d.getMonth() === calendarMonth && d.getFullYear() === calendarYear;
+                    });
                     return (
                       <div key={i} className="min-h-[120px] border-r border-b border-gray-200 p-2 hover:bg-gray-50 transition-colors">
                         <span className="text-xs font-bold text-gray-300 mb-2 block">{i + 1}</span>
@@ -434,7 +545,7 @@ const TaskWorkspaceView = ({ refreshTrigger, myTasksOnly = false }: { refreshTri
         </div>
       )}
 
-      {selectedTaskId && <TaskDetailsDrawer taskId={selectedTaskId} onClose={() => setSelectedTaskId(null)} onTaskUpdated={fetchTasks} />}
+      {selectedTaskId && <TaskDetailsDrawer taskId={selectedTaskId} onClose={() => setSelectedTaskId(null)} onTaskUpdated={handleTaskUpdated} />}
     </div>
   );
 };

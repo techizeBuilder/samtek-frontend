@@ -154,7 +154,7 @@ export default function CustomerHistoryDashboard() {
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     {history.pastPurchases.map((machine: any, index: number) => {
 
-                                        const isWarrantyActive = machine.warrantyStatus === 'Active';
+                                        const isWarrantyActive = !!machine.warrantyStatus?.startsWith('Active');
                                         const hasAmc = machine.amcStatus !== 'Not Subscribed' && machine.amcStatus !== 'Unknown';
                                         const isAmcExpired = machine.amcStatus === 'Expired';
                                         const fileUrl = getFullFileUrl(machine.amcDocumentUrl);
