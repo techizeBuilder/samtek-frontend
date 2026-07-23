@@ -258,12 +258,11 @@ export async function generateDueBillPDF(data, logoDataUrl) {
   autoTable(doc, {
     startY: y,
     margin: { left: ML, right: 36 },
-    head: [['#', 'Product / Item Description', 'Qty', 'Unit Price', 'Amount']],
+    head: [['#', 'Product / Item Description', 'Qty', 'Amount']],
     body: items.map((it, idx) => [
       idx + 1,
       it.productName || '---',
       String(it.quantity || 1),
-      fmtAmt(it.unitPrice),
       fmtAmt(it.total)
     ]),
     styles: { font: 'helvetica', fontSize: 8.5, cellPadding: 5, lineColor: BORDER, lineWidth: 0.4, textColor: BLACK },
@@ -272,9 +271,8 @@ export async function generateDueBillPDF(data, logoDataUrl) {
     columnStyles: {
       0: { halign: 'center', cellWidth: 24 },
       1: { halign: 'left' },
-      2: { halign: 'center', cellWidth: 36 },
-      3: { halign: 'right',  cellWidth: 90 },
-      4: { halign: 'right',  cellWidth: 95 },
+      2: { halign: 'center', cellWidth: 40 },
+      3: { halign: 'right',  cellWidth: 110 },
     },
     alternateRowStyles: { fillColor: [250, 250, 255] },
   });

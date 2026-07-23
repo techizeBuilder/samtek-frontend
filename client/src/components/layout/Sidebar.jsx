@@ -44,6 +44,7 @@ const productionMenuItems = [
   { label: 'Manpower', path: '/production/manpower', icon: Users, module: 'production' },
   { label: 'Production Sheet', path: '/production/production-sheet', icon: Clock, module: 'production', feature: 'productionSheet' },
   { label: 'Production Reports', path: '/production/reports', icon: BarChart, module: 'production', feature: 'productionReports' },
+  { label: 'Expenses', path: '/production/expenses', icon: Receipt, module: 'production' },
   {
     label: 'Training Management',
     path: '/lms',
@@ -66,6 +67,7 @@ const packingMenuItems = [
   { label: 'My Task', path: '/packing/my-task', icon: CheckSquare, module: 'packing' },
   { label: 'Packing Sheet', path: '/packing/packing-sheet', icon: FileText, module: 'packing', feature: 'packingSheet' },
   { label: 'Packing History', path: '/packing/history', icon: BarChart, module: 'packing', feature: 'packingHistory' },
+  { label: 'Expenses', path: '/packaging-dispatch/expenses', icon: Receipt, module: 'packing' },
   {
     label: 'Training Management',
     path: '/lms',
@@ -92,6 +94,7 @@ const dispatchMenuItems = [
   { label: 'Dispatch Planning', path: '/dispatch/planning', icon: Truck, module: 'dispatches' },
   { label: 'Active Dispatches', path: '/dispatch/active', icon: CheckSquare, module: 'dispatches' },
   { label: 'Dispatch History', path: '/dispatch/completed', icon: BarChart, module: 'dispatches', feature: 'dispatchHistory' },
+  { label: 'Expenses', path: '/packaging-dispatch/expenses', icon: Receipt, module: 'dispatches' },
   {
     label: 'Training Management',
     path: '/lms',
@@ -178,11 +181,13 @@ const accountsMenuItems = [
       { label: 'Purchase Return', path: '/accounts/purchases/returns', feature: 'purchases' },
       { label: 'Vendor Payment', path: '/accounts/purchases/payments', feature: 'purchases' },
       { label: 'Payable Ageing', path: '/accounts/purchases/ageing', feature: 'purchases' },
+      { label: 'Purchase Expenses', path: '/accounts/purchases/expenses', feature: 'purchases' },
       { label: 'Purchase Reports', path: '/accounts/purchases/reports', feature: 'purchases' }
     ]
   },
   { label: 'GST & TDS', path: '/accounts/gst-tds', icon: FileText, module: 'accounts', feature: 'gstAndTds' },
   { label: 'Expenses', path: '/accounts/expenses', icon: Receipt, module: 'accounts', feature: 'expenses' },
+  { label: 'Tender Expenses', path: '/accounts/tender-expenses', icon: Receipt, module: 'accounts' },
   { label: 'Salesman Settlement', path: '/accounts/salesman-settlement', icon: Handshake, module: 'accounts', feature: 'salesmanSettlement' },
   { label: 'Bank & Cash', path: '/accounts/bank-cash', icon: CreditCard, module: 'accounts', feature: 'bankAndCash' },
   { label: 'Ledger', path: '/accounts/ledger', icon: History, module: 'accounts', feature: 'bankAndCash' },
@@ -266,6 +271,7 @@ const hrAdminMenuItems = [
   },
   { label: 'Holidays', path: '/hrms/SuperAdmin/holidays', icon: Calendar, module: 'hrms' },
   { label: 'HR Policy', path: '/hrms/SuperAdmin/hr-policy', icon: Shield, module: 'hrms' },
+  { label: 'Expenses', path: '/hrms/SuperAdmin/expenses', icon: Receipt, module: 'hrms' },
   { label: 'Task Management', path: '/hrms/SuperAdmin/task-management', icon: CheckSquare, module: 'hrms' },
   {
     label: 'Training Management',
@@ -414,6 +420,7 @@ const rdMenuItems = [
   { label: 'Change Management', path: '/r&d/change-management', icon: AlertTriangle, module: 'rnd' },
   { label: 'Quality Parameters', path: '/r&d/quality-parameters', icon: ShieldAlert, module: 'rnd' },
   { label: 'Documentation', path: '/r&d/documentation', icon: FolderOpen, module: 'rnd' },
+  { label: 'Expenses', path: '/r&d/expenses', icon: Receipt, module: 'rnd' },
   {
     label: 'Training Management',
     path: '/lms',
@@ -440,6 +447,7 @@ const complaintHeadMenuItems = [
   { label: 'Delivery Confirmation', path: '/complaints/delivery-confirmation', icon: CheckCircle, module: 'complaints' },
   { label: 'Installation Schedule', path: '/complaints/installation-schedule', icon: CalendarCheck, module: 'complaints' },
   { label: 'Feedback & Ratings', path: '/complaints/feedback-ratings', icon: Star, module: 'complaints' },
+  { label: 'Expenses', path: '/complaints/expenses', icon: Receipt, module: 'complaints' },
 ];
 
 const complaintAgentMenuItems = [
@@ -448,6 +456,7 @@ const complaintAgentMenuItems = [
   { label: 'Delivery Confirmation', path: '/complaints/delivery-confirmation', icon: CheckCircle, module: 'complaints' },
   { label: 'Installation Schedule', path: '/complaints/installation-schedule', icon: CalendarCheck, module: 'complaints' },
   { label: 'Feedback & Ratings', path: '/complaints/feedback-ratings', icon: Star, module: 'complaints' },
+  { label: 'Expenses', path: '/complaints/expenses', icon: Receipt, module: 'complaints' },
 ];
 
 const marketingMenuItems = [
@@ -456,9 +465,16 @@ const marketingMenuItems = [
   { label: 'Upload Content', path: '/marketing/upload', icon: Upload, module: 'marketing' },
   { label: 'Sales Requests', path: '/marketing/sales-requests', icon: Inbox, module: 'marketing' },
   { label: 'Category Management', path: '/marketing/categories', icon: Folder, module: 'marketing' },
+  { label: 'Marketing Expenses', path: '/marketing/expenses', icon: Receipt, module: 'marketing' },
   { label: 'Reports', path: '/marketing/reports', icon: BarChart, module: 'marketing' },
   { label: 'Audit Logs', path: '/marketing/audit-logs', icon: History, module: 'marketing' },
   { label: 'Notifications', path: '/marketing/notifications', icon: Bell, module: 'marketing' },
+];
+
+// Marketing Employee has a narrower scope than Marketing Head — logging
+// expenses only, no access to content library/upload/categories.
+const marketingEmployeeMenuItems = [
+  { label: 'Marketing Expenses', path: '/marketing/expenses', icon: Receipt, module: 'marketing' },
 ];
 
 const storeMenuItems = [
@@ -582,6 +598,8 @@ const getMenuItemsByRole = (role) => {
       return qcMenuItems;
     case 'Marketing Head':
       return marketingMenuItems;
+    case 'Marketing Employee':
+      return marketingEmployeeMenuItems;
     case 'MIS Admin':
       return misAdminMenuItems;
     default:

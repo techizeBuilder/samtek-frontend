@@ -66,6 +66,7 @@ import PurchaseReports from "@/pages/accounts/PurchaseReports";
 import PurchaseRequest from "@/pages/accounts/PurchaseRequest";
 import VendorPayments from "@/pages/accounts/VendorPayments";
 import PayableAgeing from "@/pages/accounts/PayableAgeing";
+import PurchaseExpenses from "@/pages/accounts/PurchaseExpenses";
 import GSTAndTDS from "@/pages/accounts/GSTAndTDS";
 import DamageAndExpiry from "@/pages/accounts/DamageAndExpiry";
 import SalesmanSettlement from "@/pages/accounts/SalesmanSettlement";
@@ -86,6 +87,7 @@ import CustomerPayments from "@/pages/accounts/CustomerPayments";
 import ReceivableAgeing from "@/pages/accounts/ReceivableAgeing";
 import SalesReports from "@/pages/accounts/SalesReports";
 import Expenses from "@/pages/accounts/Expenses";
+import TenderExpenses from "@/pages/accounts/TenderExpenses";
 import FinancialSummary from "@/pages/accounts/FinancialSummary";
 import LedgerRecord from "@/pages/accounts/LedgerRecord";
 import PaymentReminders from "@/pages/accounts/PaymentReminders";
@@ -113,6 +115,7 @@ import HRMSJobOpenings from "@/pages/hrms/Recruitment/JobOpenings";
 import HRMSCandidates from "@/pages/hrms/Recruitment/Candidates";
 import HRMSInterviewPipeline from "@/pages/hrms/Recruitment/InterviewPipeline";
 import HRMSHoliday from "@/pages/hrms/Holidays/Holiday";
+import HrExpenses from "@/pages/hrms/Expenses";
 import HRMSPolicies from "@/pages/hrms/SystemConfigration/Policies";
 import HRMSAddUser from "@/pages/hrms/AddUser";
 import HRMSProfile from "@/pages/hrms/Profile";
@@ -165,6 +168,7 @@ import CustomerHistoryDashboard from "@/pages/complaintsAndServices/CustomerHist
 import DeliveryConfirmation from "@/pages/complaintsAndServices/DeliveryConfirmation";
 import InstallationSchedule from "@/pages/complaintsAndServices/InstallationSchedule";
 import FeedbackRatings from "@/pages/complaintsAndServices/FeedbackRatings";
+import ComplaintExpenses from "@/pages/complaintsAndServices/Expenses";
 import CustomerFeedbackForm from "@/pages/complaintsAndServices/CustomerFeedbackForm";
 
 // training management imports
@@ -194,6 +198,7 @@ import Prototype from "@/pages/ResearchDevelopment/Prototype";
 import ChangeManagement from "@/pages/ResearchDevelopment/ChangeManagement";
 import QualityParameters from "@/pages/ResearchDevelopment/QualityParameters";
 import Documentation from "@/pages/ResearchDevelopment/Documentation";
+import RDExpenses from "@/pages/ResearchDevelopment/Expenses";
 
 import { PackagingDispatchProvider } from "@/contexts/PackagingDispatchContext";
 import PkgDispatchDashboard from "@/pages/packaging-dispatch/Dashboard";
@@ -202,6 +207,7 @@ import PackagingJobs from "@/pages/packaging-dispatch/PackagingJobs";
 import PkgDispatchPlanning from "@/pages/packaging-dispatch/DispatchPlanning";
 import PkgDispatchExecution from "@/pages/packaging-dispatch/DispatchExecution";
 import PkgDispatchHistory from "@/pages/packaging-dispatch/DispatchHistory";
+import PackagingDispatchExpenses from "@/pages/packaging-dispatch/Expenses";
 
 import { QCProvider } from "@/contexts/QCContext";
 import QCDashboard from "@/pages/quality-control/Dashboard";
@@ -219,6 +225,7 @@ import MarketingReports from "@/pages/marketing/Reports";
 import AuditLogs from "@/pages/marketing/AuditLogs";
 import MarketingNotifications from "@/pages/marketing/Notifications";
 import MarketingSalesRequests from "@/pages/marketing/SalesRequests";
+import MarketingExpenses from "@/pages/marketing/Expenses";
 import SalesMarketingRequests from "@/pages/sales/MarketingRequests";
 
 // MIS Admin Module Imports
@@ -363,6 +370,11 @@ function Router() {
       <Route exact path="/hrms/SuperAdmin/hr-policy">
         <ProtectedRoute requiredRole="HR-Admin">
           <HRMSPolicies />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/hrms/SuperAdmin/expenses">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HrExpenses />
         </ProtectedRoute>
       </Route>
 
@@ -635,6 +647,11 @@ function Router() {
           <FeedbackRatings />
         </ProtectedRoute>
       </Route>
+      <Route path="/complaints/expenses">
+        <ProtectedRoute requiredRole={["Complaint Management Head", "Complaint Management Employee"]}>
+          <ComplaintExpenses />
+        </ProtectedRoute>
+      </Route>
 
       <Route path="/r&d/product-master">
         <ProtectedRoute requiredRole={["Research & Development Head", "Research Development Employee"]}>
@@ -674,6 +691,11 @@ function Router() {
       <Route path="/r&d/documentation">
         <ProtectedRoute requiredRole={["Research & Development Head", "Research Development Employee"]}>
           <Documentation />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/r&d/expenses">
+        <ProtectedRoute requiredRole={["Research & Development Head", "Research Development Employee"]}>
+          <RDExpenses />
         </ProtectedRoute>
       </Route>
       {/* task management route for R&D department */}
@@ -966,6 +988,11 @@ function Router() {
           <PackagingDispatchProvider><PkgDispatchHistory /></PackagingDispatchProvider>
         </ProtectedRoute>
       </Route>
+      <Route path="/packaging-dispatch/expenses">
+        <ProtectedRoute requiredRole={["Packing", "Packing Head", "Packing Employee", "Dispatch", "Dispatch Head", "Dispatch Employee"]}>
+          <PackagingDispatchExpenses />
+        </ProtectedRoute>
+      </Route>
 
       {/* Quality Control Routes */}
       <Route path="/qc/dashboard">
@@ -1118,6 +1145,11 @@ function Router() {
           <PayableAgeing />
         </ProtectedRoute>
       </Route>
+      <Route path="/accounts/purchases/expenses">
+        <ProtectedRoute requiredRole="Accounts">
+          <PurchaseExpenses />
+        </ProtectedRoute>
+      </Route>
       <Route path="/accounts/purchases/reports">
         <ProtectedRoute requiredRole="Accounts">
           <PurchaseReports />
@@ -1156,6 +1188,11 @@ function Router() {
       <Route path="/accounts/expenses">
         <ProtectedRoute requiredRole="Accounts">
           <Expenses />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/accounts/tender-expenses">
+        <ProtectedRoute requiredRole="Accounts">
+          <TenderExpenses />
         </ProtectedRoute>
       </Route>
       <Route path="/accounts/financial-summary">
@@ -1452,6 +1489,11 @@ function Router() {
       <Route path="/marketing/sales-requests">
         <ProtectedRoute requiredRole="Marketing Head">
           <MarketingSalesRequests />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/marketing/expenses">
+        <ProtectedRoute requiredRole={['Marketing Head', 'Marketing Employee']}>
+          <MarketingExpenses />
         </ProtectedRoute>
       </Route>
       <Route path="/sales/marketing-requests">

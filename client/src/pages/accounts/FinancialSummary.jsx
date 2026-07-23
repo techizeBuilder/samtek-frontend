@@ -13,7 +13,6 @@ import {
     Download,
     IndianRupee,
     Briefcase,
-    ExternalLink,
     ChevronRight,
     Calculator,
     Users,
@@ -22,7 +21,16 @@ import {
     Edit2,
     Settings as SettingsIcon,
     AlertCircle,
-    CheckCircle2
+    CheckCircle2,
+    Receipt,
+    Megaphone,
+    Truck,
+    ShoppingCart,
+    Factory,
+    Beaker,
+    MessageSquare,
+    Landmark,
+    Wallet
 } from 'lucide-react';
 import { api } from '@/services/api';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -48,6 +56,23 @@ import { Label } from "@/components/ui/label";
 import { useToast } from '@/hooks/use-toast';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek } from 'date-fns';
 import { useAuth } from '@/hooks/useAuth';
+
+// Icon + colors per expense department, matched by the `key` returned in
+// summary.expensesByDepartment from getFinanceSummary. Classes are written
+// out in full (not built from a template string) so Tailwind's static
+// content scanner actually generates them in the production CSS build.
+const DEPARTMENT_STYLE = {
+    accounts: { icon: Receipt, iconBg: 'bg-slate-100', iconText: 'text-slate-600', rowBg: 'bg-slate-50/40', border: 'border-slate-100', bar: 'bg-slate-500' },
+    marketing: { icon: Megaphone, iconBg: 'bg-pink-100', iconText: 'text-pink-600', rowBg: 'bg-pink-50/40', border: 'border-pink-100', bar: 'bg-pink-500' },
+    packagingDispatch: { icon: Truck, iconBg: 'bg-amber-100', iconText: 'text-amber-600', rowBg: 'bg-amber-50/40', border: 'border-amber-100', bar: 'bg-amber-500' },
+    purchase: { icon: ShoppingCart, iconBg: 'bg-blue-100', iconText: 'text-blue-600', rowBg: 'bg-blue-50/40', border: 'border-blue-100', bar: 'bg-blue-500' },
+    hr: { icon: Users, iconBg: 'bg-violet-100', iconText: 'text-violet-600', rowBg: 'bg-violet-50/40', border: 'border-violet-100', bar: 'bg-violet-500' },
+    production: { icon: Factory, iconBg: 'bg-orange-100', iconText: 'text-orange-600', rowBg: 'bg-orange-50/40', border: 'border-orange-100', bar: 'bg-orange-500' },
+    rd: { icon: Beaker, iconBg: 'bg-teal-100', iconText: 'text-teal-600', rowBg: 'bg-teal-50/40', border: 'border-teal-100', bar: 'bg-teal-500' },
+    complaint: { icon: MessageSquare, iconBg: 'bg-cyan-100', iconText: 'text-cyan-600', rowBg: 'bg-cyan-50/40', border: 'border-cyan-100', bar: 'bg-cyan-500' },
+    tender: { icon: Landmark, iconBg: 'bg-emerald-100', iconText: 'text-emerald-600', rowBg: 'bg-emerald-50/40', border: 'border-emerald-100', bar: 'bg-emerald-500' },
+};
+const DEFAULT_DEPARTMENT_STYLE = { icon: Receipt, iconBg: 'bg-slate-100', iconText: 'text-slate-600', rowBg: 'bg-slate-50/40', border: 'border-slate-100', bar: 'bg-slate-500' };
 
 export default function FinancialSummary() {
     const { user } = useAuth();
@@ -141,6 +166,13 @@ export default function FinancialSummary() {
 
     // Dynamic partners from summary
     const activePartners = summary?.partners || [];
+
+    // Department-wise expense breakdown ("Show Expenses") — every entry
+    // logged in Marketing / Packing & Dispatch / Purchase / HR / Production /
+    // R&D / Service & Complaint / Tender / Accounts Expenses modules for the
+    // currently selected filter period, already summed server-side.
+    const expensesByDepartment = summary?.expensesByDepartment || [];
+    const totalDeptExpenses = expensesByDepartment.reduce((sum, d) => sum + d.total, 0);
 
     // Total percentage currently assigned
     const totalAssignedPct = activePartners.reduce((sum, p) => sum + p.percentage, 0);
@@ -624,23 +656,83 @@ export default function FinancialSummary() {
                             </p>
                         </div>
 
-                        <div className="p-4 bg-amber-50 rounded-xl border border-amber-100 space-y-2">
-                            <div className="flex items-center gap-2 text-amber-700 font-bold text-sm">
-                                <TrendingDown size={16} />
-                                <span>Cost Saving Tip</span>
+                        <div className="p-4 bg-rose-50 rounded-xl border border-rose-100 space-y-1">
+                            <div className="flex items-center gap-2 text-rose-700 font-bold text-sm">
+                                <Calculator size={16} />
+                                <span>Total Expenses This Period</span>
                             </div>
-                            <p className="text-xs text-amber-800">Operational costs have increased by 12% this week. Consider reviewing electricity usage during baking hours.</p>
+                            <div className="text-2xl font-extrabold text-rose-700">₹{(summary?.totalExpenses || 0).toLocaleString()}</div>
+                            <p className="text-xs text-rose-800">
+                                Across {expensesByDepartment.filter(d => d.total > 0).length} department{expensesByDepartment.filter(d => d.total > 0).length === 1 ? '' : 's'} — see full breakdown below.
+                            </p>
                         </div>
-
-                        <Button className="w-full bg-slate-900 hover:bg-slate-800 text-white shadow-lg py-6" asChild>
-                            <a href="/accounts/expenses">
-                                Add Daily Expenses
-                                <ExternalLink className="w-4 h-4 ml-2" />
-                            </a>
-                        </Button>
                     </CardContent>
                 </Card>
             </div>
+
+            {/* Show Expenses — Department-wise Breakdown */}
+            <Card className="border-none shadow-md bg-white overflow-hidden">
+                <CardHeader className="flex flex-row items-center justify-between border-b border-slate-50 pb-4">
+                    <div>
+                        <CardTitle className="flex items-center gap-2">
+                            <Wallet className="w-5 h-5 text-rose-600" />
+                            Expense Breakdown by Department
+                        </CardTitle>
+                        <CardDescription>
+                            Every expense logged for {format(new Date(startDate), 'MMM dd')} - {format(new Date(endDate), 'MMM dd, yyyy')}, pulled live from each department's Expense module
+                        </CardDescription>
+                    </div>
+                    <div className="text-right shrink-0">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Grand Total</p>
+                        <p className="text-2xl font-extrabold text-rose-600">₹{totalDeptExpenses.toLocaleString()}</p>
+                    </div>
+                </CardHeader>
+                <CardContent className="pt-5">
+                    {expensesByDepartment.length === 0 || totalDeptExpenses === 0 ? (
+                        <div className="text-center py-10">
+                            <Wallet className="w-10 h-10 text-slate-200 mx-auto mb-2" />
+                            <p className="text-slate-400 font-medium">No expenses recorded for this period yet.</p>
+                        </div>
+                    ) : (
+                        <div className="space-y-3">
+                            {expensesByDepartment.map((dept) => {
+                                const style = DEPARTMENT_STYLE[dept.key] || DEFAULT_DEPARTMENT_STYLE;
+                                const Icon = style.icon;
+                                const pct = totalDeptExpenses > 0 ? (dept.total / totalDeptExpenses) * 100 : 0;
+                                const isZero = dept.total === 0;
+                                return (
+                                    <div
+                                        key={dept.key}
+                                        className={`flex items-center gap-4 p-3 rounded-xl border transition-colors ${isZero ? 'border-slate-50 bg-slate-50/40 opacity-60' : `${style.border} ${style.rowBg}`}`}
+                                    >
+                                        <div className={`p-2.5 rounded-lg ${style.iconBg} ${style.iconText} shrink-0`}>
+                                            <Icon size={18} />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center justify-between gap-2 mb-1">
+                                                <h4 className="font-bold text-slate-800 text-sm truncate">{dept.label}</h4>
+                                                <span className="font-extrabold text-slate-900 shrink-0">₹{dept.total.toLocaleString()}</span>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                                    <div
+                                                        className={`h-full ${style.bar} rounded-full transition-all duration-500`}
+                                                        style={{ width: `${pct}%` }}
+                                                    />
+                                                </div>
+                                                <span className="text-[10px] font-semibold text-slate-400 w-16 text-right shrink-0">
+                                                    {dept.count} {dept.count === 1 ? 'entry' : 'entries'}
+                                                </span>
+                                                <span className="text-[10px] font-bold text-slate-400 w-10 text-right shrink-0">{pct.toFixed(0)}%</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
         </div>
     );
 }

@@ -12,7 +12,8 @@ export const USER_ROLES = {
   STORE_EMPLOYEE: 'Store Employee',
   COMPANY_ADMIN: 'Company Admin',
   HR_ADMIN: 'HR-Admin',
-  MARKETING_HEAD: 'Marketing Head'
+  MARKETING_HEAD: 'Marketing Head',
+  MARKETING_EMPLOYEE: 'Marketing Employee'
 };
 
 export const MODULES = {

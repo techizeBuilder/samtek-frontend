@@ -945,6 +945,21 @@ const Quotation = () => {
     ));
   };
 
+  // Unit Price cannot be dropped below the item's MSP (Sale Price from
+  // Inventory) — checked on blur so the user can still type freely (an
+  // onChange clamp would fight every keystroke while typing a new value).
+  const handlePriceBlur = (item) => {
+    const msp = Number(item.salePrice) || 0;
+    if (msp > 0 && Number(item.price) < msp) {
+      handleUpdateItem(item.id, 'price', msp);
+      toast({
+        title: 'Price adjusted to MSP',
+        description: `${item.name}: price cannot go below the Minimum Selling Price of ₹${msp.toLocaleString()}.`,
+        variant: 'destructive'
+      });
+    }
+  };
+
   const captureHTMLToPDF = async (returnBase64 = false) => {
     const element = pdfRef.current;
     if (!element) throw new Error('Preview element not found');
@@ -1708,7 +1723,7 @@ const Quotation = () => {
               <thead className="bg-gray-50 border-b">
                 <tr>
                   <th className="px-4 py-3 text-left">Product Details</th>
-                  <th className="px-4 py-3 text-center w-24">Unit Price</th>
+                  <th className="px-4 py-3 text-center w-40">Unit Price</th>
                   <th className="px-4 py-3 text-center w-24">Qty</th>
                   <th className="px-4 py-3 text-center w-24">GST %</th>
                   <th className="px-4 py-3 text-right w-32">Amount</th>
@@ -1797,8 +1812,13 @@ const Quotation = () => {
                         type="number"
                         value={item.price}
                         onChange={(e) => handleUpdateItem(item.id, 'price', parseFloat(e.target.value) || 0)}
-                        className="h-8 text-center"
+                        onBlur={() => handlePriceBlur(item)}
+                        min={item.salePrice || undefined}
+                        className="h-11 text-center text-base font-semibold w-full"
                       />
+                      {item.salePrice > 0 && (
+                        <div className="text-[10px] text-gray-400 mt-1 text-center">MSP: ₹{Number(item.salePrice).toLocaleString()}</div>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <Input

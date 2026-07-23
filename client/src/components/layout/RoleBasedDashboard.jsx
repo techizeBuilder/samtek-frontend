@@ -20,6 +20,7 @@ import { QCProvider } from "@/contexts/QCContext";
 import QCDashboard from "@/pages/quality-control/Dashboard";
 import TechnicianWorkSapce from "@/pages/complaintsAndServices/TechnicianWorkSapce";
 import MISDashboard from "@/pages/mis/MISDashboard";
+import MarketingExpenses from "@/pages/marketing/Expenses";
 
 export default function RoleBasedDashboard() {
   const { user } = useAuth();
@@ -89,6 +90,9 @@ export default function RoleBasedDashboard() {
         case 'Marketing Head':
           setLocation('/sales-dashboard');
           return;
+        case 'Marketing Employee':
+          setLocation('/marketing/expenses');
+          return;
         case 'MIS Admin':
           setLocation('/mis/dashboard');
           return;
@@ -148,6 +152,8 @@ export default function RoleBasedDashboard() {
       return <QCProvider><QCDashboard /></QCProvider>;
     case 'Marketing Head':
       return <SalesDashboard />;
+    case 'Marketing Employee':
+      return <MarketingExpenses />;
     case 'MIS Admin':
       return <MISDashboard />;
     case 'Complaint Management Employee':

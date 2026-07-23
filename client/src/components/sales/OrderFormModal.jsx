@@ -91,14 +91,25 @@ function itemsFromQuotation(lead) {
 
   // Kept in `items` (so totals/submitted totals stay correct) but filtered
   // out of the rendered table entirely — see the `visibleItems` derivation.
-  const chargeRows = charges.map(c => ({
-    mcCode: '', itemName: c.name || '', specification: '', hsnCode: '',
-    qty: '', billAmount: '', gstAmount: '',
-    quotationAmount: num(c.price),
-    cashAmount: '', discountAmount: '',
-    locked: true,
-    hiddenCharge: true,
-  }));
+  // Each charge's own GST % from the quotation (defaults to 18%, same
+  // fallback Quotation.jsx uses) is folded in here: billAmount = the base
+  // charge, gstAmount = its GST, quotationAmount = the GST-inclusive total.
+  // This makes the charge flow into the Bill Amt / GST Amt column totals
+  // exactly like any other row, so Billing Amount (and therefore Balance
+  // Amount / Customer Outstanding) includes these charges by default.
+  const chargeRows = charges.map(c => {
+    const base = num(c.price);
+    const gstPct = num(c.gst ?? 18);
+    const gst = +(base * gstPct / 100).toFixed(2);
+    return {
+      mcCode: '', itemName: c.name || '', specification: '', hsnCode: '',
+      qty: '', billAmount: base, gstAmount: gst,
+      quotationAmount: +(base + gst).toFixed(2),
+      cashAmount: '', discountAmount: '',
+      locked: true,
+      hiddenCharge: true,
+    };
+  });
 
   return [...productRows, ...chargeRows];
 }
@@ -324,9 +335,19 @@ export default function OrderFormModal({ open, onOpenChange, orderId, order, lea
       acc.quotationAmount += num(it.quotationAmount);
       acc.cashAmount += num(it.cashAmount);
       acc.discountAmount += num(it.discountAmount);
-      if (it.hiddenCharge) acc.chargesFolded += num(it.quotationAmount);
+      if (it.hiddenCharge) {
+        // chargesFolded is GST-inclusive (billAmount + gstAmount already
+        // baked into quotationAmount — see itemsFromQuotation) — this is
+        // what actually got added into the Bill Amt / GST Amt totals below.
+        acc.chargesFolded += num(it.quotationAmount);
+        acc.chargesFoldedBase += num(it.billAmount);
+        acc.chargesFoldedGst += num(it.gstAmount);
+      }
       return acc;
-    }, { qty: 0, billAmount: 0, gstAmount: 0, quotationAmount: 0, cashAmount: 0, discountAmount: 0, chargesFolded: 0 });
+    }, {
+      qty: 0, billAmount: 0, gstAmount: 0, quotationAmount: 0, cashAmount: 0, discountAmount: 0,
+      chargesFolded: 0, chargesFoldedBase: 0, chargesFoldedGst: 0
+    });
     // Balance Amount = total Bill Amount + its 18% GST + total Cash Amount,
     // across every row (products and the quotation's additional charges alike) —
     // minus the row-wise Discounts and whatever's already been Received.
@@ -566,13 +587,27 @@ export default function OrderFormModal({ open, onOpenChange, orderId, order, lea
                         TOTAL
                         {totals.chargesFolded > 0 && (
                           <span className="font-normal text-gray-400 text-xs ml-2">
-                            (incl. {totals.chargesFolded.toLocaleString('en-IN')} additional charges)
+                            (incl. ₹{totals.chargesFolded.toLocaleString('en-IN')} additional charges, GST incl.)
                           </span>
                         )}
                       </TableCell>
                       <TableCell className="text-right">{totals.qty}</TableCell>
-                      <TableCell className="text-right">{totals.billAmount.toLocaleString('en-IN')}</TableCell>
-                      <TableCell className="text-right">{totals.gstAmount.toLocaleString('en-IN')}</TableCell>
+                      <TableCell className="text-right align-top">
+                        <div>{totals.billAmount.toLocaleString('en-IN')}</div>
+                        {totals.chargesFoldedBase > 0 && (
+                          <div className="text-[10px] font-normal text-emerald-600">
+                            +₹{totals.chargesFoldedBase.toLocaleString('en-IN')} charges added
+                          </div>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right align-top">
+                        <div>{totals.gstAmount.toLocaleString('en-IN')}</div>
+                        {totals.chargesFoldedGst > 0 && (
+                          <div className="text-[10px] font-normal text-emerald-600">
+                            +₹{totals.chargesFoldedGst.toLocaleString('en-IN')} GST on charges
+                          </div>
+                        )}
+                      </TableCell>
                       <TableCell className="text-right">{totals.quotationAmount.toLocaleString('en-IN')}</TableCell>
                       <TableCell
                         className="text-right"
