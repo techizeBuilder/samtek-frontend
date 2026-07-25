@@ -1,9 +1,7 @@
 import React, { useState, useEffect } from "react";
-import axios from "axios";
 import { X, UploadCloud, AlertCircle } from "lucide-react";
-import { useAuth } from "@/hooks/useAuth"; 
-
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+import { useAuth } from "@/hooks/useAuth";
+import { useCreateTask, useAssignableEmployees } from "@/hooks/useTaskManagement";
 
 const TOP_LEVEL_ADMINS = ['HR-Admin', 'MIS Admin', 'Company Admin', 'Super Admin', 'Admin']; 
 
@@ -41,8 +39,10 @@ interface TaskCreationFormProps {
 
 const TaskCreationForm: React.FC<TaskCreationFormProps> = ({ onClose, onSuccess }) => {
   const { user } = useAuth() as { user: any };
-  const [loading, setLoading] = useState(false);
-  const [employees, setEmployees] = useState<any[]>([]);
+  const createTaskMutation = useCreateTask();
+  // Cached once (staleTime: Infinity) and shared across Workspace / Reports / Task Creation
+  // instead of independently paging through every user on every mount.
+  const { data: employees = [] } = useAssignableEmployees();
 
   const isTopAdmin = TOP_LEVEL_ADMINS.includes(user?.role);
   const defaultDepartment = isTopAdmin ? "" : getDepartmentFromRole(user?.role);
@@ -59,45 +59,6 @@ const TaskCreationForm: React.FC<TaskCreationFormProps> = ({ onClose, onSuccess 
   const [reminder, setReminder] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [assignedTo, setAssignedTo] = useState<string[]>([]); 
-
-  useEffect(() => {
-    const fetchAllEmployees = async () => {
-      try {
-        const token = localStorage.getItem("token");
-        let allUsers: any[] = [];
-        let currentPage = 1;
-        let fetchedTotalPages = 1;
-
-        do {
-          const response = await axios.get(`${API_BASE}/users`, {
-            params: { page: currentPage, limit: 100 }, 
-            headers: { Authorization: `Bearer ${token}` }
-          });
-          const responseData = response.data;
-          let usersChunk: any[] = [];
-
-          if (responseData && Array.isArray(responseData.users)) {
-            usersChunk = responseData.users;
-          } else if (responseData?.data && Array.isArray(responseData.data.users)) {
-            usersChunk = responseData.data.users;
-          }
-
-          if (usersChunk.length > 0) {
-            allUsers = [...allUsers, ...usersChunk];
-          } else { break; }
-          
-          fetchedTotalPages = responseData.pagination?.pages || responseData.data?.pagination?.pages || 1; 
-          currentPage++;
-          if (currentPage > 10) break; 
-        } while (currentPage <= fetchedTotalPages);
-
-        setEmployees(allUsers);
-      } catch (err) {
-        console.error("Failed to load employees:", err);
-      }
-    };
-    fetchAllEmployees();
-  }, []);
 
   useEffect(() => {
     setAssignedTo([]);
@@ -118,44 +79,36 @@ const TaskCreationForm: React.FC<TaskCreationFormProps> = ({ onClose, onSuccess 
     setAssignedTo(prev => prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (assignedTo.length === 0) {
       alert("Please assign the task to at least one user.");
       return;
     }
 
-    try {
-      setLoading(true);
-      const token = localStorage.getItem("token");
+    const formData = new FormData();
+    formData.append("title", title);
+    formData.append("description", description);
+    formData.append("taskType", taskType);
+    formData.append("priority", priority);
+    formData.append("department", department);
+    formData.append("dueDate", dueDate);
+    formData.append("reminder", String(reminder));
+    if (file) formData.append("file", file);
 
-      const formData = new FormData();
-      formData.append("title", title);
-      formData.append("description", description);
-      formData.append("taskType", taskType);
-      formData.append("priority", priority);
-      formData.append("department", department); 
-      formData.append("dueDate", dueDate);
-      formData.append("reminder", String(reminder));
-      if (file) formData.append("file", file);
+    assignedTo.forEach(userId => formData.append("assignedTo", userId));
 
-      assignedTo.forEach(userId => formData.append("assignedTo", userId));
-
-      const response = await axios.post(`${API_BASE}/hrms/tasks/create`, formData, {
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "multipart/form-data" }
-      });
-
-      if (response.data.success) {
+    createTaskMutation.mutate(formData, {
+      onSuccess: () => {
         alert("Task created successfully!");
-        if (onSuccess) onSuccess(); // TRIGGER THE REFRESH
-        onClose(); 
-      }
-    } catch (error: any) {
-      console.error("Task creation failed:", error);
-      alert(error.response?.data?.message || "Failed to create task.");
-    } finally {
-      setLoading(false);
-    }
+        if (onSuccess) onSuccess();
+        onClose();
+      },
+      onError: (error: any) => {
+        console.error("Task creation failed:", error);
+        alert(error.response?.data?.message || "Failed to create task.");
+      },
+    });
   };
 
   return (
@@ -256,8 +209,8 @@ const TaskCreationForm: React.FC<TaskCreationFormProps> = ({ onClose, onSuccess 
 
         <div className="bg-gray-50 border-t border-gray-200 px-6 py-4 flex gap-3 sticky bottom-0">
           <button type="button" onClick={onClose} className="flex-1 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-50 transition">Cancel</button>
-          <button onClick={handleSubmit} disabled={loading} className="flex-1 py-2.5 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50 transition">
-            {loading ? "Creating & Locking..." : "Create Task"}
+          <button onClick={handleSubmit} disabled={createTaskMutation.isPending} className="flex-1 py-2.5 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50 transition">
+            {createTaskMutation.isPending ? "Creating & Locking..." : "Create Task"}
           </button>
         </div>
       </div>

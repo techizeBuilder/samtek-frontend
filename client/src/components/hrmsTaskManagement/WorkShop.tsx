@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from "react";
-import axios from "axios";
+import React, { useState, useEffect, useMemo } from "react";
 import { useAuth } from "@/hooks/useAuth";
+import { useTasks, useKanbanTasks, useCalendarTasks, useDeleteTask, useAssignableEmployees } from "@/hooks/useTaskManagement";
 
 import TaskDetailsDrawer from "@/components/hrmsTaskManagement/TaskDetailsDrawer";
 import { Download, X, Search, Trash2, Paperclip, Eye, Clock, ChevronLeft, ChevronRight, User, Tag, List, LayoutGrid, Calendar as CalendarIcon, Building2 } from "lucide-react";
@@ -42,7 +42,7 @@ const getDepartmentFromRole = (role: string) => {
   if (role.includes('Dispatch')) return 'Dispatch';
   if (role.includes('Account') || role.includes('Finance')) return 'Accounts';
   if (role.includes('Sales')) return 'Sales';
-  
+
   // 🔥 ADDED NEW DEPARTMENT MAPPINGS HERE
   if (role.includes('Research') || role.includes('R&D')) return 'R&D';
   if (role.includes('Store')) return 'Store';
@@ -51,49 +51,46 @@ const getDepartmentFromRole = (role: string) => {
   return role.replace(/(Head|Manager|Employee)/gi, '').trim() || "General";
 };
 
-const TaskWorkspaceView = ({ refreshTrigger, myTasksOnly = false }: { refreshTrigger?: number, myTasksOnly?: boolean }) => {
+const TaskWorkspaceView = ({ myTasksOnly = false }: { myTasksOnly?: boolean }) => {
   const { user } = useAuth() as { user: any };
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<ViewMode>("list");
 
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [previewFile, setPreviewFile] = useState<{ url: string; ext: string; name: string } | null>(null);
 
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [status, setStatus] = useState("");
   const [priority, setPriority] = useState("");
   const [taskType, setTaskType] = useState("");
   const [date, setDate] = useState("");
   const [department, setDepartment] = useState("");
-  const [employees, setEmployees] = useState<any[]>([]);
 
   const currentUserId = user?.id || user?._id;
   const [assignedTo, setAssignedTo] = useState(myTasksOnly ? currentUserId : "");
 
   const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
   const limit = 10;
-
-  // --- Kanban: paginated "Load More" that appends onto what's already loaded ---
-  const [kanbanTasks, setKanbanTasks] = useState<Task[]>([]);
-  const [kanbanPage, setKanbanPage] = useState(1);
-  const [kanbanTotalPages, setKanbanTotalPages] = useState(1);
-  const [kanbanLoadingMore, setKanbanLoadingMore] = useState(false);
-  const kanbanLimit = 10;
-
-  // --- Calendar: fetch the full current month in one go (no pagination) ---
-  const [calendarTasks, setCalendarTasks] = useState<Task[]>([]);
-  const [calendarLoading, setCalendarLoading] = useState(false);
-  const now = new Date();
-  const calendarYear = now.getFullYear();
-  const calendarMonth = now.getMonth();
-  const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
 
   const isTopAdmin = TOP_LEVEL_ADMINS.includes(user?.role);
   const isDeptHead = DEPT_HEADS.includes(user?.role);
-  
+
   const canFilterUsers = (isTopAdmin || isDeptHead) && !myTasksOnly;
+
+  // Debounce free-text search so it doesn't fire a request on every keystroke.
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  const filters = useMemo(
+    () => ({ search: debouncedSearch, status, priority, taskType, assignedTo, date, department }),
+    [debouncedSearch, status, priority, taskType, assignedTo, date, department]
+  );
+
+  // Cached once (staleTime: Infinity) and shared across List/Kanban/Calendar/Reports/Task Creation
+  // instead of every component independently paging through all users on every mount.
+  const { data: employees = [] } = useAssignableEmployees();
 
   const handleFilePreview = (e: React.MouseEvent, fileUrl: string) => {
     e.stopPropagation();
@@ -106,120 +103,42 @@ const TaskWorkspaceView = ({ refreshTrigger, myTasksOnly = false }: { refreshTri
 
   const handleTaskClick = (task: Task) => setSelectedTaskId(task._id);
 
-  useEffect(() => {
-    if (!canFilterUsers) return;
-    const fetchAllEmployees = async () => {
-      try {
-        const token = localStorage.getItem("token");
-        let allUsers: any[] = [];
-        let currentPage = 1;
-        let fetchedTotalPages = 1;
+  // Reset to page 1 whenever filters change (a filter change invalidates the old page position).
+  useEffect(() => { setPage(1); }, [filters]);
 
-        do {
-          const response = await axios.get(`${API_BASE}/users`, {
-            params: { page: currentPage, limit: 50 },
-            headers: { Authorization: `Bearer ${token}` }
-          });
-          const responseData = response.data;
-          let usersChunk: any[] = [];
-          if (responseData && Array.isArray(responseData.users)) usersChunk = responseData.users;
-          else if (responseData?.data && Array.isArray(responseData.data.users)) usersChunk = responseData.data.users;
+  // --- LIST: page-based, only active while viewMode === "list" ---
+  const {
+    data: tasksResponse,
+    isLoading: listLoading,
+  } = useTasks({ ...filters, page, limit }, { enabled: viewMode === "list" });
+  const tasks: Task[] = tasksResponse?.data || [];
+  const totalPages = tasksResponse?.totalPages || 1;
 
-          if (usersChunk.length > 0) allUsers = [...allUsers, ...usersChunk];
-          else break;
+  // --- KANBAN: accumulating pages, only active while viewMode === "kanban" ---
+  const {
+    data: kanbanData,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isLoading: kanbanLoading,
+  } = useKanbanTasks(filters, 10, { enabled: viewMode === "kanban" });
+  const kanbanTasks: Task[] = kanbanData?.pages.flatMap(p => p.data || []) || [];
 
-          fetchedTotalPages = responseData.pagination?.pages || responseData.data?.pagination?.pages || 1;
-          currentPage++;
-          if (currentPage > 20) break;
-        } while (currentPage <= fetchedTotalPages);
-        setEmployees(allUsers);
-      } catch (err) { console.error("Failed to load employees for filter:", err); }
-    };
-    fetchAllEmployees();
-  }, [canFilterUsers]);
+  // --- CALENDAR: whole current month, only active while viewMode === "calendar" ---
+  const now = new Date();
+  const calendarYear = now.getFullYear();
+  const calendarMonth = now.getMonth();
+  const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
+  const monthStart = useMemo(() => new Date(calendarYear, calendarMonth, 1).toISOString(), [calendarYear, calendarMonth]);
+  const monthEnd = useMemo(() => new Date(calendarYear, calendarMonth, daysInMonth).toISOString(), [calendarYear, calendarMonth, daysInMonth]);
 
-  const fetchTasks = async () => {
-    try {
-      setLoading(true);
-      const token = localStorage.getItem("token");
-      const response = await axios.get(`${API_BASE}/hrms/tasks/all`, {
-        params: { search, status, priority, taskType, assignedTo, date, department, page, limit },
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (response.data.success) {
-        setTasks(response.data.data || []);
-        setTotalPages(response.data.totalPages || 1);
-      }
-    } catch (err) {
-      console.error("Error fetching tasks:", err);
-      setTasks([]);
-    } finally { setLoading(false); }
-  };
+  const {
+    data: calendarResponse,
+    isLoading: calendarLoading,
+  } = useCalendarTasks(filters, monthStart, monthEnd, { enabled: viewMode === "calendar" });
+  const calendarTasks: Task[] = calendarResponse?.data || [];
 
-  useEffect(() => { setPage(1); }, [search, status, priority, taskType, assignedTo, date, department]);
-  useEffect(() => { fetchTasks(); }, [page, search, status, priority, taskType, assignedTo, date, department, refreshTrigger]);
-
-  // Kanban has its own accumulating page cursor: filters/refresh reset it back to page 1
-  // and replace the board, while "Load More" appends the next page onto what's shown.
-  const fetchKanbanTasks = async (pageToLoad: number, append: boolean) => {
-    try {
-      if (append) setKanbanLoadingMore(true); else setLoading(true);
-      const token = localStorage.getItem("token");
-      const response = await axios.get(`${API_BASE}/hrms/tasks/all`, {
-        params: { search, status, priority, taskType, assignedTo, date, department, page: pageToLoad, limit: kanbanLimit },
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (response.data.success) {
-        setKanbanTasks(prev => append ? [...prev, ...(response.data.data || [])] : (response.data.data || []));
-        setKanbanTotalPages(response.data.totalPages || 1);
-      }
-    } catch (err) {
-      console.error("Error fetching kanban tasks:", err);
-      if (!append) setKanbanTasks([]);
-    } finally {
-      if (append) setKanbanLoadingMore(false); else setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (viewMode !== "kanban") return;
-    setKanbanPage(1);
-    fetchKanbanTasks(1, false);
-  }, [viewMode, search, status, priority, taskType, assignedTo, date, department, refreshTrigger]);
-
-  const handleLoadMoreKanban = async () => {
-    const nextPage = kanbanPage + 1;
-    await fetchKanbanTasks(nextPage, true);
-    setKanbanPage(nextPage);
-  };
-
-  // Calendar fetches every task due in the visible month in one request (no pagination),
-  // scoped by companyId/department/etc. server-side same as list/kanban.
-  const fetchCalendarTasks = async () => {
-    try {
-      setCalendarLoading(true);
-      const token = localStorage.getItem("token");
-      const start = new Date(calendarYear, calendarMonth, 1);
-      const end = new Date(calendarYear, calendarMonth, daysInMonth);
-      const response = await axios.get(`${API_BASE}/hrms/tasks/all`, {
-        params: {
-          search, status, priority, taskType, assignedTo, department,
-          startDate: start.toISOString(), endDate: end.toISOString(),
-          page: 1, limit: 1000
-        },
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (response.data.success) setCalendarTasks(response.data.data || []);
-    } catch (err) {
-      console.error("Error fetching calendar tasks:", err);
-      setCalendarTasks([]);
-    } finally { setCalendarLoading(false); }
-  };
-
-  useEffect(() => {
-    if (viewMode !== "calendar") return;
-    fetchCalendarTasks();
-  }, [viewMode, search, status, priority, taskType, assignedTo, department, refreshTrigger]);
+  const deleteTaskMutation = useDeleteTask();
 
   useEffect(() => {
     if (!myTasksOnly) {
@@ -227,29 +146,12 @@ const TaskWorkspaceView = ({ refreshTrigger, myTasksOnly = false }: { refreshTri
     }
   }, [department, myTasksOnly]);
 
-  // Refreshes whichever view is currently visible (used after a status change in the details drawer).
-  const handleTaskUpdated = () => {
-    if (viewMode === "kanban") {
-      setKanbanPage(1);
-      fetchKanbanTasks(1, false);
-    } else if (viewMode === "calendar") {
-      fetchCalendarTasks();
-    } else {
-      fetchTasks();
-    }
-  };
-
-  const handleDeleteTask = async (taskId: string) => {
+  const handleDeleteTask = (taskId: string) => {
     if (!window.confirm("Are you sure you want to delete this task?")) return;
-    try {
-      const response = await axios.delete(`${API_BASE}/hrms/tasks/delete/${taskId}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` }
-      });
-      if (response.data.success) fetchTasks();
-    } catch (error) { console.error("Delete error:", error); }
+    deleteTaskMutation.mutate(taskId);
   };
 
-  const filteredEmployees = employees.filter(emp => {
+  const filteredEmployees = employees.filter((emp: any) => {
     // 1. Exclude the logged-in user ONLY IF they are a Dept Head
     if (!isTopAdmin && isDeptHead && emp._id === currentUserId) {
       return false;
@@ -267,6 +169,8 @@ const TaskWorkspaceView = ({ refreshTrigger, myTasksOnly = false }: { refreshTri
 
     return true;
   });
+
+  const loading = viewMode === "list" ? listLoading : viewMode === "kanban" ? kanbanLoading : calendarLoading;
 
   return (
     <div className="space-y-4">
@@ -297,7 +201,7 @@ const TaskWorkspaceView = ({ refreshTrigger, myTasksOnly = false }: { refreshTri
             <User className="w-4 h-4 text-gray-400" />
             <select className="text-sm py-2 bg-transparent focus:outline-none min-w-[120px]" value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)}>
               <option value="">All Assignees</option>
-              {filteredEmployees.map(emp => <option key={emp._id} value={emp._id}>{emp.username}</option>)}
+              {filteredEmployees.map((emp: any) => <option key={emp._id} value={emp._id}>{emp.username}</option>)}
             </select>
           </div>
         )}
@@ -354,8 +258,8 @@ const TaskWorkspaceView = ({ refreshTrigger, myTasksOnly = false }: { refreshTri
                   </thead>
                   <tbody className="divide-y divide-gray-50">
                     {tasks?.map((task) => (
-                      <tr 
-                        key={task._id} 
+                      <tr
+                        key={task._id}
                         onClick={() => handleTaskClick(task)}
                         className="hover:bg-gray-50/50 transition-colors group cursor-pointer"
                       >
@@ -398,21 +302,21 @@ const TaskWorkspaceView = ({ refreshTrigger, myTasksOnly = false }: { refreshTri
                         </td>
                         <td className="p-4 text-center">
                           <div className="flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button 
+                            <button
                               onClick={(e) => {
                                 e.stopPropagation();
                                 handleTaskClick(task);
-                              }} 
+                              }}
                               className="p-1.5 text-gray-500 hover:bg-indigo-50 hover:text-indigo-600 rounded-md"
                             >
                               <Eye className="w-4 h-4" />
                             </button>
                             {isTopAdmin && (
-                              <button 
+                              <button
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   handleDeleteTask(task._id);
-                                }} 
+                                }}
                                 className="p-1.5 text-gray-500 hover:bg-red-50 hover:text-red-600 rounded-md"
                               >
                                 <Trash2 className="w-4 h-4" />
@@ -461,14 +365,14 @@ const TaskWorkspaceView = ({ refreshTrigger, myTasksOnly = false }: { refreshTri
                     </div>
                   ))}
                 </div>
-                {kanbanPage < kanbanTotalPages && (
+                {hasNextPage && (
                   <div className="flex justify-center pt-4">
                     <button
-                      onClick={handleLoadMoreKanban}
-                      disabled={kanbanLoadingMore}
+                      onClick={() => fetchNextPage()}
+                      disabled={isFetchingNextPage}
                       className="px-5 py-2 bg-white border border-gray-200 rounded-lg text-sm font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50 shadow-sm"
                     >
-                      {kanbanLoadingMore ? "Loading..." : "Load More"}
+                      {isFetchingNextPage ? "Loading..." : "Load More"}
                     </button>
                   </div>
                 )}
@@ -481,7 +385,6 @@ const TaskWorkspaceView = ({ refreshTrigger, myTasksOnly = false }: { refreshTri
                   <h3 className="text-sm font-bold text-gray-700">
                     {new Date(calendarYear, calendarMonth).toLocaleString(undefined, { month: 'long', year: 'numeric' })}
                   </h3>
-                  {calendarLoading && <span className="text-xs text-gray-400 animate-pulse">Loading full month...</span>}
                 </div>
                 <div className="grid grid-cols-7 border-t border-l border-gray-200">
                   {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => <div key={d} className="p-3 text-[10px] font-bold text-gray-400 uppercase text-center border-r border-b border-gray-200 bg-gray-50">{d}</div>)}
@@ -524,7 +427,7 @@ const TaskWorkspaceView = ({ refreshTrigger, myTasksOnly = false }: { refreshTri
           </>
         )}
       </div>
-      
+
       {/* File Preview Modal */}
       {previewFile && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
@@ -545,7 +448,7 @@ const TaskWorkspaceView = ({ refreshTrigger, myTasksOnly = false }: { refreshTri
         </div>
       )}
 
-      {selectedTaskId && <TaskDetailsDrawer taskId={selectedTaskId} onClose={() => setSelectedTaskId(null)} onTaskUpdated={handleTaskUpdated} />}
+      {selectedTaskId && <TaskDetailsDrawer taskId={selectedTaskId} onClose={() => setSelectedTaskId(null)} />}
     </div>
   );
 };

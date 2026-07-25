@@ -1,12 +1,14 @@
-﻿import React, { useState, useEffect } from "react";
-import axios from "axios";
+import React, { useState, useEffect, useMemo } from "react";
 import { useAuth } from "@/hooks/useAuth";
+import {
+    useEmployeePerformanceReport, useOverdueTasksReport, useTaskEfficiencyReport, useProductivityReport,
+    useExportReport, useAssignableEmployees
+} from "@/hooks/useTaskManagement";
+import type { ReportKind } from "@/api/taskManagementApi";
 import {
     Search, Building2, User, ChevronLeft, ChevronRight, ChevronDown,
     FileSpreadsheet, FileText, TrendingUp, Clock, CheckCircle, AlertTriangle, Activity, Calendar
 } from "lucide-react";
-
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
 const TOP_LEVEL_ADMINS = ['HR-Admin', 'MIS Admin', 'Company Admin', 'Super Admin', 'Admin'];
 const DEPT_HEADS = [
@@ -32,6 +34,20 @@ const getDepartmentFromRole = (role: string) => {
 
 type ReportType = 'employee' | 'overdue' | 'efficiency' | 'productivity';
 
+const REPORT_KIND_MAP: Record<ReportType, ReportKind> = {
+    employee: 'employee-wise',
+    overdue: 'overdue',
+    efficiency: 'task-efficiency',
+    productivity: 'productivity',
+};
+
+const REPORT_FILENAME_MAP: Record<ReportType, string> = {
+    employee: 'Employee_Performance_Report',
+    overdue: 'Overdue_Tasks_Report',
+    efficiency: 'Task_Efficiency_Report',
+    productivity: 'Daily_Productivity_Report',
+};
+
 export default function TaskReportsView() {
     const { user } = useAuth() as { user: any };
 
@@ -41,10 +57,6 @@ export default function TaskReportsView() {
 
     // --- STATE ---
     const [activeReport, setActiveReport] = useState<ReportType>('employee');
-    const [reportsData, setReportsData] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [exporting, setExporting] = useState<"excel" | "pdf" | null>(null);
-    const [employees, setEmployees] = useState<any[]>([]);
 
     // Accordion State for Productivity Tab
     const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
@@ -61,8 +73,6 @@ export default function TaskReportsView() {
     const [debouncedSearch, setDebouncedSearch] = useState("");
 
     const [page, setPage] = useState(1);
-    const [totalPages, setTotalPages] = useState(1);
-    const [totalRecords, setTotalRecords] = useState(0);
     const limit = 10;
 
     useEffect(() => {
@@ -79,143 +89,74 @@ export default function TaskReportsView() {
         setExpandedRows({});
     }, [department, assignedTo, activeReport, period, startDate, endDate]);
 
-    // --- FETCH EMPLOYEES ---
-    useEffect(() => {
-        const fetchAllEmployees = async () => {
-            try {
-                const token = localStorage.getItem("token");
-                let allUsers: any[] = [];
-                let currentPage = 1;
-                let fetchedTotalPages = 1;
+    useEffect(() => { setAssignedTo(""); }, [department]);
 
-                do {
-                    const response = await axios.get(`${API_BASE}/users`, {
-                        params: { page: currentPage, limit: 50 },
-                        headers: { Authorization: `Bearer ${token}` }
-                    });
-                    const responseData = response.data;
-                    let usersChunk: any[] = [];
+    // Cached once (staleTime: Infinity) and shared across Workspace / Reports / Task Creation
+    // instead of independently paging through every user on every mount.
+    const { data: employees = [] } = useAssignableEmployees();
 
-                    if (responseData && Array.isArray(responseData.users)) usersChunk = responseData.users;
-                    else if (responseData?.data && Array.isArray(responseData.data.users)) usersChunk = responseData.data.users;
-
-                    if (usersChunk.length > 0) allUsers = [...allUsers, ...usersChunk];
-                    else break;
-
-                    fetchedTotalPages = responseData.pagination?.pages || responseData.data?.pagination?.pages || 1;
-                    currentPage++;
-                } while (currentPage <= fetchedTotalPages && currentPage <= 10);
-
-                setEmployees(allUsers);
-            } catch (err) { console.error("Failed to load employees:", err); }
-        };
-        fetchAllEmployees();
-    }, []);
-
-    const filteredEmployees = employees.filter(emp => {
+    const filteredEmployees = employees.filter((emp: any) => {
         if (department && getDepartmentFromRole(emp.role) !== department) return false;
         return true;
     });
 
-    useEffect(() => { setAssignedTo(""); }, [department]);
+    // --- REPORT DATA ---
+    const filters = useMemo(() => ({
+        department, assignedTo, search: debouncedSearch, period,
+        startDate: period === 'custom' ? startDate : undefined,
+        endDate: period === 'custom' ? endDate : undefined,
+        page, limit
+    }), [department, assignedTo, debouncedSearch, period, startDate, endDate, page]);
 
-    // --- FETCH DYNAMIC REPORT DATA ---
-    const fetchReport = async () => {
-        try {
-            setLoading(true);
-            setReportsData([]);
+    // All four are declared unconditionally (Rules of Hooks); only the active tab's
+    // `enabled` flag is true, so switching tabs doesn't pay for the other three.
+    const employeeQuery = useEmployeePerformanceReport(filters, { enabled: activeReport === 'employee' });
+    const overdueQuery = useOverdueTasksReport(filters, { enabled: activeReport === 'overdue' });
+    const efficiencyQuery = useTaskEfficiencyReport(filters, { enabled: activeReport === 'efficiency' });
+    const productivityQuery = useProductivityReport(filters, { enabled: activeReport === 'productivity' });
 
-            const token = localStorage.getItem("token");
+    const activeQuery = activeReport === 'employee' ? employeeQuery
+        : activeReport === 'overdue' ? overdueQuery
+        : activeReport === 'efficiency' ? efficiencyQuery
+        : productivityQuery;
 
-            let endpoint = '';
-            if (activeReport === 'employee') endpoint = '/hrms/tasks/reports/employee-wise';
-            if (activeReport === 'overdue') endpoint = '/hrms/tasks/reports/overdue';
-            if (activeReport === 'efficiency') endpoint = '/hrms/tasks/reports/task-efficiency';
-            if (activeReport === 'productivity') endpoint = '/hrms/tasks/reports/productivity';
-
-            const response = await axios.get(`${API_BASE}${endpoint}`, {
-                params: {
-                    department,
-                    assignedTo,
-                    search: debouncedSearch,
-                    period,
-                    startDate: period === 'custom' ? startDate : undefined,
-                    endDate: period === 'custom' ? endDate : undefined,
-                    page,
-                    limit
-                },
-                headers: { Authorization: `Bearer ${token}` }
-            });
-
-            if (response.data.success) {
-                setReportsData(Array.isArray(response.data.data) ? response.data.data : []);
-                setTotalPages(response.data.totalPages || 1);
-                setTotalRecords(response.data.totalRecords || response.data.total || response.data.data?.length || 0);
-            }
-        } catch (error) {
-            console.error("Failed to fetch reports:", error);
-            setReportsData([]);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    useEffect(() => { fetchReport(); }, [department, assignedTo, debouncedSearch, page, activeReport, period, startDate, endDate]);
+    const loading = activeQuery.isLoading;
+    const response: any = activeQuery.data;
+    const reportsData: any[] = Array.isArray(response?.data) ? response.data : [];
+    const totalPages = response?.totalPages || 1;
+    const totalRecords = response?.totalRecords || response?.total || response?.data?.length || 0;
 
     // --- EXPORT ---
-    const handleExport = async (format: "excel" | "pdf") => {
-        try {
-            setExporting(format);
-            const token = localStorage.getItem("token");
+    const exportMutation = useExportReport();
+    const isExportingExcel = exportMutation.isPending && exportMutation.variables?.format === 'excel';
+    const isExportingPdf = exportMutation.isPending && exportMutation.variables?.format === 'pdf';
 
-            let endpoint = '';
-            let filename = '';
-
-            switch (activeReport) {
-                case 'employee':
-                    endpoint = `/hrms/tasks/reports/export/employee-wise/${format}`;
-                    filename = `Employee_Performance_Report.${format === 'excel' ? 'xlsx' : 'pdf'}`;
-                    break;
-                case 'overdue':
-                    endpoint = `/hrms/tasks/reports/export/overdue/${format}`;
-                    filename = `Overdue_Tasks_Report.${format === 'excel' ? 'xlsx' : 'pdf'}`;
-                    break;
-                case 'efficiency':
-                    endpoint = `/hrms/tasks/reports/export/task-efficiency/${format}`;
-                    filename = `Task_Efficiency_Report.${format === 'excel' ? 'xlsx' : 'pdf'}`;
-                    break;
-                case 'productivity':
-                    endpoint = `/hrms/tasks/reports/export/productivity/${format}`;
-                    filename = `Daily_Productivity_Report.${format === 'excel' ? 'xlsx' : 'pdf'}`;
-                    break;
-            }
-
-            const response = await axios.get(`${API_BASE}${endpoint}`, {
+    const handleExport = (format: "excel" | "pdf") => {
+        const filename = `${REPORT_FILENAME_MAP[activeReport]}.${format === 'excel' ? 'xlsx' : 'pdf'}`;
+        exportMutation.mutate(
+            {
+                reportType: REPORT_KIND_MAP[activeReport],
+                format,
                 params: {
-                    department,
-                    assignedTo,
-                    search: debouncedSearch,
-                    period,
+                    department, assignedTo, search: debouncedSearch, period,
                     startDate: period === 'custom' ? startDate : undefined,
-                    endDate: period === 'custom' ? endDate : undefined
+                    endDate: period === 'custom' ? endDate : undefined,
                 },
-                headers: { Authorization: `Bearer ${token}` },
-                responseType: 'blob'
-            });
-
-            const url = window.URL.createObjectURL(new Blob([response.data]));
-            const link = document.createElement('a');
-            link.href = url;
-            link.setAttribute('download', filename);
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-            window.URL.revokeObjectURL(url);
-        } catch (error) {
-            alert(`Error exporting file. Please check your connection.`);
-        } finally {
-            setExporting(null);
-        }
+            },
+            {
+                onSuccess: (blob) => {
+                    const url = window.URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.setAttribute('download', filename);
+                    document.body.appendChild(link);
+                    link.click();
+                    link.remove();
+                    window.URL.revokeObjectURL(url);
+                },
+                onError: () => alert(`Error exporting file. Please check your connection.`),
+            }
+        );
     };
 
     const toggleRow = (id: string) => {
@@ -271,7 +212,7 @@ export default function TaskReportsView() {
                         <User className="w-4 h-4 text-gray-400" />
                         <select className="text-sm py-2 bg-transparent focus:outline-none min-w-[130px]" value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)}>
                             <option value="">All Employees</option>
-                            {filteredEmployees.map(emp => <option key={emp._id} value={emp._id}>{emp.username}</option>)}
+                            {filteredEmployees.map((emp: any) => <option key={emp._id} value={emp._id}>{emp.username}</option>)}
                         </select>
                     </div>
 
@@ -296,11 +237,11 @@ export default function TaskReportsView() {
                 </div>
 
                 <div className="flex items-center gap-2 w-full lg:w-auto justify-end border-t lg:border-none border-gray-100 pt-3 lg:pt-0">
-                    <button onClick={() => handleExport('excel')} disabled={exporting !== null} className="flex items-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-lg text-sm font-semibold hover:bg-emerald-100 transition disabled:opacity-50 whitespace-nowrap">
-                        <FileSpreadsheet size={16} /> {exporting === 'excel' ? 'Exporting...' : 'Excel'}
+                    <button onClick={() => handleExport('excel')} disabled={exportMutation.isPending} className="flex items-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-lg text-sm font-semibold hover:bg-emerald-100 transition disabled:opacity-50 whitespace-nowrap">
+                        <FileSpreadsheet size={16} /> {isExportingExcel ? 'Exporting...' : 'Excel'}
                     </button>
-                    <button onClick={() => handleExport('pdf')} disabled={exporting !== null} className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 border border-red-200 rounded-lg text-sm font-semibold hover:bg-red-100 transition disabled:opacity-50 whitespace-nowrap">
-                        <FileText size={16} /> {exporting === 'pdf' ? 'Exporting...' : 'PDF'}
+                    <button onClick={() => handleExport('pdf')} disabled={exportMutation.isPending} className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 border border-red-200 rounded-lg text-sm font-semibold hover:bg-red-100 transition disabled:opacity-50 whitespace-nowrap">
+                        <FileText size={16} /> {isExportingPdf ? 'Exporting...' : 'PDF'}
                     </button>
                 </div>
             </div>

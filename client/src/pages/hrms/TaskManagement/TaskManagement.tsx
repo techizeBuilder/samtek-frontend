@@ -27,9 +27,6 @@ export default function HRMSTaskManagement() {
   const [activeTab, setActiveTab] = useState<TabType>("workspace");
   const [isCreateFormOpen, setIsCreateFormOpen] = useState(false);
 
-  // THE REFRESH TRIGGER: Updates when a new task is created
-  const [refreshKey, setRefreshKey] = useState(0);
-
   if (loading) return <div className="p-6">Loading...</div>;
 
   const TOP_LEVEL_ADMINS = ['HR-Admin', 'MIS Admin', 'Company Admin', 'Super Admin', 'Admin'];
@@ -72,8 +69,8 @@ export default function HRMSTaskManagement() {
 
       {/* Views */}
       <div className="mt-4">
-        {activeTab === "dashboard" && <TaskDashboardView refreshTrigger={refreshKey} />}
-        {activeTab === "workspace" && <TaskWorkspaceView refreshTrigger={refreshKey} />}
+        {activeTab === "dashboard" && <TaskDashboardView />}
+        {activeTab === "workspace" && <TaskWorkspaceView />}
         {/* Wired the actual TaskReports component right here 👇 */}
         {activeTab === "reports" && <TaskReports />}
       </div>
@@ -82,7 +79,6 @@ export default function HRMSTaskManagement() {
       {isCreateFormOpen && (
         <TaskCreationForm
           onClose={() => setIsCreateFormOpen(false)}
-          onSuccess={() => setRefreshKey(prev => prev + 1)} // Updates the trigger!
         />
       )}
     </div>
