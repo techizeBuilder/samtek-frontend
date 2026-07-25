@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import {
-  Building2, Settings, Globe, Mail, Zap, PhoneCall, Eye, EyeOff,
+  Building2, Settings, Globe, Mail, Zap, PhoneCall, Eye, EyeOff, Megaphone,
   Plus, Pencil, Trash2, Save, RefreshCw, Info, Key, Phone, CheckCircle2,
   FileText, Tag, List, Layers, DollarSign, StickyNote, Target, Upload,
   ChevronRight, Truck, ClipboardList,
@@ -345,6 +345,8 @@ export default function AdminSettings() {
   const [ivrForm, setIvrForm]         = useState({ enabled: false, apiKey: '', callerID: '' });
   const [indiamartForm, setIndiamartForm] = useState({ enabled: false, accounts: [] });
   const [websiteForm, setWebsiteForm]     = useState({ enabled: false, apiKey: '' });
+  const [googleAdsForm, setGoogleAdsForm] = useState({ enabled: false, webhookKey: '' });
+  const [showGoogleAdsKey, setShowGoogleAdsKey] = useState(false);
 
   const { data: apiData, refetch: apiRefetch } = useQuery({
     queryKey: ['admin-api-settings'],
@@ -360,6 +362,7 @@ export default function AdminSettings() {
       accs = [{ apiName: 'Primary Account', sellerMobile: s.indiamart.sellerMobile || '', authKey: s.indiamart.authKey || '', lastSyncedAt: s.indiamart.lastSyncedAt }];
     setIndiamartForm({ enabled: s.indiamart?.enabled || false, accounts: accs });
     setWebsiteForm({ enabled: s.website?.enabled || false, apiKey: s.website?.apiKey || '' });
+    setGoogleAdsForm({ enabled: s.googleAds?.enabled || false, webhookKey: s.googleAds?.webhookKey || '' });
   }, [apiData]);
 
   const saveApiM = useMutation({
@@ -368,12 +371,18 @@ export default function AdminSettings() {
     onError: e => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
   });
   const cur = apiData?.settings || {};
-  const saveAcefone   = () => saveApiM.mutate({ ivr: { ...cur.ivr, enabled: ivrForm.enabled, apiKey: ivrForm.apiKey.trim(), callerID: ivrForm.callerID.trim() }, indiamart: cur.indiamart, website: cur.website });
+  const saveAcefone   = () => saveApiM.mutate({ ivr: { ...cur.ivr, enabled: ivrForm.enabled, apiKey: ivrForm.apiKey.trim(), callerID: ivrForm.callerID.trim() }, indiamart: cur.indiamart, website: cur.website, googleAds: cur.googleAds });
   const saveIndiamart = () => {
     const c = indiamartForm.accounts.map(a => ({ apiName: (a.apiName||'').trim(), sellerMobile: (a.sellerMobile||'').trim(), authKey: (a.authKey||'').trim(), lastSyncedAt: a.lastSyncedAt }));
-    saveApiM.mutate({ ivr: cur.ivr, indiamart: { ...cur.indiamart, enabled: indiamartForm.enabled, accounts: c, sellerMobile: c[0]?.sellerMobile||'', authKey: c[0]?.authKey||'' }, website: cur.website });
+    saveApiM.mutate({ ivr: cur.ivr, indiamart: { ...cur.indiamart, enabled: indiamartForm.enabled, accounts: c, sellerMobile: c[0]?.sellerMobile||'', authKey: c[0]?.authKey||'' }, website: cur.website, googleAds: cur.googleAds });
   };
-  const saveWebsite   = () => saveApiM.mutate({ ivr: cur.ivr, indiamart: cur.indiamart, website: { ...cur.website, enabled: websiteForm.enabled, apiKey: websiteForm.apiKey.trim() } });
+  const saveWebsite   = () => saveApiM.mutate({ ivr: cur.ivr, indiamart: cur.indiamart, website: { ...cur.website, enabled: websiteForm.enabled, apiKey: websiteForm.apiKey.trim() }, googleAds: cur.googleAds });
+  const saveGoogleAds = () => saveApiM.mutate({ ivr: cur.ivr, indiamart: cur.indiamart, website: cur.website, googleAds: { ...cur.googleAds, enabled: googleAdsForm.enabled, webhookKey: googleAdsForm.webhookKey.trim() } });
+  const generateGoogleAdsKey = () => {
+    const bytes = new Uint8Array(24);
+    window.crypto.getRandomValues(bytes);
+    setGoogleAdsForm(f => ({ ...f, webhookKey: Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('') }));
+  };
 
   // ─── Company settings ─────────────────────────────────────────────────────
   const { data: csd } = useQuery({
@@ -907,6 +916,7 @@ export default function AdminSettings() {
                   { id: 'acefone',   label: 'Acefone IVR',     icon: PhoneCall },
                   { id: 'indiamart', label: 'IndiaMART',        icon: Globe     },
                   { id: 'website',   label: 'Website Webhook',  icon: Zap       },
+                  { id: 'googleAds', label: 'Google Ads',       icon: Megaphone },
                 ].map(t => {
                   const Icon = t.icon;
                   return (
@@ -1017,6 +1027,42 @@ export default function AdminSettings() {
                     )}
                     <div className="flex justify-end pt-1">
                       <Button disabled={saveApiM.isPending} onClick={saveWebsite}><Save className="h-4 w-4 mr-2" />{saveApiM.isPending ? 'Saving...' : 'Save'}</Button>
+                    </div>
+                  </div>
+                )}
+
+                {activeApiTab === 'googleAds' && (
+                  <div className="space-y-4">
+                    <p className="font-medium text-gray-800 text-sm border-b border-gray-100 pb-3">Google Ads Lead Form</p>
+                    <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
+                      <div><p className="text-sm font-medium">Enable Google Ads Webhook</p><p className="text-xs text-gray-500">Accept leads from Google Ads Lead Form extensions</p></div>
+                      <Switch checked={googleAdsForm.enabled} onCheckedChange={v => setGoogleAdsForm(f => ({ ...f, enabled: v }))} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-sm flex items-center gap-1.5"><Key className="h-3.5 w-3.5 text-gray-400" />Webhook Key</Label>
+                      <div className="flex gap-2">
+                        <div className="relative flex-1">
+                          <Input
+                            type={showGoogleAdsKey ? 'text' : 'password'}
+                            className="pr-9"
+                            value={googleAdsForm.webhookKey}
+                            onChange={e => setGoogleAdsForm(f => ({ ...f, webhookKey: e.target.value }))}
+                            placeholder="Generate a webhook key"
+                          />
+                          <button type="button" onClick={() => setShowGoogleAdsKey(v => !v)} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400">{showGoogleAdsKey ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}</button>
+                        </div>
+                        <Button type="button" variant="outline" onClick={generateGoogleAdsKey}>Generate</Button>
+                      </div>
+                      <p className="text-xs text-gray-500">Paste this same value into Google Ads' Lead Form → Lead delivery → Webhook "Key" field.</p>
+                    </div>
+                    {googleAdsForm.webhookKey && (
+                      <div className="space-y-1.5">
+                        <Label className="text-sm">Webhook URL (paste into Google Ads' Webhook URL field)</Label>
+                        <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg font-mono text-xs text-gray-700 break-all">{`${window.location.origin}/api/leads/google-ads-webhook?q=${googleAdsForm.webhookKey}`}</div>
+                      </div>
+                    )}
+                    <div className="flex justify-end pt-1">
+                      <Button disabled={saveApiM.isPending} onClick={saveGoogleAds}><Save className="h-4 w-4 mr-2" />{saveApiM.isPending ? 'Saving...' : 'Save'}</Button>
                     </div>
                   </div>
                 )}

@@ -40,7 +40,8 @@ export default function MISQualityReport() {
     returned: m.returned
   })) || [];
 
-  const pieData = data?.orderStatusBreakdown?.map(s => ({ name: s._id, value: s.count })) || [];
+  const formatStatusLabel = (name) => (name || 'Unknown').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  const pieData = data?.orderStatusBreakdown?.map(s => ({ name: formatStatusLabel(s._id), value: s.count })) || [];
 
   if (loading) return <div className="flex items-center justify-center h-64"><div className="w-10 h-10 border-4 border-[#49A7F5] border-t-transparent rounded-full animate-spin" /></div>;
 
@@ -102,10 +103,10 @@ export default function MISQualityReport() {
         <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
           <h3 className="font-semibold text-gray-700 mb-4">Order Status Distribution</h3>
           {pieData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={240}>
-              <PieChart>
-                <Pie data={pieData} cx="50%" cy="50%" outerRadius={85} dataKey="value" nameKey="name"
-                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`} labelLine={false}>
+            <ResponsiveContainer width="100%" height={280}>
+              <PieChart margin={{ top: 24, right: 32, bottom: 8, left: 32 }}>
+                <Pie data={pieData} cx="50%" cy="50%" outerRadius={70} dataKey="value" nameKey="name"
+                  label={({ percent }) => `${(percent * 100).toFixed(0)}%`} labelLine={false}>
                   {pieData.map((entry, i) => <Cell key={i} fill={STATUS_COLORS[entry.name] || COLORS[i % COLORS.length]} />)}
                 </Pie>
                 <Tooltip />

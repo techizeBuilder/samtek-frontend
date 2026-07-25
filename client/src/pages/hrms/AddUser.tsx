@@ -27,7 +27,7 @@ export default function AddUser() {
     'Packing Employee',
     'Dispatch Employee',
     'Account Employee',
-    'Auditor',
+    // 'Auditor',
     'Research Development Employee',
     'Complaint Management Employee',
     'Store Employee',

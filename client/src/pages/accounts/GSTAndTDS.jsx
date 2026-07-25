@@ -20,6 +20,8 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
+const formatINR = (value) => `₹${Math.round(Number(value) || 0).toLocaleString('en-IN')}`;
+
 const GSTAndTDS = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('All');
@@ -126,9 +128,9 @@ const GSTAndTDS = () => {
             </div>
             <CardContent className="p-7 relative z-10">
               <p className="text-slate-400 text-sm font-bold uppercase tracking-wider mb-2">Net GST Liability</p>
-              <div className="flex items-end gap-3">
-                <h3 className="text-4xl font-black italic">₹{(taxData.netGSTLiability).toLocaleString('en-IN')}</h3>
-                <Badge className="mb-2 bg-indigo-500/20 text-indigo-300 border-indigo-500/30">Auto Compute</Badge>
+              <div className="flex flex-wrap items-end gap-x-3 gap-y-2 min-w-0">
+                <h3 className="text-3xl xl:text-4xl font-black italic break-all min-w-0">{formatINR(taxData.netGSTLiability)}</h3>
+                <Badge className="mb-1 bg-indigo-500/20 text-indigo-300 border-indigo-500/30 shrink-0">Auto Compute</Badge>
               </div>
               <div className="mt-6 flex items-center justify-between pt-6 border-t border-slate-700/50">
                 <div>
@@ -145,27 +147,27 @@ const GSTAndTDS = () => {
           {/* Output GST Card */}
           <Card className="border-0 shadow-xl shadow-slate-200/50 bg-white group border-t-4 border-indigo-600">
             <CardContent className="p-7">
-              <div className="flex justify-between items-start mb-4">
-                <div className="p-2.5 bg-indigo-50 rounded-xl">
+              <div className="flex justify-between items-start gap-3 mb-4">
+                <div className="p-2.5 bg-indigo-50 rounded-xl shrink-0">
                   <ArrowUpRight className="w-6 h-6 text-indigo-600" />
                 </div>
-                <div className="text-right">
+                <div className="text-right min-w-0 flex-1">
                   <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Output GST</p>
-                  <p className="text-2xl font-black text-slate-900 mt-1">₹{taxData.outputGST.total.toLocaleString('en-IN')}</p>
+                  <p className="text-xl xl:text-2xl font-black text-slate-900 mt-1 break-all">{formatINR(taxData.outputGST.total)}</p>
                 </div>
               </div>
               <div className="space-y-2 mt-6">
-                <div className="flex justify-between text-xs py-1 border-b border-slate-50">
-                  <span className="text-slate-500 font-bold">CGST (9%)</span>
-                  <span className="text-slate-900 font-black tracking-tight">₹{taxData.outputGST.cgst.toLocaleString('en-IN')}</span>
+                <div className="flex justify-between gap-2 text-xs py-1 border-b border-slate-50">
+                  <span className="text-slate-500 font-bold shrink-0">CGST (9%)</span>
+                  <span className="text-slate-900 font-black tracking-tight break-all text-right">{formatINR(taxData.outputGST.cgst)}</span>
                 </div>
-                <div className="flex justify-between text-xs py-1 border-b border-slate-50">
-                  <span className="text-slate-500 font-bold">SGST (9%)</span>
-                  <span className="text-slate-900 font-black tracking-tight">₹{taxData.outputGST.sgst.toLocaleString('en-IN')}</span>
+                <div className="flex justify-between gap-2 text-xs py-1 border-b border-slate-50">
+                  <span className="text-slate-500 font-bold shrink-0">SGST (9%)</span>
+                  <span className="text-slate-900 font-black tracking-tight break-all text-right">{formatINR(taxData.outputGST.sgst)}</span>
                 </div>
-                <div className="flex justify-between text-xs py-1">
-                  <span className="text-slate-500 font-bold">IGST (18%)</span>
-                  <span className="text-slate-900 font-black tracking-tight">₹{taxData.outputGST.igst.toLocaleString('en-IN')}</span>
+                <div className="flex justify-between gap-2 text-xs py-1">
+                  <span className="text-slate-500 font-bold shrink-0">IGST (18%)</span>
+                  <span className="text-slate-900 font-black tracking-tight break-all text-right">{formatINR(taxData.outputGST.igst)}</span>
                 </div>
               </div>
             </CardContent>
@@ -174,27 +176,27 @@ const GSTAndTDS = () => {
           {/* Input GST Card */}
           <Card className="border-0 shadow-xl shadow-slate-200/50 bg-white group border-t-4 border-emerald-500">
             <CardContent className="p-7">
-              <div className="flex justify-between items-start mb-4">
-                <div className="p-2.5 bg-emerald-50 rounded-xl">
+              <div className="flex justify-between items-start gap-3 mb-4">
+                <div className="p-2.5 bg-emerald-50 rounded-xl shrink-0">
                   <ArrowDownRight className="w-6 h-6 text-emerald-500" />
                 </div>
-                <div className="text-right">
+                <div className="text-right min-w-0 flex-1">
                   <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Input GST</p>
-                  <p className="text-2xl font-black text-slate-900 mt-1">₹{taxData.inputGST.total.toLocaleString('en-IN')}</p>
+                  <p className="text-xl xl:text-2xl font-black text-slate-900 mt-1 break-all">{formatINR(taxData.inputGST.total)}</p>
                 </div>
               </div>
               <div className="space-y-2 mt-6">
-                <div className="flex justify-between text-xs py-1 border-b border-slate-50">
-                  <span className="text-slate-500 font-bold">CGST (9%)</span>
-                  <span className="text-slate-900 font-black tracking-tight">₹{taxData.inputGST.cgst.toLocaleString('en-IN')}</span>
+                <div className="flex justify-between gap-2 text-xs py-1 border-b border-slate-50">
+                  <span className="text-slate-500 font-bold shrink-0">CGST (9%)</span>
+                  <span className="text-slate-900 font-black tracking-tight break-all text-right">{formatINR(taxData.inputGST.cgst)}</span>
                 </div>
-                <div className="flex justify-between text-xs py-1 border-b border-slate-50">
-                  <span className="text-slate-500 font-bold">SGST (9%)</span>
-                  <span className="text-slate-900 font-black tracking-tight">₹{taxData.inputGST.sgst.toLocaleString('en-IN')}</span>
+                <div className="flex justify-between gap-2 text-xs py-1 border-b border-slate-50">
+                  <span className="text-slate-500 font-bold shrink-0">SGST (9%)</span>
+                  <span className="text-slate-900 font-black tracking-tight break-all text-right">{formatINR(taxData.inputGST.sgst)}</span>
                 </div>
-                <div className="flex justify-between text-xs py-1">
-                  <span className="text-slate-500 font-bold">IGST (18%)</span>
-                  <span className="text-slate-900 font-black tracking-tight">₹{taxData.inputGST.igst.toLocaleString('en-IN')}</span>
+                <div className="flex justify-between gap-2 text-xs py-1">
+                  <span className="text-slate-500 font-bold shrink-0">IGST (18%)</span>
+                  <span className="text-slate-900 font-black tracking-tight break-all text-right">{formatINR(taxData.inputGST.igst)}</span>
                 </div>
               </div>
             </CardContent>
@@ -203,23 +205,23 @@ const GSTAndTDS = () => {
           {/* TDS Card */}
           <Card className="border-0 shadow-xl shadow-slate-200/50 bg-white group border-t-4 border-amber-500">
             <CardContent className="p-7">
-              <div className="flex justify-between items-start mb-4">
-                <div className="p-2.5 bg-amber-50 rounded-xl">
+              <div className="flex justify-between items-start gap-3 mb-4">
+                <div className="p-2.5 bg-amber-50 rounded-xl shrink-0">
                   <Percent className="w-6 h-6 text-amber-600" />
                 </div>
-                <div className="text-right">
+                <div className="text-right min-w-0 flex-1">
                   <p className="text-xs font-black text-slate-400 uppercase tracking-widest">TDS Summary</p>
-                  <p className="text-2xl font-black text-slate-900 mt-1">₹{(taxData.tdsReceivable - taxData.tdsPayable).toLocaleString('en-IN')}</p>
+                  <p className="text-xl xl:text-2xl font-black text-slate-900 mt-1 break-all">{formatINR(taxData.tdsReceivable - taxData.tdsPayable)}</p>
                 </div>
               </div>
               <div className="space-y-2 mt-6">
-                <div className="flex justify-between text-xs py-1 border-b border-slate-50">
-                  <span className="text-slate-500 font-bold">TDS Receivable</span>
-                  <span className="text-indigo-600 font-black tracking-tight">₹{taxData.tdsReceivable.toLocaleString('en-IN')}</span>
+                <div className="flex justify-between gap-2 text-xs py-1 border-b border-slate-50">
+                  <span className="text-slate-500 font-bold shrink-0">TDS Receivable</span>
+                  <span className="text-indigo-600 font-black tracking-tight break-all text-right">{formatINR(taxData.tdsReceivable)}</span>
                 </div>
-                <div className="flex justify-between text-xs py-1">
-                  <span className="text-slate-500 font-bold">TDS Payable</span>
-                  <span className="text-rose-600 font-black tracking-tight">₹{taxData.tdsPayable.toLocaleString('en-IN')}</span>
+                <div className="flex justify-between gap-2 text-xs py-1">
+                  <span className="text-slate-500 font-bold shrink-0">TDS Payable</span>
+                  <span className="text-rose-600 font-black tracking-tight break-all text-right">{formatINR(taxData.tdsPayable)}</span>
                 </div>
                 <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between">
                   <span className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">Compliance Score</span>
@@ -327,14 +329,14 @@ const GSTAndTDS = () => {
                             </Badge>
                           </td>
                           <td className="px-8 py-5 text-right font-black text-slate-900 tabular-nums">
-                            ₹{item.gstAmount.toLocaleString('en-IN')}
+                            {formatINR(item.gstAmount)}
                           </td>
                           <td className="px-8 py-5 text-right font-bold text-slate-500 tabular-nums">
-                            ₹{item.tdsAmount.toLocaleString('en-IN')}
+                            {formatINR(item.tdsAmount)}
                           </td>
                           <td className="px-8 py-5 text-right">
                             <span className="font-black text-indigo-600 tabular-nums italic">
-                              ₹{item.netAmount.toLocaleString('en-IN')}
+                              {formatINR(item.netAmount)}
                             </span>
                           </td>
                           <td className="px-8 py-5 text-center">
