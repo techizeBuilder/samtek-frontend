@@ -115,6 +115,7 @@ export default function QCInspection() {
   const [syncingRD, setSyncingRD] = useState(false); // New state for R&D sync
   const [decision, setDecision] = useState('');
   const [failReason, setFailReason] = useState('');
+  const [rejectQty, setRejectQty] = useState('');
   const [inspectorRemarks, setInspectorRemarks] = useState('');
   const [inspectorName, setInspectorName] = useState('');
   const [newParam, setNewParam] = useState('');
@@ -190,6 +191,12 @@ export default function QCInspection() {
     }
   };
 
+  // Reject qty only matters when the job still holds more than 1 unit — for a
+  // single-unit job, Fail always rejects that one unit, same as before.
+  const showRejectQtyInput = decision === 'Fail' && (job?.quantity || 1) > 1;
+  const parsedRejectQty = showRejectQtyInput ? Number(rejectQty) : (job?.quantity || 1);
+  const isPartialRejectQty = showRejectQtyInput && parsedRejectQty > 0 && parsedRejectQty < job.quantity;
+
   const handleDecision = async () => {
     if (!decision) { toast({ title: 'Select Pass or Fail', variant: 'destructive' }); return; }
     if (cl.length > 0 && pendingCount > 0) {
@@ -197,15 +204,35 @@ export default function QCInspection() {
       return;
     }
     if (decision === 'Fail' && !failReason.trim()) { toast({ title: 'Fail reason is required', variant: 'destructive' }); return; }
+    if (showRejectQtyInput && (!Number.isFinite(parsedRejectQty) || parsedRejectQty < 1 || parsedRejectQty > job.quantity)) {
+      toast({ title: 'Enter a valid reject quantity', description: `Must be between 1 and ${job.quantity}`, variant: 'destructive' });
+      return;
+    }
     setLoading(true);
     try {
-      await submitDecision(id, { decision, failReason, inspectorRemarks });
-      await refetch();
-      toast({
-        title: decision === 'Pass' ? '✓ QC Approved' : '✗ QC Rejected',
-        description: decision === 'Pass' ? 'Item transferred to Store' : `Returned to ${job.source} Department`,
-      });
-      setLocation('/qc/jobs');
+      const payload = { decision, failReason, inspectorRemarks };
+      if (showRejectQtyInput) payload.rejectQty = parsedRejectQty;
+      const res = await submitDecision(id, payload);
+
+      if (res?.partial) {
+        // Only part of the job's quantity was rejected — the rest stays in
+        // QC for its own Approve/Fail decision, so we stay on this screen.
+        setDecision('');
+        setFailReason('');
+        setRejectQty('');
+        await refetch();
+        toast({
+          title: `✗ ${parsedRejectQty} unit${parsedRejectQty > 1 ? 's' : ''} rejected`,
+          description: `${res.data.quantity} unit${res.data.quantity > 1 ? 's' : ''} remaining in QC`,
+        });
+      } else {
+        await refetch();
+        toast({
+          title: decision === 'Pass' ? '✓ QC Approved' : '✗ QC Rejected',
+          description: decision === 'Pass' ? 'Item transferred to Store' : `Returned to ${job.source} Department`,
+        });
+        setLocation('/qc/jobs');
+      }
     } catch (e) {
       toast({ title: 'Error', description: e.message, variant: 'destructive' });
     } finally { setLoading(false); }
@@ -351,14 +378,14 @@ export default function QCInspection() {
             <div className="space-y-4">
               <div className="flex gap-3">
                 <button
-                  onClick={() => setDecision('Pass')}
+                  onClick={() => { setDecision('Pass'); setRejectQty(''); }}
                   className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg border-2 font-medium transition-all ${decision === 'Pass' ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-slate-200 text-slate-500 hover:border-emerald-300'
                     }`}
                 >
-                  <CheckCircle2 className="h-5 w-5" /> Pass — Approve & Transfer to Store
+                  <CheckCircle2 className="h-5 w-5" /> Pass — Approve {job.quantity} & Transfer to Store
                 </button>
                 <button
-                  onClick={() => setDecision('Fail')}
+                  onClick={() => { setDecision('Fail'); setRejectQty(String(job.quantity)); }}
                   className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg border-2 font-medium transition-all ${decision === 'Fail' ? 'border-red-500 bg-red-50 text-red-700' : 'border-slate-200 text-slate-500 hover:border-red-300'
                     }`}
                 >
@@ -373,6 +400,26 @@ export default function QCInspection() {
                 </div>
               )}
 
+              {showRejectQtyInput && (
+                <div>
+                  <Label>Reject Quantity <span className="text-red-500">*</span></Label>
+                  <Input
+                    className="mt-1"
+                    type="number"
+                    min={1}
+                    max={job.quantity}
+                    value={rejectQty}
+                    onChange={e => setRejectQty(e.target.value)}
+                    placeholder={`Out of ${job.quantity} ${job.unit}`}
+                  />
+                  <p className="text-xs text-slate-500 mt-1">
+                    {isPartialRejectQty
+                      ? `${parsedRejectQty} will be rejected, ${job.quantity - parsedRejectQty} will stay in QC for its own decision.`
+                      : `All ${job.quantity} ${job.unit} will be rejected.`}
+                  </p>
+                </div>
+              )}
+
               <div>
                 <Label>Inspector Remarks (optional)</Label>
                 <Input className="mt-1" value={inspectorRemarks} onChange={e => setInspectorRemarks(e.target.value)} placeholder="Additional notes for records" />
@@ -381,10 +428,13 @@ export default function QCInspection() {
               <Button
                 className="w-full"
                 onClick={handleDecision}
-                disabled={loading || !decision || (cl.length > 0 && pendingCount > 0)}
+                disabled={
+                  loading || !decision || (cl.length > 0 && pendingCount > 0) ||
+                  (showRejectQtyInput && (!Number.isFinite(parsedRejectQty) || parsedRejectQty < 1 || parsedRejectQty > job.quantity))
+                }
               >
                 <Send className="h-4 w-4 mr-2" />
-                {loading ? 'Submitting...' : `Submit ${decision || 'Decision'}`}
+                {loading ? 'Submitting...' : isPartialRejectQty ? `Reject ${parsedRejectQty} of ${job.quantity}` : `Submit ${decision || 'Decision'}`}
               </Button>
             </div>
           </CardContent>

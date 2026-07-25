@@ -47,6 +47,7 @@ const groupByLabel = (customFields) =>
 export default function OrderManagement() {
   const {
     orders, addOrder, verifyBOM, verifyDesign, raiseRDRequest,
+    decideRework, decideRepair,
     addMaterialDemand, updateMaterialStatus, markMaterialIssued,
     getOrderProgress,
   } = useProduction();
@@ -283,6 +284,24 @@ export default function OrderManagement() {
       showSuccessToast('Design Verified', 'The machine design has been verified.');
     } catch (error) {
       showSmartToast(error, 'Failed to verify design');
+    }
+  };
+
+  const handleDecideRework = async (id) => {
+    try {
+      await decideRework(id);
+      showSuccessToast('Sent for Rework', 'This item will be rebuilt from scratch, same as a new production order.');
+    } catch (error) {
+      showSmartToast(error, 'Failed to send for rework');
+    }
+  };
+
+  const handleDecideRepair = async (id) => {
+    try {
+      await decideRepair(id);
+      showSuccessToast('Sent for Repair', 'Track this item in the Repair Production module.');
+    } catch (error) {
+      showSmartToast(error, 'Failed to send for repair');
     }
   };
 
@@ -549,30 +568,55 @@ export default function OrderManagement() {
                   </div>
                 </div>
 
-                {/* BOM & Design Verification */}
-                <div>
-                  <h3 className="text-sm font-bold text-slate-700 mb-2 flex items-center gap-1.5"><FileCheck className="h-4 w-4" /> Design & BOM Verification</h3>
-                  <div className="flex gap-3 flex-wrap">
-                    <div className={`flex-1 p-3 rounded-lg border text-sm ${detailOrderLive.bomVerified ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
-                      <div className="flex items-center justify-between">
-                        <span className="font-semibold">{detailOrderLive.bomVerified ? '✓ BOM Verified' : '✗ BOM Not Verified'}</span>
+                {/* BOM & Design Verification — hidden for a QC-rejected order
+                    until "Rework" is chosen below (Repair skips this pipeline
+                    entirely, so it never needs BOM/Design verification). */}
+                {(detailOrderLive.source !== 'QC_Rejected' || detailOrderLive.reworkDecision === 'Rework') && (
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-700 mb-2 flex items-center gap-1.5"><FileCheck className="h-4 w-4" /> Design & BOM Verification</h3>
+                    <div className="flex gap-3 flex-wrap">
+                      <div className={`flex-1 p-3 rounded-lg border text-sm ${detailOrderLive.bomVerified ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold">{detailOrderLive.bomVerified ? '✓ BOM Verified' : '✗ BOM Not Verified'}</span>
+                        </div>
+                      </div>
+                      <div className={`flex-1 p-3 rounded-lg border text-sm ${detailOrderLive.designVerified ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold">{detailOrderLive.designVerified ? '✓ Design Verified' : '✗ Design Not Verified'}</span>
+                        </div>
                       </div>
                     </div>
-                    <div className={`flex-1 p-3 rounded-lg border text-sm ${detailOrderLive.designVerified ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
-                      <div className="flex items-center justify-between">
-                        <span className="font-semibold">{detailOrderLive.designVerified ? '✓ Design Verified' : '✗ Design Not Verified'}</span>
-                      </div>
+                    {(!detailOrderLive.bomVerified || !detailOrderLive.designVerified) && !detailOrderLive.rdRequestRaised && (
+                      <Button size="sm" variant="outline" className="mt-2 border-amber-300 text-amber-700 hover:bg-amber-50 text-xs" onClick={() => handleRaiseRDRequest(detailOrderLive._id || detailOrderLive.id)}>
+                        <Send className="h-3.5 w-3.5 mr-1" /> Raise R&D Request
+                      </Button>
+                    )}
+                    {detailOrderLive.rdRequestRaised && (
+                      <p className="text-xs text-amber-600 mt-2 flex items-center gap-1"><AlertTriangle className="h-3.5 w-3.5" /> R&D request raised — awaiting design & BOM from R&D team</p>
+                    )}
+                  </div>
+                )}
+
+                {/* Rework / Repair decision — only for a QC-rejected order still awaiting a choice */}
+                {detailOrderLive.source === 'QC_Rejected' && detailOrderLive.reworkDecision === 'Pending' && (
+                  <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
+                    <h3 className="text-sm font-bold text-slate-700 mb-1 flex items-center gap-1.5"><Wrench className="h-4 w-4" /> Rework or Repair?</h3>
+                    <p className="text-xs text-slate-500 mb-3">Choose how to handle this rejected item before it proceeds.</p>
+                    <div className="flex gap-3">
+                      <Button size="sm" variant="outline" className="flex-1 border-blue-300 text-blue-700 hover:bg-blue-50" onClick={() => handleDecideRework(detailOrderLive._id || detailOrderLive.id)}>
+                        <Send className="h-3.5 w-3.5 mr-1" /> Rework (rebuild from scratch)
+                      </Button>
+                      <Button size="sm" variant="outline" className="flex-1 border-purple-300 text-purple-700 hover:bg-purple-50" onClick={() => handleDecideRepair(detailOrderLive._id || detailOrderLive.id)}>
+                        <Wrench className="h-3.5 w-3.5 mr-1" /> Repair
+                      </Button>
                     </div>
                   </div>
-                  {(!detailOrderLive.bomVerified || !detailOrderLive.designVerified) && !detailOrderLive.rdRequestRaised && (
-                    <Button size="sm" variant="outline" className="mt-2 border-amber-300 text-amber-700 hover:bg-amber-50 text-xs" onClick={() => handleRaiseRDRequest(detailOrderLive._id || detailOrderLive.id)}>
-                      <Send className="h-3.5 w-3.5 mr-1" /> Raise R&D Request
-                    </Button>
-                  )}
-                  {detailOrderLive.rdRequestRaised && (
-                    <p className="text-xs text-amber-600 mt-2 flex items-center gap-1"><AlertTriangle className="h-3.5 w-3.5" /> R&D request raised — awaiting design & BOM from R&D team</p>
-                  )}
-                </div>
+                )}
+                {detailOrderLive.source === 'QC_Rejected' && detailOrderLive.reworkDecision === 'Repair' && (
+                  <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 text-sm text-purple-700 flex items-center gap-1.5">
+                    <Wrench className="h-4 w-4" /> Sent to Repair — status: {detailOrderLive.repair?.status || 'Pending'}. Track it in the Repair Production module.
+                  </div>
+                )}
 
                 {/* Design Documents */}
                 {detailOrderLive.designDocuments && detailOrderLive.designDocuments.length > 0 && (

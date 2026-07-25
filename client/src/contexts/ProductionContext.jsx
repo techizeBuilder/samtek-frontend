@@ -62,6 +62,16 @@ export function ProductionProvider({ children }) {
     onSuccess: invalidateOrders,
   });
 
+  const decideReworkMutation = useMutation({
+    mutationFn: (id) => apiRequest('PUT', `${BASE}/orders/${id}/decide-rework`),
+    onSuccess: invalidateOrders,
+  });
+
+  const decideRepairMutation = useMutation({
+    mutationFn: (id) => apiRequest('PUT', `${BASE}/orders/${id}/decide-repair`),
+    onSuccess: invalidateOrders,
+  });
+
   // ── Material mutations ─────────────────────────────────────────────────────
   const addMaterialDemandMutation = useMutation({
     mutationFn: ({ orderId, demand }) => apiRequest('POST', `${BASE}/orders/${orderId}/materials`, demand),
@@ -147,6 +157,8 @@ export function ProductionProvider({ children }) {
   const verifyDesign = useCallback((id) => verifyDesignMutation.mutateAsync(id), []);
   const raiseRDRequest = useCallback((id) => raiseRDRequestMutation.mutateAsync(id), []);
   const markMaterialIssued = useCallback((id) => markMaterialIssuedMutation.mutateAsync(id), []);
+  const decideRework = useCallback((id) => decideReworkMutation.mutateAsync(id), []);
+  const decideRepair = useCallback((id) => decideRepairMutation.mutateAsync(id), []);
   const addMaterialDemand = useCallback((orderId, demand) => addMaterialDemandMutation.mutate({ orderId, demand }), []);
   const updateMaterialStatus = useCallback((orderId, materialId, status) => updateMaterialStatusMutation.mutate({ orderId, materialId, status }), []);
   const addTeam = useCallback((data) => addTeamMutation.mutate(data), []);
@@ -255,6 +267,8 @@ export function ProductionProvider({ children }) {
       verifyBOM,
       verifyDesign,
       raiseRDRequest,
+      decideRework,
+      decideRepair,
       addMaterialDemand,
       updateMaterialStatus,
       markMaterialIssued,

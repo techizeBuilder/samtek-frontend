@@ -62,6 +62,7 @@ import AccountsPurchases from "@/pages/accounts/Purchases";
 import VendorMaster from "@/pages/accounts/VendorMaster";
 import PurchaseInvoices from "@/pages/accounts/PurchaseInvoices";
 import PurchaseReturns from "@/pages/accounts/PurchaseReturns";
+import PurchaseExchanges from "@/pages/accounts/PurchaseExchanges";
 import PurchaseReports from "@/pages/accounts/PurchaseReports";
 import PurchaseRequest from "@/pages/accounts/PurchaseRequest";
 import VendorPayments from "@/pages/accounts/VendorPayments";
@@ -77,6 +78,7 @@ import AccountsSettings from "@/pages/accounts/Settings";
 import RFQManagement from "@/pages/accounts/RFQManagement";
 import VendorBids from "@/pages/accounts/VendorBids";
 import VendorBidForm from "@/pages/VendorBidForm";
+import PurchaseExchangeAccept from "@/pages/PurchaseExchangeAccept";
 
 // Sales Account Module (New)
 import CustomerMaster from "@/pages/accounts/CustomerMaster";
@@ -266,6 +268,11 @@ function Router() {
       {/* PUBLIC: Vendor Bid Submission (no login required) */}
       <Route path="/vendor-bid/:token">
         <VendorBidForm />
+      </Route>
+
+      {/* PUBLIC: Purchase Exchange vendor accept link (no login required) */}
+      <Route path="/purchase-exchange/:token">
+        <PurchaseExchangeAccept />
       </Route>
 
       {/* task management routes for production deparment */}
@@ -1133,6 +1140,11 @@ function Router() {
       <Route path="/accounts/purchases/returns">
         <ProtectedRoute requiredRole="Accounts">
           <PurchaseReturns />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/accounts/purchases/exchanges">
+        <ProtectedRoute requiredRole="Accounts">
+          <PurchaseExchanges />
         </ProtectedRoute>
       </Route>
       <Route path="/accounts/purchases/payments">

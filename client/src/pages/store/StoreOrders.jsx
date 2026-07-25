@@ -66,13 +66,22 @@ const StatusChip = ({ status }) => {
 };
 
 // When can an item be (re-)checked? Same rules as the old single-item flow.
-const itemCheckState = (qcStatus) => {
+const itemCheckState = (qcStatus, lastRejectionSource) => {
   if (qcStatus === 'Goes to QC') return { disabled: true, reason: 'Item is in QC' };
   if (qcStatus === 'Approved from QC') return { disabled: true, reason: 'QC Approved' };
   if (qcStatus === 'Goes to Production') return { disabled: true, reason: 'In Production' };
   if (qcStatus === 'Production Completed') return { disabled: true, reason: 'Production Done' };
   if (qcStatus === 'Goes to Purchase') return { disabled: true, reason: 'Purchase Pending' };
-  // null / 'Rejected from QC' / 'Purchase Completed' → allowed
+  if (qcStatus === 'Rejected from QC') {
+    // Store sent this item to QC directly (e.g. a Purchase/Manufacturing
+    // Machine already sitting in stock) — the rejected qty is back in
+    // Store's inventory, so Store must be able to re-check/re-route it.
+    if (lastRejectionSource === 'Store') return { disabled: false, reason: '' };
+    // Production-origin (or a rework-cycle) rejection instead flows through
+    // the Production Rework/Repair module — Store has nothing to do here.
+    return { disabled: true, reason: 'Sent to Production Rework/Repair' };
+  }
+  // null / 'Purchase Completed' → allowed
   return { disabled: false, reason: '' };
 };
 
@@ -127,6 +136,7 @@ const StoreOrders = () => {
         productType: si.productType || (!hasPerItemFlow ? item.productType : null),
         availability: si.isAvailableInInventory || (!hasPerItemFlow ? item.isAvailableInInventory : null),
         qcStatus: si.storeQCStatus || (!hasPerItemFlow ? item.storeQCStatus : null),
+        lastRejectionSource: si.lastRejectionSource || null,
       }));
     }
     return (item.products || []).map((p, idx) => ({
@@ -320,7 +330,7 @@ const StoreOrders = () => {
                         {rowItems.length === 0 ? (
                           <div className="px-3 py-2 text-xs text-slate-400">No items</div>
                         ) : rowItems.map((row) => {
-                          const chk = itemCheckState(row.qcStatus);
+                          const chk = itemCheckState(row.qcStatus, row.lastRejectionSource);
                           const isCheckingThis = checkingKey === `${item._id}:${row.key}`;
                           const busy = isCheckingThis || isCheckingAll;
                           return (
@@ -411,7 +421,7 @@ const StoreOrders = () => {
                               : 'text-indigo-600 border-indigo-200 hover:bg-indigo-50'
                           }`}
                           onClick={() => !isCheckingAll && handleCheckAll(item)}
-                          disabled={isCheckingAll || rowItems.every(r => itemCheckState(r.qcStatus).disabled)}
+                          disabled={isCheckingAll || rowItems.every(r => itemCheckState(r.qcStatus, r.lastRejectionSource).disabled)}
                           title="Check inventory & route every unprocessed item"
                         >
                           {isCheckingAll
