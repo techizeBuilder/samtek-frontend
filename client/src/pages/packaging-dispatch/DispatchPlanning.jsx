@@ -36,6 +36,14 @@ function CreateDispatchModal({ group, onClose }) {
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   const handle = async () => {
+    if (!form.plannedDispatchDate || !form.expectedDeliveryDate) {
+      toast({
+        title: 'Validation Error',
+        description: 'Planned Dispatch Date and Expected Delivery Date are required.',
+        variant: 'destructive'
+      });
+      return;
+    }
     setLoading(true);
     try {
       await createDispatchOrder({
@@ -115,12 +123,12 @@ function CreateDispatchModal({ group, onClose }) {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <Label>Planned Dispatch Date</Label>
-                  <Input type="date" className="mt-1" value={form.plannedDispatchDate} onChange={e => set('plannedDispatchDate', e.target.value)} />
+                  <Label>Planned Dispatch Date *</Label>
+                  <Input type="date" required className="mt-1" value={form.plannedDispatchDate} onChange={e => set('plannedDispatchDate', e.target.value)} />
                 </div>
                 <div>
-                  <Label>Expected Delivery Date</Label>
-                  <Input type="date" className="mt-1" value={form.expectedDeliveryDate} onChange={e => set('expectedDeliveryDate', e.target.value)} />
+                  <Label>Expected Delivery Date *</Label>
+                  <Input type="date" required className="mt-1" value={form.expectedDeliveryDate} onChange={e => set('expectedDeliveryDate', e.target.value)} />
                 </div>
               </div>
             </div>
