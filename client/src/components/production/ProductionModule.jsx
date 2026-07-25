@@ -6,6 +6,7 @@ import ProductionReports from '@/pages/production/ProductionReports';
 import ProductionGroup from '@/pages/production/ProductionGroup';
 import ProductionShift from '@/pages/production/ProductionShift';
 import OrderManagement from '@/pages/production/OrderManagement';
+import RepairProduction from '@/pages/production/RepairProduction';
 import WorkPlanning from '@/pages/production/WorkPlanning';
 import JobCards from '@/pages/production/JobCards';
 import ProcessExecution from '@/pages/production/ProcessExecution';
@@ -19,6 +20,7 @@ export default function ProductionModule() {
         {/* Production Head routes */}
         <Route path="/production/dashboard"><ProductionDashboard /></Route>
         <Route path="/production/orders"><OrderManagement /></Route>
+        <Route path="/production/repair"><RepairProduction /></Route>
         <Route path="/production/work-planning"><WorkPlanning /></Route>
         <Route path="/production/job-cards"><JobCards /></Route>
         <Route path="/production/process-execution"><ProcessExecution /></Route>
@@ -32,6 +34,7 @@ export default function ProductionModule() {
         {/* Super Admin production routes */}
         <Route path="/super-admin/production/dashboard"><ProductionDashboard /></Route>
         <Route path="/super-admin/production/orders"><OrderManagement /></Route>
+        <Route path="/super-admin/production/repair"><RepairProduction /></Route>
         <Route path="/super-admin/production/work-planning"><WorkPlanning /></Route>
         <Route path="/super-admin/production/job-cards"><JobCards /></Route>
         <Route path="/super-admin/production/process-execution"><ProcessExecution /></Route>
@@ -44,6 +47,7 @@ export default function ProductionModule() {
         {/* Unit Head production routes */}
         <Route path="/unit-head/production/dashboard"><ProductionDashboard /></Route>
         <Route path="/unit-head/production/orders"><OrderManagement /></Route>
+        <Route path="/unit-head/production/repair"><RepairProduction /></Route>
         <Route path="/unit-head/production/work-planning"><WorkPlanning /></Route>
         <Route path="/unit-head/production/job-cards"><JobCards /></Route>
         <Route path="/unit-head/production/process-execution"><ProcessExecution /></Route>
