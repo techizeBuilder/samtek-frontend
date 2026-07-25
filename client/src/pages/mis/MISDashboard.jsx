@@ -217,9 +217,9 @@ export default function MISDashboard() {
         <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
           <h3 className="font-semibold text-gray-700 mb-4">Payment Status Breakdown</h3>
           {pieData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={220}>
-              <PieChart>
-                <Pie data={pieData} cx="50%" cy="50%" outerRadius={80} dataKey="value" nameKey="name" label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`} labelLine={false}>
+            <ResponsiveContainer width="100%" height={260}>
+              <PieChart margin={{ top: 24, right: 32, bottom: 8, left: 32 }}>
+                <Pie data={pieData} cx="50%" cy="50%" outerRadius={65} dataKey="value" nameKey="name" label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`} labelLine={false}>
                   {pieData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                 </Pie>
                 <Tooltip />

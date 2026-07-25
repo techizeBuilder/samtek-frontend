@@ -31,6 +31,7 @@ import {
   Building2,
   Eye,
   EyeOff,
+  Megaphone,
 } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_URL;
@@ -77,6 +78,12 @@ export default function SuperAdminApiSettings() {
     apiKey: '',
   });
 
+  const [googleAdsForm, setGoogleAdsForm] = useState({
+    enabled: false,
+    webhookKey: '',
+  });
+  const [showGoogleAdsKey, setShowGoogleAdsKey] = useState(false);
+
   // Fetch API Settings
   const { data: settingsData, isLoading, refetch } = useQuery({
     queryKey: ['super-admin-api-settings'],
@@ -116,6 +123,10 @@ export default function SuperAdminApiSettings() {
         enabled: s.website?.enabled || false,
         apiKey: s.website?.apiKey || '',
       });
+      setGoogleAdsForm({
+        enabled: s.googleAds?.enabled || false,
+        webhookKey: s.googleAds?.webhookKey || '',
+      });
     }
   }, [settingsData]);
 
@@ -145,6 +156,7 @@ export default function SuperAdminApiSettings() {
       },
       indiamart: current.indiamart,
       website: current.website,
+      googleAds: current.googleAds,
     });
   };
 
@@ -167,6 +179,7 @@ export default function SuperAdminApiSettings() {
         authKey: cleanedAccounts[0]?.authKey || '',
       },
       website: current.website,
+      googleAds: current.googleAds,
     });
   };
 
@@ -180,13 +193,36 @@ export default function SuperAdminApiSettings() {
         enabled: websiteForm.enabled,
         apiKey: websiteForm.apiKey.trim(),
       },
+      googleAds: current.googleAds,
     });
+  };
+
+  const handleSaveGoogleAds = () => {
+    const current = settingsData?.settings || {};
+    saveMutation.mutate({
+      ivr: current.ivr,
+      indiamart: current.indiamart,
+      website: current.website,
+      googleAds: {
+        ...current.googleAds,
+        enabled: googleAdsForm.enabled,
+        webhookKey: googleAdsForm.webhookKey.trim(),
+      },
+    });
+  };
+
+  const generateGoogleAdsKey = () => {
+    const bytes = new Uint8Array(24);
+    window.crypto.getRandomValues(bytes);
+    const key = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+    setGoogleAdsForm(f => ({ ...f, webhookKey: key }));
   };
 
   const tabs = [
     { id: 'acefone', label: 'Acefone IVR', icon: PhoneCall },
     { id: 'indiamart', label: 'IndiaMART', icon: Globe },
     { id: 'website', label: 'Website Webhook', icon: Zap },
+    { id: 'googleAds', label: 'Google Ads', icon: Megaphone },
   ];
 
   if (isLoading) {
@@ -649,6 +685,101 @@ export default function SuperAdminApiSettings() {
                   >
                     <Save className="h-4 w-4 mr-2" />
                     {saveMutation.isPending ? 'Saving...' : 'Save Website Settings'}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* ═══════════════════ GOOGLE ADS LEAD FORM ═══════════════════ */}
+          {activeTab === 'googleAds' && (
+            <Card>
+              <CardHeader className="border-b bg-gray-50/50">
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <Megaphone className="h-5 w-5 text-red-600" />
+                  Google Ads Lead Form
+                </CardTitle>
+                <CardDescription>
+                  Connect Google Ads Lead Form extensions to automatically create leads in the CRM.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-6 space-y-6">
+                {/* Enable Toggle */}
+                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border">
+                  <div>
+                    <p className="font-medium text-gray-900">Enable Google Ads Webhook</p>
+                    <p className="text-sm text-gray-500">Accept leads from Google Ads Lead Form extensions</p>
+                  </div>
+                  <Switch
+                    checked={googleAdsForm.enabled}
+                    onCheckedChange={(v) => setGoogleAdsForm({ ...googleAdsForm, enabled: v })}
+                  />
+                </div>
+
+                {/* Webhook Key */}
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-2">
+                    <Key className="h-4 w-4 text-gray-500" />
+                    Webhook Key
+                  </Label>
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <Input
+                        type={showGoogleAdsKey ? 'text' : 'password'}
+                        placeholder="Generate a webhook key"
+                        value={googleAdsForm.webhookKey}
+                        onChange={(e) => setGoogleAdsForm({ ...googleAdsForm, webhookKey: e.target.value })}
+                        className="pr-10"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowGoogleAdsKey(v => !v)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                      >
+                        {showGoogleAdsKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                    <Button type="button" variant="outline" onClick={generateGoogleAdsKey}>Generate</Button>
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    Paste this exact same value into Google Ads' Lead Form → Lead delivery → Webhook "Key" field — Google echoes it back on every lead so we can verify it's really from Google Ads.
+                  </p>
+                </div>
+
+                {/* Webhook URL */}
+                {googleAdsForm.webhookKey && (
+                  <div className="space-y-2">
+                    <Label>Your Webhook URL (paste into Google Ads' Webhook URL field)</Label>
+                    <div className="p-3 bg-gray-100 rounded-lg font-mono text-xs text-gray-700 break-all">
+                      {`${window.location.origin}/api/leads/google-ads-webhook?q=${googleAdsForm.webhookKey}`}
+                    </div>
+                  </div>
+                )}
+
+                {/* Setup instructions */}
+                <div className="bg-red-50 rounded-xl border border-red-100 p-4 space-y-2">
+                  <p className="text-sm font-semibold text-red-900 flex items-center gap-2">
+                    <Info className="h-4 w-4" />
+                    How to connect in Google Ads:
+                  </p>
+                  <ol className="text-xs text-red-800 list-decimal list-inside space-y-1">
+                    <li>Save the Webhook Key here first (Generate button above), then Save Settings</li>
+                    <li>In Google Ads: Campaign → Assets → your Lead Form asset → Lead delivery settings</li>
+                    <li>Choose "Webhook" delivery, paste the Webhook URL above into the URL field</li>
+                    <li>Paste the same Webhook Key into Google Ads' "Key" field</li>
+                    <li>Google Ads sends a test call to verify — it should show as connected/verified</li>
+                    <li>New leads then arrive here automatically, unassigned, for Cruncher to review</li>
+                  </ol>
+                </div>
+
+                <div className="flex justify-end">
+                  <Button
+                    onClick={handleSaveGoogleAds}
+                    disabled={saveMutation.isPending}
+                    className="bg-red-600 hover:bg-red-700 px-8"
+                  >
+                    <Save className="h-4 w-4 mr-2" />
+                    {saveMutation.isPending ? 'Saving...' : 'Save Google Ads Settings'}
                   </Button>
                 </div>
               </CardContent>

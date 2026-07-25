@@ -133,6 +133,10 @@ const CustomerPayments = () => {
         paymentData.amount = parseFloat(paymentData.amount);
         paymentData.customerId = selectedCustomer;
 
+        if (!selectedOrder) {
+            return toast({ title: "Order Required", description: "Please select an order before recording the payment.", variant: "destructive" });
+        }
+
         if (paymentData.amount <= 0) {
             return toast({ title: "Invalid Amount", description: "Payment must be greater than zero.", variant: "destructive" });
         }
@@ -391,14 +395,15 @@ const CustomerPayments = () => {
                             {/* ─── Order-wise: payment kis order ke against hai ─── */}
                             {selectedCustomer && (
                                 <div className="space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-2">Payment For Order (Order-wise Tracking)</label>
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-2">Payment For Order (Order-wise Tracking) <span className="text-rose-500">*</span></label>
                                     <select
                                         name="orderId"
                                         className="w-full bg-slate-50 border-2 border-slate-100 rounded-[1.25rem] p-4 font-bold text-slate-900 focus:ring-4 focus:ring-blue-500/10 transition-all appearance-none cursor-pointer"
                                         value={selectedOrder}
                                         onChange={(e) => setSelectedOrder(e.target.value)}
+                                        required
                                     >
-                                        <option value="">-- General Receipt (auto FIFO allocation) --</option>
+                                        <option value="">-- Select Order (Required) --</option>
                                         {customerOrders.map(o => (
                                             <option key={o.orderId} value={o.orderId}>
                                                 {o.orderCode} — Due ₹{(o.due || 0).toLocaleString('en-IN')}{o.productName ? ` (${o.productName.slice(0, 30)})` : ''}
@@ -409,7 +414,10 @@ const CustomerPayments = () => {
                                         <p className="text-[10px] text-slate-400 font-bold ml-2">Loading customer orders...</p>
                                     )}
                                     {!isLoadingOrderFin && customerOrders.length === 0 && (
-                                        <p className="text-[10px] text-slate-400 font-bold ml-2">No orders found — receipt will be recorded as general.</p>
+                                        <p className="text-[10px] text-rose-500 font-bold ml-2">No orders found for this customer. A payment cannot be recorded without an order.</p>
+                                    )}
+                                    {!selectedOrder && customerOrders.length > 0 && (
+                                        <p className="text-[10px] text-amber-600 font-bold ml-2">Please select an order to enable payment entry.</p>
                                     )}
                                 </div>
                             )}
@@ -497,8 +505,9 @@ const CustomerPayments = () => {
                                             type="number"
                                             step="0.01"
                                             placeholder="0.00"
-                                            className="h-20 rounded-[1.5rem] border-4 border-slate-50 bg-slate-50 pl-14 text-4xl font-black italic tracking-tighter focus:border-blue-500 focus:bg-white transition-all shadow-inner"
+                                            className="h-20 rounded-[1.5rem] border-4 border-slate-50 bg-slate-50 pl-14 text-4xl font-black italic tracking-tighter focus:border-blue-500 focus:bg-white transition-all shadow-inner disabled:opacity-40 disabled:cursor-not-allowed"
                                             required
+                                            disabled={!selectedOrder}
                                         />
                                     </div>
                                 </div>
@@ -506,8 +515,9 @@ const CustomerPayments = () => {
                                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-2">Deposit To (Bank/Cash)</label>
                                     <select
                                         name="accountId"
-                                        className="w-full bg-slate-50 border-2 border-slate-100 rounded-[1.25rem] p-4 font-bold text-slate-900 focus:ring-4 focus:ring-blue-500/10 transition-all appearance-none cursor-pointer"
+                                        className="w-full bg-slate-50 border-2 border-slate-100 rounded-[1.25rem] p-4 font-bold text-slate-900 focus:ring-4 focus:ring-blue-500/10 transition-all appearance-none cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                                         required
+                                        disabled={!selectedOrder}
                                     >
                                         <option value="">-- Choose Account --</option>
                                         {bankAccounts?.map(acc => (
@@ -518,15 +528,21 @@ const CustomerPayments = () => {
                                 <div className="space-y-3">
                                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-2">Payment Channel</label>
                                     <div className="grid grid-cols-2 gap-3 h-20">
-                                        <label className="relative flex items-center justify-center border-2 border-slate-100 rounded-2xl cursor-pointer hover:bg-slate-50 transition-all has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50">
-                                            <input type="radio" name="paymentMode" value="Bank Transfer" className="sr-only" defaultChecked />
+                                        <label className={cn(
+                                            "relative flex items-center justify-center border-2 border-slate-100 rounded-2xl transition-all has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50",
+                                            !selectedOrder ? "opacity-40 cursor-not-allowed" : "cursor-pointer hover:bg-slate-50"
+                                        )}>
+                                            <input type="radio" name="paymentMode" value="Bank Transfer" className="sr-only" defaultChecked disabled={!selectedOrder} />
                                             <div className="flex flex-col items-center gap-1">
                                                 <CreditCard className="w-5 h-5" />
                                                 <span className="text-[10px] font-black uppercase">Bank / NEFT</span>
                                             </div>
                                         </label>
-                                        <label className="relative flex items-center justify-center border-2 border-slate-100 rounded-2xl cursor-pointer hover:bg-slate-50 transition-all has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50">
-                                            <input type="radio" name="paymentMode" value="Cash" className="sr-only" />
+                                        <label className={cn(
+                                            "relative flex items-center justify-center border-2 border-slate-100 rounded-2xl transition-all has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50",
+                                            !selectedOrder ? "opacity-40 cursor-not-allowed" : "cursor-pointer hover:bg-slate-50"
+                                        )}>
+                                            <input type="radio" name="paymentMode" value="Cash" className="sr-only" disabled={!selectedOrder} />
                                             <div className="flex flex-col items-center gap-1">
                                                 <Banknote className="w-5 h-5" />
                                                 <span className="text-[10px] font-black uppercase">Cash</span>
@@ -538,15 +554,21 @@ const CustomerPayments = () => {
 
                             <div className="space-y-3">
                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-2">Transaction Ref / UTR / Remarks</label>
-                                <Input name="referenceNo" placeholder="Enter bank reference number or customer note..." className="h-14 rounded-[1.25rem] border-2 border-slate-100 bg-slate-50 font-semibold px-6" />
+                                <Input name="referenceNo" placeholder="Enter bank reference number or customer note..." className="h-14 rounded-[1.25rem] border-2 border-slate-100 bg-slate-50 font-semibold px-6 disabled:opacity-40 disabled:cursor-not-allowed" disabled={!selectedOrder} />
                             </div>
 
                             <Button
                                 type="submit"
-                                className="w-full h-16 bg-blue-600 hover:bg-blue-700 rounded-[1.5rem] text-xl font-black italic shadow-xl shadow-blue-500/30 transition-all active:scale-[0.98] mt-8"
-                                disabled={createMutation.isPending || !selectedCustomer}
+                                className="w-full h-16 bg-blue-600 hover:bg-blue-700 rounded-[1.5rem] text-xl font-black italic shadow-xl shadow-blue-500/30 transition-all active:scale-[0.98] mt-8 disabled:opacity-40 disabled:cursor-not-allowed"
+                                disabled={createMutation.isPending || !selectedCustomer || !selectedOrder}
                             >
-                                {createMutation.isPending ? 'COMMITTING TO LEDGER...' : 'SECURELY RECORD RECEIPT'}
+                                {createMutation.isPending
+                                    ? 'COMMITTING TO LEDGER...'
+                                    : !selectedCustomer
+                                        ? 'SELECT A CUSTOMER'
+                                        : !selectedOrder
+                                            ? 'SELECT AN ORDER TO CONTINUE'
+                                            : 'SECURELY RECORD RECEIPT'}
                             </Button>
                         </form>
                     </CardContent>

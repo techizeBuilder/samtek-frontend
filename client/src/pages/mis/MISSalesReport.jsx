@@ -155,9 +155,9 @@ export default function MISSalesReport() {
         <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
           <h3 className="font-semibold text-gray-700 mb-4">Payment Status Distribution</h3>
           {paymentPieData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={240}>
-              <PieChart>
-                <Pie data={paymentPieData} cx="50%" cy="50%" outerRadius={85} dataKey="value" nameKey="name"
+            <ResponsiveContainer width="100%" height={280}>
+              <PieChart margin={{ top: 24, right: 32, bottom: 8, left: 32 }}>
+                <Pie data={paymentPieData} cx="50%" cy="50%" outerRadius={70} dataKey="value" nameKey="name"
                   label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`} labelLine={false}>
                   {paymentPieData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                 </Pie>
