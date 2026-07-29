@@ -9,6 +9,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { Star, CheckCircle, User, Package, Phone, MessageCircle, Mail, BadgeCheck, Link2 } from 'lucide-react';
+import { sendWhatsApp } from '@/lib/whatsapp';
 
 // One consolidated feedback entity per sales order — a multi-machine order
 // used to render one feedback card per machine, asking the same customer to
@@ -73,12 +74,15 @@ export default function FeedbackRatings() {
     setRating(group.jobs[0].feedback?.rating || 0);
   };
 
-  const handleWhatsApp = (phone, group, e) => {
+  const handleWhatsApp = async (phone, group, e) => {
     if (e) e.stopPropagation();
     const rep = group.jobs[0];
     const machines = group.jobs.map(j => j.machineName).join(', ');
     const text = `Hello ${rep.customerName},\nWe would love to get your feedback on the installation of your ${machines}. How was your experience with our technician and the product?`;
-    window.open(`https://wa.me/${phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(text)}`, '_blank');
+    const result = await sendWhatsApp(phone, text);
+    if (result.automatic) {
+      toast({ title: 'Sent!', description: 'Feedback request sent automatically via WhatsApp' });
+    }
   };
 
   const handleCall = (phone, e) => {

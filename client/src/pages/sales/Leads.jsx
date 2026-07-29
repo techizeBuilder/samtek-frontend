@@ -3,6 +3,7 @@ import { useLocation } from 'wouter';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
+import { sendWhatsApp } from '@/lib/whatsapp';
 import { usePermissions } from '@/hooks/usePermissions';
 import { leadApi } from '@/api/leadService';
 import { orderApi } from '@/api/orderService';
@@ -2079,7 +2080,13 @@ const assignableUsers = (usersData?.users || []).filter(
                           variant="ghost"
                           size="icon"
                           className="h-7 w-8 border-r border-gray-100 rounded-none hover:bg-green-50 text-green-600"
-                          onClick={() => window.open(`https://wa.me/${lead.mobile?.replace(/\D/g, '')}`)}
+                          onClick={async () => {
+                            const text = `Hello ${lead.contactPerson || lead.companyName || ''}, this is Samtek Machinery regarding your enquiry for ${lead.productRequired || 'our products'}. How can we assist you further?`;
+                            const result = await sendWhatsApp(lead.mobile, text);
+                            if (result.automatic) {
+                              toast({ title: 'Sent!', description: 'Message sent automatically via WhatsApp' });
+                            }
+                          }}
                           title="WhatsApp Message"
                         >
                           <MessageSquare className="h-3.5 w-3.5" />

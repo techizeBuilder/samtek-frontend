@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
+import { sendWhatsApp } from '@/lib/whatsapp';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -101,7 +102,7 @@ const ReceivableAgeing = () => {
             .finally(() => setContactLoading(false));
     };
 
-    const handleWhatsApp = () => {
+    const handleWhatsApp = async () => {
         const customer = selectedCustomer;
         const mobile = customer?.customerMobile;
         if (!mobile) {
@@ -112,10 +113,10 @@ const ReceivableAgeing = () => {
             });
             return;
         }
-        const msg = encodeURIComponent(buildPaymentMessage(customer));
-        const phone = `91${mobile.replace(/\D/g, '')}`;
-        const url = `https://wa.me/${phone}?text=${msg}`;
-        window.open(url, '_blank');
+        const result = await sendWhatsApp(mobile, buildPaymentMessage(customer));
+        if (result.automatic) {
+            toast({ title: "Sent!", description: "Payment reminder sent automatically via WhatsApp" });
+        }
     };
 
     const handleEmail = () => {

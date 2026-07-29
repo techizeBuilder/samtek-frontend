@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import {
-  Building2, Settings, Globe, Mail, Zap, PhoneCall, Eye, EyeOff, Megaphone,
+  Building2, Settings, Globe, Mail, Zap, PhoneCall, Eye, EyeOff, Megaphone, Facebook, MessageCircle,
   Plus, Pencil, Trash2, Save, RefreshCw, Info, Key, Phone, CheckCircle2,
   FileText, Tag, List, Layers, DollarSign, StickyNote, Target, Upload,
   ChevronRight, Truck, ClipboardList,
@@ -245,8 +245,16 @@ export default function AdminSettings() {
   const [generalSection, setGeneralSection] = useState('smtp'); // 'smtp' | 'lead' | 'quotation' | 'other'
 
   // SMTP form
-  const [smtpForm, setSmtpForm] = useState({ provider: 'Gmail', mailServer: 'smtp.gmail.com', port: 587, email: '', password: '' });
+  const [smtpForm, setSmtpForm] = useState({ department: 'SALES', provider: 'Gmail', mailServer: 'smtp.gmail.com', port: 587, email: '', password: '' });
   const [showSmtpPass, setShowSmtpPass] = useState(false);
+  const SMTP_DEPARTMENTS = [
+    { value: 'SALES', label: 'Sales — quotations, meeting invites' },
+    { value: 'ACCOUNTS', label: 'Accounts — payment reminders' },
+    { value: 'PURCHASE', label: 'Purchase — PO, RFQ, vendor exchange' },
+    { value: 'HR', label: 'HR — training, task notifications' },
+    { value: 'INFO', label: 'Info — service/complaint tickets' },
+    { value: 'CASH_ACCESS', label: 'Cash Access — OTP approval' },
+  ];
 
   // Fetch all admin settings
   const { data, isLoading } = useQuery({
@@ -271,7 +279,7 @@ export default function AdminSettings() {
   const m = (fn, msg) => ({ mutationFn: fn, onSuccess: () => { inv(); toast({ title: msg }); }, onError: e => toast({ title: 'Error', description: e.message, variant: 'destructive' }) });
 
   // SMTP
-  const addSmtpM    = useMutation({ ...m(b => adminSettingsApi.addSmtp(b), 'SMTP added'), onSuccess: () => { inv(); toast({ title: 'SMTP added' }); setSmtpForm({ provider: 'Gmail', mailServer: 'smtp.gmail.com', port: 587, email: '', password: '' }); } });
+  const addSmtpM    = useMutation({ ...m(b => adminSettingsApi.addSmtp(b), 'SMTP added'), onSuccess: () => { inv(); toast({ title: 'SMTP added' }); setSmtpForm({ department: 'SALES', provider: 'Gmail', mailServer: 'smtp.gmail.com', port: 587, email: '', password: '' }); } });
   const delSmtpM    = useMutation(m(id => adminSettingsApi.deleteSmtp(id), 'SMTP deleted'));
 
   // Lead stages
@@ -347,6 +355,11 @@ export default function AdminSettings() {
   const [websiteForm, setWebsiteForm]     = useState({ enabled: false, apiKey: '' });
   const [googleAdsForm, setGoogleAdsForm] = useState({ enabled: false, webhookKey: '' });
   const [showGoogleAdsKey, setShowGoogleAdsKey] = useState(false);
+  const [facebookForm, setFacebookForm] = useState({ enabled: false, verifyToken: '', pageAccessToken: '', pageId: '' });
+  const [showFbVerifyToken, setShowFbVerifyToken] = useState(false);
+  const [showFbPageToken, setShowFbPageToken] = useState(false);
+  const [whatsappForm, setWhatsappForm] = useState({ enabled: false, phoneNumberId: '', accessToken: '' });
+  const [showWhatsappToken, setShowWhatsappToken] = useState(false);
 
   const { data: apiData, refetch: apiRefetch } = useQuery({
     queryKey: ['admin-api-settings'],
@@ -363,6 +376,17 @@ export default function AdminSettings() {
     setIndiamartForm({ enabled: s.indiamart?.enabled || false, accounts: accs });
     setWebsiteForm({ enabled: s.website?.enabled || false, apiKey: s.website?.apiKey || '' });
     setGoogleAdsForm({ enabled: s.googleAds?.enabled || false, webhookKey: s.googleAds?.webhookKey || '' });
+    setFacebookForm({
+      enabled: s.facebook?.enabled || false,
+      verifyToken: s.facebook?.verifyToken || '',
+      pageAccessToken: s.facebook?.pageAccessToken || '',
+      pageId: s.facebook?.pageId || '',
+    });
+    setWhatsappForm({
+      enabled: s.whatsapp?.enabled || false,
+      phoneNumberId: s.whatsapp?.phoneNumberId || '',
+      accessToken: s.whatsapp?.accessToken || '',
+    });
   }, [apiData]);
 
   const saveApiM = useMutation({
@@ -371,18 +395,22 @@ export default function AdminSettings() {
     onError: e => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
   });
   const cur = apiData?.settings || {};
-  const saveAcefone   = () => saveApiM.mutate({ ivr: { ...cur.ivr, enabled: ivrForm.enabled, apiKey: ivrForm.apiKey.trim(), callerID: ivrForm.callerID.trim() }, indiamart: cur.indiamart, website: cur.website, googleAds: cur.googleAds });
+  const saveAcefone   = () => saveApiM.mutate({ ivr: { ...cur.ivr, enabled: ivrForm.enabled, apiKey: ivrForm.apiKey.trim(), callerID: ivrForm.callerID.trim() }, indiamart: cur.indiamart, website: cur.website, googleAds: cur.googleAds, facebook: cur.facebook, whatsapp: cur.whatsapp });
   const saveIndiamart = () => {
     const c = indiamartForm.accounts.map(a => ({ apiName: (a.apiName||'').trim(), sellerMobile: (a.sellerMobile||'').trim(), authKey: (a.authKey||'').trim(), lastSyncedAt: a.lastSyncedAt }));
-    saveApiM.mutate({ ivr: cur.ivr, indiamart: { ...cur.indiamart, enabled: indiamartForm.enabled, accounts: c, sellerMobile: c[0]?.sellerMobile||'', authKey: c[0]?.authKey||'' }, website: cur.website, googleAds: cur.googleAds });
+    saveApiM.mutate({ ivr: cur.ivr, indiamart: { ...cur.indiamart, enabled: indiamartForm.enabled, accounts: c, sellerMobile: c[0]?.sellerMobile||'', authKey: c[0]?.authKey||'' }, website: cur.website, googleAds: cur.googleAds, facebook: cur.facebook, whatsapp: cur.whatsapp });
   };
-  const saveWebsite   = () => saveApiM.mutate({ ivr: cur.ivr, indiamart: cur.indiamart, website: { ...cur.website, enabled: websiteForm.enabled, apiKey: websiteForm.apiKey.trim() }, googleAds: cur.googleAds });
-  const saveGoogleAds = () => saveApiM.mutate({ ivr: cur.ivr, indiamart: cur.indiamart, website: cur.website, googleAds: { ...cur.googleAds, enabled: googleAdsForm.enabled, webhookKey: googleAdsForm.webhookKey.trim() } });
-  const generateGoogleAdsKey = () => {
+  const saveWebsite   = () => saveApiM.mutate({ ivr: cur.ivr, indiamart: cur.indiamart, website: { ...cur.website, enabled: websiteForm.enabled, apiKey: websiteForm.apiKey.trim() }, googleAds: cur.googleAds, facebook: cur.facebook, whatsapp: cur.whatsapp });
+  const saveGoogleAds = () => saveApiM.mutate({ ivr: cur.ivr, indiamart: cur.indiamart, website: cur.website, googleAds: { ...cur.googleAds, enabled: googleAdsForm.enabled, webhookKey: googleAdsForm.webhookKey.trim() }, facebook: cur.facebook, whatsapp: cur.whatsapp });
+  const saveFacebook  = () => saveApiM.mutate({ ivr: cur.ivr, indiamart: cur.indiamart, website: cur.website, googleAds: cur.googleAds, facebook: { ...cur.facebook, enabled: facebookForm.enabled, verifyToken: facebookForm.verifyToken.trim(), pageAccessToken: facebookForm.pageAccessToken.trim(), pageId: facebookForm.pageId.trim() }, whatsapp: cur.whatsapp });
+  const saveWhatsapp  = () => saveApiM.mutate({ ivr: cur.ivr, indiamart: cur.indiamart, website: cur.website, googleAds: cur.googleAds, facebook: cur.facebook, whatsapp: { ...cur.whatsapp, enabled: whatsappForm.enabled, phoneNumberId: whatsappForm.phoneNumberId.trim(), accessToken: whatsappForm.accessToken.trim() } });
+  const generateRandomKey = () => {
     const bytes = new Uint8Array(24);
     window.crypto.getRandomValues(bytes);
-    setGoogleAdsForm(f => ({ ...f, webhookKey: Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('') }));
+    return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
   };
+  const generateGoogleAdsKey = () => setGoogleAdsForm(f => ({ ...f, webhookKey: generateRandomKey() }));
+  const generateFbVerifyToken = () => setFacebookForm(f => ({ ...f, verifyToken: generateRandomKey() }));
 
   // ─── Company settings ─────────────────────────────────────────────────────
   const { data: csd } = useQuery({
@@ -621,6 +649,18 @@ export default function AdminSettings() {
                 {/* Add form */}
                 <div className="bg-white rounded-lg border border-gray-200 p-5 space-y-4">
                   <p className="text-sm font-medium text-gray-700 border-b border-gray-100 pb-3">Add New SMTP Configuration</p>
+                  <div className="space-y-1.5">
+                    <Label className="text-sm">Department</Label>
+                    <select
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                      value={smtpForm.department}
+                      onChange={e => setSmtpForm(f => ({ ...f, department: e.target.value }))}
+                    >
+                      {SMTP_DEPARTMENTS.map(d => (
+                        <option key={d.value} value={d.value}>{d.label}</option>
+                      ))}
+                    </select>
+                  </div>
                   <div className="space-y-2">
                     <Label className="text-sm">Choose Provider</Label>
                     <div className="flex gap-5">
@@ -661,6 +701,7 @@ export default function AdminSettings() {
                       <div key={s._id} className="flex items-center justify-between px-4 py-2.5 border border-gray-200 rounded-lg bg-white">
                         <div className="flex items-center gap-3">
                           <span className={`w-2 h-2 rounded-full ${s.isActive ? 'bg-green-500' : 'bg-gray-300'}`} />
+                          <Badge variant="secondary" className="text-xs">{s.department || 'UNSET'}</Badge>
                           <span className="font-medium text-sm text-gray-800">{s.provider}</span>
                           <span className="text-sm text-gray-500">{s.mailServer}:{s.port}</span>
                           <span className="text-sm text-gray-500">{s.email}</span>
@@ -917,6 +958,8 @@ export default function AdminSettings() {
                   { id: 'indiamart', label: 'IndiaMART',        icon: Globe     },
                   { id: 'website',   label: 'Website Webhook',  icon: Zap       },
                   { id: 'googleAds', label: 'Google Ads',       icon: Megaphone },
+                  { id: 'facebook',  label: 'Facebook Ads',     icon: Facebook  },
+                  { id: 'whatsapp',  label: 'WhatsApp',         icon: MessageCircle },
                 ].map(t => {
                   const Icon = t.icon;
                   return (
@@ -1063,6 +1106,94 @@ export default function AdminSettings() {
                     )}
                     <div className="flex justify-end pt-1">
                       <Button disabled={saveApiM.isPending} onClick={saveGoogleAds}><Save className="h-4 w-4 mr-2" />{saveApiM.isPending ? 'Saving...' : 'Save'}</Button>
+                    </div>
+                  </div>
+                )}
+
+                {activeApiTab === 'facebook' && (
+                  <div className="space-y-4">
+                    <p className="font-medium text-gray-800 text-sm border-b border-gray-100 pb-3">Facebook / Meta Lead Ads</p>
+                    <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
+                      <div><p className="text-sm font-medium">Enable Facebook Ads Webhook</p><p className="text-xs text-gray-500">Accept leads from Facebook/Instagram Lead Ads forms</p></div>
+                      <Switch checked={facebookForm.enabled} onCheckedChange={v => setFacebookForm(f => ({ ...f, enabled: v }))} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-sm flex items-center gap-1.5"><Key className="h-3.5 w-3.5 text-gray-400" />Verify Token</Label>
+                      <div className="flex gap-2">
+                        <div className="relative flex-1">
+                          <Input
+                            type={showFbVerifyToken ? 'text' : 'password'}
+                            className="pr-9"
+                            value={facebookForm.verifyToken}
+                            onChange={e => setFacebookForm(f => ({ ...f, verifyToken: e.target.value }))}
+                            placeholder="Generate a verify token"
+                          />
+                          <button type="button" onClick={() => setShowFbVerifyToken(v => !v)} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400">{showFbVerifyToken ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}</button>
+                        </div>
+                        <Button type="button" variant="outline" onClick={generateFbVerifyToken}>Generate</Button>
+                      </div>
+                      <p className="text-xs text-gray-500">Paste this same value into Facebook's App → Webhooks → "Verify Token" field.</p>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-sm flex items-center gap-1.5"><Key className="h-3.5 w-3.5 text-gray-400" />Page Access Token</Label>
+                      <div className="relative">
+                        <Input
+                          type={showFbPageToken ? 'text' : 'password'}
+                          className="pr-9"
+                          value={facebookForm.pageAccessToken}
+                          onChange={e => setFacebookForm(f => ({ ...f, pageAccessToken: e.target.value }))}
+                          placeholder="Long-lived Page Access Token from Graph API Explorer"
+                        />
+                        <button type="button" onClick={() => setShowFbPageToken(v => !v)} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400">{showFbPageToken ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}</button>
+                      </div>
+                      <p className="text-xs text-gray-500">Needed to fetch the real lead answers — Facebook's notification only carries a lead ID.</p>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-sm">Page ID (optional)</Label>
+                      <Input value={facebookForm.pageId} onChange={e => setFacebookForm(f => ({ ...f, pageId: e.target.value }))} placeholder="Your Facebook Page ID" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-sm">Callback URL (paste into Facebook's Webhooks "Callback URL" field)</Label>
+                      <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg font-mono text-xs text-gray-700 break-all">{`${window.location.origin}/api/leads/facebook-webhook`}</div>
+                    </div>
+                    <div className="flex justify-end pt-1">
+                      <Button disabled={saveApiM.isPending} onClick={saveFacebook}><Save className="h-4 w-4 mr-2" />{saveApiM.isPending ? 'Saving...' : 'Save'}</Button>
+                    </div>
+                  </div>
+                )}
+
+                {activeApiTab === 'whatsapp' && (
+                  <div className="space-y-4">
+                    <p className="font-medium text-gray-800 text-sm border-b border-gray-100 pb-3">WhatsApp (Meta Cloud API)</p>
+                    <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
+                      <div><p className="text-sm font-medium">Enable WhatsApp Sending</p><p className="text-xs text-gray-500">Send messages automatically instead of just opening the WhatsApp app</p></div>
+                      <Switch checked={whatsappForm.enabled} onCheckedChange={v => setWhatsappForm(f => ({ ...f, enabled: v }))} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-sm flex items-center gap-1.5"><Key className="h-3.5 w-3.5 text-gray-400" />Phone Number ID</Label>
+                      <Input value={whatsappForm.phoneNumberId} onChange={e => setWhatsappForm(f => ({ ...f, phoneNumberId: e.target.value }))} placeholder="Meta WhatsApp Business Phone Number ID" />
+                      <p className="text-xs text-gray-500">From Meta Business Manager → WhatsApp → API Setup.</p>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-sm flex items-center gap-1.5"><Key className="h-3.5 w-3.5 text-gray-400" />Access Token</Label>
+                      <div className="relative">
+                        <Input
+                          type={showWhatsappToken ? 'text' : 'password'}
+                          className="pr-9"
+                          value={whatsappForm.accessToken}
+                          onChange={e => setWhatsappForm(f => ({ ...f, accessToken: e.target.value }))}
+                          placeholder="Permanent System User access token"
+                        />
+                        <button type="button" onClick={() => setShowWhatsappToken(v => !v)} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400">{showWhatsappToken ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}</button>
+                      </div>
+                      <p className="text-xs text-gray-500">Use a permanent System User token, not the 24-hour test token.</p>
+                    </div>
+                    <div className="bg-amber-50 rounded-lg border border-amber-100 p-3 text-xs text-amber-800 space-y-1">
+                      <p className="font-semibold text-amber-900">Important:</p>
+                      <p>Free-text sends only work if the customer messaged you within the last 24 hours. Otherwise Meta needs an approved message Template. Every "Send WhatsApp" button tries the API first and automatically falls back to opening the WhatsApp app if it's rejected — nothing breaks either way.</p>
+                    </div>
+                    <div className="flex justify-end pt-1">
+                      <Button disabled={saveApiM.isPending} onClick={saveWhatsapp}><Save className="h-4 w-4 mr-2" />{saveApiM.isPending ? 'Saving...' : 'Save'}</Button>
                     </div>
                   </div>
                 )}

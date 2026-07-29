@@ -287,7 +287,12 @@ const SalesOrders = () => {
                                                     {(!order.generatedInvoices || order.generatedInvoices.length === 0) && <span className="text-[10px] text-slate-400 italic">Not Invoiced</span>}
                                                 </div>
                                             </TableCell>
-                                            <TableCell className="text-right font-bold text-slate-900">₹{order.totalAmount.toLocaleString('en-IN')}</TableCell>
+                                            <TableCell className="text-right font-bold text-slate-900">
+                                                ₹{(order.orderFormTotal ?? order.totalAmount).toLocaleString('en-IN')}
+                                                {order.orderFormTotal == null && (
+                                                    <div className="text-[10px] text-amber-500 font-normal italic">Order Form pending</div>
+                                                )}
+                                            </TableCell>
                                             <TableCell className="text-center">
                                                 {order.advancedPaymentAmount > 0 ? (
                                                     <div className="flex flex-col items-center gap-0.5">

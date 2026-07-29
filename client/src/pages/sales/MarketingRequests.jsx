@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import { sendWhatsApp } from '@/lib/whatsapp';
 import {
   Megaphone, Mail, MessageSquare, Clock, CheckCircle2, XCircle,
   Phone, User, Building2, Eye, Film, FileText, Image as ImageIcon, RefreshCw
@@ -38,6 +39,19 @@ export default function MarketingRequests() {
   const filtered = filter === 'All' ? requests : requests.filter(r => r.status === filter);
 
   const comingSoon = () => toast({ title: 'Coming Soon', description: 'Send API is not integrated yet — it will be active soon' });
+
+  const handleSendWhatsApp = async (req) => {
+    if (!req.lead?.mobile) {
+      return toast({ title: 'Error', description: 'No mobile number on file for this lead', variant: 'destructive' });
+    }
+    const links = (req.sentAssets || []).map(a => getFileUrl(a.fileUrl)).join('\n');
+    const msg = `Hi ${req.lead?.contactPerson || ''}, here is the content you requested for ${req.productName}:\n${links}`;
+    const result = await sendWhatsApp(req.lead.mobile, msg);
+    toast({
+      title: result.automatic ? 'Sent!' : 'WhatsApp Opened',
+      description: result.automatic ? 'Content sent automatically via WhatsApp' : 'Opened WhatsApp for manual send'
+    });
+  };
 
   return (
     <div className="p-6 space-y-6 bg-slate-50 min-h-screen">
@@ -102,7 +116,7 @@ export default function MarketingRequests() {
                         <Button size="sm" variant="outline" className="gap-1 text-xs text-blue-600 hover:bg-blue-50" title="Send via Email" onClick={comingSoon}>
                           <Mail className="h-3.5 w-3.5" />Mail
                         </Button>
-                        <Button size="sm" variant="outline" className="gap-1 text-xs text-green-600 hover:bg-green-50" title="Send via WhatsApp" onClick={comingSoon}>
+                        <Button size="sm" variant="outline" className="gap-1 text-xs text-green-600 hover:bg-green-50" title="Send via WhatsApp" onClick={() => handleSendWhatsApp(req)}>
                           <MessageSquare className="h-3.5 w-3.5" />WhatsApp
                         </Button>
                       </div>
