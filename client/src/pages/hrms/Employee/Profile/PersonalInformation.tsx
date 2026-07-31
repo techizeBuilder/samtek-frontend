@@ -1,6 +1,6 @@
 /** @format */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import {
   Mail,
@@ -18,6 +18,7 @@ import {
   X,
   LogOut,
   MapPin,
+  Camera,
 } from "lucide-react";
 import Loader from "../../Loader";
 import { toast } from "@/pages/Alert/Toast";
@@ -66,6 +67,7 @@ interface UserType {
   managerId?: { name: string };
   reportingManager?: { name: string; fullName?: string };
   documents?: UserDoc[];
+  profilePicture?: string;
 }
 
 const DOC_LABEL_MAP: Record<string, string> = {
@@ -89,6 +91,11 @@ export default function PersonalInformation() {
   const [openContact, setOpenContact] = useState(false);
   const [openChangePassword, setOpenChangePassword] = useState(false);
   const [userDocs, setUserDocs] = useState<UserDoc[]>([]);
+
+  // Profile picture upload
+  const [profilePicPreview, setProfilePicPreview] = useState<string | null>(null);
+  const [uploadingPic, setUploadingPic] = useState(false);
+  const picRef = useRef<HTMLInputElement>(null);
 
   const [form, setForm] = useState({
     name: "",
@@ -159,6 +166,38 @@ export default function PersonalInformation() {
     }
   };
 
+  const handleProfilePicChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast({ type: "error", title: "Invalid File", message: "Only image files are allowed." });
+      return;
+    }
+    const reader = new FileReader();
+    reader.onloadend = () => setProfilePicPreview(reader.result as string);
+    reader.readAsDataURL(file);
+
+    try {
+      setUploadingPic(true);
+      const fd = new FormData();
+      fd.append("profilePicture", file);
+      await axios.patch(`${API}/users/${userId}/profile-picture`, fd, {
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "multipart/form-data" },
+      });
+      toast({ type: "success", title: "Profile Picture Updated", message: "Your photo has been updated." });
+      fetchUser();
+    } catch (error: any) {
+      toast({
+        type: "error",
+        title: "Upload Failed",
+        message: error?.response?.data?.message || "Failed to upload profile picture, please try again",
+      });
+      console.error("Profile pic upload failed", error);
+    } finally {
+      setUploadingPic(false);
+    }
+  };
+
 
   useEffect(() => {
     fetchUser();
@@ -175,6 +214,11 @@ export default function PersonalInformation() {
     .join("")
     .toUpperCase();
 
+  const profilePicUrl = profilePicPreview ||
+    (user.profilePicture
+      ? (user.profilePicture.startsWith("http") ? user.profilePicture : `${BASE_URL}${user.profilePicture}`)
+      : null);
+
   return (
     <div className="p-4 md:p-6 space-y-6">
       <h1 className="text-2xl font-semibold">Personal Information</h1>
@@ -183,8 +227,37 @@ export default function PersonalInformation() {
         {/* ================= LEFT PROFILE CARD ================= */}
         <div className="lg:col-span-1 space-y-6 sticky top-6 h-fit">
           <div className="bg-white border rounded-xl shadow-sm p-6 text-center">
-            <div className="w-24 h-24 mx-auto rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-3xl font-semibold">
-              {initials}
+            <div className="relative w-24 h-24 mx-auto">
+              {profilePicUrl ? (
+                <img
+                  src={profilePicUrl}
+                  alt={user.fullName || user.name || "Profile"}
+                  className="w-24 h-24 rounded-full object-cover border-4 border-blue-100"
+                />
+              ) : (
+                <div className="w-24 h-24 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-3xl font-semibold">
+                  {initials}
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => picRef.current?.click()}
+                className="absolute bottom-0 right-0 w-7 h-7 bg-orange-500 rounded-full flex items-center justify-center text-white shadow hover:bg-orange-600 transition-colors"
+                title="Change profile picture"
+              >
+                {uploadingPic ? (
+                  <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <Camera size={14} />
+                )}
+              </button>
+              <input
+                ref={picRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleProfilePicChange}
+              />
             </div>
 
             <h2 className="mt-4 text-lg font-semibold">{user.fullName || user.name || user.username || "—"}</h2>

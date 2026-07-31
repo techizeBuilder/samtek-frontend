@@ -22,7 +22,6 @@ const AddExpenseModal = ({
   const [form, setForm] = useState({
     expenseType: expense?.expenseType || "",
     subCategory: expense?.subCategory || "",
-    billingType: expense?.billingType || "Non-Chargeable",
     amount: expense?.amount || "",
     date: expense?.date
       ? new Date(expense.date).toISOString().split("T")[0]
@@ -143,37 +142,6 @@ const AddExpenseModal = ({
               </select>
             </div>
           )}
-
-          {/* Billing Type (Chargeable / Non-Chargeable) */}
-          <div>
-            <label className="text-sm font-medium block mb-2">Billing Type (Category)</label>
-            <div className="flex gap-6">
-              <label className="flex items-center gap-2 cursor-pointer text-sm">
-                <input
-                  type="radio"
-                  disabled={isView}
-                  name="billingType"
-                  value="Chargeable"
-                  checked={form.billingType === "Chargeable"}
-                  onChange={(e) => setForm({ ...form, billingType: e.target.value as any })}
-                  className="accent-primary"
-                />
-                Chargeable
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer text-sm">
-                <input
-                  type="radio"
-                  disabled={isView}
-                  name="billingType"
-                  value="Non-Chargeable"
-                  checked={form.billingType === "Non-Chargeable"}
-                  onChange={(e) => setForm({ ...form, billingType: e.target.value as any })}
-                  className="accent-primary"
-                />
-                Non-Chargeable
-              </label>
-            </div>
-          </div>
 
           {/* Amount */}
           <div>

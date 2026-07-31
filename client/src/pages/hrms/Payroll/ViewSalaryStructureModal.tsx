@@ -41,7 +41,7 @@ const ViewSalaryStructureModal = ({ isOpen, onClose, data }: Props) => {
           {/* Employee Header Info */}
           <div className="mb-8 border-b-2 border-orange-100 pb-5">
             <h3 className="text-2xl font-black text-orange-600 mb-2 uppercase tracking-tight">
-              {data.employee?.name || data.employeeName || "Unknown Employee"}
+              {data.employee?.fullName || data.employee?.name || data.employeeName || "Unknown Employee"}
             </h3>
             <div className="grid grid-cols-2 gap-y-2 gap-x-4">
               <div className="flex items-center gap-2">

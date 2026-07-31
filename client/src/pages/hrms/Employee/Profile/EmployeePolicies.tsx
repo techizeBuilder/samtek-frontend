@@ -46,14 +46,14 @@ export default function EmployeePolicies() {
   const [activeTab, setActiveTab] = useState<Tab>("leave");
   const [loading, setLoading] = useState(true);
 
-  const attendance = {
+  const [attendance, setAttendance] = useState({
     graceTime: 10,
     lateAfter: 15,
     lateCountHalfDay: 3,
     earlyExitMinutes: 30,
     overtimeAfter: 8,
     overtimeType: "Paid",
-  };
+  });
 
   useEffect(() => {
     const fetchAll = async () => {
@@ -78,6 +78,12 @@ export default function EmployeePolicies() {
       axios
         .get(`${API}/hr-policies`, { headers: { Authorization: `Bearer ${token()}` } })
         .then((res) => setHrPolicies(res.data || []))
+        .catch(console.error);
+    }
+    if (activeTab === "attendance") {
+      axios
+        .get(`${API}/attendance-policy`, { headers: { Authorization: `Bearer ${token()}` } })
+        .then((res) => setAttendance(res.data))
         .catch(console.error);
     }
   }, [activeTab]);

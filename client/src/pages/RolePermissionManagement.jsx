@@ -169,6 +169,54 @@ const MODULES = [
       { key: 'lms', label: 'LMS' }
     ]
   },
+  {
+    name: 'hrms',
+    label: 'HRMS / Company Admin',
+    features: [
+      { key: 'dashboard', label: 'Dashboard' },
+      { key: 'employeeManagement', label: 'Employee Management' },
+      { key: 'myCompany', label: 'My Company' },
+      { key: 'operatingUnits', label: 'Operating Units' },
+      { key: 'departments', label: 'Departments' },
+      { key: 'designations', label: 'Designations' },
+      { key: 'rolePermissions', label: 'Roles & Permissions' },
+      { key: 'taskManagement', label: 'Task Management' }
+    ]
+  },
+  {
+    name: 'rnd',
+    label: 'Research & Development',
+    features: [
+      { key: 'dashboard', label: 'Dashboard' },
+      { key: 'inventory', label: 'Inventory' },
+      { key: 'approveRequests', label: 'Approve Requests' },
+      { key: 'productMaster', label: 'Product Master' },
+      { key: 'designApproval', label: 'Design Approval' },
+      { key: 'bomManagement', label: 'BOM Management' },
+      { key: 'toolProcess', label: 'Tool & Process' },
+      { key: 'prototype', label: 'Prototype' },
+      { key: 'changeManagement', label: 'Change Management' },
+      { key: 'qualityParameters', label: 'Quality Parameters' },
+      { key: 'documentation', label: 'Documentation' },
+      { key: 'expenses', label: 'Expenses' },
+      { key: 'lms', label: 'LMS' }
+    ]
+  },
+  {
+    name: 'complaints',
+    label: 'Complaint Management',
+    features: [
+      { key: 'dashboard', label: 'Dashboard' },
+      { key: 'supportManagement', label: 'Support Management' },
+      { key: 'technicians', label: 'Technicians' },
+      { key: 'customerRecords', label: 'Customer Records' },
+      { key: 'dealVerifications', label: 'Deal Verifications' },
+      { key: 'deliveryConfirmation', label: 'Delivery Confirmation' },
+      { key: 'installationSchedule', label: 'Installation Schedule' },
+      { key: 'feedbackRatings', label: 'Feedback & Ratings' },
+      { key: 'expenses', label: 'Expenses' }
+    ]
+  },
   // {
   //   name: 'inventory',
   //   label: 'Inventory',
@@ -248,6 +296,27 @@ const MODULES = [
   }
 ];
 
+// Which MODULES entries are relevant/assignable for each role in ROLES.
+// Keeps "Module Permissions" scoped to only what that role actually uses -
+// e.g. a Company Admin can never grant the Superadmin module to anyone
+// because 'Superadmin' never appears as a value here for non-Superadmin roles.
+const ROLE_MODULE_MAP = {
+  'Superadmin': ['superAdmin', 'settings'],
+  'HR-Admin': ['hrms'],
+  'Company Admin': ['hrms'],
+  'Production Head': ['production'],
+  'Packing Head': ['packing'],
+  'Dispatch Head': ['dispatches'],
+  'Sales Head': ['sales'],
+  'Accounts Head': ['accounts'],
+  'Research & Development Head': ['rnd'],
+  'Complaint Management Head': ['complaints'],
+  'Store Head': ['Store'],
+  'QC Head': ['quality-control'],
+  'Marketing Head': ['marketing'],
+  'MIS Admin': ['mis'],
+};
+
 const DEFAULT_PERMISSIONS = {
   role: '',
   unit: '',
@@ -326,6 +395,12 @@ export default function RolePermissionManagement() {
   const { user: currentUser } = useAuth();
   const isSuperAdmin = currentUser?.role === 'Superadmin' || currentUser?.role === 'Super Admin';
   const isCompanyAdmin = currentUser?.role === 'Company Admin';
+
+  // Is the row currently being edited/deleted the logged-in user's own account?
+  const isSelf = (targetUser) =>
+    !!targetUser && !!currentUser &&
+    String(targetUser._id) === String(currentUser.id ?? currentUser._id);
+  const isEditingSelf = isSelf(selectedUser);
 
   const companies = isSuperAdmin ? rawCompanies : rawCompanies.filter(c => c.value === currentUser?.companyId);
 
@@ -488,6 +563,10 @@ export default function RolePermissionManagement() {
   };
 
   const handleDeleteUser = (user) => {
+    if (isSelf(user)) {
+      showSmartToast({ message: 'You cannot delete your own account' }, 'Action Not Allowed');
+      return;
+    }
     if (window.confirm(`Are you sure you want to delete user "${user.username}"?`)) {
       deleteUserMutation.mutate(user._id);
     }
@@ -756,6 +835,64 @@ export default function RolePermissionManagement() {
             ]
           }
         ];
+      case 'HR-Admin':
+      case 'Company Admin':
+        return [
+          {
+            name: 'hrms',
+            dashboard: true,
+            features: (MODULES.find(m => m.name === 'hrms')?.features || []).map(f => ({
+              key: f.key,
+              label: f.label,
+              view: true,
+              add: true,
+              edit: true,
+              delete: true
+            }))
+          }
+        ];
+      case 'Research & Development Head':
+        return [
+          {
+            name: 'rnd',
+            dashboard: true,
+            features: (MODULES.find(m => m.name === 'rnd')?.features || []).map(f => ({
+              key: f.key,
+              label: f.label,
+              view: true,
+              add: true,
+              edit: true,
+              delete: true
+            }))
+          }
+        ];
+      case 'Complaint Management Head':
+        return [
+          {
+            name: 'complaints',
+            dashboard: true,
+            features: (MODULES.find(m => m.name === 'complaints')?.features || []).map(f => ({
+              key: f.key,
+              label: f.label,
+              view: true,
+              add: true,
+              edit: true,
+              delete: true
+            }))
+          }
+        ];
+      case 'Store Head':
+        return [
+          {
+            name: 'Store',
+            dashboard: true,
+            features: [
+              { key: 'dashboard', view: true, add: true, edit: true, delete: true },
+              { key: 'orders', view: true, add: true, edit: true, delete: true },
+              { key: 'lms', label: 'LMS', view: true, add: false, edit: false, delete: false }
+            ]
+          }
+        ];
       default:
         return [];
     }
@@ -873,18 +1010,21 @@ export default function RolePermissionManagement() {
   };
 
   const giveAllPermissions = () => {
-    // Enable all modules with all permissions
-    const allModulesWithFullPermissions = MODULES.map(module => ({
-      name: module.name,
-      dashboard: true,
-      features: module.features.map(feature => ({
-        key: feature.key,
-        view: true,
-        add: true,
-        edit: true,
-        delete: true
-      }))
-    }));
+    // Only enable the modules that are actually relevant to the selected role
+    const allowedModuleNames = ROLE_MODULE_MAP[formData.role] || [];
+    const allModulesWithFullPermissions = MODULES
+      .filter(module => allowedModuleNames.includes(module.name))
+      .map(module => ({
+        name: module.name,
+        dashboard: true,
+        features: module.features.map(feature => ({
+          key: feature.key,
+          view: true,
+          add: true,
+          edit: true,
+          delete: true
+        }))
+      }));
 
     setFormData({
       ...formData,
@@ -1050,14 +1190,13 @@ export default function RolePermissionManagement() {
                   </Button>
                 </div>
                 <div className="space-y-4 mt-4">
+                  {(ROLE_MODULE_MAP[formData.role] || []).length === 0 && (
+                    <p className="text-sm text-muted-foreground italic">
+                      Select a role above to see the module permissions relevant to it.
+                    </p>
+                  )}
                   {MODULES
-                    .filter(module => {
-                      // Show Settings module only for Super Admin users
-                      if (module.name === 'settings') {
-                        return formData.role === 'Superadmin';
-                      }
-                      return true;
-                    })
+                    .filter(module => (ROLE_MODULE_MAP[formData.role] || []).includes(module.name))
                     .map((module) => {
                       const moduleEnabled = isModuleEnabled(module.name);
                       return (
@@ -1433,8 +1572,9 @@ export default function RolePermissionManagement() {
                               variant="ghost"
                               size="sm"
                               onClick={() => handleDeleteUser(user)}
-                              className="h-7 w-7 sm:h-8 sm:w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
-                              title="Delete User"
+                              disabled={isSelf(user)}
+                              className="h-7 w-7 sm:h-8 sm:w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50 disabled:opacity-30 disabled:cursor-not-allowed"
+                              title={isSelf(user) ? "You cannot delete your own account" : "Delete User"}
                             >
                               <Trash2 className="h-3 w-3 sm:h-4 sm:w-4" />
                             </Button>
@@ -1489,8 +1629,9 @@ export default function RolePermissionManagement() {
                             variant="ghost"
                             size="sm"
                             onClick={() => handleDeleteUser(user)}
-                            className="h-7 w-7 p-0 text-red-600 hover:bg-red-50:bg-red-900/20"
-                            title="Delete User"
+                            disabled={isSelf(user)}
+                            className="h-7 w-7 p-0 text-red-600 hover:bg-red-50:bg-red-900/20 disabled:opacity-30 disabled:cursor-not-allowed"
+                            title={isSelf(user) ? "You cannot delete your own account" : "Delete User"}
                           >
                             <Trash2 className="h-3 w-3" />
                           </Button>
@@ -1648,9 +1789,24 @@ export default function RolePermissionManagement() {
               </div>
               <div>
                 <Label htmlFor="edit-role">Role</Label>
-                <Select value={formData.role} onValueChange={(value) => {
-                  setFormData({ ...formData, role: value });
-                }}>
+                <Select
+                  value={formData.role}
+                  disabled={isEditingSelf}
+                  onValueChange={(value) => {
+                    // Drop any module permissions that aren't relevant to the newly
+                    // selected role, so a role change can't leave stale/unrelated
+                    // access behind (e.g. a demoted Sales Head silently keeping 'sales').
+                    const allowedModuleNames = ROLE_MODULE_MAP[value] || [];
+                    setFormData({
+                      ...formData,
+                      role: value,
+                      permissions: {
+                        ...formData.permissions,
+                        modules: formData.permissions.modules.filter(m => allowedModuleNames.includes(m.name))
+                      }
+                    });
+                  }}
+                >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -1662,6 +1818,11 @@ export default function RolePermissionManagement() {
                     ))}
                   </SelectContent>
                 </Select>
+                {isEditingSelf && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    You cannot change your own role
+                  </p>
+                )}
               </div>
             </div>
 
@@ -1710,21 +1871,26 @@ export default function RolePermissionManagement() {
                   variant="outline"
                   size="sm"
                   onClick={giveAllPermissions}
-                  className="bg-green-50 hover:bg-green-100 text-green-700 border-green-300"
+                  disabled={isEditingSelf}
+                  className="bg-green-50 hover:bg-green-100 text-green-700 border-green-300 disabled:opacity-40"
                 >
                   <Shield className="h-4 w-4 mr-2" />
                   Give All Permissions
                 </Button>
               </div>
+              {isEditingSelf && (
+                <p className="text-xs text-amber-600 mt-1">
+                  You cannot change your own module permissions
+                </p>
+              )}
               <div className="space-y-4 mt-4">
+                {(ROLE_MODULE_MAP[formData.role] || []).length === 0 && (
+                  <p className="text-sm text-muted-foreground italic">
+                    Select a role above to see the module permissions relevant to it.
+                  </p>
+                )}
                 {MODULES
-                  .filter(module => {
-                    // Show Settings module only for Super Admin users
-                    if (module.name === 'settings') {
-                      return formData.role === 'Superadmin';
-                    }
-                    return true;
-                  })
+                  .filter(module => (ROLE_MODULE_MAP[formData.role] || []).includes(module.name))
                   .map((module) => {
                     const moduleEnabled = isModuleEnabled(module.name);
                     return (
@@ -1734,6 +1900,7 @@ export default function RolePermissionManagement() {
                             <div className="flex items-center space-x-2">
                               <Switch
                                 checked={moduleEnabled}
+                                disabled={isEditingSelf}
                                 onCheckedChange={(checked) => updateModulePermission(module.name, checked)}
                               />
                               <Label className="text-base font-medium capitalize">{module.label}</Label>
@@ -1778,6 +1945,7 @@ export default function RolePermissionManagement() {
                                       <div key={action} className="flex justify-center">
                                         <Switch
                                           checked={getFeaturePermission(module.name, feature.key, action)}
+                                          disabled={isEditingSelf}
                                           onCheckedChange={(checked) =>
                                             updateFeaturePermission(module.name, feature.key, action, checked)
                                           }
@@ -1796,6 +1964,7 @@ export default function RolePermissionManagement() {
                                           <span className="text-sm capitalize">{action}</span>
                                           <Switch
                                             checked={getFeaturePermission(module.name, feature.key, action)}
+                                            disabled={isEditingSelf}
                                             onCheckedChange={(checked) =>
                                               updateFeaturePermission(module.name, feature.key, action, checked)
                                             }

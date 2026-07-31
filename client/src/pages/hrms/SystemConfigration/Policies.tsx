@@ -18,6 +18,8 @@ import {
   Download,
   Trash2,
   Building2,
+  Pencil,
+  X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import axios from "axios";
@@ -62,6 +64,7 @@ export default function Policies() {
 
   useEffect(() => {
     if (activeTab === "company") fetchHrPolicies();
+    if (activeTab === "attendance") fetchAttendancePolicy();
   }, [activeTab]);
 
   const fetchHrPolicies = async () => {
@@ -120,7 +123,7 @@ export default function Policies() {
     url.startsWith("http") ? url : `${BASE_URL}/${url.replace(/\\/g, "/")}`;
 
   /* ================= ATTENDANCE POLICY ================= */
-  const [attendance] = useState({
+  const DEFAULT_ATTENDANCE = {
     graceTime: 10,
     lateAfter: 15,
     lateCountHalfDay: 3,
@@ -128,7 +131,42 @@ export default function Policies() {
     overtimeEnabled: true,
     overtimeAfter: 8,
     overtimeType: "Paid",
-  });
+  };
+  const [attendance, setAttendance] = useState(DEFAULT_ATTENDANCE);
+  const [attendanceForm, setAttendanceForm] = useState(DEFAULT_ATTENDANCE);
+  const [openEditAttendance, setOpenEditAttendance] = useState(false);
+  const [savingAttendance, setSavingAttendance] = useState(false);
+
+  const fetchAttendancePolicy = async () => {
+    try {
+      const res = await axios.get(`${API_BASE}/attendance-policy`, {
+        headers: { Authorization: `Bearer ${token()}` },
+      });
+      setAttendance(res.data);
+    } catch (err) {
+      console.error("Failed to fetch attendance policy", err);
+    }
+  };
+
+  const handleSaveAttendancePolicy = async () => {
+    setSavingAttendance(true);
+    try {
+      const res = await axios.put(`${API_BASE}/attendance-policy`, attendanceForm, {
+        headers: { Authorization: `Bearer ${token()}` },
+      });
+      setAttendance(res.data.policy);
+      toast({ type: "success", title: "Saved", message: "Attendance policy updated successfully" });
+      setOpenEditAttendance(false);
+    } catch (err: any) {
+      toast({
+        type: "error",
+        title: "Save Failed",
+        message: err?.response?.data?.message || "Could not update attendance policy",
+      });
+    } finally {
+      setSavingAttendance(false);
+    }
+  };
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-8 min-h-screen">
@@ -228,12 +266,23 @@ export default function Policies() {
       {/* ================= ATTENDANCE POLICIES ================= */}
       {activeTab === "attendance" && (
         <div className="space-y-8 animate-in fade-in duration-500">
-          <div className="max-w-2xl">
-            <h2 className="text-xl font-semibold text-gray-800">Time & Attendance Rules</h2>
-            <p className="text-gray-500 mt-2 leading-relaxed">
-              Guidelines for punctuality, grace periods, and overtime calculations to
-              maintain organizational discipline and fair compensation.
-            </p>
+          <div className="flex items-start justify-between max-w-4xl">
+            <div className="max-w-2xl">
+              <h2 className="text-xl font-semibold text-gray-800">Time & Attendance Rules</h2>
+              <p className="text-gray-500 mt-2 leading-relaxed">
+                Guidelines for punctuality, grace periods, and overtime calculations to
+                maintain organizational discipline and fair compensation.
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                setAttendanceForm(attendance);
+                setOpenEditAttendance(true);
+              }}
+              className="flex items-center gap-2 px-4 py-2 bg-[#49A7F5]/10 text-[#49A7F5] rounded-lg text-sm font-bold hover:bg-[#49A7F5] hover:text-white transition-all shrink-0"
+            >
+              <Pencil size={14} /> Edit Policy
+            </button>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             <div className="border border-gray-100 rounded-2xl bg-white p-6 shadow-sm hover:shadow-md transition-all duration-300">
@@ -436,6 +485,141 @@ export default function Policies() {
           Any approved adjustments integrate synchronously across performance and payroll modules.
         </p>
       </div>
+
+      {/* ================= EDIT ATTENDANCE POLICY MODAL ================= */}
+      {openEditAttendance && (
+        <div
+          className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+          onClick={() => setOpenEditAttendance(false)}
+        >
+          <div
+            className="bg-white w-full max-w-lg rounded-xl shadow-2xl max-h-[90vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-6 py-4 border-b">
+              <h2 className="text-lg font-bold text-gray-900">Edit Attendance Policy</h2>
+              <button
+                onClick={() => setOpenEditAttendance(false)}
+                className="text-gray-400 hover:text-gray-700 p-1 hover:bg-gray-100 rounded"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto flex-1 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-bold text-gray-500 uppercase block mb-1">
+                    Grace Time (mins)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={attendanceForm.graceTime}
+                    onChange={(e) => setAttendanceForm({ ...attendanceForm, graceTime: Number(e.target.value) })}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#49A7F5]/40"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-500 uppercase block mb-1">
+                    Late After (mins)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={attendanceForm.lateAfter}
+                    onChange={(e) => setAttendanceForm({ ...attendanceForm, lateAfter: Number(e.target.value) })}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#49A7F5]/40"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-500 uppercase block mb-1">
+                    Lates = 0.5 Day (count)
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={attendanceForm.lateCountHalfDay}
+                    onChange={(e) => setAttendanceForm({ ...attendanceForm, lateCountHalfDay: Number(e.target.value) })}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#49A7F5]/40"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-500 uppercase block mb-1">
+                    Early Exit (mins)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={attendanceForm.earlyExitMinutes}
+                    onChange={(e) => setAttendanceForm({ ...attendanceForm, earlyExitMinutes: Number(e.target.value) })}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#49A7F5]/40"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-2 border-t">
+                <label className="flex items-center gap-2 cursor-pointer mb-3 mt-3">
+                  <input
+                    type="checkbox"
+                    checked={attendanceForm.overtimeEnabled}
+                    onChange={(e) => setAttendanceForm({ ...attendanceForm, overtimeEnabled: e.target.checked })}
+                    className="w-4 h-4 rounded border-gray-300 text-[#49A7F5] focus:ring-[#49A7F5]"
+                  />
+                  <span className="text-sm font-semibold text-gray-700">Overtime Enabled</span>
+                </label>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs font-bold text-gray-500 uppercase block mb-1">
+                      Overtime After (hrs)
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      disabled={!attendanceForm.overtimeEnabled}
+                      value={attendanceForm.overtimeAfter}
+                      onChange={(e) => setAttendanceForm({ ...attendanceForm, overtimeAfter: Number(e.target.value) })}
+                      className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#49A7F5]/40 disabled:bg-gray-50 disabled:text-gray-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-gray-500 uppercase block mb-1">
+                      Overtime Benefit Type
+                    </label>
+                    <select
+                      disabled={!attendanceForm.overtimeEnabled}
+                      value={attendanceForm.overtimeType}
+                      onChange={(e) => setAttendanceForm({ ...attendanceForm, overtimeType: e.target.value })}
+                      className="w-full border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#49A7F5]/40 disabled:bg-gray-50 disabled:text-gray-400"
+                    >
+                      <option value="Paid">Paid</option>
+                      <option value="Compensatory Off">Compensatory Off</option>
+                      <option value="Unpaid">Unpaid</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 px-6 py-4 border-t bg-gray-50">
+              <button
+                onClick={() => setOpenEditAttendance(false)}
+                className="px-5 py-2 text-sm font-semibold text-gray-600 border rounded-lg hover:bg-gray-100 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveAttendancePolicy}
+                disabled={savingAttendance}
+                className="px-5 py-2 text-sm font-semibold bg-[#49A7F5] text-white rounded-lg hover:bg-[#3D96E1] transition-colors shadow-md disabled:opacity-60"
+              >
+                {savingAttendance ? "Saving..." : "Save Changes"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -148,6 +148,7 @@ export default function AddUser() {
     role: "",
     companyId: "",
     branchId: "",
+    departmentId: "",
     designationId: "",
     isTrainee: false,
     serviceZone: "",
@@ -163,6 +164,7 @@ export default function AddUser() {
   /* ================= DROPDOWNS ================= */
   const [companies, setCompanies] = useState<any[]>([]);
   const [branches, setBranches] = useState<any[]>([]);
+  const [departments, setDepartments] = useState<any[]>([]);
   const [designations, setDesignations] = useState<any[]>([]);
   const [managers, setManagers] = useState<any[]>([]);
   const [employeeIdPreview, setEmployeeIdPreview] = useState<string>("");
@@ -192,13 +194,12 @@ export default function AddUser() {
   }, []);
 
   /* ================= CASCADING FETCHES ================= */
-  // Fetch Units from selected Company
+  // Unit auto-derives from selected Company (no separate Branch/Unit records exist yet)
   useEffect(() => {
     if (formData.companyId) {
       const selectedComp = companies.find(c => c._id === formData.companyId);
       if (selectedComp) {
         setBranches([{ _id: selectedComp._id, name: selectedComp.unitName || "Unnamed Unit" }]);
-        setFormData(prev => ({ ...prev, branchId: selectedComp._id }));
       }
 
       // Also fetch employee ID preview
@@ -212,15 +213,34 @@ export default function AddUser() {
       setBranches([]);
       setEmployeeIdPreview("");
     }
-    // Reset lower levels
-    setFormData(prev => ({ ...prev, branchId: "", designationId: "" }));
+    // Set Unit and reset the levels that cascade from it, in a single update
+    setFormData(prev => ({
+      ...prev,
+      branchId: formData.companyId || "",
+      departmentId: "",
+      designationId: "",
+    }));
   }, [formData.companyId, companies]);
 
-  // Fetch Designations when Unit/Company changes
+  // Fetch Departments linked to the selected Unit/Company
   useEffect(() => {
     if (formData.companyId) {
       axios
-        .get(`${API_BASE}/designations?companyId=${formData.companyId}`, {
+        .get(`${API_BASE}/departments?companyId=${formData.companyId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        .then((res) => setDepartments(res.data || []))
+        .catch(() => setDepartments([]));
+    } else {
+      setDepartments([]);
+    }
+  }, [formData.companyId]);
+
+  // Fetch Designations linked to the selected Department
+  useEffect(() => {
+    if (formData.departmentId) {
+      axios
+        .get(`${API_BASE}/designations?companyId=${formData.companyId}&departmentId=${formData.departmentId}`, {
           headers: { Authorization: `Bearer ${token}` },
         })
         .then((res) => setDesignations(res.data || []))
@@ -228,9 +248,9 @@ export default function AddUser() {
     } else {
       setDesignations([]);
     }
-    // Reset lower levels
+    // Reset lower level
     setFormData(prev => ({ ...prev, designationId: "" }));
-  }, [formData.companyId]);
+  }, [formData.departmentId]);
 
   useEffect(() => {
     if (ROLE_MODULES_CONFIG[formData.role]) {
@@ -270,6 +290,7 @@ export default function AddUser() {
     if (!formData.role) e.role = "Required";
     if (!formData.companyId) e.companyId = "Required";
     if (!formData.branchId) e.branchId = "Required";
+    if (!formData.departmentId) e.departmentId = "Required";
     if (!formData.designationId) e.designationId = "Required";
 
     // Email — must be valid format
@@ -338,6 +359,7 @@ export default function AddUser() {
       // HIERARCHY
       if (formData.companyId) data.append("companyId", formData.companyId);
       if (formData.branchId) data.append("branchId", formData.branchId);
+      if (formData.departmentId) data.append("departmentId", formData.departmentId);
       if (formData.designationId) data.append("designationId", formData.designationId);
 
       // JOB
@@ -415,6 +437,7 @@ export default function AddUser() {
         role: "",
         companyId: "",
         branchId: "",
+        departmentId: "",
         designationId: "",
         isTrainee: false,
         serviceZone: "",
@@ -678,12 +701,28 @@ export default function AddUser() {
           </div>
 
           <div>
+            <Label>Department <span className="text-red-500">*</span></Label>
+            <select
+              value={formData.departmentId}
+              onChange={(e) => setFormData({ ...formData, departmentId: e.target.value })}
+              className={`w-full h-10 border rounded-md px-3 ${errors.departmentId ? "border-red-500" : ""}`}
+              disabled={!formData.branchId}
+            >
+              <option value="">Select Department</option>
+              {departments.map((d) => (
+                <option key={d._id} value={d._id}>{d.name}</option>
+              ))}
+            </select>
+            {errors.departmentId && <p className="text-sm text-red-500">{errors.departmentId}</p>}
+          </div>
+
+          <div>
             <Label>Designation <span className="text-red-500">*</span></Label>
             <select
               value={formData.designationId}
               onChange={(e) => setFormData({ ...formData, designationId: e.target.value })}
               className={`w-full h-10 border rounded-md px-3 ${errors.designationId ? "border-red-500" : ""}`}
-              disabled={!formData.companyId}
+              disabled={!formData.departmentId}
             >
               <option value="">Select Designation</option>
               {designations.map((d) => (

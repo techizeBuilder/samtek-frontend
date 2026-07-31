@@ -159,19 +159,28 @@ const AddSalaryStructureModal = ({ isOpen, onClose, editData }: Props) => {
           {/* Employee Selection */}
           <div className="mb-5">
             <label className="text-xs font-bold text-gray-500 uppercase block mb-1">Employee <span className="text-red-500">*</span></label>
-            <select
-              className="w-full border px-3 py-2 rounded mt-1 text-sm outline-none focus:border-orange-500"
-              value={employee}
-              onChange={(e) => setEmployee(e.target.value)}
-              disabled={!!editData}
-            >
-              <option value="">Select Employee</option>
-              {employees.map((e) => (
-                <option key={e._id} value={e._id}>
-                  {e.fullName || (e as any).name || "No Name"} ({e.role || "No Role"})
-                </option>
-              ))}
-            </select>
+            {editData ? (
+              <div className="w-full border bg-gray-50 px-3 py-2 rounded mt-1 text-sm text-gray-700 font-medium">
+                {editData.employee?.fullName ||
+                  (editData.employee as any)?.name ||
+                  employees.find((e) => e._id === employee)?.fullName ||
+                  "Unknown Employee"}
+                {editData.employee?.employeeId ? ` (${editData.employee.employeeId})` : ""}
+              </div>
+            ) : (
+              <select
+                className="w-full border px-3 py-2 rounded mt-1 text-sm outline-none focus:border-orange-500"
+                value={employee}
+                onChange={(e) => setEmployee(e.target.value)}
+              >
+                <option value="">Select Employee</option>
+                {employees.map((e) => (
+                  <option key={e._id} value={e._id}>
+                    {e.fullName || (e as any).name || "No Name"} ({e.role || "No Role"})
+                  </option>
+                ))}
+              </select>
+            )}
             {editData && <p className="text-[10px] text-gray-400 mt-1 italic">* Cannot change employee in edit mode</p>}
           </div>
 
