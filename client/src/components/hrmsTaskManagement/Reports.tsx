@@ -52,7 +52,8 @@ export default function TaskReportsView() {
     // Filters
     const [department, setDepartment] = useState(defaultDepartment);
     const [assignedTo, setAssignedTo] = useState("");
-    const [period, setPeriod] = useState("");
+    // Default to the last 30 days instead of "All Time" so the initial report load stays fast.
+    const [period, setPeriod] = useState("month");
     const [startDate, setStartDate] = useState("");
     const [endDate, setEndDate] = useState("");
 

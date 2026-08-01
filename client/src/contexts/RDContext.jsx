@@ -141,7 +141,10 @@ export function RDProvider({ children }) {
 
   // ── Change request mutations ─────────────────────────────────────────────────
   const createCRMut = useMutation({ mutationFn: (d) => apiRequest('POST', `${BASE}/change-requests`, d), onSuccess: invChangeRequests });
-  const resolveCRMut = useMutation({ mutationFn: ({ id, approved, notes }) => apiRequest('PUT', `${BASE}/change-requests/${id}/resolve`, { approved, notes }), onSuccess: invChangeRequests });
+  // Approving a change request unlocks the target BOM server-side, so the
+  // cached BOM list must be invalidated too — otherwise BOM Management keeps
+  // showing it as locked until something else happens to refetch it.
+  const resolveCRMut = useMutation({ mutationFn: ({ id, approved, notes }) => apiRequest('PUT', `${BASE}/change-requests/${id}/resolve`, { approved, notes }), onSuccess: () => { invChangeRequests(); invBOMs(); } });
 
   // ── Tool process mutations ───────────────────────────────────────────────────
   const addToolMut = useMutation({ mutationFn: ({ machineId, tool }) => apiRequest('POST', `${BASE}/tool-processes/${machineId}/tools`, tool), onSuccess: invToolProcesses });

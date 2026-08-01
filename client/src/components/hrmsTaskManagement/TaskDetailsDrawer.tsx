@@ -101,9 +101,22 @@ const TaskDetailsDrawer: React.FC<TaskDetailsDrawerProps> = ({ taskId, onClose, 
   // This depends on the updated getDepartmentFromRole to show controls to the new Dept Heads
   const isDeptHead = DEPT_HEADS.includes(user?.role) && task?.department === getDepartmentFromRole(user?.role);
   const isAssigned = task?.assignedTo.some(u => u._id === currentUserId);
+  const isCreator = task?.createdBy?._id === currentUserId;
 
-  const canUpdateStatus = isTopAdmin || isDeptHead || isAssigned;
+  // Status changes are restricted to the task's creator or an assigned user (matches backend rule).
+  const canChangeStatus = isCreator || isAssigned;
+  // Commenting stays open to Top Admins / Dept Heads / assignees for oversight & collaboration.
+  const canComment = isTopAdmin || isDeptHead || isAssigned;
   const canViewActivityLog = isTopAdmin || isDeptHead;
+
+  // Mirrors the backend STATUS_TRANSITIONS map so invalid moves are disabled before the request is even sent.
+  const STATUS_TRANSITIONS: Record<string, string[]> = {
+    "Pending": ["In Progress", "Hold"],
+    "In Progress": ["Hold", "Completed"],
+    "Hold": ["In Progress"],
+    "Completed": []
+  };
+  const allowedNextStatuses = task ? (STATUS_TRANSITIONS[task.status] || []) : [];
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-sm transition-opacity">
@@ -124,15 +137,15 @@ const TaskDetailsDrawer: React.FC<TaskDetailsDrawerProps> = ({ taskId, onClose, 
           <div className="flex-1 p-10 text-center text-gray-400">Loading task details...</div>
         ) : (
           <div className="flex-1 overflow-y-auto">
-            {canUpdateStatus && task.status !== "Completed" && (
+            {canChangeStatus && task.status !== "Completed" && (
               <div className="bg-white px-6 py-4 border-b border-gray-100 flex gap-3">
-                <button onClick={() => handleStatusUpdate("In Progress")} disabled={updatingStatus || task.status === "In Progress"} className="flex-1 flex items-center justify-center gap-2 py-2 bg-blue-50 text-blue-700 hover:bg-blue-100 disabled:opacity-50 rounded-lg text-sm font-semibold transition-colors"><PlayCircle size={16} /> Start</button>
-                <button onClick={() => handleStatusUpdate("Hold")} disabled={updatingStatus || task.status === "Hold"} className="flex-1 flex items-center justify-center gap-2 py-2 bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-50 rounded-lg text-sm font-semibold transition-colors"><PauseCircle size={16} /> Hold</button>
-                <button onClick={() => handleStatusUpdate("Completed")} disabled={updatingStatus || task.status === "Completed"} className="flex-1 flex items-center justify-center gap-2 py-2 bg-green-50 text-green-700 hover:bg-green-100 disabled:opacity-50 rounded-lg text-sm font-semibold transition-colors"><CheckCircle size={16} /> Complete</button>
+                <button onClick={() => handleStatusUpdate("In Progress")} disabled={updatingStatus || !allowedNextStatuses.includes("In Progress")} className="flex-1 flex items-center justify-center gap-2 py-2 bg-blue-50 text-blue-700 hover:bg-blue-100 disabled:opacity-50 rounded-lg text-sm font-semibold transition-colors"><PlayCircle size={16} /> Start</button>
+                <button onClick={() => handleStatusUpdate("Hold")} disabled={updatingStatus || !allowedNextStatuses.includes("Hold")} className="flex-1 flex items-center justify-center gap-2 py-2 bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-50 rounded-lg text-sm font-semibold transition-colors"><PauseCircle size={16} /> Hold</button>
+                <button onClick={() => handleStatusUpdate("Completed")} disabled={updatingStatus || !allowedNextStatuses.includes("Completed")} className="flex-1 flex items-center justify-center gap-2 py-2 bg-green-50 text-green-700 hover:bg-green-100 disabled:opacity-50 rounded-lg text-sm font-semibold transition-colors"><CheckCircle size={16} /> Complete</button>
               </div>
             )}
 
-            {canUpdateStatus && task.status === "Completed" && (
+            {canChangeStatus && task.status === "Completed" && (
               <div className="bg-gray-50 px-6 py-4 border-b border-gray-100 flex items-center justify-center gap-2 text-sm font-bold text-gray-500">
                 <Lock size={16} className="text-gray-400" /> This task is completed and status updates are locked.
               </div>
@@ -202,7 +215,7 @@ const TaskDetailsDrawer: React.FC<TaskDetailsDrawerProps> = ({ taskId, onClose, 
                         </div>
                       )}
 
-                      {canUpdateStatus ? (
+                      {canComment ? (
                         <form onSubmit={handleAddComment} className="flex gap-2 pt-2 border-t border-gray-100">
                           <input type="text" value={commentText} onChange={(e) => setCommentText(e.target.value)} placeholder="Type a comment..." className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100 transition-all" disabled={submittingComment} />
                           <button type="submit" disabled={!commentText.trim() || submittingComment} className="bg-indigo-600 text-white p-2.5 rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"><Send size={16} /></button>
