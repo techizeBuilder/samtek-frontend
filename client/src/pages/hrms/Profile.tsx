@@ -67,6 +67,8 @@ const ROLE_MODULES_CONFIG: Record<string, { moduleName: string; features: { key:
     features: [
       { key: "dashboard", label: "Dashboard" },
       { key: "orders", label: "My Orders" },
+      { key: "leads", label: "Leads" },
+      { key: "paymentRequests", label: "Payment Requests" },
       { key: "myCustomers", label: "My Customers" },
       { key: "myDeliveries", label: "My Dispatches" },
       { key: "myInvoices", label: "My Payments" },
@@ -79,6 +81,10 @@ const ROLE_MODULES_CONFIG: Record<string, { moduleName: string; features: { key:
     features: [
       { key: "dashboard", label: "Dashboard" },
       { key: "deliveryChallan", label: "Delivery Challan" },
+      { key: "packagingQueue", label: "Packaging Queue" },
+      { key: "packagingJobs", label: "Packaging Jobs" },
+      { key: "dispatchPlanning", label: "Dispatch Planning" },
+      { key: "activeDispatches", label: "Active Dispatches" },
       { key: "dispatchHistory", label: "History" }
     ]
   },
@@ -86,8 +92,13 @@ const ROLE_MODULES_CONFIG: Record<string, { moduleName: string; features: { key:
     moduleName: "production",
     features: [
       { key: "dashboard", label: "Dashboard" },
-      { key: "productionSheet", label: "Production Sheet" },
-      { key: "productionReports", label: "Production Reports" }
+      { key: "orders", label: "Orders" },
+      { key: "repairProduction", label: "Repair Production" },
+      { key: "workPlanning", label: "Work Planning" },
+      { key: "processQc", label: "Process & QC" },
+      { key: "jobCards", label: "Job Cards" },
+      { key: "manpower", label: "Manpower" },
+      { key: "expenses", label: "Expenses" }
     ]
   },
   "Packing Employee": {

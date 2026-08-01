@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { toast } from "../Alert/Toast";
 import { Eye, EyeOff, Upload, Download, X, FileText, AlertCircle, CheckCircle2, Camera, User, Shield, Wrench } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { MODULES, ROLE_MODULE_MAP, PERMISSION_ACTIONS, getDefaultModulesForRole } from "@/lib/roleModulesConfig";
 
 const API_BASE = import.meta.env.VITE_API_URL;
 
@@ -18,14 +19,23 @@ export default function AddUser() {
   const { toast } = useToast();
   const token = localStorage.getItem("token");
 
+  // A role option is either a plain string (value === label) or an object
+  // when the dropdown needs to show different text than the stored value —
+  // e.g. Dispatch has absorbed Packing into one combined role/menu, so the
+  // dropdown reads "Packing and Dispatch Head/Employee" but the value saved
+  // to the database (and used everywhere else in the app) stays the
+  // existing 'Dispatch Head'/'Dispatch Employee'.
+  type RoleOption = string | { value: string; label: string };
+  const roleValue = (role: RoleOption) => typeof role === 'string' ? role : role.value;
+  const roleLabel = (role: RoleOption) => typeof role === 'string' ? role : role.label;
+
   // HRMS-specific roles - static list
-  const HRMS_ROLES = [
+  const HRMS_ROLES: RoleOption[] = [
     'Manager',
     'Employee',
     'Sales Employee',
     'Production Employee',
-    'Packing Employee',
-    'Dispatch Employee',
+    { value: 'Dispatch Employee', label: 'Packing and Dispatch Employee' },
     'Account Employee',
     // 'Auditor',
     'Research Development Employee',
@@ -36,94 +46,39 @@ export default function AddUser() {
     'Marketing Employee',
   ];
 
-  const ROLE_MODULES_CONFIG: Record<string, { moduleName: string; features: { key: string; label: string }[] }> = {
-    "Sales Employee": {
-      moduleName: "sales",
-      features: [
-        { key: "dashboard", label: "Dashboard" },
-        { key: "orders", label: "My Orders" },
-        { key: "myCustomers", label: "My Customers" },
-        { key: "myDeliveries", label: "My Dispatches" },
-        { key: "myInvoices", label: "My Payments" },
-        { key: "returns", label: "Returns" },
-        { key: "damages", label: "Damages" }
-      ]
-    },
-    "Dispatch Employee": {
-      moduleName: "dispatches",
-      features: [
-        { key: "dashboard", label: "Dashboard" },
-        { key: "deliveryChallan", label: "Delivery Challan" },
-        { key: "dispatchHistory", label: "History" }
-      ]
-    },
-    "Production Employee": {
-      moduleName: "production",
-      features: [
-        { key: "dashboard", label: "Dashboard" },
-        { key: "productionSheet", label: "Production Sheet" },
-        { key: "productionReports", label: "Production Reports" }
-      ]
-    },
-    "Packing Employee": {
-      moduleName: "packing",
-      features: [
-        { key: "dashboard", label: "Dashboard" },
-        { key: "packingSheet", label: "Packing Sheet" },
-        { key: "packingHistory", label: "Packing History" }
-      ]
-    },
-    "Account Employee": {
-      moduleName: "accounts",
-      features: [
-        { key: "dashboard", label: "Dashboard" },
-        { key: "sales", label: "Sales" },
-        { key: "purchases", label: "Purchases" },
-        { key: "gstAndTds", label: "GST & TDS" },
-        { key: "expenses", label: "Expenses" },
-        { key: "salesmanSettlement", label: "Salesman Settlement" },
-        { key: "bankAndCash", label: "Bank & Cash" },
-        { key: "reports", label: "Reports" },
-        { key: "settings", label: "Settings" }
-      ]
-    },
-    "Research Development Employee": {
-      moduleName: "dashboard",
-      features: [
-        { key: "dashboard", label: "Dashboard" }
-      ]
-    },
-    "Complaint Management Employee": {
-      moduleName: "dashboard",
-      features: [
-        { key: "dashboard", label: "Complaints" }
-      ]
-    },
-    "Store Employee": {
-      moduleName: "store",
-      features: [
-        { key: "dashboard", label: "Dashboard" },
-        { key: "orders", label: "Orders" }
-      ]
-    },
-    "QC Employee": {
-      moduleName: "quality-control",
-      features: [
-        { key: "dashboard", label: "Dashboard" },
-        { key: "qcJobs", label: "QC Jobs" },
-        { key: "qcInspection", label: "QC Inspection" },
-        { key: "qcInward", label: "QC Inward" }
-      ]
-    },
-    "Marketing Employee": {
-      moduleName: "marketing",
-      features: [
-        { key: "expenses", label: "Marketing Expenses" }
-      ]
-    }
-  };
+  // Roles below use the real, shared MODULES/ROLE_MODULE_MAP-driven
+  // Module Permissions grid (imported above) — the same system Company
+  // Admin's "Roles & Permissions" page uses — instead of a separate,
+  // ad-hoc checkbox list, so their permissions always match what the
+  // Sidebar actually checks.
+  const DEPARTMENT_HEAD_ROLES: RoleOption[] = [
+    'Sales Head',
+    'Production Head',
+    { value: 'Dispatch Head', label: 'Packing and Dispatch Head' },
+    'Accounts Head',
+    'Research & Development Head',
+    'Complaint Management Head',
+    'Store Head',
+    'QC Head',
+    'Marketing Head',
+  ];
+  const DEPARTMENT_HEAD_ROLE_VALUES = DEPARTMENT_HEAD_ROLES.map(roleValue);
+  const EMPLOYEE_MODULE_ROLES = [
+    'Sales Employee',
+    'Production Employee',
+    'Dispatch Employee',
+    'Account Employee',
+    'Research Development Employee',
+    'Complaint Management Employee',
+    'Store Employee',
+    'QC Employee',
+    'Marketing Employee',
+    'MIS Admin',
+  ];
+  const isHeadRole = (role: string) => DEPARTMENT_HEAD_ROLE_VALUES.includes(role);
+  const usesModulePermissionsGrid = (role: string) => isHeadRole(role) || EMPLOYEE_MODULE_ROLES.includes(role);
 
-  const [selectedFeatures, setSelectedFeatures] = useState<Record<string, boolean>>({});
+  const [headPermissionModules, setHeadPermissionModules] = useState<any[]>([]);
   const [showPassword, setShowPassword] = useState(false);
 
   /* ================= PROFILE PICTURE ================= */
@@ -252,17 +207,26 @@ export default function AddUser() {
     setFormData(prev => ({ ...prev, designationId: "" }));
   }, [formData.departmentId]);
 
+  // Any role with a real ERP/HRMS module (Head or Employee tier) seeds
+  // sensible default Module Permissions as soon as it's picked, same as
+  // Company Admin's "Roles & Permissions" page does.
   useEffect(() => {
-    if (ROLE_MODULES_CONFIG[formData.role]) {
-      const initial: Record<string, boolean> = {};
-      ROLE_MODULES_CONFIG[formData.role].features.forEach(f => {
-        initial[f.key] = true;
-      });
-      setSelectedFeatures(initial);
+    if (usesModulePermissionsGrid(formData.role)) {
+      setHeadPermissionModules(getDefaultModulesForRole(formData.role));
     } else {
-      setSelectedFeatures({});
+      setHeadPermissionModules([]);
     }
   }, [formData.role]);
+
+  const toggleHeadFeaturePermission = (moduleName: string, featureKey: string, action: string, value: boolean) => {
+    setHeadPermissionModules(prev => prev.map(m => {
+      if (m.name !== moduleName) return m;
+      return {
+        ...m,
+        features: m.features.map((f: any) => f.key === featureKey ? { ...f, [action]: value } : f)
+      };
+    }));
+  };
 
   /* ================= PROFILE PICTURE HANDLER ================= */
   const handleProfilePicChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -373,31 +337,11 @@ export default function AddUser() {
       }
 
       // PERMISSIONS
-      if (ROLE_MODULES_CONFIG[formData.role]) {
-        const config = ROLE_MODULES_CONFIG[formData.role];
-        const hasDashboard = selectedFeatures["dashboard"] || false;
-
-        const featuresArray = config.features
-          .filter(f => f.key !== "dashboard" && selectedFeatures[f.key])
-          .map(f => ({
-            key: f.key,
-            view: true,
-            add: true,
-            edit: true,
-            delete: false,
-            alter: false
-          }));
-
+      if (usesModulePermissionsGrid(formData.role)) {
         const permissions = {
           role: formData.role,
           canAccessAllUnits: false,
-          modules: [
-            {
-              name: config.moduleName,
-              dashboard: hasDashboard,
-              features: featuresArray
-            }
-          ]
+          modules: headPermissionModules,
         };
         data.append("permissions", JSON.stringify(permissions));
       }
@@ -739,9 +683,16 @@ export default function AddUser() {
               className={`w-full h-10 border rounded-md px-3 ${errors.role ? "border-red-500" : ""}`}
             >
               <option value="">Select Role</option>
-              {HRMS_ROLES.map((role) => (
-                <option key={role} value={role}>{role}</option>
-              ))}
+              <optgroup label="Employee Roles">
+                {HRMS_ROLES.map((role) => (
+                  <option key={roleValue(role)} value={roleValue(role)}>{roleLabel(role)}</option>
+                ))}
+              </optgroup>
+              <optgroup label="Department Heads">
+                {DEPARTMENT_HEAD_ROLES.map((role) => (
+                  <option key={roleValue(role)} value={roleValue(role)}>{roleLabel(role)}</option>
+                ))}
+              </optgroup>
             </select>
             {errors.role && <p className="text-sm text-red-500">{errors.role}</p>}
           </div>
@@ -907,25 +858,73 @@ export default function AddUser() {
       )}
 
       {/* ================= MODULE PERMISSIONS (CONDITIONAL) ================= */}
-      {ROLE_MODULES_CONFIG[formData.role] && (
+      {usesModulePermissionsGrid(formData.role) && (
         <Card className="max-w-4xl border border-[#49A7F5]/30">
           <CardHeader className="bg-[#49A7F5]/5 border-b border-[#49A7F5]/10 rounded-t-xl">
             <CardTitle className="text-lg font-medium text-[#49A7F5] flex items-center gap-2">
               <Shield size={18} />
-              Module Permissions ({ROLE_MODULES_CONFIG[formData.role].moduleName})
+              Module Permissions
             </CardTitle>
           </CardHeader>
-          <CardContent className="p-6">
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              {ROLE_MODULES_CONFIG[formData.role].features.map((feature) => (
-                <div key={feature.key} className="flex items-center space-x-3 p-3 rounded-lg border border-gray-100 hover:border-[#49A7F5]/30 hover:bg-[#49A7F5]/5 transition-colors cursor-pointer" onClick={() => setSelectedFeatures(prev => ({ ...prev, [feature.key]: !prev[feature.key] }))}>
-                  <div className={`w-5 h-5 rounded flex items-center justify-center border transition-colors ${selectedFeatures[feature.key] ? 'bg-[#49A7F5] border-[#49A7F5]' : 'border-gray-300 bg-white'}`}>
-                    {selectedFeatures[feature.key] && <CheckCircle2 size={14} className="text-white" />}
+          <CardContent className="p-6 space-y-6">
+            {(() => {
+              const activeModulesForRole = MODULES.filter((m) => (ROLE_MODULE_MAP[formData.role] || []).includes(m.name));
+              if (activeModulesForRole.length === 0) {
+                return <p className="text-sm text-gray-400 italic">No module permissions configured for this role.</p>;
+              }
+              // A role spanning more than one module (e.g. Dispatch Head/Employee,
+              // which now covers both Packing and Dispatches) renders as ONE combined
+              // card with a sub-heading per module, instead of a separate bordered
+              // card per module — it's a single combined role, not two.
+              const isCombined = activeModulesForRole.length > 1;
+              return (
+                <div className={isCombined ? "border rounded-xl p-4" : ""}>
+                  {isCombined && (
+                    <p className="text-sm font-bold text-gray-800 mb-4">
+                      {activeModulesForRole.map((m) => m.label).join(' & ')}
+                    </p>
+                  )}
+                  <div className={isCombined ? "space-y-5" : ""}>
+                    {activeModulesForRole.map((module) => {
+                      const activeModule = headPermissionModules.find((m) => m.name === module.name);
+                      return (
+                        <div key={module.name} className={isCombined ? "" : "border rounded-xl p-4"}>
+                          <p className={isCombined ? "text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2" : "text-sm font-bold text-gray-800 mb-3"}>
+                            {module.label}
+                          </p>
+                          <div className="hidden md:grid grid-cols-5 gap-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider pb-2 border-b mb-2">
+                            <span>Feature</span>
+                            <span className="text-center">View</span>
+                            <span className="text-center">Add</span>
+                            <span className="text-center">Edit</span>
+                            <span className="text-center">Delete</span>
+                          </div>
+                          {module.features.map((feature) => {
+                            const featurePerm: any = activeModule?.features.find((f: any) => f.key === feature.key);
+                            return (
+                              <div key={feature.key} className="grid grid-cols-2 md:grid-cols-5 gap-2 items-center py-1.5 text-sm border-b border-gray-50 last:border-0">
+                                <span className="text-gray-700 col-span-2 md:col-span-1">{feature.label}</span>
+                                {PERMISSION_ACTIONS.map((action) => (
+                                  <label key={action} className="flex items-center justify-start md:justify-center gap-1.5 cursor-pointer">
+                                    <input
+                                      type="checkbox"
+                                      checked={!!featurePerm?.[action]}
+                                      onChange={(e) => toggleHeadFeaturePermission(module.name, feature.key, action, e.target.checked)}
+                                      className="w-4 h-4 text-[#49A7F5] rounded border-gray-300 focus:ring-[#49A7F5] cursor-pointer"
+                                    />
+                                    <span className="md:hidden text-xs text-gray-400 capitalize">{action}</span>
+                                  </label>
+                                ))}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })}
                   </div>
-                  <span className="text-sm font-medium text-gray-700">{feature.label}</span>
                 </div>
-              ))}
-            </div>
+              );
+            })()}
           </CardContent>
         </Card>
       )}

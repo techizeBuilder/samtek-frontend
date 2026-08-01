@@ -10,8 +10,8 @@ const TOP_LEVEL_ADMINS = ['HR-Admin', 'MIS Admin', 'Company Admin', 'Super Admin
 
 // 🔥 ADDED NEW DEPARTMENT HEADS HERE
 const DEPT_HEADS = [
-  'Production Head', 'Packing Head', 'Dispatch Head', 
-  'Accounts Head', 'Sales Head', 'Manager', 'Finance Manager', 
+  'Production Head', 'Packing Head', 'Dispatch Head',
+  'Accounts Head', 'Sales Head', 'Manager', 'Finance Manager',
   'Unit Head', 'Unit Manager',
   'Research & Development Head', 'Store Head', 'QC Head'
 ];
