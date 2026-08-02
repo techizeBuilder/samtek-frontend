@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
+import { useAuthContext } from '@/contexts/AuthContext';
+import { useSettings } from '@/hooks/useSettings';
+import { generateOrderSummaryPDF } from '@/utils/generateOrderSummaryPDF';
 import {
   Search,
   Eye,
@@ -39,6 +42,16 @@ import {
   DialogFooter,
   DialogDescription
 } from '@/components/ui/dialog';
+
+// Item specs are stored as [{key, value}] on the Item model — flatten to
+// a readable "key: value, key: value" string for display.
+const formatSpecifications = (specifications) => {
+  if (!Array.isArray(specifications) || !specifications.length) return '';
+  return specifications
+    .filter(s => s && (s.key || s.value))
+    .map(s => (s.key ? `${s.key}: ${s.value ?? ''}` : s.value))
+    .join(', ');
+};
 
 // Status chip config shared by the per-item status column
 const STATUS_CONFIG = {
@@ -87,17 +100,62 @@ const itemCheckState = (qcStatus, lastRejectionSource) => {
 
 const StoreOrders = () => {
   const { toast } = useToast();
+  const { user } = useAuthContext();
+  const { settings } = useSettings();
   const [searchTerm, setSearchTerm] = useState('');
   const [page, setPage] = useState(1);
   const [viewOrderOpen, setViewOrderOpen] = useState(false);
   const [selectedOrderDetails, setSelectedOrderDetails] = useState(null);
   const [isLoadingOrderDetails, setIsLoadingOrderDetails] = useState(false);
   const [loadingItemId, setLoadingItemId] = useState(null);
+  const [printingItemId, setPrintingItemId] = useState(null);
+  const [isPrintingSummary, setIsPrintingSummary] = useState(false);
   const [checkingKey, setCheckingKey] = useState(null); // `${orderRowId}` (all) or `${orderRowId}:${itemKey}`
 
   // Reset to page 1 whenever the search changes so the user doesn't land on
   // a now-out-of-range page.
   useEffect(() => { setPage(1); }, [searchTerm]);
+
+  // Company info: logged-in user's company, falling back to global settings
+  const userCompany = user?.company || {};
+  const companyId = user?.companyId || userCompany.id;
+
+  // The signature/stamp is whatever the Company Admin uploaded for this
+  // specific company — never a generic fallback. If nothing's uploaded,
+  // no signature is drawn on the PDF at all.
+  const { data: companyResponse } = useQuery({
+    queryKey: ['company-stamp', companyId],
+    queryFn: () => apiRequest('GET', `/api/companies/${companyId}`),
+    enabled: !!companyId,
+    staleTime: 1000 * 60 * 10,
+  });
+
+  const companyInfo = {
+    name: userCompany.name || settings?.company?.name || 'Samtek Machinery',
+    address: userCompany.address || settings?.company?.address,
+    city: userCompany.city,
+    state: userCompany.state,
+    mobile: userCompany.mobile || settings?.company?.phone,
+    email: userCompany.email || settings?.company?.email,
+    gst: userCompany.gst || settings?.company?.gstNumber,
+    stampUrl: companyResponse?.company?.stampUrl || null,
+  };
+
+  const loadSamtekLogo = async () => {
+    try {
+      const logoResp = await fetch('/logo Semtek.webp');
+      if (!logoResp.ok) return null;
+      const blob = await logoResp.blob();
+      return await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    } catch (_) {
+      return null;
+    }
+  };
 
   const { data: trackingResponse, isLoading, refetch } = useQuery({
     queryKey: ['/api/orders/get-tracking', 'store-orders', page, searchTerm],
@@ -138,7 +196,7 @@ const StoreOrders = () => {
       saleItemId: null,
       name: p.product?.name || '—',
       qty: p.quantity,
-      spec: p.product?.specification || '',
+      spec: formatSpecifications(p.product?.specifications),
       productType: null,
       availability: null,
       qcStatus: null,
@@ -223,6 +281,43 @@ const StoreOrders = () => {
     } finally {
       setIsLoadingOrderDetails(false);
       setLoadingItemId(null);
+    }
+  };
+
+  // Print a single order's summary as an attractive, standalone PDF —
+  // fetches just that one order (never the whole table) so the PDF only
+  // ever contains this row's items.
+  const handlePrintOrder = async (item) => {
+    if (!item.orderId) {
+      toast({ title: "Error", description: "No order ID associated with this record", variant: "destructive" });
+      return;
+    }
+    setPrintingItemId(item._id);
+    try {
+      const [response, logoDataUrl] = await Promise.all([
+        apiRequest('GET', `/api/orders/${item.orderId}`),
+        loadSamtekLogo(),
+      ]);
+      await generateOrderSummaryPDF(response.order, logoDataUrl, companyInfo);
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to generate order summary PDF", variant: "destructive" });
+    } finally {
+      setPrintingItemId(null);
+    }
+  };
+
+  // "Print Summary" inside the View Order modal — reuses the order already
+  // loaded for the dialog, so it prints exactly the same single order shown.
+  const handlePrintSelectedOrder = async () => {
+    if (!selectedOrderDetails) return;
+    setIsPrintingSummary(true);
+    try {
+      const logoDataUrl = await loadSamtekLogo();
+      await generateOrderSummaryPDF(selectedOrderDetails, logoDataUrl, companyInfo);
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to generate order summary PDF", variant: "destructive" });
+    } finally {
+      setIsPrintingSummary(false);
     }
   };
 
@@ -439,10 +534,15 @@ const StoreOrders = () => {
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-8 w-8 text-slate-400 hover:text-emerald-600"
-                            onClick={() => window.print()}
+                            className={`h-8 w-8 transition-colors ${printingItemId === item._id ? 'text-emerald-500' : 'text-slate-400 hover:text-emerald-600'}`}
+                            onClick={() => handlePrintOrder(item)}
+                            disabled={printingItemId === item._id}
+                            title="Print this order's summary as a PDF"
                           >
-                            <Printer className="w-4 h-4" />
+                            {printingItemId === item._id
+                              ? <RefreshCw className="w-4 h-4 animate-spin" />
+                              : <Printer className="w-4 h-4" />
+                            }
                           </Button>
                         </div>
                       </div>
@@ -546,7 +646,7 @@ const StoreOrders = () => {
                         <tr key={idx} className="hover:bg-slate-50/60">
                           <td className="px-4 py-3 text-slate-400 text-xs">{idx + 1}</td>
                           <td className="px-4 py-3 font-medium text-slate-800">{p.product?.name || '—'}</td>
-                          <td className="px-4 py-3 text-xs text-slate-500">{p.product?.specification || '—'}</td>
+                          <td className="px-4 py-3 text-xs text-slate-500">{formatSpecifications(p.product?.specifications) || '—'}</td>
                           <td className="px-4 py-3 text-center">
                             <span className="bg-slate-100 text-slate-700 text-xs font-medium px-2 py-0.5 rounded">{p.quantity}</span>
                           </td>
@@ -576,8 +676,15 @@ const StoreOrders = () => {
             <Button variant="outline" onClick={() => setViewOrderOpen(false)} className="px-6 h-10">
               Close
             </Button>
-            <Button className="bg-blue-600 hover:bg-blue-700 text-white px-8 h-10 shadow-sm" onClick={() => window.print()}>
-              <Printer className="w-4 h-4 mr-2" /> Print Summary
+            <Button
+              className="bg-blue-600 hover:bg-blue-700 text-white px-8 h-10 shadow-sm"
+              onClick={handlePrintSelectedOrder}
+              disabled={isPrintingSummary}
+            >
+              {isPrintingSummary
+                ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                : <Printer className="w-4 h-4 mr-2" />}
+              {isPrintingSummary ? 'Generating PDF...' : 'Print Summary'}
             </Button>
           </DialogFooter>
         </DialogContent>

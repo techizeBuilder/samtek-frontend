@@ -12,6 +12,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { CalendarCheck, MapPin, CheckCircle, Package, User, Phone, MessageCircle, Mail, Send, ChevronDown, Search } from 'lucide-react';
+import { sendWhatsApp } from '@/lib/whatsapp';
 
 // One consolidated installation entity per sales order — a multi-machine
 // order used to render one card per machine, each needing its own schedule
@@ -198,20 +199,26 @@ export default function InstallationSchedule() {
     });
   };
 
-  const notifyCustomer = (group, e) => {
+  const notifyCustomer = async (group, e) => {
     if (e) e.stopPropagation();
     const rep = group.jobs[0];
     const machines = group.jobs.map(j => j.machineName).join(', ');
     const text = `Hello ${rep.customerName},\nYour installation for ${machines} has been scheduled for ${rep.installation?.scheduledDate ? new Date(rep.installation.scheduledDate).toLocaleDateString() : 'upcoming dates'}.\nOur technician ${rep.installation?.technicianName || ''} will contact you.`;
-    window.open(`https://wa.me/${(rep.customerContact || '').replace(/[^0-9]/g, '')}?text=${encodeURIComponent(text)}`, '_blank');
+    const result = await sendWhatsApp(rep.customerContact, text);
+    if (result.automatic) {
+      toast({ title: 'Sent!', description: 'Installation schedule notification sent automatically via WhatsApp' });
+    }
   };
 
-  const handleWhatsApp = (phone, group, e) => {
+  const handleWhatsApp = async (phone, group, e) => {
     if (e) e.stopPropagation();
     const rep = group.jobs[0];
     const machines = group.jobs.map(j => j.machineName).join(', ');
     const text = `Hello ${rep.customerName},\nWe need to schedule the installation for your ${machines}. When would be a convenient time for you?`;
-    window.open(`https://wa.me/${phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(text)}`, '_blank');
+    const result = await sendWhatsApp(phone, text);
+    if (result.automatic) {
+      toast({ title: 'Sent!', description: 'Message sent automatically via WhatsApp' });
+    }
   };
 
   const handleCall = (phone, e) => {

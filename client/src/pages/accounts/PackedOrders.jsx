@@ -1,10 +1,13 @@
-import React, { useState, useRef } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import React, { useState, useRef, useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import BackendPagination from '@/components/shared/BackendPagination';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { useSettings } from '@/hooks/useSettings';
 import { generateDueBillPDF } from '@/utils/generateDueBillPDF';
+import { sendWhatsApp } from '@/lib/whatsapp';
 import {
   Search,
   Phone,
@@ -58,9 +61,22 @@ const PackedOrders = () => {
   const { user } = useAuthContext();
 
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [activeTab, setActiveTab] = useState('pending'); // 'pending' | 'completed' | 'all'
   const [page, setPage] = useState(1);
-  const changeSearch = (value) => { setSearchTerm(value); setPage(1); };
-  
+  const limit = 10;
+
+  // Debounce search so every keystroke doesn't fire a backend request
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchTerm.trim()), 350);
+    return () => clearTimeout(t);
+  }, [searchTerm]);
+
+  // Tab/search change → the old page number may no longer exist
+  useEffect(() => {
+    setPage(1);
+  }, [activeTab, debouncedSearch]);
+
   // Upload Proof Modal State
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [selectedSaleId, setSelectedSaleId] = useState(null);
@@ -89,14 +105,20 @@ const PackedOrders = () => {
   const userCompany = user?.company || {};
   const displayCompanyName = userCompany.name || settings?.company?.name || 'SAMTEK MACHINERY';
 
-  // Fetch packed orders — paginated + search-filtered server-side
+  // Fetch packed orders — tab (pending/completed/all) + pagination + search
+  // are all resolved on the backend so the browser only ever receives one
+  // page's worth of rows, not the company's entire packed-orders history.
   const { data: packedOrdersFullResponse, isLoading, refetch } = useQuery({
-    queryKey: ['/api/accounts/packed-orders', page, searchTerm],
-    queryFn: () => apiRequest('GET', `/api/accounts/packed-orders?page=${page}&limit=20&search=${encodeURIComponent(searchTerm)}`),
-    keepPreviousData: true,
+    queryKey: ['/api/accounts/packed-orders', activeTab, page, debouncedSearch],
+    queryFn: async () => {
+      const params = new URLSearchParams({ status: activeTab, page: String(page), limit: String(limit) });
+      if (debouncedSearch) params.set('search', debouncedSearch);
+      return await apiRequest('GET', `/api/accounts/packed-orders?${params.toString()}`);
+    },
+    placeholderData: keepPreviousData
   });
   const packedOrdersResponse = packedOrdersFullResponse?.data || [];
-  const packedOrdersPagination = packedOrdersFullResponse?.pagination || {};
+  const packedOrdersPagination = packedOrdersFullResponse?.pagination || { total: 0, page: 1, limit, pages: 1 };
 
   // Fetch bank accounts for payment receipt
   const { data: bankAccountsResponse } = useQuery({
@@ -284,15 +306,16 @@ const PackedOrders = () => {
     window.open(`tel:${mobile}`, '_self');
   };
 
-  const handleWhatsApp = (item) => {
+  const handleWhatsApp = async (item) => {
     if (!item.customer.mobile || item.customer.mobile === 'N/A') {
       toast({ title: "Error", description: "Mobile number not found", variant: "destructive" });
       return;
     }
-    const cleanMobile = item.customer.mobile.replace(/\D/g, '');
     const message = `Dear ${item.customer.name},\n\nYour order *${item.orderCode}* for *${item.machineName || 'machinery'}* has been packed and is ready for dispatch.\n\n*Total Amount:* ₹${(item.displayTotal || 0).toLocaleString('en-IN')}\n*Amount Paid:* ₹${(item.displayPaid || 0).toLocaleString('en-IN')}\n*Balance Due:* ₹${(item.displayDue || 0).toLocaleString('en-IN')}\n\nKindly clear the final payment and share the payment receipt/proof so we can initiate dispatch.\n\nThank you,\nAccounts Team\n${displayCompanyName}`;
-    const url = `https://wa.me/91${cleanMobile}?text=${encodeURIComponent(message)}`;
-    window.open(url, '_blank');
+    const result = await sendWhatsApp(item.customer.mobile, message);
+    if (result.automatic) {
+      toast({ title: "Sent!", description: "Payment request sent automatically via WhatsApp" });
+    }
   };
 
   const handleSMS = (item) => {
@@ -314,8 +337,7 @@ const PackedOrders = () => {
     window.open(`mailto:${item.customer.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`, '_self');
   };
 
-  // Search now happens server-side — `packedOrdersResponse` is already the
-  // current page's filtered slice.
+  // Search + tab filtering both happen on the backend now (see the query above)
   const filteredOrders = packedOrdersResponse;
 
   return (
@@ -344,7 +366,13 @@ const PackedOrders = () => {
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
               <CardTitle className="text-lg font-semibold text-slate-800">Packed Orders List</CardTitle>
-              <CardDescription>Orders packed in the warehouse awaiting final payment before dispatch</CardDescription>
+              <CardDescription>
+                {activeTab === 'completed'
+                  ? 'Orders already dispatched'
+                  : activeTab === 'all'
+                  ? 'All packed orders — pending and dispatched'
+                  : 'Orders packed in the warehouse awaiting final payment before dispatch'}
+              </CardDescription>
             </div>
             <div className="relative w-full sm:w-72">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -352,10 +380,17 @@ const PackedOrders = () => {
                 placeholder="Search code, customer, machine..."
                 className="pl-9 bg-white border-slate-200 rounded-lg h-10"
                 value={searchTerm}
-                onChange={(e) => changeSearch(e.target.value)}
+                onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
           </div>
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-4">
+            <TabsList>
+              <TabsTrigger value="pending">Pending</TabsTrigger>
+              <TabsTrigger value="completed">Completed</TabsTrigger>
+              <TabsTrigger value="all">All</TabsTrigger>
+            </TabsList>
+          </Tabs>
         </CardHeader>
         <CardContent className="p-0">
           {isLoading ? (
@@ -366,8 +401,16 @@ const PackedOrders = () => {
           ) : filteredOrders.length === 0 ? (
             <div className="flex flex-col items-center justify-center p-16 text-slate-400 text-center">
               <AlertCircle className="w-12 h-12 text-slate-300 mb-3" />
-              <p className="font-medium text-slate-600">No Packed Orders Found</p>
-              <p className="text-sm mt-1 max-w-sm">There are no orders with packed status in this company currently or matching your search term.</p>
+              <p className="font-medium text-slate-600">
+                {activeTab === 'completed' ? 'No Dispatched Orders Found' : 'No Packed Orders Found'}
+              </p>
+              <p className="text-sm mt-1 max-w-sm">
+                {debouncedSearch
+                  ? 'No orders match your search term.'
+                  : activeTab === 'completed'
+                  ? 'No orders have been dispatched yet.'
+                  : 'There are no orders with packed status in this company currently.'}
+              </p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -620,14 +663,14 @@ const PackedOrders = () => {
               </Table>
             </div>
           )}
-          {packedOrdersPagination.pages > 1 && (
-            <div className="flex items-center justify-center gap-2 py-4 border-t">
-              <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={packedOrdersPagination.page <= 1}>Previous</Button>
-              <span className="text-sm text-slate-500">Page {packedOrdersPagination.page} of {packedOrdersPagination.pages} ({packedOrdersPagination.total} orders)</span>
-              <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)} disabled={packedOrdersPagination.page >= packedOrdersPagination.pages}>Next</Button>
-            </div>
-          )}
         </CardContent>
+        <BackendPagination
+          page={packedOrdersPagination.page}
+          totalPages={packedOrdersPagination.pages}
+          total={packedOrdersPagination.total}
+          limit={packedOrdersPagination.limit}
+          onPageChange={setPage}
+        />
       </Card>
 
       {/* View Order Detail Modal */}

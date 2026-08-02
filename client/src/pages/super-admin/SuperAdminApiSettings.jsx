@@ -32,6 +32,8 @@ import {
   Eye,
   EyeOff,
   Megaphone,
+  Facebook,
+  MessageCircle,
 } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_URL;
@@ -84,6 +86,22 @@ export default function SuperAdminApiSettings() {
   });
   const [showGoogleAdsKey, setShowGoogleAdsKey] = useState(false);
 
+  const [facebookForm, setFacebookForm] = useState({
+    enabled: false,
+    verifyToken: '',
+    pageAccessToken: '',
+    pageId: '',
+  });
+  const [showFbVerifyToken, setShowFbVerifyToken] = useState(false);
+  const [showFbPageToken, setShowFbPageToken] = useState(false);
+
+  const [whatsappForm, setWhatsappForm] = useState({
+    enabled: false,
+    phoneNumberId: '',
+    accessToken: '',
+  });
+  const [showWhatsappToken, setShowWhatsappToken] = useState(false);
+
   // Fetch API Settings
   const { data: settingsData, isLoading, refetch } = useQuery({
     queryKey: ['super-admin-api-settings'],
@@ -127,6 +145,17 @@ export default function SuperAdminApiSettings() {
         enabled: s.googleAds?.enabled || false,
         webhookKey: s.googleAds?.webhookKey || '',
       });
+      setFacebookForm({
+        enabled: s.facebook?.enabled || false,
+        verifyToken: s.facebook?.verifyToken || '',
+        pageAccessToken: s.facebook?.pageAccessToken || '',
+        pageId: s.facebook?.pageId || '',
+      });
+      setWhatsappForm({
+        enabled: s.whatsapp?.enabled || false,
+        phoneNumberId: s.whatsapp?.phoneNumberId || '',
+        accessToken: s.whatsapp?.accessToken || '',
+      });
     }
   }, [settingsData]);
 
@@ -157,6 +186,8 @@ export default function SuperAdminApiSettings() {
       indiamart: current.indiamart,
       website: current.website,
       googleAds: current.googleAds,
+      facebook: current.facebook,
+      whatsapp: current.whatsapp,
     });
   };
 
@@ -180,6 +211,8 @@ export default function SuperAdminApiSettings() {
       },
       website: current.website,
       googleAds: current.googleAds,
+      facebook: current.facebook,
+      whatsapp: current.whatsapp,
     });
   };
 
@@ -194,6 +227,8 @@ export default function SuperAdminApiSettings() {
         apiKey: websiteForm.apiKey.trim(),
       },
       googleAds: current.googleAds,
+      facebook: current.facebook,
+      whatsapp: current.whatsapp,
     });
   };
 
@@ -208,21 +243,61 @@ export default function SuperAdminApiSettings() {
         enabled: googleAdsForm.enabled,
         webhookKey: googleAdsForm.webhookKey.trim(),
       },
+      facebook: current.facebook,
+      whatsapp: current.whatsapp,
     });
   };
 
-  const generateGoogleAdsKey = () => {
+  const handleSaveFacebook = () => {
+    const current = settingsData?.settings || {};
+    saveMutation.mutate({
+      ivr: current.ivr,
+      indiamart: current.indiamart,
+      website: current.website,
+      googleAds: current.googleAds,
+      facebook: {
+        ...current.facebook,
+        enabled: facebookForm.enabled,
+        verifyToken: facebookForm.verifyToken.trim(),
+        pageAccessToken: facebookForm.pageAccessToken.trim(),
+        pageId: facebookForm.pageId.trim(),
+      },
+      whatsapp: current.whatsapp,
+    });
+  };
+
+  const handleSaveWhatsapp = () => {
+    const current = settingsData?.settings || {};
+    saveMutation.mutate({
+      ivr: current.ivr,
+      indiamart: current.indiamart,
+      website: current.website,
+      googleAds: current.googleAds,
+      facebook: current.facebook,
+      whatsapp: {
+        ...current.whatsapp,
+        enabled: whatsappForm.enabled,
+        phoneNumberId: whatsappForm.phoneNumberId.trim(),
+        accessToken: whatsappForm.accessToken.trim(),
+      },
+    });
+  };
+
+  const generateRandomKey = () => {
     const bytes = new Uint8Array(24);
     window.crypto.getRandomValues(bytes);
-    const key = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
-    setGoogleAdsForm(f => ({ ...f, webhookKey: key }));
+    return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
   };
+  const generateGoogleAdsKey = () => setGoogleAdsForm(f => ({ ...f, webhookKey: generateRandomKey() }));
+  const generateFbVerifyToken = () => setFacebookForm(f => ({ ...f, verifyToken: generateRandomKey() }));
 
   const tabs = [
     { id: 'acefone', label: 'Acefone IVR', icon: PhoneCall },
     { id: 'indiamart', label: 'IndiaMART', icon: Globe },
     { id: 'website', label: 'Website Webhook', icon: Zap },
     { id: 'googleAds', label: 'Google Ads', icon: Megaphone },
+    { id: 'facebook', label: 'Facebook Ads', icon: Facebook },
+    { id: 'whatsapp', label: 'WhatsApp', icon: MessageCircle },
   ];
 
   if (isLoading) {
@@ -316,6 +391,22 @@ export default function SuperAdminApiSettings() {
             }`}>
               <div className={`w-2 h-2 rounded-full ${websiteForm.enabled && websiteForm.apiKey ? 'bg-purple-500' : 'bg-gray-400'}`} />
               Website {websiteForm.enabled && websiteForm.apiKey ? 'Active' : 'Inactive'}
+            </div>
+            <div className={`p-3 rounded-lg border text-xs font-medium flex items-center gap-2 ${
+              facebookForm.enabled && facebookForm.verifyToken && facebookForm.pageAccessToken
+                ? 'bg-blue-50 border-blue-200 text-blue-700'
+                : 'bg-gray-50 border-gray-200 text-gray-500'
+            }`}>
+              <div className={`w-2 h-2 rounded-full ${facebookForm.enabled && facebookForm.verifyToken && facebookForm.pageAccessToken ? 'bg-blue-500' : 'bg-gray-400'}`} />
+              Facebook Ads {facebookForm.enabled && facebookForm.verifyToken && facebookForm.pageAccessToken ? 'Active' : 'Inactive'}
+            </div>
+            <div className={`p-3 rounded-lg border text-xs font-medium flex items-center gap-2 ${
+              whatsappForm.enabled && whatsappForm.phoneNumberId && whatsappForm.accessToken
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                : 'bg-gray-50 border-gray-200 text-gray-500'
+            }`}>
+              <div className={`w-2 h-2 rounded-full ${whatsappForm.enabled && whatsappForm.phoneNumberId && whatsappForm.accessToken ? 'bg-emerald-500' : 'bg-gray-400'}`} />
+              WhatsApp {whatsappForm.enabled && whatsappForm.phoneNumberId && whatsappForm.accessToken ? 'Active' : 'Inactive'}
             </div>
           </div>
         </div>
@@ -780,6 +871,232 @@ export default function SuperAdminApiSettings() {
                   >
                     <Save className="h-4 w-4 mr-2" />
                     {saveMutation.isPending ? 'Saving...' : 'Save Google Ads Settings'}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* ═══════════════════ FACEBOOK / META LEAD ADS ═══════════════════ */}
+          {activeTab === 'facebook' && (
+            <Card>
+              <CardHeader className="border-b bg-gray-50/50">
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <Facebook className="h-5 w-5 text-blue-600" />
+                  Facebook / Meta Lead Ads
+                </CardTitle>
+                <CardDescription>
+                  Connect Facebook Lead Ads forms to automatically create leads in the CRM.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-6 space-y-6">
+                {/* Enable Toggle */}
+                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border">
+                  <div>
+                    <p className="font-medium text-gray-900">Enable Facebook Ads Webhook</p>
+                    <p className="text-sm text-gray-500">Accept leads from Facebook/Instagram Lead Ads forms</p>
+                  </div>
+                  <Switch
+                    checked={facebookForm.enabled}
+                    onCheckedChange={(v) => setFacebookForm({ ...facebookForm, enabled: v })}
+                  />
+                </div>
+
+                {/* Verify Token */}
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-2">
+                    <Key className="h-4 w-4 text-gray-500" />
+                    Verify Token
+                  </Label>
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <Input
+                        type={showFbVerifyToken ? 'text' : 'password'}
+                        placeholder="Generate a verify token"
+                        value={facebookForm.verifyToken}
+                        onChange={(e) => setFacebookForm({ ...facebookForm, verifyToken: e.target.value })}
+                        className="pr-10"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowFbVerifyToken(v => !v)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                      >
+                        {showFbVerifyToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                    <Button type="button" variant="outline" onClick={generateFbVerifyToken}>Generate</Button>
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    Paste this exact same value into Facebook's App → Webhooks → "Verify Token" field when you subscribe the Callback URL below.
+                  </p>
+                </div>
+
+                {/* Page Access Token */}
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-2">
+                    <Key className="h-4 w-4 text-gray-500" />
+                    Page Access Token
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      type={showFbPageToken ? 'text' : 'password'}
+                      placeholder="Long-lived Page Access Token from Graph API Explorer"
+                      value={facebookForm.pageAccessToken}
+                      onChange={(e) => setFacebookForm({ ...facebookForm, pageAccessToken: e.target.value })}
+                      className="pr-10"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowFbPageToken(v => !v)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                    >
+                      {showFbPageToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    Facebook's lead notification only carries a lead ID, not the actual answers — this token is what lets us fetch the real lead data back from Facebook.
+                  </p>
+                </div>
+
+                {/* Page ID (optional) */}
+                <div className="space-y-2">
+                  <Label>Page ID (optional)</Label>
+                  <Input
+                    placeholder="Your Facebook Page ID"
+                    value={facebookForm.pageId}
+                    onChange={(e) => setFacebookForm({ ...facebookForm, pageId: e.target.value })}
+                  />
+                  <p className="text-xs text-gray-500">Only needed if you'll ever connect more than one Facebook Page — leave blank for a single Page.</p>
+                </div>
+
+                {/* Webhook URL */}
+                <div className="space-y-2">
+                  <Label>Your Callback URL (paste into Facebook's Webhooks "Callback URL" field)</Label>
+                  <div className="p-3 bg-gray-100 rounded-lg font-mono text-xs text-gray-700 break-all">
+                    {`${window.location.origin}/api/leads/facebook-webhook`}
+                  </div>
+                </div>
+
+                {/* Setup instructions */}
+                <div className="bg-blue-50 rounded-xl border border-blue-100 p-4 space-y-2">
+                  <p className="text-sm font-semibold text-blue-900 flex items-center gap-2">
+                    <Info className="h-4 w-4" />
+                    How to connect in Facebook (this is a longer setup than the others):
+                  </p>
+                  <ol className="text-xs text-blue-800 list-decimal list-inside space-y-1">
+                    <li>Save the Verify Token here first (Generate button above), then Save Settings</li>
+                    <li>Go to developers.facebook.com → your App → Webhooks → Page → Subscribe to this object</li>
+                    <li>Paste the Callback URL above, paste the same Verify Token, click Verify and Save</li>
+                    <li>Under "leadgen", click Subscribe for your Page</li>
+                    <li>In Graph API Explorer, generate a long-lived <strong>Page Access Token</strong> for that Page (needs <code>pages_manage_ads</code> + <code>leads_retrieval</code> permissions) and paste it above</li>
+                    <li>Save Settings again — new leads then arrive here automatically, unassigned, for Cruncher to review</li>
+                  </ol>
+                </div>
+
+                <div className="flex justify-end">
+                  <Button
+                    onClick={handleSaveFacebook}
+                    disabled={saveMutation.isPending}
+                    className="bg-blue-600 hover:bg-blue-700 px-8"
+                  >
+                    <Save className="h-4 w-4 mr-2" />
+                    {saveMutation.isPending ? 'Saving...' : 'Save Facebook Settings'}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* ═══════════════════ WHATSAPP CLOUD API ═══════════════════ */}
+          {activeTab === 'whatsapp' && (
+            <Card>
+              <CardHeader className="border-b bg-gray-50/50">
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <MessageCircle className="h-5 w-5 text-emerald-600" />
+                  WhatsApp (Meta Cloud API)
+                </CardTitle>
+                <CardDescription>
+                  Send WhatsApp messages to customers automatically from Leads, Accounts, and Complaints/Service — instead of just opening the WhatsApp app for a manual click.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-6 space-y-6">
+                {/* Enable Toggle */}
+                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border">
+                  <div>
+                    <p className="font-medium text-gray-900">Enable WhatsApp Sending</p>
+                    <p className="text-sm text-gray-500">Turn on automatic WhatsApp message sending across the app</p>
+                  </div>
+                  <Switch
+                    checked={whatsappForm.enabled}
+                    onCheckedChange={(v) => setWhatsappForm({ ...whatsappForm, enabled: v })}
+                  />
+                </div>
+
+                {/* Phone Number ID */}
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-2">
+                    <Key className="h-4 w-4 text-gray-500" />
+                    Phone Number ID
+                  </Label>
+                  <Input
+                    placeholder="Meta WhatsApp Business Phone Number ID"
+                    value={whatsappForm.phoneNumberId}
+                    onChange={(e) => setWhatsappForm({ ...whatsappForm, phoneNumberId: e.target.value })}
+                  />
+                  <p className="text-xs text-gray-500">
+                    From Meta Business Manager → WhatsApp → API Setup — this is an ID, not the phone number itself.
+                  </p>
+                </div>
+
+                {/* Access Token */}
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-2">
+                    <Key className="h-4 w-4 text-gray-500" />
+                    Access Token
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      type={showWhatsappToken ? 'text' : 'password'}
+                      placeholder="Permanent System User access token"
+                      value={whatsappForm.accessToken}
+                      onChange={(e) => setWhatsappForm({ ...whatsappForm, accessToken: e.target.value })}
+                      className="pr-10"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowWhatsappToken(v => !v)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                    >
+                      {showWhatsappToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    Use a <strong>permanent</strong> System User token (Business Settings → System Users), not the 24-hour test token — that one expires and sending will silently stop working.
+                  </p>
+                </div>
+
+                {/* Critical limitation callout */}
+                <div className="bg-amber-50 rounded-xl border border-amber-100 p-4 space-y-2">
+                  <p className="text-sm font-semibold text-amber-900 flex items-center gap-2">
+                    <Info className="h-4 w-4" />
+                    Important — this won't message every customer automatically:
+                  </p>
+                  <ul className="text-xs text-amber-800 list-disc list-inside space-y-1">
+                    <li>If the customer messaged you on WhatsApp within the last 24 hours → free-text sends work instantly, no template needed</li>
+                    <li>If not (most first-time outreach, reminders, notifications) → Meta requires a pre-approved <strong>message Template</strong>, which must be created and approved in Meta Business Manager first — plain text will fail</li>
+                    <li>Every "Send WhatsApp" button across the app tries the API first — if it's rejected for this reason, it automatically falls back to opening the WhatsApp app for a manual send, exactly like it does today, so nothing breaks</li>
+                  </ul>
+                </div>
+
+                <div className="flex justify-end">
+                  <Button
+                    onClick={handleSaveWhatsapp}
+                    disabled={saveMutation.isPending}
+                    className="bg-emerald-600 hover:bg-emerald-700 px-8"
+                  >
+                    <Save className="h-4 w-4 mr-2" />
+                    {saveMutation.isPending ? 'Saving...' : 'Save WhatsApp Settings'}
                   </Button>
                 </div>
               </CardContent>

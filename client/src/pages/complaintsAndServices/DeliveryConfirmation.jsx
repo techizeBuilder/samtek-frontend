@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { Phone, MessageCircle, Mail, MapPin, Truck, CheckCircle, Package, AlertCircle, Search } from 'lucide-react';
+import { sendWhatsApp } from '@/lib/whatsapp';
 
 // One consolidated confirmation entity per sales order — an order with
 // several dispatched machines used to render one card per machine here,
@@ -108,10 +109,13 @@ export default function DeliveryConfirmation() {
     });
   };
 
-  const handleWhatsApp = (phone, group) => {
+  const handleWhatsApp = async (phone, group) => {
     const rep = group.jobs[0];
     const text = `Hello ${rep.customerName},\nWe dispatched your machine${group.jobs.length > 1 ? 's' : ''} (${group.jobs.map(j => j.machineName).join(', ')}) on ${rep.actualDispatchDate || 'recently'}. Has it reached safely?`;
-    window.open(`https://wa.me/${phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(text)}`, '_blank');
+    const result = await sendWhatsApp(phone, text);
+    if (result.automatic) {
+      toast({ title: 'Sent!', description: 'Delivery confirmation request sent automatically via WhatsApp' });
+    }
   };
 
   const handleEmail = (email, group) => {

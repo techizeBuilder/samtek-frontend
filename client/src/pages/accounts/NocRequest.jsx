@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import React, { useState, useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import BackendPagination from '@/components/shared/BackendPagination';
 import { useAuthContext } from '@/contexts/AuthContext';
 import {
   Search,
@@ -71,8 +73,21 @@ const NocRequest = () => {
     : null;
 
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [activeTab, setActiveTab] = useState('pending'); // 'pending' | 'completed' | 'all'
   const [page, setPage] = useState(1);
-  const changeSearch = (value) => { setSearchTerm(value); setPage(1); };
+  const limit = 10;
+
+  // Debounce search so every keystroke doesn't fire a backend request
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchTerm.trim()), 350);
+    return () => clearTimeout(t);
+  }, [searchTerm]);
+
+  // Tab/search change → the old page number may no longer exist
+  useEffect(() => {
+    setPage(1);
+  }, [activeTab, debouncedSearch]);
 
   // State for Gate Pass Modal
   const [gatePassModalOpen, setGatePassModalOpen] = useState(false);
@@ -85,16 +100,22 @@ const NocRequest = () => {
   const [viewGatePassOpen, setViewGatePassOpen] = useState(false);
   const [gatePassData, setGatePassData] = useState(null);
 
+  // Tab (pending/completed/all) + pagination + search are all resolved on
+  // the backend so the browser only ever receives one page's worth of rows,
+  // not every NOC request the company has ever had.
   const { data: nocResponse, isLoading, refetch } = useQuery({
-    queryKey: ['/api/orders/noc-requests', page, searchTerm],
-    queryFn: () => apiRequest('GET', `/api/orders/noc-requests?page=${page}&limit=20&search=${encodeURIComponent(searchTerm)}`),
-    keepPreviousData: true,
+    queryKey: ['/api/orders/noc-requests', activeTab, page, debouncedSearch],
+    queryFn: async () => {
+      const params = new URLSearchParams({ status: activeTab, page: String(page), limit: String(limit) });
+      if (debouncedSearch) params.set('search', debouncedSearch);
+      return await apiRequest('GET', `/api/orders/noc-requests?${params.toString()}`);
+    },
+    placeholderData: keepPreviousData
   });
-
-  // Search now happens server-side — `nocRequests` is already the current
-  // page's filtered slice.
   const nocRequests = nocResponse?.data || [];
-  const pagination = nocResponse?.pagination || {};
+  const pagination = nocResponse?.pagination || { total: 0, page: 1, limit, totalPages: 1 };
+
+  // Search + tab filtering both happen on the backend now (see the query above)
   const filteredRequests = nocRequests;
 
   // Mutation for Approving NOC
@@ -571,13 +592,20 @@ const NocRequest = () => {
                 placeholder="Search orders, customers..."
                 className="pl-10"
                 value={searchTerm}
-                onChange={(e) => changeSearch(e.target.value)}
+                onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
             <Badge variant="secondary" className="px-3 py-1 text-sm font-medium">
               Total: {pagination.total ?? filteredRequests.length}
             </Badge>
           </div>
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-4">
+            <TabsList>
+              <TabsTrigger value="pending">Pending</TabsTrigger>
+              <TabsTrigger value="completed">Completed</TabsTrigger>
+              <TabsTrigger value="all">All</TabsTrigger>
+            </TabsList>
+          </Tabs>
         </CardHeader>
         <CardContent className="p-0">
           <Table>
@@ -718,14 +746,14 @@ const NocRequest = () => {
               ))}
             </TableBody>
           </Table>
-          {pagination.pages > 1 && (
-            <div className="flex items-center justify-center gap-2 py-4 border-t">
-              <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={pagination.page <= 1}>Previous</Button>
-              <span className="text-sm text-slate-500">Page {pagination.page} of {pagination.pages} ({pagination.total} requests)</span>
-              <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)} disabled={pagination.page >= pagination.pages}>Next</Button>
-            </div>
-          )}
         </CardContent>
+        <BackendPagination
+          page={pagination.page}
+          totalPages={pagination.pages}
+          total={pagination.total}
+          limit={pagination.limit}
+          onPageChange={setPage}
+        />
       </Card>
 
       {/* Gate Pass Generation Modal */}

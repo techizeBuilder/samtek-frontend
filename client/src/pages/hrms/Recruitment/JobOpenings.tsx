@@ -14,7 +14,8 @@ interface JobOpening {
   openings: number;
   recruitingManager?: {
     _id: string;
-    name: string;
+    name?: string;
+    fullName?: string;
   };
   jobDocument?: string;
   status: "Open" | "Closed";
@@ -123,7 +124,7 @@ const JobOpening = () => {
                   </td>
 
                   <td className="px-4 py-3 text-center">{job.department}</td>
-                  <td className="px-4 py-3 text-center">{job.recruitingManager?.name || "-"}</td>
+                  <td className="px-4 py-3 text-center">{job.recruitingManager?.fullName || job.recruitingManager?.name || "-"}</td>
                   <td className="px-4 py-3 text-center">
                     {job.jobDocument ? (
                       <a 

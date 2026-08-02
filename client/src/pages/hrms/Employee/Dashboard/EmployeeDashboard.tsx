@@ -409,8 +409,8 @@ export default function EmployeeDashboard() {
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               <QuickAction label="Apply Leave" icon={Calendar} color="indigo" onClick={() => navigate("/hrms/Employee/leave/apply")} />
               <QuickAction label="My Payslips" icon={IndianRupee} color="blue" onClick={() => navigate("/hrms/Employee/payroll/payslips")} />
-              <QuickAction label="Policies" icon={Users} color="emerald" onClick={() => navigate("/hrms/Employee/profile/policies")} />
-              <QuickAction label="Profile" icon={Target} color="rose" onClick={() => navigate("/hrms/Employee/profile")} />
+              <QuickAction label="Policies" icon={Users} color="emerald" onClick={() => navigate("/hrms/Employee/profile/org")} />
+              <QuickAction label="Profile" icon={Target} color="rose" onClick={() => navigate("/hrms/Employee/profile/personal")} />
             </div>
           </div>
 

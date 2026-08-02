@@ -37,15 +37,15 @@ const productionMenuItems = [
   { label: 'Dashboard', path: '/production/dashboard', icon: Factory, module: 'production' },
   { label: 'Task Management', path: '/production/task-management', icon: CheckSquare, module: 'production' },
   { label: 'My Task', path: '/production/my-task', icon: CheckSquare, module: 'production' },
-  { label: 'Orders', path: '/production/orders', icon: ClipboardList, module: 'production' },
-  { label: 'Repair Production', path: '/production/repair', icon: ShieldAlert, module: 'production' },
-  { label: 'Work Planning', path: '/production/work-planning', icon: Calendar, module: 'production' },
-  { label: 'Process & QC', path: '/production/process-execution', icon: Cog, module: 'production' },
-  { label: 'Job Cards', path: '/production/job-cards', icon: FileText, module: 'production' },
-  { label: 'Manpower', path: '/production/manpower', icon: Users, module: 'production' },
-  { label: 'Production Sheet', path: '/production/production-sheet', icon: Clock, module: 'production', feature: 'productionSheet' },
-  { label: 'Production Reports', path: '/production/reports', icon: BarChart, module: 'production', feature: 'productionReports' },
-  { label: 'Expenses', path: '/production/expenses', icon: Receipt, module: 'production' },
+  { label: 'Orders', path: '/production/orders', icon: ClipboardList, module: 'production', feature: 'orders' },
+  { label: 'Repair Production', path: '/production/repair', icon: ShieldAlert, module: 'production', feature: 'repairProduction' },
+  { label: 'Work Planning', path: '/production/work-planning', icon: Calendar, module: 'production', feature: 'workPlanning' },
+  { label: 'Process & QC', path: '/production/process-execution', icon: Cog, module: 'production', feature: 'processQc' },
+  { label: 'Job Cards', path: '/production/job-cards', icon: FileText, module: 'production', feature: 'jobCards' },
+  { label: 'Manpower', path: '/production/manpower', icon: Users, module: 'production', feature: 'manpower' },
+  // { label: 'Production Sheet', path: '/production/production-sheet', icon: Clock, module: 'production', feature: 'productionSheet' },
+  // { label: 'Production Reports', path: '/production/reports', icon: BarChart, module: 'production', feature: 'productionReports' },
+  { label: 'Expenses', path: '/production/expenses', icon: Receipt, module: 'production', feature: 'expenses' },
   {
     label: 'Training Management',
     path: '/lms',
@@ -85,16 +85,20 @@ const packingMenuItems = [
   { label: 'Training', path: '/lms/training', icon: Pen, module: 'packing', feature: 'traineeDashboard' },
 ];
 
-const dispatchMenuItems = [
+// Dispatch's own combined view — includes Packaging Queue/Jobs (Dispatch's
+// visibility into the packaging pipeline) but not the Packing team's own
+// Packing Sheet/History creation pages, which stay exclusive to the Packing
+// role above.
+const packagingDispatchMenuItems = [
   { label: 'Dashboard', path: '/packaging-dispatch/dashboard', icon: LayoutDashboard, module: 'dispatches' },
   { label: 'Task Management', path: '/dispatch/task-management', icon: CheckSquare, module: 'dispatches' },
   { label: 'My Task', path: '/dispatch/my-task', icon: CheckSquare, module: 'dispatches' },
-  { label: 'Delivery Challan', path: '/dispatch/delivery-challan', icon: FileText, module: 'dispatches' },
-  { label: 'Packaging Queue', path: '/packaging/queue', icon: Package, module: 'dispatches' },
-  { label: 'Packaging Jobs', path: '/packaging/jobs', icon: ClipboardList, module: 'dispatches' },
-  { label: 'Dispatch Planning', path: '/dispatch/planning', icon: Truck, module: 'dispatches' },
-  { label: 'Active Dispatches', path: '/dispatch/active', icon: CheckSquare, module: 'dispatches' },
+  { label: 'Packaging Queue', path: '/packaging/queue', icon: Package, module: 'dispatches', feature: 'packagingQueue' },
+  { label: 'Packaging Jobs', path: '/packaging/jobs', icon: ClipboardList, module: 'dispatches', feature: 'packagingJobs' },
+  { label: 'Dispatch Planning', path: '/dispatch/planning', icon: Truck, module: 'dispatches', feature: 'dispatchPlanning' },
+  { label: 'Active Dispatches', path: '/dispatch/active', icon: CheckSquare, module: 'dispatches', feature: 'activeDispatches' },
   { label: 'Dispatch History', path: '/dispatch/completed', icon: BarChart, module: 'dispatches', feature: 'dispatchHistory' },
+  { label: 'Delivery Challan', path: '/dispatch/delivery-challan', icon: FileText, module: 'dispatches', feature: 'deliveryChallan' },
   { label: 'Expenses', path: '/packaging-dispatch/expenses', icon: Receipt, module: 'dispatches' },
   {
     label: 'Training Management',
@@ -114,8 +118,8 @@ const dispatchMenuItems = [
 
 const salesMenuItems = [
   { label: 'Dashboard', path: '/sales-dashboard', icon: LayoutDashboard, module: 'sales', feature: 'dashboard' },
-  { label: 'Leads', path: '/sales/leads', icon: Target, module: 'sales' },
-  { label: 'Payment Requests', path: '/sales/payment-requests', icon: Receipt, module: 'sales' },
+  { label: 'Leads', path: '/sales/leads', icon: Target, module: 'sales', feature: 'leads' },
+  { label: 'Payment Requests', path: '/sales/payment-requests', icon: Receipt, module: 'sales', feature: 'paymentRequests' },
   { label: 'My Customers', path: '/sales/my-customers', icon: Users, module: 'sales', feature: 'myCustomers' },
   { label: 'My Orders', path: '/sales/orders', icon: ShoppingCart, module: 'sales', feature: 'orders' },
   { label: 'My Dispatches', path: '/sales/my-deliveries', icon: Truck, module: 'sales', feature: 'myDeliveries' },
@@ -179,7 +183,7 @@ const accountsMenuItems = [
       { label: 'RFQ Management', path: '/accounts/purchases/rfq', feature: 'purchases' },
       { label: 'Vendor Bids', path: '/accounts/purchases/vendor-bids', feature: 'purchases' },
       { label: 'Purchase Invoice', path: '/accounts/purchases/invoices', feature: 'purchases' },
-      { label: 'Purchase Return', path: '/accounts/purchases/returns', feature: 'purchases' },
+      // { label: 'Purchase Return', path: '/accounts/purchases/returns', feature: 'purchases' },
       { label: 'Purchase Exchange', path: '/accounts/purchases/exchanges', feature: 'purchases' },
       { label: 'Vendor Payment', path: '/accounts/purchases/payments', feature: 'purchases' },
       { label: 'Payable Ageing', path: '/accounts/purchases/ageing', feature: 'purchases' },
@@ -366,6 +370,7 @@ const employeeMenuItems = [
       { label: 'Apply Leave', path: '/hrms/Employee/leave/apply', feature: 'leave' }
     ]
   },
+  { label: 'Holidays', path: '/hrms/Employee/holidays', icon: Calendar, module: 'hrms' },
   {
     label: 'Payroll',
     path: '/hrms/Employee/payroll',
@@ -399,30 +404,43 @@ const employeeMenuItems = [
   },
 ];
 
+// Reusable "core HRMS self-service" block for department-tier Employee roles
+// (Sales Employee, Production Employee, etc.) — they're company employees
+// too and should get the same self-service access as the plain 'Employee'
+// role. Built from employeeMenuItems minus Dashboard/My Task (the
+// department menu already has its own), with Expenses optionally skipped
+// when the department menu already has its own expense-logging item.
+const employeeSelfServiceItems = ({ skipExpenses = false } = {}) =>
+  employeeMenuItems.filter(item =>
+    item.label !== 'Dashboard' &&
+    item.label !== 'My Task' &&
+    !(skipExpenses && item.label === 'Expenses')
+  );
+
 const companyAdminMenuItems = [
-  { label: 'Dashboard', path: '/hrms/CompanyAdmin/dashboard', icon: LayoutDashboard, module: 'hrms' },
-  { label: 'Employee Management', path: '/hrms/CompanyAdmin/employees', icon: Users, module: 'hrms' },
-  { label: 'My Company', path: '/hrms/CompanyAdmin/companies', icon: Building2, module: 'hrms' },
-  { label: 'Operating Units', path: '/hrms/CompanyAdmin/branches', icon: Building, module: 'hrms' },
-  { label: 'Departments', path: '/hrms/CompanyAdmin/departments', icon: Users, module: 'hrms' },
-  { label: 'Designations', path: '/hrms/CompanyAdmin/designations', icon: Briefcase, module: 'hrms' },
-  { label: 'Roles & Permissions', path: '/hrms/CompanyAdmin/user-management', icon: Shield, module: 'hrms' },
-  { label: 'Task Management', path: '/hrms/CompanyAdmin/task-management', icon: CheckSquare, module: 'hrms' }
+  { label: 'Dashboard', path: '/hrms/CompanyAdmin/dashboard', icon: LayoutDashboard, module: 'hrms', feature: 'dashboard' },
+  { label: 'Employee Management', path: '/hrms/CompanyAdmin/employees', icon: Users, module: 'hrms', feature: 'employeeManagement' },
+  { label: 'My Company', path: '/hrms/CompanyAdmin/companies', icon: Building2, module: 'hrms', feature: 'myCompany' },
+  { label: 'Operating Units', path: '/hrms/CompanyAdmin/branches', icon: Building, module: 'hrms', feature: 'operatingUnits' },
+  { label: 'Departments', path: '/hrms/CompanyAdmin/departments', icon: Users, module: 'hrms', feature: 'departments' },
+  { label: 'Designations', path: '/hrms/CompanyAdmin/designations', icon: Briefcase, module: 'hrms', feature: 'designations' },
+  { label: 'Roles & Permissions', path: '/hrms/CompanyAdmin/user-management', icon: Shield, module: 'hrms', feature: 'rolePermissions' },
+  { label: 'Task Management', path: '/hrms/CompanyAdmin/task-management', icon: CheckSquare, module: 'hrms', feature: 'taskManagement' }
 ];
 
 const rdMenuItems = [
-  { label: 'Dashboard', path: '/r&d/dashboard', icon: LayoutDashboard, module: 'rnd' },
-  { label: 'Inventory', path: '/r&d/inventory', icon: Package, module: 'rnd' },
-  { label: 'Approve Requests', path: '/r&d/approve-requests', icon: CheckCircle, module: 'rnd' },
-  { label: 'Product Master', path: '/r&d/product-master', icon: Package, module: 'rnd' },
-  { label: 'Design Approval', path: '/r&d/design-approval', icon: CheckCircle, module: 'rnd' },
-  { label: 'BOM Management', path: '/r&d/bom-management', icon: ClipboardList, module: 'rnd' },
-  { label: 'Tool & Process', path: '/r&d/tool-process', icon: Cog, module: 'rnd' },
-  { label: 'Prototype', path: '/r&d/prototype', icon: Beaker, module: 'rnd' },
-  { label: 'Change Management', path: '/r&d/change-management', icon: AlertTriangle, module: 'rnd' },
-  { label: 'Quality Parameters', path: '/r&d/quality-parameters', icon: ShieldAlert, module: 'rnd' },
-  { label: 'Documentation', path: '/r&d/documentation', icon: FolderOpen, module: 'rnd' },
-  { label: 'Expenses', path: '/r&d/expenses', icon: Receipt, module: 'rnd' },
+  { label: 'Dashboard', path: '/r&d/dashboard', icon: LayoutDashboard, module: 'rnd', feature: 'dashboard' },
+  { label: 'Inventory', path: '/r&d/inventory', icon: Package, module: 'rnd', feature: 'inventory' },
+  { label: 'Approve Requests', path: '/r&d/approve-requests', icon: CheckCircle, module: 'rnd', feature: 'approveRequests' },
+  { label: 'Product Master', path: '/r&d/product-master', icon: Package, module: 'rnd', feature: 'productMaster' },
+  { label: 'Design Approval', path: '/r&d/design-approval', icon: CheckCircle, module: 'rnd', feature: 'designApproval' },
+  { label: 'BOM Management', path: '/r&d/bom-management', icon: ClipboardList, module: 'rnd', feature: 'bomManagement' },
+  { label: 'Tool & Process', path: '/r&d/tool-process', icon: Cog, module: 'rnd', feature: 'toolProcess' },
+  { label: 'Prototype', path: '/r&d/prototype', icon: Beaker, module: 'rnd', feature: 'prototype' },
+  { label: 'Change Management', path: '/r&d/change-management', icon: AlertTriangle, module: 'rnd', feature: 'changeManagement' },
+  { label: 'Quality Parameters', path: '/r&d/quality-parameters', icon: ShieldAlert, module: 'rnd', feature: 'qualityParameters' },
+  { label: 'Documentation', path: '/r&d/documentation', icon: FolderOpen, module: 'rnd', feature: 'documentation' },
+  { label: 'Expenses', path: '/r&d/expenses', icon: Receipt, module: 'rnd', feature: 'expenses' },
   {
     label: 'Training Management',
     path: '/lms',
@@ -441,15 +459,15 @@ const rdMenuItems = [
 ];
 
 const complaintHeadMenuItems = [
-  { label: 'Dashboard', path: '/complaints/dashboard', icon: LayoutDashboard, module: 'complaints' },
-  { label: 'Support Management', path: '/complaints/support', icon: MessageSquare, module: 'complaints' },
-  { label: 'Technicians', path: '/complaints/technicians', icon: User, module: 'complaints' },
-  { label: 'Customer Records', path: '/complaints/customer-records', icon: Users, module: 'complaints' },
-  { label: 'Deal Verifications', path: '/complaints/deal-verifications', icon: CheckCircle, module: 'complaints' },
-  { label: 'Delivery Confirmation', path: '/complaints/delivery-confirmation', icon: CheckCircle, module: 'complaints' },
-  { label: 'Installation Schedule', path: '/complaints/installation-schedule', icon: CalendarCheck, module: 'complaints' },
-  { label: 'Feedback & Ratings', path: '/complaints/feedback-ratings', icon: Star, module: 'complaints' },
-  { label: 'Expenses', path: '/complaints/expenses', icon: Receipt, module: 'complaints' },
+  { label: 'Dashboard', path: '/complaints/dashboard', icon: LayoutDashboard, module: 'complaints', feature: 'dashboard' },
+  { label: 'Support Management', path: '/complaints/support', icon: MessageSquare, module: 'complaints', feature: 'supportManagement' },
+  { label: 'Technicians', path: '/complaints/technicians', icon: User, module: 'complaints', feature: 'technicians' },
+  { label: 'Customer Records', path: '/complaints/customer-records', icon: Users, module: 'complaints', feature: 'customerRecords' },
+  { label: 'Deal Verifications', path: '/complaints/deal-verifications', icon: CheckCircle, module: 'complaints', feature: 'dealVerifications' },
+  { label: 'Delivery Confirmation', path: '/complaints/delivery-confirmation', icon: CheckCircle, module: 'complaints', feature: 'deliveryConfirmation' },
+  { label: 'Installation Schedule', path: '/complaints/installation-schedule', icon: CalendarCheck, module: 'complaints', feature: 'installationSchedule' },
+  { label: 'Feedback & Ratings', path: '/complaints/feedback-ratings', icon: Star, module: 'complaints', feature: 'feedbackRatings' },
+  { label: 'Expenses', path: '/complaints/expenses', icon: Receipt, module: 'complaints', feature: 'expenses' },
 ];
 
 const complaintAgentMenuItems = [
@@ -480,12 +498,12 @@ const marketingEmployeeMenuItems = [
 ];
 
 const storeMenuItems = [
-  { label: 'Dashboard', path: '/store-dashboard', icon: LayoutDashboard, module: 'Store' },
-  { label: 'Inventory', path: '/store/inventory', icon: Package, module: 'Store' },
-  { label: 'Orders', path: '/store/orders', icon: Receipt, module: 'Store' },
-  { label: 'Purchase Orders', path: '/store/purchases/requests', icon: ShoppingCart, module: 'Store' },
-  { label: 'Material Transfers', path: '/store/material-issues', icon: Handshake, module: 'Store' },
-  { label: 'Defective Inventory', path: '/store/defective-inventory', icon: AlertTriangle, module: 'Store' },
+  { label: 'Dashboard', path: '/store-dashboard', icon: LayoutDashboard, module: 'Store', feature: 'dashboard' },
+  { label: 'Inventory', path: '/store/inventory', icon: Package, module: 'Store', feature: 'inventory' },
+  { label: 'Orders', path: '/store/orders', icon: Receipt, module: 'Store', feature: 'orders' },
+  { label: 'Purchase Orders', path: '/store/purchases/requests', icon: ShoppingCart, module: 'Store', feature: 'purchaseOrders' },
+  { label: 'Material Transfers', path: '/store/material-issues', icon: Handshake, module: 'Store', feature: 'materialTransfers' },
+  { label: 'Defective Inventory', path: '/store/defective-inventory', icon: AlertTriangle, module: 'Store', feature: 'defectiveInventory' },
   { label: 'Task Management', path: '/store/task-management', icon: CheckSquare, module: 'store' },
   { label: 'My Task', path: '/store/my-task', icon: CheckSquare, module: 'store' },
   {
@@ -504,11 +522,11 @@ const storeMenuItems = [
 ];
 
 const qcMenuItems = [
-  { label: 'Dashboard', path: '/qc/dashboard', icon: LayoutDashboard, module: 'quality-control' },
-  { label: 'QC Inward Entry', path: '/qc/inward', icon: ClipboardList, module: 'quality-control' },
-  { label: 'All QC Jobs', path: '/qc/jobs', icon: ShieldAlert, module: 'quality-control' },
-  { label: 'Pending Inspection', path: '/qc/jobs?status=Pending', icon: Clock, module: 'quality-control' },
-  { label: 'In Progress', path: '/qc/jobs?status=In Progress', icon: AlertTriangle, module: 'quality-control' },
+  { label: 'Dashboard', path: '/qc/dashboard', icon: LayoutDashboard, module: 'quality-control', feature: 'dashboard' },
+  { label: 'QC Inward Entry', path: '/qc/inward', icon: ClipboardList, module: 'quality-control', feature: 'qcInward' },
+  { label: 'All QC Jobs', path: '/qc/jobs', icon: ShieldAlert, module: 'quality-control', feature: 'qcJobs' },
+  { label: 'Pending Inspection', path: '/qc/jobs?status=Pending', icon: Clock, module: 'quality-control', feature: 'qcJobs' },
+  { label: 'In Progress', path: '/qc/jobs?status=In Progress', icon: AlertTriangle, module: 'quality-control', feature: 'qcJobs' },
   { label: 'Task Management', path: '/qc/task-management', icon: CheckSquare, module: 'quality-control' },
   { label: 'My Task', path: '/qc/my-task', icon: CheckSquare, module: 'quality-control' },
   {
@@ -527,14 +545,14 @@ const qcMenuItems = [
 ];
 
 const misAdminMenuItems = [
-  { label: 'Dashboard', path: '/mis/dashboard', icon: LayoutDashboard, module: 'mis' },
-  { label: 'Sales Reports', path: '/mis/sales-report', icon: TrendingUp, module: 'mis' },
-  { label: 'Finance Reports', path: '/mis/finance-report', icon: Calculator, module: 'mis' },
-  { label: 'Production Summary', path: '/mis/production-report', icon: Factory, module: 'mis' },
-  { label: 'Inventory Reports', path: '/mis/inventory-report', icon: Package, module: 'mis' },
-  { label: 'Complaint & Service', path: '/mis/complaint-report', icon: MessageSquare, module: 'mis' },
-  { label: 'HRMS Report', path: '/mis/hrms-report', icon: Users, module: 'mis' },
-  { label: 'Quality Reports', path: '/mis/quality-report', icon: PieChart, module: 'mis' },
+  { label: 'Dashboard', path: '/mis/dashboard', icon: LayoutDashboard, module: 'mis', feature: 'dashboard' },
+  { label: 'Sales Reports', path: '/mis/sales-report', icon: TrendingUp, module: 'mis', feature: 'salesReport' },
+  { label: 'Finance Reports', path: '/mis/finance-report', icon: Calculator, module: 'mis', feature: 'financeReport' },
+  { label: 'Production Summary', path: '/mis/production-report', icon: Factory, module: 'mis', feature: 'productionReport' },
+  { label: 'Inventory Reports', path: '/mis/inventory-report', icon: Package, module: 'mis', feature: 'inventoryReport' },
+  { label: 'Complaint & Service', path: '/mis/complaint-report', icon: MessageSquare, module: 'mis', feature: 'complaintReport' },
+  { label: 'HRMS Report', path: '/mis/hrms-report', icon: Users, module: 'mis', feature: 'hrmsReport' },
+  { label: 'Quality Reports', path: '/mis/quality-report', icon: PieChart, module: 'mis', feature: 'qualityReport' },
   { label: 'Settings', path: '/mis/settings', icon: Settings, module: 'mis' },
 ];
 
@@ -556,24 +574,33 @@ const getMenuItemsByRole = (role) => {
     case 'Superadmin':
     case 'Super Admin':
       return superAdminMenuItems;
-    case 'Production':
+    // Department-tier Employee roles get their ERP menu PLUS the standard
+    // HRMS self-service block (Profile/Attendance/Leave/Holidays/Payroll/
+    // Requests) — Head roles and the bare department role keep just the ERP
+    // menu, unchanged.
     case 'Production Employee':
+      return [...productionMenuItems, ...employeeSelfServiceItems({ skipExpenses: true })];
+    case 'Production':
     case 'Production Head':
       return productionMenuItems;
-    case 'Packing':
     case 'Packing Employee':
+      return [...packingMenuItems, ...employeeSelfServiceItems({ skipExpenses: true })];
+    case 'Packing':
     case 'Packing Head':
       return packingMenuItems;
-    case 'Dispatch':
     case 'Dispatch Employee':
+      return [...packagingDispatchMenuItems, ...employeeSelfServiceItems({ skipExpenses: true })];
+    case 'Dispatch':
     case 'Dispatch Head':
-      return dispatchMenuItems;
-    case 'Sales':
+      return packagingDispatchMenuItems;
     case 'Sales Employee':
+      return [...salesMenuItems, ...employeeSelfServiceItems()];
+    case 'Sales':
     case 'Sales Head':
       return salesMenuItems;
-    case 'Accounts':
     case 'Account Employee':
+      return [...accountsMenuItems, ...employeeSelfServiceItems({ skipExpenses: true })];
+    case 'Accounts':
     case 'Accounts Head':
       return accountsMenuItems;
     case 'Hr Admin':
@@ -585,23 +612,26 @@ const getMenuItemsByRole = (role) => {
       return employeeMenuItems;
     case 'Company Admin':
       return companyAdminMenuItems;
-    case 'Research & Development Head':
     case 'Research Development Employee':
+      return [...rdMenuItems, ...employeeSelfServiceItems({ skipExpenses: true })];
+    case 'Research & Development Head':
       return rdMenuItems;
-    case 'Store Head':
     case 'Store Employee':
+      return [...storeMenuItems, ...employeeSelfServiceItems()];
+    case 'Store Head':
       return storeMenuItems;
     case 'Complaint Management Head':
       return complaintHeadMenuItems;
     case 'Complaint Management Employee':
-      return complaintAgentMenuItems;
-    case 'QC Head':
+      return [...complaintAgentMenuItems, ...employeeSelfServiceItems({ skipExpenses: true })];
     case 'QC Employee':
+      return [...qcMenuItems, ...employeeSelfServiceItems()];
+    case 'QC Head':
       return qcMenuItems;
     case 'Marketing Head':
       return marketingMenuItems;
     case 'Marketing Employee':
-      return marketingEmployeeMenuItems;
+      return [...marketingEmployeeMenuItems, ...employeeSelfServiceItems({ skipExpenses: true })];
     case 'MIS Admin':
       return misAdminMenuItems;
     default:
@@ -636,7 +666,11 @@ export default function Sidebar({ isOpen, onClose }) {
     : user?.role === 'HR-Admin' ? 'Hr Admin'
       : user?.role;
 
-  const isHrmsRole = user?.role === 'Manager' || user?.role === 'HR-Admin' || user?.role === 'Hr Admin' || user?.role === 'Employee';
+  // Any "...Employee" role (Sales Employee, Production Employee, etc.) is treated
+  // as employee-tier here too — same convention RoleBasedLayout.jsx/ProtectedRoute.jsx
+  // already use — so their merged-in HRMS self-service submenus expand correctly.
+  const isHrmsRole = user?.role === 'Manager' || user?.role === 'HR-Admin' || user?.role === 'Hr Admin' ||
+    (user?.role || '').toLowerCase().endsWith('employee');
   const isManagerRole = user?.role === 'Manager';
 
   const shouldBypassSubmoduleCheck = isHrmsRole ||
@@ -685,28 +719,26 @@ export default function Sidebar({ isOpen, onClose }) {
   } else if (normalizedRole === 'Production' || normalizedRole === 'Production Employee' || normalizedRole === 'Production Head') {
     filteredMenuItems = roleMenuItems.filter(item => {
       if (!item.module) return true;
-      if (item.module === 'production') {
+      if (item.module === 'production' || item.module === 'hrms') {
         if (item.feature) return hasFeatureAccess(item.module, item.feature, 'view');
         return true;
       }
       return false;
     });
-  } else if (normalizedRole === 'Packing' || normalizedRole === 'Packing Employee' || normalizedRole === 'Packing Head') {
+  } else if (
+    normalizedRole === 'Packing' || normalizedRole === 'Packing Employee' || normalizedRole === 'Packing Head' ||
+    normalizedRole === 'Dispatch' || normalizedRole === 'Dispatch Employee' || normalizedRole === 'Dispatch Head'
+  ) {
     filteredMenuItems = roleMenuItems.filter(item => {
       if (!item.module) return true;
-      if (item.module === 'packing') {
-        if (item.feature) return hasFeatureAccess(item.module, item.feature, 'view');
-        return true;
-      }
-      return false;
-    });
-  } else if (normalizedRole === 'Dispatch' || normalizedRole === 'Dispatch Employee' || normalizedRole === 'Dispatch Head') {
-    filteredMenuItems = roleMenuItems.filter(item => {
-      if (!item.module) return true;
-      if (item.module === 'dispatches' || item.module === 'dispatch') {
+      if (item.module === 'packing' || item.module === 'dispatches' || item.module === 'dispatch') {
         if (item.feature) {
-          return hasFeatureAccess('dispatches', item.feature, 'view') || hasFeatureAccess('dispatch', item.feature, 'view');
+          return hasFeatureAccess(item.module, item.feature, 'view') || hasFeatureAccess('dispatches', item.feature, 'view');
         }
+        return true;
+      }
+      if (item.module === 'hrms') {
+        if (item.feature) return hasFeatureAccess('hrms', item.feature, 'view');
         return true;
       }
       return false;
@@ -714,7 +746,7 @@ export default function Sidebar({ isOpen, onClose }) {
   } else if (normalizedRole === 'Accounts' || normalizedRole === 'Account Employee' || normalizedRole === 'Accounts Head') {
     filteredMenuItems = roleMenuItems.filter(item => {
       if (!item.module) return true;
-      if (item.module === 'accounts') {
+      if (item.module === 'accounts' || item.module === 'hrms') {
         if (item.feature) return hasFeatureAccess(item.module, item.feature, 'view');
         return true;
       }
@@ -727,20 +759,91 @@ export default function Sidebar({ isOpen, onClose }) {
         if (item.feature && item.module === 'sales') return hasFeatureAccess('sales', item.feature, 'view');
         return true;
       }
+      if (item.module === 'hrms') {
+        if (item.feature) return hasFeatureAccess('hrms', item.feature, 'view');
+        return true;
+      }
       return false;
     });
-  } else if (normalizedRole === 'Hr Admin' || normalizedRole === 'Manager' || normalizedRole === 'Employee') {
+  } else if (normalizedRole === 'Hr Admin' || normalizedRole === 'Manager' || normalizedRole === 'Employee' || normalizedRole === 'Company Admin') {
     filteredMenuItems = roleMenuItems.filter(item => {
       if (!item.module) return true;
-      if (item.module === 'hrms') return true;
+      if (item.module === 'hrms') {
+        if (item.feature) return hasFeatureAccess('hrms', item.feature, 'view');
+        return true;
+      }
       return false;
     });
-  } else if (normalizedRole === 'Research & Development Head' || normalizedRole === 'Research Development Employee' ||
-    normalizedRole === 'Complaint Management Head' || normalizedRole === 'Complaint Management Employee' ||
-    normalizedRole === 'QC Head' || normalizedRole === 'QC Employee' ||
-    normalizedRole === 'Company Admin' ||
-    normalizedRole === 'Store Head' || normalizedRole === 'Store Employee' ||
-    normalizedRole === 'MIS Admin') {
+  } else if (normalizedRole === 'Research & Development Head') {
+    filteredMenuItems = roleMenuItems.filter(item => {
+      if (!item.module) return true;
+      if (item.module === 'rnd') {
+        if (item.feature) return hasFeatureAccess('rnd', item.feature, 'view');
+        return true;
+      }
+      return false;
+    });
+  } else if (normalizedRole === 'Complaint Management Head') {
+    filteredMenuItems = roleMenuItems.filter(item => {
+      if (!item.module) return true;
+      if (item.module === 'complaints') {
+        if (item.feature) return hasFeatureAccess('complaints', item.feature, 'view');
+        return true;
+      }
+      return false;
+    });
+  } else if (normalizedRole === 'QC Head' || normalizedRole === 'QC Employee') {
+    filteredMenuItems = roleMenuItems.filter(item => {
+      if (!item.module) return true;
+      if (item.module === 'quality-control' || item.module === 'hrms') {
+        if (item.feature) return hasFeatureAccess(item.module, item.feature, 'view');
+        return true;
+      }
+      return false;
+    });
+  } else if (normalizedRole === 'Store Head' || normalizedRole === 'Store Employee') {
+    filteredMenuItems = roleMenuItems.filter(item => {
+      if (!item.module) return true;
+      // Store permissions are saved under 'Store' (Company Admin flow) or
+      // 'store' (HR-Admin "Add Employee" flow) depending on how the account was created.
+      if (item.module === 'Store' || item.module === 'store') {
+        if (item.feature) {
+          return hasFeatureAccess('Store', item.feature, 'view') || hasFeatureAccess('store', item.feature, 'view');
+        }
+        return true;
+      }
+      if (item.module === 'hrms') {
+        if (item.feature) return hasFeatureAccess('hrms', item.feature, 'view');
+        return true;
+      }
+      return false;
+    });
+  } else if (normalizedRole === 'Marketing Employee') {
+    // Marketing Head deliberately stays out of this branch — it's untouched and
+    // keeps going through the generic fallback below, which enforces the real
+    // hasModuleAccess('marketing') permission check as before.
+    filteredMenuItems = roleMenuItems.filter(item => {
+      if (!item.module) return true;
+      if (item.module === 'marketing' || item.module === 'hrms') {
+        if (item.feature) return hasFeatureAccess(item.module, item.feature, 'view');
+        return true;
+      }
+      return false;
+    });
+  } else if (normalizedRole === 'MIS Admin') {
+    filteredMenuItems = roleMenuItems.filter(item => {
+      if (!item.module) return true;
+      if (item.module === 'mis') {
+        if (item.feature) return hasFeatureAccess('mis', item.feature, 'view');
+        return true;
+      }
+      return false;
+    });
+  } else if (normalizedRole === 'Research Development Employee' || normalizedRole === 'Complaint Management Employee') {
+    // These employee-tier roles are provisioned through a separate flow (HR-Admin's
+    // "Add Employee" page) whose stored module name doesn't match the RD/Complaint
+    // modules above, so fall back to showing their fixed menu unfiltered rather than
+    // hiding everything for them.
     filteredMenuItems = roleMenuItems;
   } else {
     filteredMenuItems = roleMenuItems.filter(item => {

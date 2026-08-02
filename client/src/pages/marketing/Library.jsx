@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Label } from '@/components/ui/label';
 import { Search, Share2, Trash2, Edit, Eye, Download, Phone, Mail, FolderOpen } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { sendWhatsApp } from '@/lib/whatsapp';
 
 const FILE_COLORS = { PDF: 'bg-red-100 text-red-700', DOC: 'bg-blue-100 text-blue-700', DOCX: 'bg-blue-100 text-blue-700', JPG: 'bg-green-100 text-green-700', JPEG: 'bg-green-100 text-green-700', PNG: 'bg-green-100 text-green-700', WEBP: 'bg-green-100 text-green-700', MP4: 'bg-purple-100 text-purple-700', MOV: 'bg-purple-100 text-purple-700' };
 const IMAGE_TYPES = ['JPG', 'JPEG', 'PNG', 'WEBP'];
@@ -63,16 +64,22 @@ export default function MarketingLibrary() {
     try {
       await shareAsset(shareModal._id, { shareMethod: shareForm.method, customerName: shareForm.customerName, customerPhone: shareForm.customerPhone, customerEmail: shareForm.customerEmail });
 
-      // Open WhatsApp / Email
+      // Send WhatsApp (API first, falls back to opening the app) / Email
       const fileLink = `${window.location.origin}/uploads/${shareModal.fileUrl.replace('uploads/', '')}`;
+      let waResult = null;
       if (shareForm.method === 'WhatsApp') {
-        const msg = encodeURIComponent(`Hi ${shareForm.customerName}, please find the document: ${shareModal.fileName}\n${fileLink}`);
-        window.open(`https://wa.me/${shareForm.customerPhone.replace(/\D/g, '')}?text=${msg}`, '_blank');
+        const msg = `Hi ${shareForm.customerName}, please find the document: ${shareModal.fileName}\n${fileLink}`;
+        waResult = await sendWhatsApp(shareForm.customerPhone, msg);
       } else {
         window.open(`mailto:${shareForm.customerEmail}?subject=${encodeURIComponent(shareModal.fileName)}&body=${encodeURIComponent(`Hi ${shareForm.customerName},\n\nPlease find the document: ${shareModal.fileName}\n${fileLink}`)}`, '_blank');
       }
 
-      toast({ title: 'Shared!', description: `${shareModal.fileName} shared via ${shareForm.method}` });
+      toast({
+        title: 'Shared!',
+        description: waResult
+          ? (waResult.automatic ? `${shareModal.fileName} sent automatically via WhatsApp` : `${shareModal.fileName} — opened WhatsApp for manual send`)
+          : `${shareModal.fileName} shared via ${shareForm.method}`
+      });
       setShareModal(null);
       setShareForm({ method: 'WhatsApp', customerName: '', customerPhone: '', customerEmail: '' });
     } catch {

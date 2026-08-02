@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from "react";
 import axios from "axios";
-import { MoreVertical, Eye } from "lucide-react";
+import { MoreVertical, Eye, Download } from "lucide-react";
 import AddSalaryStructureModal from "./AddSalaryStructureModal";
 import ViewSalaryStructureModal from "./ViewSalaryStructureModal";
 import DeleteSalaryStructureModal from "./DeleteSalaryStructureModal";
 import Loader from "@/pages/hrms/Loader";
 import { toast } from "../../../hooks/use-toast";
+import { generateSalaryStructurePDF } from "@/utils/generateSalaryStructurePDF";
 
 
 interface SalaryStructure {
@@ -124,6 +125,11 @@ const SalaryStructure = () => {
   const calcNetSalary = (s: SalaryStructure) =>
     calcTotalEarnings(s) - calcTotalDeductions(s);
 
+  const handleDownloadPDF = () => {
+    const companyLabel = companies.find((c) => c._id === companyFilter)?.name || "";
+    generateSalaryStructurePDF(salaryList, companyLabel);
+  };
+
   if (loading) {
     return (
       <div className="relative min-h-[300px]">
@@ -156,6 +162,14 @@ const SalaryStructure = () => {
               </option>
             ))}
           </select>
+
+          <button
+            onClick={handleDownloadPDF}
+            disabled={salaryList.length === 0}
+            className="flex items-center gap-2 border border-orange-300 text-orange-600 px-4 py-2 rounded-md font-medium hover:bg-orange-50 shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Download size={16} /> Download PDF
+          </button>
 
           <button
             onClick={() => {

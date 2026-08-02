@@ -216,7 +216,7 @@ export default function Company() {
                           View
                         </button>
 
-                        <button
+                        {/* <button
                           className="w-full px-4 py-2 text-left hover:bg-gray-100"
                           onClick={() => {
                             setMode("edit");
@@ -226,7 +226,7 @@ export default function Company() {
                           }}
                         >
                           Edit
-                        </button>
+                        </button> */}
 
                         <button
                           className="w-full px-4 py-2 text-left text-red-500 hover:bg-red-50"

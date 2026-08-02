@@ -537,6 +537,11 @@ function Router() {
           <EmployeeLeaves />
         </RoleBasedProtectedRoute>
       </Route>
+      <Route exact path="/hrms/Employee/holidays">
+        <RoleBasedProtectedRoute requiredRole="Employee">
+          <HRMSHoliday />
+        </RoleBasedProtectedRoute>
+      </Route>
       <Route exact path="/hrms/Employee/payroll/payslips">
         <RoleBasedProtectedRoute requiredRole="Employee">
           <EmployeePayslips />

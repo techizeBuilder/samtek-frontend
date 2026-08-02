@@ -55,6 +55,7 @@ export default function Employee() {
   const navigate = useNavigate();
   const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
   const isCompanyAdmin = currentUser?.role === "Company Admin";
+  const isManager = currentUser?.role === "Manager";
   // Use wouter's search/location hooks to avoid conflict with wouter routing
   const search = useSearch();
   const [location, setLocation] = useLocation();
@@ -310,7 +311,7 @@ export default function Employee() {
 
         {/* View Toggles & Filters */}
         <div className="flex items-center gap-4">
-          {!isCompanyAdmin && (
+          {!isCompanyAdmin && !isManager && (
             <button
               onClick={() => navigate("/hrms/SuperAdmin/addUser")}
               className="flex items-center gap-2 bg-[#49A7F5] hover:bg-[#3D96E1] text-white px-4 py-2 rounded-lg transition-all font-medium shadow-sm mr-2 active:scale-95"

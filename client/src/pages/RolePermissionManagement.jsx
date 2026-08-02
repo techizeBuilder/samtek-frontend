@@ -45,14 +45,14 @@ import {
 } from 'lucide-react';
 import { showSuccessToast, showSmartToast } from '@/lib/toast-utils';
 import { useAuth } from '@/hooks/useAuth';
+import { MODULES, ROLE_MODULE_MAP, PERMISSION_ACTIONS, getDefaultModulesForRole } from '@/lib/roleModulesConfig';
 // Role and Module Configuration
 const ROLES = [
   { value: 'Superadmin', label: 'Superadmin' },
   { value: 'HR-Admin', label: 'HR Admin' },
   { value: 'Company Admin', label: 'Company Admin' },
   { value: 'Production Head', label: 'Production Head' },
-  { value: 'Packing Head', label: 'Packing Head' },
-  { value: 'Dispatch Head', label: 'Dispatch Head' },
+  { value: 'Dispatch Head', label: 'Packing and Dispatch Head' },
   { value: 'Sales Head', label: 'Sales Head' },
   { value: 'Accounts Head', label: 'Accounts Head' },
   { value: 'Research & Development Head', label: 'Research & Development Head' },
@@ -70,192 +70,12 @@ const UNITS = [
   { value: 'Main Office', label: 'Main Office' }
 ];
 
-const MODULES = [
-  {
-    name: 'superAdmin',
-    label: 'Superadmin',
-    features: [
-      { key: 'dashboard', label: 'Dashboard' },
-      { key: 'orders', label: 'Orders' },
-      { key: 'production', label: 'Production' },
-      { key: 'dispatches', label: 'Dispatches' },
-      { key: 'sales', label: 'Sales' },
-      { key: 'accounts', label: 'Accounts' },
-      { key: 'inventory', label: 'Inventory' },
-      { key: 'customers', label: 'Customers' },
-      { key: 'companies', label: 'Companies' },
-      { key: 'rolePermissions', label: 'Role Permissions' },
-      { key: 'userManagement', label: 'User Management' },
-      { key: 'setting', label: 'Settings' },
-      { key: 'lms', label: 'LMS' }
-    ]
-  },
-  // {
-  //   name: 'dashboard',
-  //   label: 'Dashboard',
-  //   features: [
-  //     { key: 'overview', label: 'Overview' },
-  //     { key: 'analytics', label: 'Analytics' },
-  //     { key: 'reports', label: 'Reports' }
-  //   ]
-  // },
-  // {
-  //   name: 'orders',
-  //   label: 'Orders',
-  //   features: [
-  //     { key: 'allOrders', label: 'All Orders' },
-  //     { key: 'createOrder', label: 'Create Order' },
-  //     { key: 'orderReports', label: 'Order Reports' }
-  //   ]
-  // },
-  {
-    name: 'sales',
-    label: 'Sales',
-    features: [
-      { key: 'orders', label: 'My Orders' },
-      { key: 'myCustomers', label: 'My Customers' },
-      { key: 'myDeliveries', label: 'My Dispatches' },
-      { key: 'myInvoices', label: 'My Payments' },
-      { key: 'returns', label: 'Returns' },
-      { key: 'damages', label: 'Damages' },
-      { key: 'lms', label: 'LMS' }
-    ]
-  },
-  {
-    name: 'dispatches',
-    label: 'Dispatches',
-    features: [
-      { key: 'dashboard', label: 'Dashboard' },
-      { key: 'deliveryChallan', label: 'Delivery Challan' },
-      { key: 'dispatchHistory', label: 'History' },
-      { key: 'lms', label: 'LMS' }
-    ]
-  },
-  {
-    name: 'production',
-    label: 'Production',
-    features: [
-      { key: 'productionDashboard', label: 'Production Dashboard' },
-      { key: 'productionReports', label: 'Production Reports' },
-      { key: 'productionSheet', label: 'Production Sheet' },
-      { key: 'lms', label: 'LMS' }
-    ]
-  },
-  {
-    name: 'packing',
-    label: 'Packing',
-    features: [
-      { key: 'dashboard', label: 'Dashboard' },
-      { key: 'packingSheet', label: 'Packing Sheet' },
-      { key: 'packingHistory', label: 'History' },
-      { key: 'lms', label: 'LMS' }
-    ]
-  },
-  {
-    name: 'accounts',
-    label: 'Accounts',
-    features: [
-      { key: 'dashboard', label: 'Dashboard' },
-      { key: 'chartOfAccounts', label: 'Chart of Accounts' },
-      { key: 'sales', label: 'Sales' },
-      { key: 'purchases', label: 'Purchases' },
-      { key: 'gstAndTds', label: 'GST & TDS' },
-      { key: 'damageAndExpiry', label: 'Damage & Expiry' },
-      { key: 'salesmanSettlement', label: 'Salesman Settlement' },
-      { key: 'bankAndCash', label: 'Bank & Cash' },
-      { key: 'interUnit', label: 'Inter-Unit' },
-      { key: 'reports', label: 'Reports' },
-      { key: 'settings', label: 'Settings' },
-      { key: 'lms', label: 'LMS' }
-    ]
-  },
-  // {
-  //   name: 'inventory',
-  //   label: 'Inventory',
-  //   features: [
-  //     { key: 'items', label: 'Items' },
-  //     { key: 'categories', label: 'Categories' },
-  //     { key: 'stockIn', label: 'Stock In' },
-  //     { key: 'stockOut', label: 'Stock Out' }
-  //   ]
-  // },
-  // {
-  //   name: 'customers',
-  //   label: 'Customers',
-  //   features: [
-  //     { key: 'allCustomers', label: 'All Customers' },
-  //     { key: 'createCustomer', label: 'Create Customer' },
-  //     { key: 'customerReports', label: 'Customer Reports' }
-  //   ]
-  // },
-  {
-    name: 'settings',
-    label: 'Settings',
-    features: [
-      { key: 'general', label: 'General Settings' },
-      { key: 'users', label: 'User Management' },
-      { key: 'system', label: 'System Configuration' },
-      { key: 'lms', label: 'LMS' }
-    ]
-  },
-  {
-    name: 'Store',
-    label: 'Store',
-    features: [
-      { key: 'dashboard', label: 'Dashboard' },
-      { key: 'orders', label: 'Orders' },
-      { key: 'lms', label: 'LMS' }
-    ]
-  },
-  {
-    name: 'marketing',
-    label: 'Marketing',
-    features: [
-      { key: 'library', label: 'Marketing Library' },
-      { key: 'upload', label: 'Upload Content' },
-      { key: 'categories', label: 'Category Management' },
-      { key: 'reports', label: 'Reports' },
-      { key: 'auditLogs', label: 'Audit Logs' },
-      { key: 'notifications', label: 'Notifications' },
-      { key: 'lms', label: 'LMS' }
-    ]
-  },
-  {
-    name: 'mis',
-    label: 'MIS Admin',
-    features: [
-      { key: 'dashboard', label: 'Dashboard' },
-      { key: 'salesReport', label: 'Sales Reports' },
-      { key: 'financeReport', label: 'Finance Reports' },
-      { key: 'productionReport', label: 'Production Summary' },
-      { key: 'inventoryReport', label: 'Inventory Reports' },
-      { key: 'complaintReport', label: 'Complaint & Service' },
-      { key: 'hrmsReport', label: 'HRMS Report' },
-      { key: 'qualityReport', label: 'Quality Reports' },
-    ]
-  },
-  {
-    name: 'quality-control',
-    label: 'Quality Control',
-    features: [
-      { key: 'dashboard', label: 'Dashboard' },
-      { key: 'qcJobs', label: 'QC Jobs' },
-      { key: 'qcInspection', label: 'QC Inspection' },
-      { key: 'qcInward', label: 'QC Inward' },
-      { key: 'qcReports', label: 'QC Reports' },
-      { key: 'lms', label: 'LMS' }
-    ]
-  }
-];
-
 const DEFAULT_PERMISSIONS = {
   role: '',
   unit: '',
   canAccessAllUnits: false,
   modules: []
 };
-
-const PERMISSION_ACTIONS = ['view', 'add', 'edit', 'delete'];
 
 export default function RolePermissionManagement() {
   const [selectedTab, setSelectedTab] = useState('overview');
@@ -326,6 +146,12 @@ export default function RolePermissionManagement() {
   const { user: currentUser } = useAuth();
   const isSuperAdmin = currentUser?.role === 'Superadmin' || currentUser?.role === 'Super Admin';
   const isCompanyAdmin = currentUser?.role === 'Company Admin';
+
+  // Is the row currently being edited/deleted the logged-in user's own account?
+  const isSelf = (targetUser) =>
+    !!targetUser && !!currentUser &&
+    String(targetUser._id) === String(currentUser.id ?? currentUser._id);
+  const isEditingSelf = isSelf(selectedUser);
 
   const companies = isSuperAdmin ? rawCompanies : rawCompanies.filter(c => c.value === currentUser?.companyId);
 
@@ -488,6 +314,10 @@ export default function RolePermissionManagement() {
   };
 
   const handleDeleteUser = (user) => {
+    if (isSelf(user)) {
+      showSmartToast({ message: 'You cannot delete your own account' }, 'Action Not Allowed');
+      return;
+    }
     if (window.confirm(`Are you sure you want to delete user "${user.username}"?`)) {
       deleteUserMutation.mutate(user._id);
     }
@@ -588,177 +418,6 @@ export default function RolePermissionManagement() {
 
     // Fallback to MODULES if no permission data
     return moduleConfig?.features || [];
-  };
-
-  const getDefaultModulesForRole = (role) => {
-    // Helper function to get feature with label
-    const enrichFeatureWithLabel = (moduleFeatures, featureKey) => {
-      const moduleFeature = moduleFeatures.find(f => f.key === featureKey);
-      return moduleFeature ? moduleFeature.label : featureKey;
-    };
-
-    // Helper function to create feature with permissions and label
-    const createFeaturePermissions = (moduleName, featureKey, permissions) => ({
-      key: featureKey,
-      label: (() => {
-        const module = MODULES.find(m => m.name === moduleName);
-        const feature = module?.features.find(f => f.key === featureKey);
-        return feature?.label || featureKey;
-      })(),
-      ...permissions
-    });
-
-    // Return default modules based on role
-    switch (role) {
-      case 'Superadmin':
-        return [
-          {
-            name: 'superAdmin',
-            dashboard: true,
-            features: [
-              { key: 'dashboard', view: true, add: true, edit: true, delete: true },
-              { key: 'orders', view: true, add: true, edit: true, delete: true },
-              { key: 'production', view: true, add: true, edit: true, delete: true },
-              { key: 'dispatches', view: true, add: true, edit: true, delete: true },
-              { key: 'sales', view: true, add: true, edit: true, delete: true },
-              { key: 'accounts', view: true, add: true, edit: true, delete: true },
-              { key: 'inventory', view: true, add: true, edit: true, delete: true },
-              { key: 'customers', view: true, add: true, edit: true, delete: true },
-              { key: 'companies', view: true, add: true, edit: true, delete: true },
-              { key: 'rolePermissions', view: true, add: true, edit: true, delete: true },
-              { key: 'userManagement', view: true, add: true, edit: true, delete: true },
-              { key: 'setting', view: true, add: true, edit: true, delete: true },
-              { key: 'lms', view: true, add: true, edit: true, delete: true }
-            ]
-          }
-        ];
-      case 'Production Head':
-        return [
-          {
-            name: 'production',
-            dashboard: true,
-            features: [
-              createFeaturePermissions('production', 'productionDashboard', { view: true, add: true, edit: true, delete: true, alter: true }),
-              createFeaturePermissions('production', 'productionReports', { view: true, add: true, edit: true, delete: true, alter: true }),
-              createFeaturePermissions('production', 'productionGroup', { view: true, add: true, edit: true, delete: true, alter: true }),
-              createFeaturePermissions('production', 'productionSheet', { view: true, add: true, edit: true, delete: true, alter: true }),
-              { key: 'lms', label: 'LMS', view: true, add: false, edit: false, delete: false, alter: false }
-            ]
-          }
-        ];
-      case 'Sales Head':
-        return [
-          {
-            name: 'sales',
-            dashboard: true,
-            features: [
-              { key: 'orders', view: true, add: true, edit: true, delete: true, alter: true },
-              { key: 'myCustomers', view: true, add: true, edit: true, delete: true, alter: true },
-              { key: 'myDeliveries', view: true, add: false, edit: false, delete: false, alter: false },
-              { key: 'myInvoices', view: true, add: false, edit: false, delete: false, alter: false },
-              { key: 'refundReturn', view: true, add: true, edit: true, delete: true, alter: true },
-              { key: 'lms', label: 'LMS', view: true, add: false, edit: false, delete: false, alter: false }
-            ]
-          }
-        ];
-      case 'Packing Head':
-        return [
-          {
-            name: 'packing',
-            dashboard: true,
-            features: [
-              { key: 'dashboard', view: true, add: true, edit: true, delete: true },
-              { key: 'packingSheet', view: true, add: true, edit: true, delete: true },
-              { key: 'lms', label: 'LMS', view: true, add: false, edit: false, delete: false }
-            ]
-          }
-        ];
-      case 'Dispatch Head':
-        return [
-          {
-            name: 'dispatches',
-            dashboard: true,
-            features: [
-              { key: 'dashboard', view: true, add: true, edit: true, delete: true },
-              { key: 'deliveryChallan', view: true, add: true, edit: true, delete: true },
-              { key: 'dispatchHistory', view: true, add: true, edit: true, delete: true },
-              { key: 'lms', label: 'LMS', view: true, add: false, edit: false, delete: false }
-            ]
-          }
-        ];
-      case 'Accounts Head':
-        return [
-          {
-            name: 'accounts',
-            dashboard: true,
-            features: (MODULES.find(m => m.name === 'accounts')?.features || []).map(f => ({
-              key: f.key,
-              label: f.label,
-              view: true,
-              add: true,
-              edit: true,
-              delete: true
-            }))
-          }
-        ];
-      case 'Marketing Head':
-        return [
-          {
-            name: 'marketing',
-            dashboard: true,
-            features: [
-              { key: 'library', view: true, add: true, edit: true, delete: true, alter: true },
-              { key: 'upload', view: true, add: true, edit: true, delete: true, alter: true },
-              { key: 'categories', view: true, add: true, edit: true, delete: true, alter: true },
-              { key: 'reports', view: true, add: false, edit: false, delete: false, alter: false },
-              { key: 'auditLogs', view: true, add: false, edit: false, delete: false, alter: false },
-              { key: 'notifications', view: true, add: false, edit: false, delete: false, alter: false },
-              { key: 'lms', label: 'LMS', view: true, add: false, edit: false, delete: false, alter: false }
-            ]
-          },
-          {
-            name: 'customers',
-            dashboard: false,
-            features: [
-              { key: 'addEditView', view: true, add: false, edit: false, delete: false, alter: false }
-            ]
-          }
-        ];
-      case 'MIS Admin':
-        return [
-          {
-            name: 'mis',
-            dashboard: true,
-            features: [
-              { key: 'dashboard', label: 'Dashboard', view: true, add: false, edit: false, delete: false },
-              { key: 'salesReport', label: 'Sales Reports', view: true, add: false, edit: false, delete: false },
-              { key: 'financeReport', label: 'Finance Reports', view: true, add: false, edit: false, delete: false },
-              { key: 'productionReport', label: 'Production Summary', view: true, add: false, edit: false, delete: false },
-              { key: 'inventoryReport', label: 'Inventory Reports', view: true, add: false, edit: false, delete: false },
-              { key: 'complaintReport', label: 'Complaint & Service', view: true, add: false, edit: false, delete: false },
-              { key: 'hrmsReport', label: 'HRMS Report', view: true, add: false, edit: false, delete: false },
-              { key: 'qualityReport', label: 'Quality Reports', view: true, add: false, edit: false, delete: false },
-            ]
-          }
-        ];
-      case 'QC Head':
-        return [
-          {
-            name: 'quality-control',
-            dashboard: true,
-            features: [
-              { key: 'dashboard', label: 'Dashboard', view: true, add: true, edit: true, delete: true, alter: true },
-              { key: 'qcJobs', label: 'QC Jobs', view: true, add: true, edit: true, delete: true, alter: true },
-              { key: 'qcInspection', label: 'QC Inspection', view: true, add: true, edit: true, delete: true, alter: true },
-              { key: 'qcInward', label: 'QC Inward', view: true, add: true, edit: true, delete: true, alter: true },
-              { key: 'qcReports', label: 'QC Reports', view: true, add: false, edit: false, delete: false, alter: false },
-              { key: 'lms', label: 'LMS', view: true, add: false, edit: false, delete: false, alter: false }
-            ]
-          }
-        ];
-      default:
-        return [];
-    }
   };
 
   const updateModulePermission = (moduleName, enabled) => {
@@ -873,18 +532,21 @@ export default function RolePermissionManagement() {
   };
 
   const giveAllPermissions = () => {
-    // Enable all modules with all permissions
-    const allModulesWithFullPermissions = MODULES.map(module => ({
-      name: module.name,
-      dashboard: true,
-      features: module.features.map(feature => ({
-        key: feature.key,
-        view: true,
-        add: true,
-        edit: true,
-        delete: true
-      }))
-    }));
+    // Only enable the modules that are actually relevant to the selected role
+    const allowedModuleNames = ROLE_MODULE_MAP[formData.role] || [];
+    const allModulesWithFullPermissions = MODULES
+      .filter(module => allowedModuleNames.includes(module.name))
+      .map(module => ({
+        name: module.name,
+        dashboard: true,
+        features: module.features.map(feature => ({
+          key: feature.key,
+          view: true,
+          add: true,
+          edit: true,
+          delete: true
+        }))
+      }));
 
     setFormData({
       ...formData,
@@ -1050,14 +712,13 @@ export default function RolePermissionManagement() {
                   </Button>
                 </div>
                 <div className="space-y-4 mt-4">
+                  {(ROLE_MODULE_MAP[formData.role] || []).length === 0 && (
+                    <p className="text-sm text-muted-foreground italic">
+                      Select a role above to see the module permissions relevant to it.
+                    </p>
+                  )}
                   {MODULES
-                    .filter(module => {
-                      // Show Settings module only for Super Admin users
-                      if (module.name === 'settings') {
-                        return formData.role === 'Superadmin';
-                      }
-                      return true;
-                    })
+                    .filter(module => (ROLE_MODULE_MAP[formData.role] || []).includes(module.name))
                     .map((module) => {
                       const moduleEnabled = isModuleEnabled(module.name);
                       return (
@@ -1433,8 +1094,9 @@ export default function RolePermissionManagement() {
                               variant="ghost"
                               size="sm"
                               onClick={() => handleDeleteUser(user)}
-                              className="h-7 w-7 sm:h-8 sm:w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
-                              title="Delete User"
+                              disabled={isSelf(user)}
+                              className="h-7 w-7 sm:h-8 sm:w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50 disabled:opacity-30 disabled:cursor-not-allowed"
+                              title={isSelf(user) ? "You cannot delete your own account" : "Delete User"}
                             >
                               <Trash2 className="h-3 w-3 sm:h-4 sm:w-4" />
                             </Button>
@@ -1489,8 +1151,9 @@ export default function RolePermissionManagement() {
                             variant="ghost"
                             size="sm"
                             onClick={() => handleDeleteUser(user)}
-                            className="h-7 w-7 p-0 text-red-600 hover:bg-red-50:bg-red-900/20"
-                            title="Delete User"
+                            disabled={isSelf(user)}
+                            className="h-7 w-7 p-0 text-red-600 hover:bg-red-50:bg-red-900/20 disabled:opacity-30 disabled:cursor-not-allowed"
+                            title={isSelf(user) ? "You cannot delete your own account" : "Delete User"}
                           >
                             <Trash2 className="h-3 w-3" />
                           </Button>
@@ -1648,9 +1311,24 @@ export default function RolePermissionManagement() {
               </div>
               <div>
                 <Label htmlFor="edit-role">Role</Label>
-                <Select value={formData.role} onValueChange={(value) => {
-                  setFormData({ ...formData, role: value });
-                }}>
+                <Select
+                  value={formData.role}
+                  disabled={isEditingSelf}
+                  onValueChange={(value) => {
+                    // Drop any module permissions that aren't relevant to the newly
+                    // selected role, so a role change can't leave stale/unrelated
+                    // access behind (e.g. a demoted Sales Head silently keeping 'sales').
+                    const allowedModuleNames = ROLE_MODULE_MAP[value] || [];
+                    setFormData({
+                      ...formData,
+                      role: value,
+                      permissions: {
+                        ...formData.permissions,
+                        modules: formData.permissions.modules.filter(m => allowedModuleNames.includes(m.name))
+                      }
+                    });
+                  }}
+                >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -1662,6 +1340,11 @@ export default function RolePermissionManagement() {
                     ))}
                   </SelectContent>
                 </Select>
+                {isEditingSelf && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    You cannot change your own role
+                  </p>
+                )}
               </div>
             </div>
 
@@ -1710,21 +1393,26 @@ export default function RolePermissionManagement() {
                   variant="outline"
                   size="sm"
                   onClick={giveAllPermissions}
-                  className="bg-green-50 hover:bg-green-100 text-green-700 border-green-300"
+                  disabled={isEditingSelf}
+                  className="bg-green-50 hover:bg-green-100 text-green-700 border-green-300 disabled:opacity-40"
                 >
                   <Shield className="h-4 w-4 mr-2" />
                   Give All Permissions
                 </Button>
               </div>
+              {isEditingSelf && (
+                <p className="text-xs text-amber-600 mt-1">
+                  You cannot change your own module permissions
+                </p>
+              )}
               <div className="space-y-4 mt-4">
+                {(ROLE_MODULE_MAP[formData.role] || []).length === 0 && (
+                  <p className="text-sm text-muted-foreground italic">
+                    Select a role above to see the module permissions relevant to it.
+                  </p>
+                )}
                 {MODULES
-                  .filter(module => {
-                    // Show Settings module only for Super Admin users
-                    if (module.name === 'settings') {
-                      return formData.role === 'Superadmin';
-                    }
-                    return true;
-                  })
+                  .filter(module => (ROLE_MODULE_MAP[formData.role] || []).includes(module.name))
                   .map((module) => {
                     const moduleEnabled = isModuleEnabled(module.name);
                     return (
@@ -1734,6 +1422,7 @@ export default function RolePermissionManagement() {
                             <div className="flex items-center space-x-2">
                               <Switch
                                 checked={moduleEnabled}
+                                disabled={isEditingSelf}
                                 onCheckedChange={(checked) => updateModulePermission(module.name, checked)}
                               />
                               <Label className="text-base font-medium capitalize">{module.label}</Label>
@@ -1778,6 +1467,7 @@ export default function RolePermissionManagement() {
                                       <div key={action} className="flex justify-center">
                                         <Switch
                                           checked={getFeaturePermission(module.name, feature.key, action)}
+                                          disabled={isEditingSelf}
                                           onCheckedChange={(checked) =>
                                             updateFeaturePermission(module.name, feature.key, action, checked)
                                           }
@@ -1796,6 +1486,7 @@ export default function RolePermissionManagement() {
                                           <span className="text-sm capitalize">{action}</span>
                                           <Switch
                                             checked={getFeaturePermission(module.name, feature.key, action)}
+                                            disabled={isEditingSelf}
                                             onCheckedChange={(checked) =>
                                               updateFeaturePermission(module.name, feature.key, action, checked)
                                             }

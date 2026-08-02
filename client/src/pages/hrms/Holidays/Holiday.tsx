@@ -84,7 +84,7 @@ const Holiday = () => {
             <div className="flex justify-between items-center mb-6">
                 <h1 className="text-2xl font-semibold">Holiday</h1>
 
-                {currentUser?.role !== 'Manager' && (
+                {(currentUser?.role === 'HR-Admin' || currentUser?.role === 'Hr Admin') && (
                     <button
                         onClick={() => {
                             setMode("add");
@@ -173,7 +173,7 @@ const Holiday = () => {
                                                     View
                                                 </button>
 
-                                                {currentUser?.role !== 'Manager' && (
+                                                {(currentUser?.role === 'HR-Admin' || currentUser?.role === 'Hr Admin') && (
                                                     <>
                                                         <button
                                                             className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100"

@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
+import { apiRequest } from '@/lib/queryClient';
 import { orderFormApi } from '@/api/orderFormApi';
 import { leadApi } from '@/api/leadService';
 import { buildQuotationNumber } from '@/utils/quotationNumber';
@@ -143,6 +144,12 @@ export default function OrderFormModal({ open, onOpenChange, orderId, order, lea
   // ask for it. Reset whenever the modal (re)opens.
   const [revealedCash, setRevealedCash] = useState(new Set());
   const [totalCashRevealed, setTotalCashRevealed] = useState(false);
+
+  // BOM material cost (Σ material MRP × qty) per M/C Code — cached by code so
+  // it's fetched once per item, not on every keystroke elsewhere in the form.
+  // A code with no matching RDMachine/BOM never gets an entry beyond `null`,
+  // which the UI/validation both treat as "nothing to check against".
+  const [bomCostByCode, setBomCostByCode] = useState({});
   const toggleCashRow = (originalIdx) => setRevealedCash(prev => {
     const next = new Set(prev);
     if (next.has(originalIdx)) next.delete(originalIdx); else next.add(originalIdx);
@@ -251,6 +258,7 @@ export default function OrderFormModal({ open, onOpenChange, orderId, order, lea
     setReturnRemark('');
     setRevealedCash(new Set());
     setTotalCashRevealed(false);
+    setBomCostByCode({});
 
     (async () => {
       try {
@@ -355,6 +363,29 @@ export default function OrderFormModal({ open, onOpenChange, orderId, order, lea
     return t;
   }, [items, fields.receivedAmount]);
 
+  // Fetch each row's BOM material cost (debounced — a manually-typed M/C Code
+  // changes on every keystroke, so wait for a pause before hitting the API).
+  useEffect(() => {
+    const codes = Array.from(new Set(
+      visibleItems.map(({ it }) => (it.mcCode || '').trim()).filter(Boolean)
+    )).filter(code => !(code in bomCostByCode));
+    if (codes.length === 0) return;
+
+    const timer = setTimeout(() => {
+      codes.forEach(async (code) => {
+        try {
+          const res = await apiRequest('GET', `/api/rd/boms/by-code/${encodeURIComponent(code)}/cost`);
+          setBomCostByCode(prev => ({ ...prev, [code]: res?.data || null }));
+        } catch (e) {
+          setBomCostByCode(prev => ({ ...prev, [code]: null }));
+        }
+      });
+    }, 500);
+
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleItems]);
+
   const effectiveOrderId = orderId || existingForm?.orderId?._id || existingForm?.orderId;
 
   const handleSubmit = async () => {
@@ -371,6 +402,23 @@ export default function OrderFormModal({ open, onOpenChange, orderId, order, lea
     }
     if (visibleItems.some(({ it }) => num(it.billAmount) <= 0)) {
       toast({ title: 'Required fields missing', description: 'Bill Amt is required for every item row.', variant: 'destructive' });
+      return;
+    }
+    // Bill Amt must clear the item's own BOM material cost by more than 10% —
+    // items with no BOM for their M/C Code are skipped (nothing to check).
+    const bomViolation = visibleItems.find(({ it }) => {
+      const bomInfo = bomCostByCode[(it.mcCode || '').trim()];
+      if (!bomInfo || bomInfo === 'loading' || !bomInfo.found) return false;
+      return num(it.billAmount) <= bomInfo.totalCost * 1.1;
+    });
+    if (bomViolation) {
+      const bomInfo = bomCostByCode[(bomViolation.it.mcCode || '').trim()];
+      const minRequired = bomInfo.totalCost * 1.1;
+      toast({
+        title: 'Billing Amount too low',
+        description: `${bomViolation.it.itemName || bomViolation.it.mcCode}: Bill Amt must be above ₹${minRequired.toLocaleString('en-IN')} (BOM cost ₹${bomInfo.totalCost.toLocaleString('en-IN')} + 10%).`,
+        variant: 'destructive'
+      });
       return;
     }
     setSaving(true);
@@ -549,7 +597,10 @@ export default function OrderFormModal({ open, onOpenChange, orderId, order, lea
                           <TableCell className="align-top"><SpecCell value={it.specification} onChange={v => setItemField(originalIdx, 'specification', v)} disabled={lockedDisabled} /></TableCell>
                           <TableCell className="align-top"><CellInput value={it.hsnCode} onChange={v => setItemField(originalIdx, 'hsnCode', v)} disabled={lockedDisabled} size="lg" /></TableCell>
                           <TableCell className="align-top"><QtyCell value={it.qty} onChange={v => setItemField(originalIdx, 'qty', v)} disabled={lockedDisabled} /></TableCell>
-                          <TableCell className="align-top"><CellInput type="number" value={it.billAmount} onChange={v => setItemField(originalIdx, 'billAmount', v)} disabled={disabled} className="text-right" size="lg" /></TableCell>
+                          <TableCell className="align-top">
+                            <CellInput type="number" value={it.billAmount} onChange={v => setItemField(originalIdx, 'billAmount', v)} disabled={disabled} className="text-right" size="lg" />
+                            <BomCostHint bomInfo={bomCostByCode[(it.mcCode || '').trim()]} billAmount={it.billAmount} />
+                          </TableCell>
                           <TableCell className="align-top"><CellInput type="number" value={it.gstAmount} onChange={() => {}} disabled title="Auto: 18% of Bill Amt" className="text-right" size="lg" /></TableCell>
                           <TableCell className="align-top"><CellInput type="number" value={it.quotationAmount} onChange={v => setItemField(originalIdx, 'quotationAmount', v)} disabled={lockedDisabled} className="text-right" size="lg" /></TableCell>
                           <TableCell
@@ -739,6 +790,20 @@ function QtyCell({ value, onChange, disabled }) {
   }
   return (
     <CellInput type="number" value={value} onChange={onChange} className="text-right" size="lg" />
+  );
+}
+
+// Shows the item's BOM material cost (Σ material MRP × qty) and the minimum
+// Billing Amount (BOM cost + 10%) under the Bill Amt input — nothing renders
+// when the item has no BOM (bomInfo is null/undefined/'loading').
+function BomCostHint({ bomInfo, billAmount }) {
+  if (!bomInfo || bomInfo === 'loading' || !bomInfo.found) return null;
+  const minRequired = bomInfo.totalCost * 1.1;
+  const isBelowMin = num(billAmount) > 0 && num(billAmount) <= minRequired;
+  return (
+    <p className={`text-[10px] mt-1 leading-tight ${isBelowMin ? 'text-red-500 font-semibold' : 'text-gray-400'}`}>
+      Billing Amount must be above ₹{minRequired.toLocaleString('en-IN')}
+    </p>
   );
 }
 

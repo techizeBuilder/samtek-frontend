@@ -119,12 +119,12 @@ export default function DocumentVerification() {
     );
   });
 
-  const handleSetStatus = async (docId: string, status: "VERIFIED" | "REJECTED") => {
+  const handleSetStatus = async (docId: string, status: "VERIFIED" | "REJECTED", remarks?: string) => {
     try {
       setActingDocId(docId);
       await axios.patch(
         `${API}/documents/${docId}/status`,
-        { status },
+        status === "REJECTED" ? { status, remarks } : { status },
         { headers: { Authorization: `Bearer ${token}` } }
       );
       toast({
@@ -262,9 +262,28 @@ function DocumentReviewModal({
   docTypes: DocTypeConfig[];
   actingDocId: string | null;
   onClose: () => void;
-  onSetStatus: (docId: string, status: "VERIFIED" | "REJECTED") => void;
+  onSetStatus: (docId: string, status: "VERIFIED" | "REJECTED", remarks?: string) => void;
 }) {
   const getDoc = (key: string) => docs.find((d) => d.type === key);
+  const [rejectingDocId, setRejectingDocId] = useState<string | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
+
+  const startReject = (docId: string) => {
+    setRejectingDocId(docId);
+    setRejectReason("");
+  };
+
+  const cancelReject = () => {
+    setRejectingDocId(null);
+    setRejectReason("");
+  };
+
+  const confirmReject = (docId: string) => {
+    if (!rejectReason.trim()) return;
+    onSetStatus(docId, "REJECTED", rejectReason.trim());
+    setRejectingDocId(null);
+    setRejectReason("");
+  };
 
   return (
     <div
@@ -332,6 +351,12 @@ function DocumentReviewModal({
                     )}
                   </div>
 
+                  {doc?.status === "REJECTED" && doc.remarks && (
+                    <p className="text-xs text-rose-600 bg-rose-50 border border-rose-100 rounded-md px-2 py-1">
+                      Rejection reason: {doc.remarks}
+                    </p>
+                  )}
+
                   {doc && (
                     <div className="flex items-center justify-between gap-2 pt-1 flex-wrap">
                       <a
@@ -351,11 +376,11 @@ function DocumentReviewModal({
                         <span className="text-xs text-emerald-600 font-semibold flex items-center gap-1">
                           <ShieldCheck size={13} /> Locked — employee cannot re-upload
                         </span>
-                      ) : (
+                      ) : rejectingDocId === doc._id ? null : (
                         <div className="flex items-center gap-2">
                           <button
                             disabled={isActing}
-                            onClick={() => onSetStatus(doc._id, "REJECTED")}
+                            onClick={() => startReject(doc._id)}
                             className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg border border-rose-200 text-rose-600 hover:bg-rose-50 disabled:opacity-50 transition-colors"
                           >
                             <XCircle size={13} /> Reject
@@ -369,6 +394,37 @@ function DocumentReviewModal({
                           </button>
                         </div>
                       )}
+                    </div>
+                  )}
+
+                  {doc && rejectingDocId === doc._id && (
+                    <div className="pt-2 space-y-2 border-t mt-2">
+                      <label className="text-xs font-semibold text-gray-600">
+                        Reason for rejection <span className="text-rose-500">*</span>
+                      </label>
+                      <textarea
+                        autoFocus
+                        value={rejectReason}
+                        onChange={(e) => setRejectReason(e.target.value)}
+                        placeholder="Tell the employee why this document is being rejected..."
+                        rows={2}
+                        className="w-full border rounded-lg p-2 text-xs focus:outline-none focus:ring-2 focus:ring-rose-300"
+                      />
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={cancelReject}
+                          className="px-3 py-1.5 text-xs font-semibold border rounded-lg hover:bg-gray-50 text-gray-600"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          disabled={isActing || !rejectReason.trim()}
+                          onClick={() => confirmReject(doc._id)}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-50 transition-colors"
+                        >
+                          <XCircle size={13} /> {isActing ? "Rejecting..." : "Confirm Reject"}
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>

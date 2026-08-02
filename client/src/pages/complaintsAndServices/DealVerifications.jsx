@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
+import { sendWhatsApp } from '@/lib/whatsapp';
 import {
   ShieldCheck, Phone, CheckCircle2, XCircle, MessageSquare, Mail,
   Calendar, User, MapPin, Briefcase, Eye, History, Star, ThumbsUp,
@@ -204,7 +205,16 @@ const DealVerifications = () => {
 
   /* ── contact helpers ── */
   const call      = (m) => m && window.open(`tel:${m}`);
-  const whatsapp  = (m) => { if (m) { const n = m.replace(/\D/g, ''); window.open(`https://wa.me/${n.startsWith('91') ? n : '91' + n}`, '_blank'); } };
+  const whatsapp  = async (m, ctx = {}) => {
+    if (!m) return;
+    const text = ctx.orderCode
+      ? `Hello ${ctx.name || ''}, this is Samtek Machinery regarding your order #${ctx.orderCode}. We'd like to confirm a few details with you — please let us know a good time to talk.`
+      : `Hello ${ctx.name || ''}, this is Samtek Machinery. We'd like to get in touch regarding your recent order.`;
+    const result = await sendWhatsApp(m, text);
+    if (result.automatic) {
+      toast({ title: 'Sent!', description: 'Message sent automatically via WhatsApp' });
+    }
+  };
   const email     = (e) => e && window.open(`mailto:${e}`);
 
   /* ── handlers ── */
@@ -592,7 +602,7 @@ const DealVerifications = () => {
                             <Phone className="h-3.5 w-3.5" />
                           </Button>
                           <Button variant="ghost" size="icon" className="h-7 w-8 border-r border-gray-100 rounded-none hover:bg-green-50 text-green-600"
-                            title="WhatsApp" onClick={() => whatsapp(customer.mobile)}>
+                            title="WhatsApp" onClick={() => whatsapp(customer.mobile, { name: customer.name, orderCode: order.orderCode })}>
                             <MessageSquare className="h-3.5 w-3.5" />
                           </Button>
                           <Button variant="ghost" size="icon" className="h-7 w-8 border-r border-gray-100 rounded-none hover:bg-blue-50 text-blue-700"
@@ -755,7 +765,7 @@ const DealVerifications = () => {
                         <Phone className="h-4 w-4" />
                       </Button>
                       <Button variant="ghost" size="icon" className="h-8 w-8 text-green-600 hover:bg-green-50" title="WhatsApp"
-                        onClick={() => whatsapp(c.mobile)}>
+                        onClick={() => whatsapp(c.mobile, { name: c.name, orderCode: verifyModal.order.orderCode })}>
                         <MessageSquare className="h-4 w-4" />
                       </Button>
                       <Button variant="ghost" size="icon" className="h-8 w-8 text-blue-700 hover:bg-blue-100" title="Email"
@@ -992,7 +1002,7 @@ const DealVerifications = () => {
                     <Button size="sm" variant="outline" className="text-xs h-7 text-blue-600 border-blue-200" onClick={() => call(c.mobile)}>
                       <Phone className="h-3 w-3 mr-1" /> Call
                     </Button>
-                    <Button size="sm" variant="outline" className="text-xs h-7 text-green-600 border-green-200" onClick={() => whatsapp(c.mobile)}>
+                    <Button size="sm" variant="outline" className="text-xs h-7 text-green-600 border-green-200" onClick={() => whatsapp(c.mobile, { name: c.name, orderCode: o.orderCode })}>
                       <MessageSquare className="h-3 w-3 mr-1" /> WhatsApp
                     </Button>
                     <Button size="sm" variant="outline" className="text-xs h-7 text-blue-700 border-blue-200" onClick={() => email(c.email)}>

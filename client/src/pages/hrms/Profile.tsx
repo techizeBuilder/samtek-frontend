@@ -67,6 +67,8 @@ const ROLE_MODULES_CONFIG: Record<string, { moduleName: string; features: { key:
     features: [
       { key: "dashboard", label: "Dashboard" },
       { key: "orders", label: "My Orders" },
+      { key: "leads", label: "Leads" },
+      { key: "paymentRequests", label: "Payment Requests" },
       { key: "myCustomers", label: "My Customers" },
       { key: "myDeliveries", label: "My Dispatches" },
       { key: "myInvoices", label: "My Payments" },
@@ -79,6 +81,10 @@ const ROLE_MODULES_CONFIG: Record<string, { moduleName: string; features: { key:
     features: [
       { key: "dashboard", label: "Dashboard" },
       { key: "deliveryChallan", label: "Delivery Challan" },
+      { key: "packagingQueue", label: "Packaging Queue" },
+      { key: "packagingJobs", label: "Packaging Jobs" },
+      { key: "dispatchPlanning", label: "Dispatch Planning" },
+      { key: "activeDispatches", label: "Active Dispatches" },
       { key: "dispatchHistory", label: "History" }
     ]
   },
@@ -86,8 +92,13 @@ const ROLE_MODULES_CONFIG: Record<string, { moduleName: string; features: { key:
     moduleName: "production",
     features: [
       { key: "dashboard", label: "Dashboard" },
-      { key: "productionSheet", label: "Production Sheet" },
-      { key: "productionReports", label: "Production Reports" }
+      { key: "orders", label: "Orders" },
+      { key: "repairProduction", label: "Repair Production" },
+      { key: "workPlanning", label: "Work Planning" },
+      { key: "processQc", label: "Process & QC" },
+      { key: "jobCards", label: "Job Cards" },
+      { key: "manpower", label: "Manpower" },
+      { key: "expenses", label: "Expenses" }
     ]
   },
   "Packing Employee": {
@@ -161,7 +172,12 @@ export default function Profile() {
     employmentType: "",
     employmentStatus: "",
     probationEndDate: "",
+    departmentId: "",
+    designationId: "",
   });
+
+  const [departments, setDepartments] = useState<any[]>([]);
+  const [designations, setDesignations] = useState<any[]>([]);
 
   // Flow State
   const [flowState, setFlowState] = useState({
@@ -204,6 +220,8 @@ export default function Profile() {
           employmentType: userData.employeeType || "",
           employmentStatus: userData.employmentStatus || "",
           probationEndDate: userData.probationEndDate?.slice(0, 10) || "",
+          departmentId: userData.departmentId?._id || "",
+          designationId: userData.designationId?._id || "",
         });
 
         setFlowState({
@@ -309,6 +327,36 @@ export default function Profile() {
   useEffect(() => {
     fetchManagers();
   }, []);
+
+  // Departments linked to this employee's Company
+  useEffect(() => {
+    const companyId = user?.companyId?._id;
+    if (!companyId) {
+      setDepartments([]);
+      return;
+    }
+    axios
+      .get(`${API}/departments?companyId=${companyId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      .then((res) => setDepartments(res.data || []))
+      .catch(() => setDepartments([]));
+  }, [user?.companyId?._id]);
+
+  // Designations linked to the selected Department
+  useEffect(() => {
+    const companyId = user?.companyId?._id;
+    if (!companyId || !jobForm.departmentId) {
+      setDesignations([]);
+      return;
+    }
+    axios
+      .get(`${API}/designations?companyId=${companyId}&departmentId=${jobForm.departmentId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      .then((res) => setDesignations(res.data || []))
+      .catch(() => setDesignations([]));
+  }, [user?.companyId?._id, jobForm.departmentId]);
 
 
   if (loading)
@@ -488,6 +536,16 @@ export default function Profile() {
               label="Company"
               value={user.companyId?.name}
               icon={<Building2 />}
+            />
+            <Info
+              label="Department"
+              value={user.departmentId?.name}
+              icon={<Building2 />}
+            />
+            <Info
+              label="Designation"
+              value={user.designationId?.name}
+              icon={<Users />}
             />
             <Info
               label="Reporting Manager"
@@ -701,6 +759,37 @@ export default function Profile() {
           onClose={() => setOpenJobInfo(false)}
         >
           <Select
+            label="Department"
+            value={jobForm.departmentId}
+            onChange={(e: any) =>
+              setJobForm({ ...jobForm, departmentId: e.target.value, designationId: "" })
+            }
+          >
+            <option value="">Select Department</option>
+            {departments.map((d) => (
+              <option key={d._id} value={d._id}>
+                {d.name}
+              </option>
+            ))}
+          </Select>
+
+          <Select
+            label="Designation"
+            value={jobForm.designationId}
+            disabled={!jobForm.departmentId}
+            onChange={(e: any) =>
+              setJobForm({ ...jobForm, designationId: e.target.value })
+            }
+          >
+            <option value="">Select Designation</option>
+            {designations.map((d) => (
+              <option key={d._id} value={d._id}>
+                {d.name}
+              </option>
+            ))}
+          </Select>
+
+          <Select
             label="Reporting Manager"
             value={jobForm.managerId}
             onChange={(e: any) =>
@@ -757,6 +846,8 @@ export default function Profile() {
                 employmentType: jobForm.employmentType,
                 employmentStatus: jobForm.employmentStatus as any,
                 probationEndDate: jobForm.probationEndDate,
+                departmentId: jobForm.departmentId as any,
+                designationId: jobForm.designationId as any,
               });
               setOpenJobInfo(false);
             }}
