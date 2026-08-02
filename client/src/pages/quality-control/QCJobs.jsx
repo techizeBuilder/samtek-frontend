@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useSearch } from 'wouter';
-import { useQC } from '@/contexts/QCContext';
+import { useQuery } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -23,7 +24,6 @@ const statusIcon = {
 const sourceIcon = { Purchase: ShoppingCart, Production: Factory, Store: Package };
 
 export default function QCJobs() {
-  const { jobs, jobsLoading } = useQC();
   const searchString = useSearch(); // e.g. "status=Pending"
   const queryParams = new URLSearchParams(searchString);
   const statusFromUrl = queryParams.get('status') || 'all';
@@ -31,29 +31,36 @@ export default function QCJobs() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState(statusFromUrl);
   const [sourceFilter, setSourceFilter] = useState('all');
+  const [page, setPage] = useState(1);
 
   // Sync statusFilter when URL query param changes (e.g. sidebar navigation)
   useEffect(() => {
     setStatusFilter(statusFromUrl);
   }, [statusFromUrl]);
 
+  // Reset to page 1 whenever a filter/search changes so the user doesn't
+  // land on a now-out-of-range page.
+  useEffect(() => { setPage(1); }, [search, statusFilter, sourceFilter]);
+
   const statuses = ['all', 'Pending', 'In Progress', 'Approved', 'Rejected'];
   const sources = ['all', 'Purchase', 'Production', 'Store'];
 
-  const filtered = jobs.filter(j => {
-    const matchStatus = statusFilter === 'all' || j.status === statusFilter;
-    const matchSource = sourceFilter === 'all' || j.source === sourceFilter;
-    const matchSearch = !search ||
-      j.qcJobId?.toLowerCase().includes(search.toLowerCase()) ||
-      j.orderCode?.toLowerCase().includes(search.toLowerCase()) ||
-      j.itemName?.toLowerCase().includes(search.toLowerCase()) ||
-      j.sourceRefId?.toLowerCase().includes(search.toLowerCase()) ||
-      j.inspector?.toLowerCase().includes(search.toLowerCase());
-    return matchStatus && matchSource && matchSearch;
+  const { data: jobsResponse, isLoading: jobsLoading } = useQuery({
+    queryKey: ['qc-jobs', 'list', { page, search, statusFilter, sourceFilter }],
+    queryFn: () => {
+      const params = new URLSearchParams({ page: String(page), limit: '20', withStatusCounts: 'true' });
+      if (search) params.set('search', search);
+      if (statusFilter !== 'all') params.set('status', statusFilter);
+      if (sourceFilter !== 'all') params.set('source', sourceFilter);
+      return apiRequest('GET', `/api/qc/jobs?${params.toString()}`);
+    },
+    keepPreviousData: true,
   });
-
+  const filtered = jobsResponse?.data || [];
+  const pagination = jobsResponse?.pagination || { page: 1, pages: 1, total: 0 };
+  const rawCounts = jobsResponse?.statusCounts || {};
   const counts = statuses.reduce((acc, s) => {
-    acc[s] = s === 'all' ? jobs.length : jobs.filter(j => j.status === s).length;
+    acc[s] = s === 'all' ? (rawCounts.all ?? 0) : (rawCounts[s] ?? 0);
     return acc;
   }, {});
 
@@ -170,6 +177,14 @@ export default function QCJobs() {
               </Link>
             );
           })}
+        </div>
+      )}
+
+      {pagination.pages > 1 && (
+        <div className="flex items-center justify-center gap-2 pt-2">
+          <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={pagination.page <= 1}>Previous</Button>
+          <span className="text-sm text-muted-foreground">Page {pagination.page} of {pagination.pages} ({pagination.total} jobs)</span>
+          <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)} disabled={pagination.page >= pagination.pages}>Next</Button>
         </div>
       )}
     </div>

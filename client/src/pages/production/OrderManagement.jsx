@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
-import { useProduction } from '@/contexts/ProductionContext';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useProduction, useProductionOrdersList, computeOrderProgress } from '@/contexts/ProductionContext';
+import { UNIT_TYPES, getUnitsForType } from '@/utils/unitTypes';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -34,9 +35,8 @@ const statusIcon = {
   'Completed': <CheckCircle className="h-3.5 w-3.5" />,
 };
 
-const UNITS = ['kg', 'pcs', 'ltr', 'm', 'set', 'nos'];
 const emptyOrder = { machineCode: '', machineName: '', priority: 'Normal', deliveryDate: '', source: 'Stock' };
-const emptyDemand = { materialCode: '', materialName: '', quantity: '', unit: 'kg' };
+const emptyDemand = { materialCode: '', materialName: '', quantity: '', unitType: '', unit: '' };
 
 const groupByLabel = (customFields) =>
   (customFields || []).reduce((acc, cf) => {
@@ -46,16 +46,34 @@ const groupByLabel = (customFields) =>
 
 export default function OrderManagement() {
   const {
-    orders, addOrder, verifyBOM, verifyDesign, raiseRDRequest,
+    addOrder, verifyBOM, verifyDesign, raiseRDRequest,
     decideRework, decideRepair,
     addMaterialDemand, updateMaterialStatus, markMaterialIssued,
-    getOrderProgress,
   } = useProduction();
   const queryClient = useQueryClient();
 
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('All');
   const [filterSource, setFilterSource] = useState('All');
+  const [page, setPage] = useState(1);
+
+  // Any filter change jumps back to page 1, same as SuperAdminOrders.jsx.
+  const changeSearch = (value) => { setSearch(value); setPage(1); };
+  const changeStatus = (value) => { setFilterStatus(value); setPage(1); };
+  const changeSource = (value) => { setFilterSource(value); setPage(1); };
+
+  const { data: ordersListData, isLoading: ordersLoading } = useProductionOrdersList({
+    page,
+    limit: 20,
+    search,
+    status: filterStatus === 'All' ? 'all' : filterStatus,
+    source: filterSource === 'Store Orders' ? 'Store' : filterSource === 'Rejected Items' ? 'QC_Rejected' : 'all',
+  });
+
+  const orders = ordersListData?.data?.orders || [];
+  const pagination = ordersListData?.data?.pagination || {};
+  const summary = ordersListData?.data?.summary || {};
+
   const [addOpen, setAddOpen] = useState(false);
   const [detailOrder, setDetailOrder] = useState(null);
   const [demandOpen, setDemandOpen] = useState(false);
@@ -77,6 +95,36 @@ export default function OrderManagement() {
   // Product Master snapshot, specs, custom fields) without leaving this page.
   const [bomView, setBomView] = useState({ loading: false, bom: null, forCode: null });
   const [viewMat, setViewMat] = useState(null);
+
+  // Dynamic unit types (same source BOM Management/Product Master/Inventory use) for the
+  // Add Material Demand form's Unit Type/Unit pair.
+  const { data: unitTypesData } = useQuery({
+    queryKey: ['/api/inventory/unit-types'],
+    queryFn: () => apiRequest('GET', '/api/inventory/unit-types'),
+  });
+  const unitTypesList = React.useMemo(() => {
+    if (unitTypesData?.unitTypes) return unitTypesData.unitTypes.map(ut => ut.name);
+    return UNIT_TYPES;
+  }, [unitTypesData]);
+  const getUnitsForTypeDynamic = (unitTypeName, currentUnit) => {
+    if (!unitTypeName) return [];
+    if (unitTypesData?.unitTypes) {
+      const found = unitTypesData.unitTypes.find(ut => ut.name === unitTypeName);
+      if (found) {
+        const units = found.units || [];
+        return currentUnit && !units.includes(currentUnit) ? [currentUnit, ...units] : units;
+      }
+    }
+    return getUnitsForType(unitTypeName, currentUnit);
+  };
+  const getUnitTypeForUnitDynamic = (unitName) => {
+    if (!unitName) return '';
+    if (unitTypesData?.unitTypes) {
+      const found = unitTypesData.unitTypes.find(ut => ut.units?.includes(unitName));
+      if (found) return found.name;
+    }
+    return '';
+  };
 
   // ── NEW HANDLER ──
   const handleIssueMaterial = async () => {
@@ -153,7 +201,7 @@ export default function OrderManagement() {
     }
   };
 
-  const statuses = ['All', 'Pending', 'BOM Pending', 'In Progress', 'Completed'];
+  const statuses = ['All', 'Pending', 'BOM Pending', 'In Progress', 'On Hold', 'Completed'];
   const sources = ['All', 'Store Orders', 'Rejected Items'];
 
   // Real sales-order id (ORD-xxx) that this production belongs to:
@@ -169,28 +217,11 @@ export default function OrderManagement() {
     return null; // 'Stock'
   };
 
-  const filtered = orders.filter(o => {
-    const matchSearch = !search ||
-      (o.orderId || o.id || '').toLowerCase().includes(search.toLowerCase()) ||
-      (getRealOrderId(o) || '').toLowerCase().includes(search.toLowerCase()) ||
-      o.machineName.toLowerCase().includes(search.toLowerCase());
-    const matchStatus = filterStatus === 'All' || o.status === filterStatus;
-    const matchSource = filterSource === 'All' ||
-      (filterSource === 'Store Orders' && (!o.source || o.source === 'Store')) ||
-      (filterSource === 'Rejected Items' && o.source === 'QC_Rejected');
-    return matchSearch && matchStatus && matchSource;
-  });
-
-  const stats = {
-    total: orders.length,
-    pending: orders.filter(o => o.status === 'Pending').length,
-    inProgress: orders.filter(o => o.status === 'In Progress').length,
-    bomPending: orders.filter(o => o.status === 'BOM Pending').length,
-    completed: orders.filter(o => o.status === 'Completed').length,
-    urgent: orders.filter(o => o.priority === 'Urgent').length,
-    storeOrders: orders.filter(o => !o.source || o.source === 'Store').length,
-    rejectedOrders: orders.filter(o => o.source === 'QC_Rejected').length,
-  };
+  // Search/status/source filtering and the stat counts below now happen
+  // server-side (see useProductionOrdersList) — `orders` is already the
+  // current page of the filtered result set.
+  const filtered = orders;
+  const stats = summary;
 
   const handleAddOrder = () => {
     if (!form.machineCode || !form.machineName || !form.deliveryDate) return;
@@ -211,9 +242,13 @@ export default function OrderManagement() {
       const res = await apiRequest('GET', `/api/items/by-code?code=${encodeURIComponent(codeVal.trim())}`);
       if (res.success && res.data) {
         setFoundItem(res.data);
+        // Deliberately the item's stock/storage unit ("unit"/"unitType"), not its
+        // Purchase Unit ("purchaseUnit"/"purchaseUnitType") — Production draws from
+        // stock, so the demand quantity must be expressed in the stock unit.
         setDemandForm(prev => ({
           ...prev,
           materialName: res.data.name,
+          unitType: res.data.unitType || getUnitTypeForUnitDynamic(res.data.unit) || prev.unitType,
           unit: res.data.unit || prev.unit
         }));
       } else {
@@ -225,7 +260,7 @@ export default function OrderManagement() {
   };
 
   const handleAddDemand = async () => {
-    if (!demandForm.materialCode || !demandForm.materialName || !demandForm.quantity) return;
+    if (!demandForm.materialCode || !demandForm.materialName || !demandForm.quantity || !demandForm.unit) return;
     try {
       await addMaterialDemand(detailOrder._id || detailOrder.id, {
         ...demandForm,
@@ -320,7 +355,7 @@ export default function OrderManagement() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-7 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-8 gap-3">
         {[
           { label: 'Total Orders', value: stats.total, color: 'text-slate-800', bg: 'bg-white' },
           { label: 'Store Orders', value: stats.storeOrders, color: 'text-blue-600', bg: 'bg-blue-50' },
@@ -328,6 +363,7 @@ export default function OrderManagement() {
           { label: 'Pending', value: stats.pending, color: 'text-slate-600', bg: 'bg-white' },
           { label: 'BOM Pending', value: stats.bomPending, color: 'text-amber-600', bg: 'bg-amber-50' },
           { label: 'In Progress', value: stats.inProgress, color: 'text-blue-600', bg: 'bg-blue-50' },
+          { label: 'On Hold', value: stats.onHold, color: 'text-red-600', bg: 'bg-red-50' },
           { label: 'Completed', value: stats.completed, color: 'text-emerald-600', bg: 'bg-emerald-50' },
         ].map(s => (
           <Card key={s.label} className={`border-none shadow-sm ${s.bg}`}>
@@ -345,7 +381,7 @@ export default function OrderManagement() {
           {/* Search */}
           <div className="relative flex-1 max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-            <Input placeholder="Search by Order ID or Machine..." className="pl-9" value={search} onChange={e => setSearch(e.target.value)} />
+            <Input placeholder="Search by Order ID or Machine..." className="pl-9" value={search} onChange={e => changeSearch(e.target.value)} />
           </div>
 
           {/* Source Filter */}
@@ -355,7 +391,7 @@ export default function OrderManagement() {
               {sources.map(s => (
                 <button
                   key={s}
-                  onClick={() => setFilterSource(s)}
+                  onClick={() => changeSource(s)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${filterSource === s ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-slate-600 border-slate-200 hover:border-purple-300'}`}
                 >{s}</button>
               ))}
@@ -367,7 +403,7 @@ export default function OrderManagement() {
               {statuses.map(s => (
                 <button
                   key={s}
-                  onClick={() => setFilterStatus(s)}
+                  onClick={() => changeStatus(s)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${filterStatus === s ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300'}`}
                 >{s}</button>
               ))}
@@ -395,11 +431,13 @@ export default function OrderManagement() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.length === 0 ? (
+                {ordersLoading ? (
+                  <tr><td colSpan={9} className="text-center py-12 text-slate-400">Loading orders...</td></tr>
+                ) : filtered.length === 0 ? (
                   <tr><td colSpan={9} className="text-center py-12 text-slate-400">No orders found.</td></tr>
                 ) : filtered.map(order => {
                   const oid = order._id || order.id;
-                  const progress = getOrderProgress(oid);
+                  const progress = computeOrderProgress(order);
                   const isOverdue = order.deliveryDate && order.status !== 'Completed' && new Date(order.deliveryDate) < new Date();
                   const isRejected = order.source === 'QC_Rejected';
 
@@ -495,6 +533,30 @@ export default function OrderManagement() {
               </tbody>
             </table>
           </div>
+
+          {pagination.pages > 1 && (
+            <div className="flex items-center justify-center gap-2 py-4">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={pagination.page <= 1}
+              >
+                Previous
+              </Button>
+              <span className="text-xs text-slate-500">
+                Page {pagination.page} of {pagination.pages} ({pagination.total} orders)
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage(p => p + 1)}
+                disabled={pagination.page >= pagination.pages}
+              >
+                Next
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -842,15 +904,23 @@ export default function OrderManagement() {
         <DialogContent className="max-w-md">
           <DialogHeader><DialogTitle>Add Material Demand</DialogTitle></DialogHeader>
           <div className="space-y-3 py-2">
+            <div>
+              <label className="text-xs font-semibold text-slate-600 mb-1 block">Material Code *</label>
+              <Input placeholder="e.g. STL-010" value={demandForm.materialCode} onChange={e => handleCodeChange(e.target.value)} />
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Material Code *</label>
-                <Input placeholder="e.g. STL-010" value={demandForm.materialCode} onChange={e => handleCodeChange(e.target.value)} />
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">Unit Type</label>
+                <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={demandForm.unitType} onChange={e => setDemandForm(f => ({ ...f, unitType: e.target.value, unit: '' }))}>
+                  <option value="">Select</option>
+                  {unitTypesList.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
               </div>
               <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Unit</label>
-                <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={demandForm.unit} onChange={e => setDemandForm(f => ({ ...f, unit: e.target.value }))}>
-                  {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">Unit *</label>
+                <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-400" value={demandForm.unit} disabled={!demandForm.unitType} onChange={e => setDemandForm(f => ({ ...f, unit: e.target.value }))}>
+                  <option value="">{demandForm.unitType ? 'Select' : 'Select Unit Type first'}</option>
+                  {getUnitsForTypeDynamic(demandForm.unitType, demandForm.unit).map(u => <option key={u} value={u}>{u}</option>)}
                 </select>
               </div>
             </div>
@@ -883,7 +953,7 @@ export default function OrderManagement() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDemandOpen(false)}>Cancel</Button>
-            <Button onClick={handleAddDemand} disabled={!demandForm.materialCode || !demandForm.materialName || !demandForm.quantity} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">Add Demand</Button>
+            <Button onClick={handleAddDemand} disabled={!demandForm.materialCode || !demandForm.materialName || !demandForm.quantity || !demandForm.unit} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">Add Demand</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1060,14 +1130,22 @@ export default function OrderManagement() {
                 </div>
               </div>
 
-              {(viewMat.category || viewMat.pSourceType || viewMat.brand || viewMat.metrology || viewMat.description) && (
+              {(viewMat.category || viewMat.pType || viewMat.pSourceType || viewMat.brand || viewMat.metrology || viewMat.description ||
+                viewMat.size || (viewMat.unitWeightValue !== null && viewMat.unitWeightValue !== undefined) || viewMat.inputUnit || viewMat.outputUnit) && (
                 <div className="bg-slate-50 rounded-lg p-3">
                   <p className="text-xs text-slate-500 mb-2 font-semibold">Product Master Snapshot</p>
                   <div className="grid grid-cols-2 gap-2">
+                    {viewMat.pType && <div><p className="text-[11px] text-slate-400">P-Type</p><p className="text-sm text-slate-800">{viewMat.pType}</p></div>}
                     {viewMat.category && <div><p className="text-[11px] text-slate-400">Category</p><p className="text-sm text-slate-800">{viewMat.category}</p></div>}
                     {viewMat.pSourceType && <div><p className="text-[11px] text-slate-400">P-Source Type</p><p className="text-sm text-slate-800">{viewMat.pSourceType}</p></div>}
                     {viewMat.brand && <div><p className="text-[11px] text-slate-400">Brand</p><p className="text-sm text-slate-800">{viewMat.brand}</p></div>}
                     {viewMat.metrology && <div><p className="text-[11px] text-slate-400">Metrology</p><p className="text-sm text-slate-800">{viewMat.metrology}</p></div>}
+                    {viewMat.size && <div><p className="text-[11px] text-slate-400">Size</p><p className="text-sm text-slate-800">{viewMat.size}</p></div>}
+                    {(viewMat.unitWeightValue !== null && viewMat.unitWeightValue !== undefined) && (
+                      <div><p className="text-[11px] text-slate-400">Unit Weight</p><p className="text-sm text-slate-800">{viewMat.unitWeightValue} {viewMat.unitWeightUnit || ''}</p></div>
+                    )}
+                    {viewMat.inputUnit && <div><p className="text-[11px] text-slate-400">Input Unit (Purchase)</p><p className="text-sm text-slate-800">{viewMat.inputUnit}</p></div>}
+                    {viewMat.outputUnit && <div><p className="text-[11px] text-slate-400">Output Unit</p><p className="text-sm text-slate-800">{viewMat.outputUnit}</p></div>}
                   </div>
                   {viewMat.description && (
                     <div className="mt-2">

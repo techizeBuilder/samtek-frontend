@@ -55,13 +55,17 @@ export default function VendorBids() {
   const [confirmModalOpen, setConfirmModalOpen] = useState(false);
   const [selectedBidId, setSelectedBidId] = useState(null);
   const [selectedBidData, setSelectedBidData] = useState(null);
+  const [page, setPage] = useState(1);
 
-  // ── Fetch all RFQs ────────────────────────────────────────────────────────
-  const { data: rfqList, isLoading: rfqLoading, refetch: refetchRFQs } = useQuery({
-    queryKey: ['/api/rfq'],
-    queryFn: () => apiRequest('GET', '/api/rfq'),
-    select: (d) => d.data || []
+  // ── Fetch RFQs — paginated (this page browses full history, including
+  // old Closed/Awarded RFQs, unlike RFQ Management's bounded active view) ──
+  const { data: rfqResponse, isLoading: rfqLoading, refetch: refetchRFQs } = useQuery({
+    queryKey: ['/api/rfq', page],
+    queryFn: () => apiRequest('GET', `/api/rfq?page=${page}&limit=20`),
+    keepPreviousData: true,
   });
+  const rfqList = rfqResponse?.data || [];
+  const rfqPagination = rfqResponse?.pagination || {};
 
   // ── Fetch bids for selected RFQ ───────────────────────────────────────────
   const { data: bidsData, isLoading: bidsLoading, refetch: refetchBids } = useQuery({
@@ -219,6 +223,13 @@ export default function VendorBids() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+          {rfqPagination.pages > 1 && (
+            <div className="flex items-center justify-center gap-2 py-4 border-t">
+              <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={rfqPagination.page <= 1}>Previous</Button>
+              <span className="text-sm text-slate-500">Page {rfqPagination.page} of {rfqPagination.pages} ({rfqPagination.total} RFQs)</span>
+              <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)} disabled={rfqPagination.page >= rfqPagination.pages}>Next</Button>
             </div>
           )}
         </CardContent>

@@ -1,20 +1,20 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useRD } from '@/contexts/RDContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { ClipboardList, Lock, Plus, Trash2, Edit2, Eye, AlertTriangle, ChevronDown, Package, Ban, RefreshCw } from 'lucide-react';
+import { ClipboardList, Lock, Plus, Trash2, Edit2, Eye, AlertTriangle, ChevronDown, Package, Ban, RefreshCw, Search } from 'lucide-react';
 import { UNIT_TYPES, getUnitTypeForUnit, getUnitsForType } from '@/utils/unitTypes';
 import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
-import { showSuccessToast, showSmartToast } from '@/lib/toast-utils';
 
-const MATERIAL_TYPE_SUGGESTIONS = ['Raw Material', 'Fabricated Part', 'Purchased Part', 'Assembly', 'Consumable', 'Packaging Material', 'Tool'];
 const emptyMaterial = {
   code: '', childPart: '', subChildPart: '', item: '', itemType: '', quantity: '', unitType: '', unit: '',
   // Product Master snapshot fields, silently captured on code match
-  category: '', pSourceType: '', brand: '', description: '', metrology: '', specifications: [], customFields: []
+  category: '', pType: '', pSourceType: '', brand: '', description: '', metrology: '', specifications: [], customFields: [],
+  size: '', unitWeightValue: '', unitWeightUnitType: '', unitWeightUnit: '',
+  inputUnitType: '', inputUnit: '', outputUnitType: '', outputUnit: ''
 };
 
 const groupByLabel = (customFields) =>
@@ -23,8 +23,64 @@ const groupByLabel = (customFields) =>
     return acc;
   }, {});
 
+// BOM materials must reference an existing Product Master entry — no free-typed codes.
+// This picker replaces the old free-text code input with a searchable, selection-only list.
+function MaterialCodePicker({ value, displayName, machines, onSelect }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const wrapperRef = useRef(null);
+
+  useEffect(() => {
+    const onClickOutside = (e) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onClickOutside);
+    return () => document.removeEventListener('mousedown', onClickOutside);
+  }, []);
+
+  const candidates = (machines || []).filter(m => !m.isDiscontinued);
+  const q = query.trim().toLowerCase();
+  const matches = (q
+    ? candidates.filter(m => (m.code || '').toLowerCase().includes(q) || (m.name || '').toLowerCase().includes(q))
+    : candidates
+  ).slice(0, 50);
+
+  return (
+    <div className="relative" ref={wrapperRef}>
+      <div className="relative">
+        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+        <input
+          type="text"
+          className="w-full h-10 rounded-md border border-slate-200 bg-white pl-8 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          placeholder="Search Product Master code or name..."
+          value={open ? query : (value ? `${value}${displayName ? ` — ${displayName}` : ''}` : '')}
+          onFocus={() => { setOpen(true); setQuery(''); }}
+          onChange={e => setQuery(e.target.value)}
+        />
+      </div>
+      {open && (
+        <div className="absolute z-20 mt-1 w-full max-h-56 overflow-y-auto bg-white border border-slate-200 rounded-md shadow-lg">
+          {matches.length === 0 ? (
+            <p className="text-xs text-slate-400 italic text-center py-3">No matching Product Master items</p>
+          ) : matches.map(m => (
+            <button
+              type="button"
+              key={m._id}
+              onClick={() => { onSelect(m); setOpen(false); setQuery(''); }}
+              className="w-full text-left px-3 py-2 text-xs hover:bg-slate-50 border-b border-slate-50 last:border-0"
+            >
+              <span className="font-mono font-semibold text-blue-700">{m.code}</span>
+              <span className="text-slate-600"> — {m.name}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function BOMManagement() {
-  const { machines, boms, getBOMForMachine, addBOM, addMaterial, updateMaterial, deleteMaterial, lockBOM, discontinueMaterial, reactivateMaterial, masterOptions, addMasterOption } = useRD();
+  const { machines, boms, getBOMForMachine, addBOM, addMaterial, updateMaterial, deleteMaterial, lockBOM, discontinueMaterial, reactivateMaterial } = useRD();
   const [selectedMachineId, setSelectedMachineId] = useState('');
   const [addOpen, setAddOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -35,8 +91,6 @@ export default function BOMManagement() {
   const [form, setForm] = useState(emptyMaterial);
   const [editForm, setEditForm] = useState(emptyMaterial);
   const [editingMat, setEditingMat] = useState(null);
-  const [bomVariant, setBomVariant] = useState('Standard');
-  const [newTypeModal, setNewTypeModal] = useState({ open: false, value: '' });
 
   // Query dynamic unit types
   const { data: unitTypesData } = useQuery({
@@ -63,63 +117,56 @@ export default function BOMManagement() {
     return getUnitsForType(unitTypeName, currentUnit);
   };
 
-  // Material Type is its own dynamic master list (RDMasterOption field "MaterialType"),
-  // deliberately separate from Product Master's P-Type so the two taxonomies can diverge.
-  const materialTypeOptions = masterOptions.MaterialType || [];
-
-  const handleAddMaterialType = async () => {
-    if (!newTypeModal.value) return;
-    try {
-      await addMasterOption({ field: 'MaterialType', value: newTypeModal.value });
-      if (editOpen) {
-        setEditForm(f => ({ ...f, itemType: newTypeModal.value }));
-      } else {
-        setForm(f => ({ ...f, itemType: newTypeModal.value }));
-      }
-      setNewTypeModal({ open: false, value: '' });
-      showSuccessToast('Material Type Added', 'New material type added successfully');
-    } catch (e) {
-      showSmartToast(e, 'Failed to add material type');
-    }
-  };
-
   // Look up a Product Master entry by its code (all products, not just In House/Out Source machines —
-  // BOM materials reference raw materials, tools, fabricated parts etc. too). Material Type is its own
-  // independent list (not derived from Product Master's P-Type), but everything else Product Master
-  // knows about the item — category, source type, brand, description, metrology, specs, custom fields —
-  // is captured into the material record as a point-in-time snapshot, even though most of it has no
-  // dedicated input on this form. It's viewable later via the row's "eye" button.
+  // BOM materials reference raw materials, tools, fabricated parts etc. too).
   const findProductByCode = (code) => {
     const c = (code || '').trim().toLowerCase();
     if (!c) return null;
     return machines.find(m => (m.code || '').trim().toLowerCase() === c) || null;
   };
 
-  const handleCodeBlur = (setState) => (e) => {
-    const match = findProductByCode(e.target.value);
-    if (!match) return;
+  // BOM materials can only be Product Master entries — picking one via MaterialCodePicker
+  // snapshots everything Product Master knows about it (category, source type, brand,
+  // description, metrology, specs, custom fields) into the material record as a point-in-time
+  // copy, even though most of it has no dedicated input on this form. Viewable via the "eye" button.
+  const applyProductMatch = (setState, match) => {
     setState(f => ({
       ...f,
+      code: match.code || '',
       item: match.name || f.item,
       category: match.category || '',
+      pType: match.pType || '',
       pSourceType: match.pSourceType || '',
       brand: match.brand || '',
       description: match.description || '',
       metrology: match.metrology || '',
       specifications: Array.isArray(match.specifications) ? match.specifications : [],
       customFields: Array.isArray(match.customFields) ? match.customFields : [],
+      size: match.size || '',
+      unitWeightValue: match.unitWeightValue !== null && match.unitWeightValue !== undefined ? match.unitWeightValue : '',
+      unitWeightUnitType: match.unitWeightUnitType || '',
+      unitWeightUnit: match.unitWeightUnit || '',
+      inputUnitType: match.inputUnitType || '',
+      inputUnit: match.inputUnit || '',
+      outputUnitType: match.outputUnitType || '',
+      outputUnit: match.outputUnit || '',
     }));
   };
 
   const renderCodeMatchHint = (code) => {
     if (!code) return null;
     const match = findProductByCode(code);
-    if (!match) return <p className="text-[11px] text-amber-600 mt-1">No matching Product Master code found — enter details manually.</p>;
+    if (!match) return null;
     const extras = [];
     if (match.category) extras.push('Category');
+    if (match.pType) extras.push('P-Type');
     if (match.pSourceType) extras.push('P-Source Type');
     if (match.brand) extras.push('Brand');
     if (match.metrology) extras.push('Metrology');
+    if (match.size) extras.push('Size');
+    if (match.unitWeightValue !== null && match.unitWeightValue !== undefined) extras.push('Unit Weight');
+    if (match.inputUnit) extras.push('Input Unit');
+    if (match.outputUnit) extras.push('Output Unit');
     if (Array.isArray(match.specifications) && match.specifications.length) extras.push(`${match.specifications.length} spec${match.specifications.length > 1 ? 's' : ''}`);
     if (Array.isArray(match.customFields) && match.customFields.length) extras.push(`${match.customFields.length} custom field${match.customFields.length > 1 ? 's' : ''}`);
     return (
@@ -130,44 +177,19 @@ export default function BOMManagement() {
     );
   };
 
-  const renderMaterialTypeSelect = (state, setState) => (
-    <div>
-      <label className="text-xs font-semibold text-slate-600 mb-1 block">Material Type *</label>
-      <div className="flex gap-2">
-        <select
-          className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-          value={state.itemType}
-          onChange={e => setState(f => ({ ...f, itemType: e.target.value }))}
-        >
-          <option value="" disabled>Select...</option>
-          {materialTypeOptions.map(o => <option key={o.value} value={o.value}>{o.value}</option>)}
-        </select>
-        <Button
-          type="button"
-          size="icon"
-          variant="outline"
-          onClick={() => setNewTypeModal({ open: true, value: '' })}
-          className="flex-shrink-0 h-9 w-9 bg-white hover:bg-slate-50 text-slate-600"
-        >
-          <Plus className="h-4 w-4" />
-        </Button>
-      </div>
-    </div>
-  );
-
   const activeMachines = machines.filter(m => !m.isDiscontinued && ['In House Manufacturing', 'Out Source Manufactured'].includes(m.pSourceType));
   const selectedMachine = activeMachines.find(m => String(m._id) === selectedMachineId);
   const bom = selectedMachineId ? getBOMForMachine(selectedMachineId) : null;
 
   const handleAddMaterial = () => {
-    if (!form.code || !form.item || !form.itemType || !form.quantity || !form.unitType || !form.unit) return;
+    if (!form.code || !form.item || !form.quantity || !form.unitType || !form.unit) return;
     addMaterial(bom._id, { ...form, quantity: Number(form.quantity) });
     setForm(emptyMaterial);
     setAddOpen(false);
   };
 
   const handleEditMaterial = () => {
-    if (!editForm.code || !editForm.item || !editForm.itemType || !editForm.quantity || !editForm.unit) return;
+    if (!editForm.code || !editForm.item || !editForm.quantity || !editForm.unit) return;
     updateMaterial(bom._id, editingMat._id, { ...editForm, quantity: Number(editForm.quantity) });
     setEditOpen(false);
   };
@@ -184,12 +206,21 @@ export default function BOMManagement() {
       unitType: mat.unitType || getUnitTypeForUnit(mat.unit),
       unit: mat.unit || '',
       category: mat.category || '',
+      pType: mat.pType || '',
       pSourceType: mat.pSourceType || '',
       brand: mat.brand || '',
       description: mat.description || '',
       metrology: mat.metrology || '',
       specifications: Array.isArray(mat.specifications) ? mat.specifications : [],
       customFields: Array.isArray(mat.customFields) ? mat.customFields : [],
+      size: mat.size || '',
+      unitWeightValue: mat.unitWeightValue !== null && mat.unitWeightValue !== undefined ? mat.unitWeightValue : '',
+      unitWeightUnitType: mat.unitWeightUnitType || '',
+      unitWeightUnit: mat.unitWeightUnit || '',
+      inputUnitType: mat.inputUnitType || '',
+      inputUnit: mat.inputUnit || '',
+      outputUnitType: mat.outputUnitType || '',
+      outputUnit: mat.outputUnit || '',
     });
     setEditOpen(true);
   };
@@ -197,7 +228,7 @@ export default function BOMManagement() {
   const openView = (mat) => setViewMat(mat);
 
   const handleCreateBOM = () => {
-    addBOM(selectedMachineId, bomVariant);
+    addBOM(selectedMachineId);
     setNewBOMOpen(false);
   };
 
@@ -375,8 +406,8 @@ export default function BOMManagement() {
           <DialogHeader><DialogTitle>Add Material Item</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
             <div>
-              <label className="text-xs font-semibold text-slate-600 mb-1 block">Material Code *</label>
-              <Input placeholder="e.g. STL-009" value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value }))} onBlur={handleCodeBlur(setForm)} />
+              <label className="text-xs font-semibold text-slate-600 mb-1 block">Material Code * <span className="text-[10px] text-slate-400 font-normal">(from Product Master)</span></label>
+              <MaterialCodePicker value={form.code} displayName={form.item} machines={machines} onSelect={(m) => applyProductMatch(setForm, m)} />
               {renderCodeMatchHint(form.code)}
             </div>
 
@@ -391,12 +422,9 @@ export default function BOMManagement() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Material Name *</label>
-                <Input placeholder="e.g. Sheet Metal 5mm" value={form.item} onChange={e => setForm(f => ({ ...f, item: e.target.value }))} />
-              </div>
-              {renderMaterialTypeSelect(form, setForm)}
+            <div>
+              <label className="text-xs font-semibold text-slate-600 mb-1 block">Material Name *</label>
+              <Input placeholder="e.g. Sheet Metal 5mm" value={form.item} onChange={e => setForm(f => ({ ...f, item: e.target.value }))} />
             </div>
 
             <div>
@@ -423,7 +451,7 @@ export default function BOMManagement() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
-            <Button onClick={handleAddMaterial} disabled={!form.code || !form.item || !form.itemType || !form.quantity || !form.unitType || !form.unit} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">Add to BOM</Button>
+            <Button onClick={handleAddMaterial} disabled={!form.code || !form.item || !form.quantity || !form.unitType || !form.unit} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">Add to BOM</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -434,8 +462,8 @@ export default function BOMManagement() {
           <DialogHeader><DialogTitle>Edit Material</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
             <div>
-              <label className="text-xs font-semibold text-slate-600 mb-1 block">Material Code *</label>
-              <Input placeholder="e.g. STL-009" value={editForm.code} onChange={e => setEditForm(f => ({ ...f, code: e.target.value }))} onBlur={handleCodeBlur(setEditForm)} />
+              <label className="text-xs font-semibold text-slate-600 mb-1 block">Material Code * <span className="text-[10px] text-slate-400 font-normal">(from Product Master)</span></label>
+              <MaterialCodePicker value={editForm.code} displayName={editForm.item} machines={machines} onSelect={(m) => applyProductMatch(setEditForm, m)} />
               {renderCodeMatchHint(editForm.code)}
             </div>
 
@@ -449,12 +477,9 @@ export default function BOMManagement() {
                 <Input value={editForm.subChildPart} onChange={e => setEditForm(f => ({ ...f, subChildPart: e.target.value }))} />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Material Name *</label>
-                <Input value={editForm.item} onChange={e => setEditForm(f => ({ ...f, item: e.target.value }))} />
-              </div>
-              {renderMaterialTypeSelect(editForm, setEditForm)}
+            <div>
+              <label className="text-xs font-semibold text-slate-600 mb-1 block">Material Name *</label>
+              <Input value={editForm.item} onChange={e => setEditForm(f => ({ ...f, item: e.target.value }))} />
             </div>
             <div>
               <label className="text-xs font-semibold text-slate-600 mb-1 block">Quantity *</label>
@@ -479,7 +504,7 @@ export default function BOMManagement() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
-            <Button onClick={handleEditMaterial} disabled={!editForm.code || !editForm.item || !editForm.itemType || !editForm.quantity || !editForm.unit} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">Save Changes</Button>
+            <Button onClick={handleEditMaterial} disabled={!editForm.code || !editForm.item || !editForm.quantity || !editForm.unit} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">Save Changes</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -519,50 +544,12 @@ export default function BOMManagement() {
       <Dialog open={newBOMOpen} onOpenChange={setNewBOMOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle>Create New BOM</DialogTitle></DialogHeader>
-          <div className="py-2 space-y-4">
+          <div className="py-2">
             <p className="text-sm text-slate-600">Create a Bill of Materials for <strong>{selectedMachine?.name}</strong>.</p>
-            <div>
-              <label className="text-xs font-semibold text-slate-600 mb-1 block">BOM Variant *</label>
-              <Input 
-                placeholder="e.g. Standard, Export, v2" 
-                value={bomVariant} 
-                onChange={e => setBomVariant(e.target.value)} 
-              />
-            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setNewBOMOpen(false)}>Cancel</Button>
-            <Button onClick={handleCreateBOM} disabled={!bomVariant} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">Create BOM</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Add New Material Type Dialog */}
-      <Dialog open={newTypeModal.open} onOpenChange={(open) => !open && setNewTypeModal({ open: false, value: '' })}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle>Add New Material Type</DialogTitle></DialogHeader>
-          <div className="py-4">
-            <label className="text-xs font-semibold text-slate-600 mb-1 block">Value to Save *</label>
-            <input
-              type="text"
-              list="material-type-suggestions"
-              autoFocus
-              className="flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-              placeholder="Type to search or add new..."
-              value={newTypeModal.value}
-              onChange={e => setNewTypeModal(prev => ({ ...prev, value: e.target.value }))}
-              onKeyDown={e => e.key === 'Enter' && handleAddMaterialType()}
-            />
-            <datalist id="material-type-suggestions">
-              {MATERIAL_TYPE_SUGGESTIONS.map(opt => <option key={opt} value={opt} />)}
-            </datalist>
-            <p className="text-xs text-slate-500 mt-2">
-              This list is specific to BOM Management and is independent of Product Master's P-Type.
-            </p>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setNewTypeModal({ open: false, value: '' })}>Cancel</Button>
-            <Button onClick={handleAddMaterialType} disabled={!newTypeModal.value} className="bg-blue-600 hover:bg-blue-700 text-white">Save Type</Button>
+            <Button onClick={handleCreateBOM} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">Create BOM</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -599,14 +586,22 @@ export default function BOMManagement() {
                 </div>
               </div>
 
-              {(viewMat.category || viewMat.pSourceType || viewMat.brand || viewMat.metrology || viewMat.description) && (
+              {(viewMat.category || viewMat.pType || viewMat.pSourceType || viewMat.brand || viewMat.metrology || viewMat.description ||
+                viewMat.size || (viewMat.unitWeightValue !== null && viewMat.unitWeightValue !== undefined) || viewMat.inputUnit || viewMat.outputUnit) && (
                 <div className="bg-slate-50 rounded-lg p-3">
                   <p className="text-xs text-slate-500 mb-2 font-semibold">Product Master Snapshot</p>
                   <div className="grid grid-cols-2 gap-2">
+                    {viewMat.pType && <div><p className="text-[11px] text-slate-400">P-Type</p><p className="text-sm text-slate-800">{viewMat.pType}</p></div>}
                     {viewMat.category && <div><p className="text-[11px] text-slate-400">Category</p><p className="text-sm text-slate-800">{viewMat.category}</p></div>}
                     {viewMat.pSourceType && <div><p className="text-[11px] text-slate-400">P-Source Type</p><p className="text-sm text-slate-800">{viewMat.pSourceType}</p></div>}
                     {viewMat.brand && <div><p className="text-[11px] text-slate-400">Brand</p><p className="text-sm text-slate-800">{viewMat.brand}</p></div>}
                     {viewMat.metrology && <div><p className="text-[11px] text-slate-400">Metrology</p><p className="text-sm text-slate-800">{viewMat.metrology}</p></div>}
+                    {viewMat.size && <div><p className="text-[11px] text-slate-400">Size</p><p className="text-sm text-slate-800">{viewMat.size}</p></div>}
+                    {(viewMat.unitWeightValue !== null && viewMat.unitWeightValue !== undefined) && (
+                      <div><p className="text-[11px] text-slate-400">Unit Weight</p><p className="text-sm text-slate-800">{viewMat.unitWeightValue} {viewMat.unitWeightUnit || ''}</p></div>
+                    )}
+                    {viewMat.inputUnit && <div><p className="text-[11px] text-slate-400">Input Unit (Purchase)</p><p className="text-sm text-slate-800">{viewMat.inputUnit}</p></div>}
+                    {viewMat.outputUnit && <div><p className="text-[11px] text-slate-400">Output Unit</p><p className="text-sm text-slate-800">{viewMat.outputUnit}</p></div>}
                   </div>
                   {viewMat.description && (
                     <div className="mt-2">
@@ -652,7 +647,9 @@ export default function BOMManagement() {
                 </div>
               )}
 
-              {!viewMat.category && !viewMat.pSourceType && !viewMat.brand && !viewMat.metrology && !viewMat.description &&
+              {!viewMat.category && !viewMat.pType && !viewMat.pSourceType && !viewMat.brand && !viewMat.metrology && !viewMat.description &&
+                !viewMat.size && (viewMat.unitWeightValue === null || viewMat.unitWeightValue === undefined) &&
+                !viewMat.inputUnit && !viewMat.outputUnit &&
                 (!viewMat.specifications || viewMat.specifications.length === 0) && (!viewMat.customFields || viewMat.customFields.length === 0) && (
                 <p className="text-xs text-slate-400 italic text-center py-2">No additional Product Master data was captured for this material.</p>
               )}

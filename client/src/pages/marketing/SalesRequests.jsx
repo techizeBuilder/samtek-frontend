@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { marketingRequestApi } from '@/api/marketingRequestService';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -38,6 +38,7 @@ export default function SalesRequests() {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [filter, setFilter] = useState('Pending');
+  const [page, setPage] = useState(1);
 
   // Approve modal state
   const [approveReq, setApproveReq] = useState(null);
@@ -47,12 +48,17 @@ export default function SalesRequests() {
   const [rejectReq, setRejectReq] = useState(null);
   const [rejectReason, setRejectReason] = useState('');
 
+  // Reset to page 1 whenever the status tab changes so the user doesn't
+  // land on a now-out-of-range page.
+  useEffect(() => { setPage(1); }, [filter]);
+
   const { data, isLoading, refetch, isFetching } = useQuery({
-    queryKey: ['marketing-sales-requests'],
-    queryFn: () => marketingRequestApi.getAll(),
+    queryKey: ['marketing-sales-requests', page, filter],
+    queryFn: () => marketingRequestApi.getAll({ page, limit: 20, status: filter }),
   });
-  const requests = data?.data || [];
-  const filtered = filter === 'All' ? requests : requests.filter(r => r.status === filter);
+  const filtered = data?.data || [];
+  const pagination = data?.pagination || { page: 1, pages: 1, total: 0 };
+  const summary = data?.summary || { Pending: 0, Approved: 0, Rejected: 0, All: 0 };
 
   // Matching assets for the request being approved
   const { data: matchData, isLoading: matchLoading } = useQuery({
@@ -121,7 +127,7 @@ export default function SalesRequests() {
             className="rounded-full text-xs"
             onClick={() => setFilter(s)}
           >
-            {s}{s !== 'All' && ` (${requests.filter(r => r.status === s).length})`}
+            {s}{s !== 'All' && ` (${summary[s] ?? 0})`}
           </Button>
         ))}
       </div>
@@ -198,6 +204,14 @@ export default function SalesRequests() {
               </Card>
             );
           })}
+        </div>
+      )}
+
+      {pagination.pages > 1 && (
+        <div className="flex items-center justify-center gap-2 pt-2">
+          <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={pagination.page <= 1}>Previous</Button>
+          <span className="text-sm text-muted-foreground">Page {pagination.page} of {pagination.pages} ({pagination.total} requests)</span>
+          <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)} disabled={pagination.page >= pagination.pages}>Next</Button>
         </div>
       )}
 

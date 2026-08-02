@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
 import { useRD } from '@/contexts/RDContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -17,9 +19,10 @@ const statusConfig = {
 };
 
 export default function DesignApproval() {
-  const { machines, updateDesignStatus } = useRD();
+  const { updateDesignStatus } = useRD();
   const [activeTab, setActiveTab] = useState('All');
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
   const [viewOpen, setViewOpen] = useState(false);
   const [approveOpen, setApproveOpen] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
@@ -27,21 +30,29 @@ export default function DesignApproval() {
   const [selected, setSelected] = useState(null);
   const [rejectNote, setRejectNote] = useState('');
 
-  const active = machines.filter(m => !m.isDiscontinued && m.forwardToNextPhase);
+  // Reset to page 1 whenever the tab/search changes so the user doesn't
+  // land on a now-out-of-range page.
+  useEffect(() => { setPage(1); }, [activeTab, search]);
 
-  const counts = {
-    All: active.length,
-    Draft: active.filter(m => m.designStatus === 'Draft').length,
-    Testing: active.filter(m => m.designStatus === 'Testing').length,
-    Approved: active.filter(m => m.designStatus === 'Approved').length,
-    Rejected: active.filter(m => m.designStatus === 'Rejected').length,
-  };
-
-  const filtered = active.filter(m => {
-    if (activeTab !== 'All' && m.designStatus !== activeTab) return false;
-    const q = search.toLowerCase();
-    return !q || m.name.toLowerCase().includes(q) || m.code.toLowerCase().includes(q);
+  const { data: machinesResponse, isLoading: machinesLoading } = useQuery({
+    queryKey: ['rd-machines', 'design-approval', { page, activeTab, search }],
+    queryFn: () => {
+      const params = new URLSearchParams({
+        page: String(page),
+        limit: '20',
+        forwardToNextPhase: 'true',
+        discontinued: 'false',
+        designStatus: activeTab,
+        withStatusCounts: 'true',
+      });
+      if (search) params.set('search', search);
+      return apiRequest('GET', `/api/rd/machines?${params.toString()}`);
+    },
+    keepPreviousData: true,
   });
+  const filtered = machinesResponse?.data || [];
+  const pagination = machinesResponse?.pagination || { page: 1, pages: 1, total: 0, limit: 20 };
+  const counts = machinesResponse?.statusCounts || { All: 0, Draft: 0, Testing: 0, Approved: 0, Rejected: 0 };
 
   const handleApprove = () => {
     updateDesignStatus(selected._id, 'Approved');
@@ -105,7 +116,11 @@ export default function DesignApproval() {
       </div>
 
       {/* Machine Cards Grid */}
-      {filtered.length === 0 ? (
+      {machinesLoading ? (
+        <Card className="border-none shadow-sm">
+          <CardContent className="py-16 text-center text-slate-400">Loading...</CardContent>
+        </Card>
+      ) : filtered.length === 0 ? (
         <Card className="border-none shadow-sm">
           <CardContent className="py-16 text-center text-slate-400">No machines match the current filter.</CardContent>
         </Card>
@@ -173,6 +188,14 @@ export default function DesignApproval() {
               </Card>
             );
           })}
+        </div>
+      )}
+
+      {pagination.pages > 1 && (
+        <div className="flex items-center justify-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={pagination.page <= 1}>Previous</Button>
+          <span className="text-sm text-muted-foreground">Page {pagination.page} of {pagination.pages} ({pagination.total} machines)</span>
+          <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)} disabled={pagination.page >= pagination.pages}>Next</Button>
         </div>
       )}
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -9,7 +9,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { Phone, MessageCircle, Mail, MapPin, Truck, CheckCircle, Package, AlertCircle } from 'lucide-react';
+import { Phone, MessageCircle, Mail, MapPin, Truck, CheckCircle, Package, AlertCircle, Search } from 'lucide-react';
 
 // One consolidated confirmation entity per sales order — an order with
 // several dispatched machines used to render one card per machine here,
@@ -37,10 +37,37 @@ export default function DeliveryConfirmation() {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [selectedGroup, setSelectedGroup] = useState(null);
+  const [search, setSearch] = useState('');
+  const [activeTab, setActiveTab] = useState('pending');
+  const [historyPage, setHistoryPage] = useState(1);
 
-  const { data: ordersData, isLoading } = useQuery({
-    queryKey: ['dispatched-orders'],
-    queryFn: () => apiRequest('GET', '/api/complaints/dispatched-orders')
+  // Reset to page 1 whenever the search changes so the user doesn't land on
+  // a now-out-of-range page.
+  useEffect(() => { setHistoryPage(1); }, [search]);
+
+  // Pending/Issues are the "active worklist" — every machine of an order is
+  // always confirmed together in one go (see bulkUpdateCustomerConfirmation),
+  // so this bucket only ever holds orders still awaiting confirmation; it's
+  // fetched in full (no pagination needed, it drains as work gets done).
+  const { data: activeData, isLoading: activeLoading } = useQuery({
+    queryKey: ['dispatched-orders', 'delivery', 'active', search],
+    queryFn: () => {
+      const params = new URLSearchParams({ stage: 'delivery', bucket: 'active' });
+      if (search) params.set('search', search);
+      return apiRequest('GET', `/api/complaints/dispatched-orders?${params.toString()}`);
+    },
+  });
+
+  // Confirmed is the ever-growing history — real backend pagination, 10
+  // orders per page.
+  const { data: historyData, isLoading: historyLoading } = useQuery({
+    queryKey: ['dispatched-orders', 'delivery', 'history', historyPage, search],
+    queryFn: () => {
+      const params = new URLSearchParams({ stage: 'delivery', bucket: 'history', page: String(historyPage), limit: '10' });
+      if (search) params.set('search', search);
+      return apiRequest('GET', `/api/complaints/dispatched-orders?${params.toString()}`);
+    },
+    keepPreviousData: true,
   });
 
   const updateMutation = useMutation({
@@ -55,13 +82,19 @@ export default function DeliveryConfirmation() {
     }
   });
 
-  const orders = ordersData?.data || [];
-  const groups = groupByOrder(orders);
+  const isLoading = activeLoading || historyLoading;
+  const activeOrders = activeData?.data || [];
+  const activeGroups = groupByOrder(activeOrders);
 
   // Group orders
-  const pendingOrders = groups.filter(g => groupConfirmationStatus(g.jobs) === 'Pending');
-  const confirmedOrders = groups.filter(g => groupConfirmationStatus(g.jobs) === 'Reached Safely');
-  const issueOrders = groups.filter(g => groupConfirmationStatus(g.jobs) === 'Issue');
+  const pendingOrders = activeGroups.filter(g => groupConfirmationStatus(g.jobs) === 'Pending');
+  const issueOrders = activeGroups.filter(g => groupConfirmationStatus(g.jobs) === 'Issue');
+
+  const historyOrders = historyData?.data || [];
+  const confirmedOrders = groupByOrder(historyOrders); // already all "Reached Safely" — backend-filtered
+  const historyPagination = historyData?.pagination || { page: 1, pages: 1, total: 0 };
+
+  const noOrdersAtAll = activeGroups.length === 0 && historyPagination.total === 0;
 
   const handleUpdate = (e) => {
     e.preventDefault();
@@ -101,10 +134,15 @@ export default function DeliveryConfirmation() {
         </div>
       </div>
 
+      <div className="relative max-w-sm">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+        <Input placeholder="Search by order ID or customer name..." className="pl-9" value={search} onChange={e => setSearch(e.target.value)} />
+      </div>
+
       <div className="w-full space-y-4">
         {isLoading ? (
           <div className="text-center py-10 text-slate-500">Loading...</div>
-        ) : groups.length === 0 ? (
+        ) : noOrdersAtAll ? (
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-16">
               <CheckCircle className="h-12 w-12 text-slate-300 mb-4" />
@@ -113,13 +151,13 @@ export default function DeliveryConfirmation() {
             </CardContent>
           </Card>
         ) : (
-          <Tabs defaultValue="pending" className="w-full">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsList className="mb-4 bg-slate-100">
               <TabsTrigger value="pending" className="data-[state=active]:bg-white">
                 Pending ({pendingOrders.length})
               </TabsTrigger>
               <TabsTrigger value="confirmed" className="data-[state=active]:bg-white">
-                Confirmed ({confirmedOrders.length})
+                Confirmed ({historyPagination.total})
               </TabsTrigger>
               <TabsTrigger value="issues" className="data-[state=active]:bg-white">
                 Issues ({issueOrders.length})
@@ -156,15 +194,18 @@ export default function DeliveryConfirmation() {
                   </CardContent>
                 </Card>
               ) : (
-                <OrderList
-                  list={confirmedOrders}
-                  canEdit={false}
-                  selectedGroup={selectedGroup}
-                  setSelectedGroup={setSelectedGroup}
-                  handleWhatsApp={handleWhatsApp}
-                  handleCall={handleCall}
-                  handleEmail={handleEmail}
-                />
+                <>
+                  <OrderList
+                    list={confirmedOrders}
+                    canEdit={false}
+                    selectedGroup={selectedGroup}
+                    setSelectedGroup={setSelectedGroup}
+                    handleWhatsApp={handleWhatsApp}
+                    handleCall={handleCall}
+                    handleEmail={handleEmail}
+                  />
+                  <Pager page={historyPage} totalPages={historyPagination.pages} setPage={setHistoryPage} />
+                </>
               )}
             </TabsContent>
 
@@ -300,6 +341,17 @@ function OrderList({ list, canEdit = false, selectedGroup, setSelectedGroup, han
         </Card>
         );
       })}
+    </div>
+  );
+}
+
+function Pager({ page, totalPages, setPage }) {
+  if (totalPages <= 1) return null;
+  return (
+    <div className="flex items-center justify-center gap-2 pt-4">
+      <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1}>Previous</Button>
+      <span className="text-sm text-muted-foreground">Page {page} of {totalPages}</span>
+      <Button variant="outline" size="sm" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages}>Next</Button>
     </div>
   );
 }

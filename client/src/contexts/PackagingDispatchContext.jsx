@@ -8,11 +8,15 @@ const BASE = '/api/packaging-dispatch';
 export function PackagingDispatchProvider({ children }) {
   const qc = useQueryClient();
 
-  const inv = (key) => () => qc.invalidateQueries({ queryKey: [key] });
-  const invJobs = inv('pkg-jobs');
-  const invOrders = inv('pkg-dispatch-orders');
-  const invDashboard = inv('pkg-dashboard');
-  const invReady = inv('pkg-ready');
+  // Partial-key match: invalidating a shorter key invalidates every query
+  // whose key starts with it (the bounded active-work feed here AND any
+  // currently-mounted paginated list query below), but only mounted queries
+  // actually refetch — so this stays cheap regardless of how many pages are
+  // watching packaging-job/dispatch-order data.
+  const invJobs = () => qc.invalidateQueries({ queryKey: ['pkg-jobs'] });
+  const invOrders = () => qc.invalidateQueries({ queryKey: ['pkg-dispatch-orders'] });
+  const invDashboard = () => qc.invalidateQueries({ queryKey: ['pkg-dashboard'] });
+  const invReady = () => qc.invalidateQueries({ queryKey: ['pkg-ready'] });
 
   const invalidateAll = () => {
     invJobs(); invOrders(); invDashboard(); invReady();
@@ -29,14 +33,21 @@ export function PackagingDispatchProvider({ children }) {
     queryFn: () => apiRequest('GET', `${BASE}/ready-for-packaging`),
   });
 
+  // Bounded "current work" feed (non-Dispatched jobs, or dispatched within
+  // the last 7 days) — Packaging Jobs (which needs full, searchable history
+  // including Dispatched ones) reads from its own paginated query instead,
+  // see usePackagingJobsList below.
   const { data: jobsData, isLoading: jobsLoading } = useQuery({
-    queryKey: ['pkg-jobs'],
-    queryFn: () => apiRequest('GET', `${BASE}/jobs`),
+    queryKey: ['pkg-jobs', 'active'],
+    queryFn: () => apiRequest('GET', `${BASE}/jobs/active`),
   });
 
+  // Bounded "current work" feed (everything except Closed) — Dispatch
+  // History reads from its own paginated query instead, see
+  // useDispatchOrdersList below.
   const { data: dispatchOrdersData, isLoading: dispatchOrdersLoading } = useQuery({
-    queryKey: ['pkg-dispatch-orders'],
-    queryFn: () => apiRequest('GET', `${BASE}/dispatch-orders`),
+    queryKey: ['pkg-dispatch-orders', 'active'],
+    queryFn: () => apiRequest('GET', `${BASE}/dispatch-orders/active`),
   });
 
   const dashboard = dashboardData?.data || {};
@@ -104,4 +115,42 @@ export function usePackagingDispatch() {
   const ctx = useContext(PackagingDispatchContext);
   if (!ctx) throw new Error('usePackagingDispatch must be used within PackagingDispatchProvider');
   return ctx;
+}
+
+function buildParams(filters) {
+  const params = new URLSearchParams();
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '' && value !== 'all') {
+      params.append(key, value.toString());
+    }
+  });
+  return params;
+}
+
+// Shared paginated/searchable/filterable job list — for Packaging Jobs, which
+// needs to browse full job history (including already-Dispatched ones),
+// unlike the bounded "active work" feed the provider above exposes as
+// `jobs`. Shares the 'pkg-jobs' key prefix so invJobs() (any mutation)
+// refreshes this too whenever it's mounted.
+export function usePackagingJobsList(filters, options = {}) {
+  return useQuery({
+    queryKey: ['pkg-jobs', 'list', filters],
+    queryFn: () => apiRequest('GET', `${BASE}/jobs?${buildParams(filters).toString()}`),
+    keepPreviousData: true,
+    ...options,
+  });
+}
+
+// Shared paginated/searchable/filterable dispatch-order list — for Dispatch
+// History, which needs to browse full dispatch history (Delivered/Closed),
+// unlike the bounded "current work" feed the provider above exposes as
+// `dispatchOrders`. Shares the 'pkg-dispatch-orders' key prefix so
+// invOrders() (any mutation) refreshes this too whenever it's mounted.
+export function useDispatchOrdersList(filters, options = {}) {
+  return useQuery({
+    queryKey: ['pkg-dispatch-orders', 'list', filters],
+    queryFn: () => apiRequest('GET', `${BASE}/dispatch-orders?${buildParams(filters).toString()}`),
+    keepPreviousData: true,
+    ...options,
+  });
 }

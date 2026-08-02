@@ -30,6 +30,8 @@ interface ProfileUpdate {
 export default function ProfileUpdateRequest() {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<ProfileUpdate[]>([]);
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({ page: 1, pages: 1, total: 0 });
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
   const [open, setOpen] = useState(false);
@@ -49,16 +51,17 @@ export default function ProfileUpdateRequest() {
 
   /* ================= FETCH ================= */
 
-  const fetchData = async () => {
+  const fetchData = async (pageNum: number = page) => {
     try {
       setLoading(true);
       const token = localStorage.getItem("token");
       const API = import.meta.env.VITE_API_URL;
-      const res = await axios.get(`${API}/profile-updates/me`, {
+      const res = await axios.get(`${API}/profile-updates/me?page=${pageNum}&limit=15`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const raw = res.data;
       setData(Array.isArray(raw) ? raw : raw?.data ?? raw?.profileUpdates ?? []);
+      setPagination(raw?.pagination || { page: 1, pages: 1, total: 0 });
     } catch (err) {
       console.error(err);
       setData([]);
@@ -68,8 +71,8 @@ export default function ProfileUpdateRequest() {
   };
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    fetchData(page);
+  }, [page]);
 
   /* ================= VALIDATION ================= */
 
@@ -285,6 +288,26 @@ export default function ProfileUpdateRequest() {
           </tbody>
         </table>
       </div>
+
+      {pagination.pages > 1 && (
+        <div className="flex items-center justify-center gap-2">
+          <button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={pagination.page <= 1}
+            className="px-3 py-1.5 text-sm border rounded-md disabled:opacity-50"
+          >
+            Previous
+          </button>
+          <span className="text-sm text-gray-500">Page {pagination.page} of {pagination.pages}</span>
+          <button
+            onClick={() => setPage((p) => p + 1)}
+            disabled={pagination.page >= pagination.pages}
+            className="px-3 py-1.5 text-sm border rounded-md disabled:opacity-50"
+          >
+            Next
+          </button>
+        </div>
+      )}
 
       {/* ADD / EDIT / VIEW MODAL */}
       {open && (

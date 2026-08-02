@@ -37,6 +37,8 @@ const BankAndCash = () => {
     accounts: []
   });
   const [transactions, setTransactions] = useState([]);
+  const [transactionPage, setTransactionPage] = useState(1);
+  const [transactionPagination, setTransactionPagination] = useState({});
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
   const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
@@ -73,6 +75,25 @@ const BankAndCash = () => {
     fetchData();
   }, []);
 
+  // Reusable so both the initial load and page-navigation can refetch just
+  // the transactions list without re-pulling the account summary too.
+  const fetchTransactions = async (pageNum) => {
+    try {
+      const res = await api.get(`/accounts/transactions?page=${pageNum}&limit=20`);
+      if (res.success) {
+        setTransactions(res.transactions || []);
+        setTransactionPagination(res.pagination || {});
+      }
+    } catch (error) {
+      console.error('Error fetching transactions:', error);
+    }
+  };
+
+  const goToTransactionPage = (pageNum) => {
+    setTransactionPage(pageNum);
+    fetchTransactions(pageNum);
+  };
+
   const fetchData = async () => {
     try {
       setLoading(true);
@@ -80,11 +101,9 @@ const BankAndCash = () => {
       if (summaryRes.success) {
         setSummary(summaryRes.data);
       }
-      // Also fetch recent transactions
-      const transactionsRes = await api.get('/accounts/transactions?limit=20');
-      if (transactionsRes.success) {
-        setTransactions(transactionsRes.transactions || []);
-      }
+      // Stays on whatever transaction page the user is currently viewing,
+      // rather than always resetting back to page 1.
+      await fetchTransactions(transactionPage);
     } catch (error) {
       console.error('Error fetching bank/cash data:', error);
       toast({
@@ -793,6 +812,27 @@ const BankAndCash = () => {
                     </tbody>
                   </table>
                 </div>
+                {transactionPagination.pages > 1 && (
+                  <div className="flex items-center justify-center gap-2 py-4 border-t">
+                    <Button
+                      variant="outline" size="sm"
+                      onClick={() => goToTransactionPage(Math.max(1, transactionPage - 1))}
+                      disabled={transactionPage <= 1}
+                    >
+                      Previous
+                    </Button>
+                    <span className="text-sm text-gray-500">
+                      Page {transactionPage} of {transactionPagination.pages} ({transactionPagination.total} transactions)
+                    </span>
+                    <Button
+                      variant="outline" size="sm"
+                      onClick={() => goToTransactionPage(transactionPage + 1)}
+                      disabled={transactionPage >= transactionPagination.pages}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>

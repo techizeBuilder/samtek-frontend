@@ -145,14 +145,17 @@ const CustomerPayments = () => {
     };
 
     const [showRecentReceipts, setShowRecentReceipts] = useState(false);
+    const [recentPage, setRecentPage] = useState(1);
 
     const { data: recentPaymentsData, isLoading: isLoadingRecent } = useQuery({
-        queryKey: ['/api/accounts/sales/payments'],
-        queryFn: () => apiRequest('GET', '/api/accounts/sales/payments?limit=10'),
-        enabled: showRecentReceipts // Only fetch when modal is open
+        queryKey: ['/api/accounts/sales/payments', recentPage],
+        queryFn: () => apiRequest('GET', `/api/accounts/sales/payments?page=${recentPage}&limit=10`),
+        enabled: showRecentReceipts, // Only fetch when modal is open
+        keepPreviousData: true,
     });
 
     const recentPayments = recentPaymentsData?.data?.payments || [];
+    const recentPagination = recentPaymentsData?.data?.pagination || {};
 
     const handlePrintReceipt = (payment) => {
         if (!payment) return;
@@ -267,7 +270,7 @@ const CustomerPayments = () => {
                     <Button
                         variant="outline"
                         className="rounded-full h-11 px-6 border-slate-200 hover:bg-white hover:text-blue-600 transition-colors"
-                        onClick={() => setShowRecentReceipts(true)}
+                        onClick={() => { setRecentPage(1); setShowRecentReceipts(true); }}
                     >
                         <History className="w-4 h-4 mr-2" /> Recent Receipts
                     </Button>
@@ -341,6 +344,13 @@ const CustomerPayments = () => {
                                 </div>
                             )}
                         </div>
+                        {recentPagination.pages > 1 && (
+                            <div className="flex items-center justify-center gap-2 py-3 border-t border-slate-100">
+                                <Button variant="outline" size="sm" onClick={() => setRecentPage(p => Math.max(1, p - 1))} disabled={recentPagination.page <= 1}>Previous</Button>
+                                <span className="text-xs text-slate-500 font-bold">Page {recentPagination.page} of {recentPagination.pages} ({recentPagination.total} receipts)</span>
+                                <Button variant="outline" size="sm" onClick={() => setRecentPage(p => p + 1)} disabled={recentPagination.page >= recentPagination.pages}>Next</Button>
+                            </div>
+                        )}
                         <div className="p-4 border-t border-slate-100 bg-slate-50/50 text-center">
                             <Button variant="ghost" size="sm" onClick={() => setShowRecentReceipts(false)} className="text-slate-500 hover:text-slate-900 font-bold text-xs uppercase tracking-wider">
                                 Close

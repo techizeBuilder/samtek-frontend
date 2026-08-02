@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useToast } from "@/hooks/use-toast";
@@ -593,11 +593,17 @@ const Returns = () => {
   // State management
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [page, setPage] = useState(1);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
 
   const [selectedEntry, setSelectedEntry] = useState(null);
+
+  // Jump back to page 1 whenever search/status changes.
+  useEffect(() => {
+    setPage(1);
+  }, [searchTerm, statusFilter]);
 
   // Fetch returns data from API
   const {
@@ -606,16 +612,16 @@ const Returns = () => {
     error: returnsError,
     refetch: refetchReturns,
   } = useQuery({
-    queryKey: ["/api/sales/returns", searchTerm, statusFilter],
+    queryKey: ["/api/sales/returns", searchTerm, statusFilter, page],
     queryFn: () => {
       const params = new URLSearchParams();
-      params.append('page', '1');
+      params.append('page', String(page));
       params.append('limit', '50');
       if (searchTerm) params.append('search', searchTerm);
       if (statusFilter !== 'all') params.append('status', statusFilter);
       return apiRequest(`/api/sales/returns?${params}`);
     },
-    enabled: true,
+    keepPreviousData: true,
   });
 
   // Simple API call functions instead of mutations
@@ -684,6 +690,7 @@ const Returns = () => {
   };
 
   const returns = returnsResponse?.returns || [];
+  const returnsPagination = returnsResponse?.pagination || {};
 
   return (
     <div className="p-6 space-y-6">
@@ -939,6 +946,29 @@ const Returns = () => {
           )}
         </CardContent>
       </Card>
+
+      {returnsPagination.pages > 1 && (
+        <div className="flex items-center justify-center gap-2">
+          <Button
+            variant="outline" size="sm"
+            onClick={() => setPage(p => Math.max(1, p - 1))}
+            disabled={returnsPagination.page <= 1}
+          >
+            Previous
+          </Button>
+          <span className="text-sm text-muted-foreground">
+            Page {returnsPagination.page} of {returnsPagination.pages} ({returnsPagination.total} returns)
+          </span>
+          <Button
+            variant="outline" size="sm"
+            onClick={() => setPage(p => p + 1)}
+            disabled={returnsPagination.page >= returnsPagination.pages}
+          >
+            Next
+          </Button>
+        </div>
+      )}
+
       {/* Create Modal */}
       <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
         <DialogContent className="w-[95vw] max-w-6xl max-h-[95vh] overflow-y-auto mx-auto">

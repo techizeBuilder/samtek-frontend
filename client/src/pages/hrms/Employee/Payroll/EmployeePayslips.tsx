@@ -11,7 +11,6 @@ const EmployeePayslips = () => {
     const token = localStorage.getItem("token");
     const loggedInUser = JSON.parse(localStorage.getItem("user") || "{}");
     const userId = loggedInUser?.id;
-    const [payslips, setPayslips] = useState<any[]>([]);
     const [filtered, setFiltered] = useState<any[]>([]);
     const [month, setMonth] = useState("");
     const [year, setYear] = useState("");
@@ -21,10 +20,14 @@ const EmployeePayslips = () => {
 
     /* ================= FETCH ================= */
     const fetchPayslips = async () => {
-        const res = await axios.get(`${API_BASE}/payslips/me/my-payslips`, {
+        setLoading(true);
+        const params = new URLSearchParams();
+        if (month) params.set("month", month);
+        if (year) params.set("year", year);
+        const qs = params.toString();
+        const res = await axios.get(`${API_BASE}/payslips/me/my-payslips${qs ? `?${qs}` : ""}`, {
             headers: { Authorization: `Bearer ${token}` },
         });
-        setPayslips(res.data || []);
         setFiltered(res.data || []);
         setLoading(false);
     };
@@ -38,27 +41,11 @@ const EmployeePayslips = () => {
 
     useEffect(() => {
         fetchPayslips();
+    }, [month, year]);
+
+    useEffect(() => {
         fetchCompany();
     }, []);
-
-    /* ================= FILTER ================= */
-    useEffect(() => {
-        let data = [...payslips];
-
-        if (month) {
-            data = data.filter(
-                (p) => new Date(p.month).getMonth() + 1 === Number(month)
-            );
-        }
-
-        if (year) {
-            data = data.filter(
-                (p) => new Date(p.month).getFullYear() === Number(year)
-            );
-        }
-
-        setFiltered(data);
-    }, [month, year, payslips]);
 
     /* ================= HELPERS ================= */
     const formatMonth = (date: string) =>

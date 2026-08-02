@@ -68,9 +68,12 @@ const formCalc = (form) => {
 
 const SalesOrders = () => {
     const [searchTerm, setSearchTerm] = useState('');
+    const [page, setPage] = useState(1);
     const [viewOrder, setViewOrder] = useState(null);
     const [billingOrder, setBillingOrder] = useState(null);
     const { toast } = useToast();
+
+    const changeSearch = (value) => { setSearchTerm(value); setPage(1); };
 
     // Generate Invoice button is a hidden click-count gesture: 1 (or 2)
     // clicks generates the Pakka bill, 3 rapid clicks generates the Kachha
@@ -82,8 +85,9 @@ const SalesOrders = () => {
 
     // Fetch orders approved by salesman
     const { data: ordersResponse, isLoading } = useQuery({
-        queryKey: ['/api/accounts/sales/account/pending-orders'],
-        queryFn: () => apiRequest('GET', '/api/accounts/sales/account/pending-orders')
+        queryKey: ['/api/accounts/sales/account/pending-orders', page, searchTerm],
+        queryFn: () => apiRequest('GET', `/api/accounts/sales/account/pending-orders?page=${page}&limit=20&search=${encodeURIComponent(searchTerm)}`),
+        keepPreviousData: true,
     });
 
     // Order Form of the order being viewed / billed — source of truth for items & totals
@@ -182,11 +186,12 @@ const SalesOrders = () => {
         }, CLICK_RESOLVE_MS);
     };
 
+    // Search now happens server-side — `orders` is already the current
+    // page's filtered slice.
     const orders = ordersResponse?.data || [];
-    const filteredOrders = orders.filter(order =>
-        order.orderCode?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        order.customer?.name?.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const filteredOrders = orders;
+    const pagination = ordersResponse?.pagination || {};
+    const summary = ordersResponse?.summary || {};
 
     return (
         <div className="p-6 space-y-6 bg-slate-50 min-h-screen">
@@ -204,7 +209,7 @@ const SalesOrders = () => {
                     <CardContent className="p-4 flex items-center justify-between">
                         <div>
                             <p className="text-xs text-slate-500 font-medium uppercase">Not Invoiced</p>
-                            <h3 className="text-xl font-bold text-slate-900">{orders.filter(o => !o.generatedInvoices || o.generatedInvoices.length === 0).length}</h3>
+                            <h3 className="text-xl font-bold text-slate-900">{summary.notInvoicedCount || 0}</h3>
                         </div>
                         <Clock className="h-8 w-8 text-amber-500 opacity-20" />
                     </CardContent>
@@ -213,7 +218,7 @@ const SalesOrders = () => {
                     <CardContent className="p-4 flex items-center justify-between">
                         <div>
                             <p className="text-xs text-slate-500 font-medium uppercase">Invoiced Orders</p>
-                            <h3 className="text-xl font-bold text-slate-900">{orders.filter(o => o.generatedInvoices?.length > 0).length}</h3>
+                            <h3 className="text-xl font-bold text-slate-900">{summary.invoicedCount || 0}</h3>
                         </div>
                         <CheckSquare className="h-8 w-8 text-blue-500 opacity-20" />
                     </CardContent>
@@ -222,7 +227,7 @@ const SalesOrders = () => {
                     <CardContent className="p-4 flex items-center justify-between">
                         <div>
                             <p className="text-xs text-slate-500 font-medium uppercase">Potential Revenue</p>
-                            <h3 className="text-xl font-bold text-slate-900">₹{orders.reduce((sum, o) => sum + o.totalAmount, 0).toLocaleString('en-IN')}</h3>
+                            <h3 className="text-xl font-bold text-slate-900">₹{(summary.potentialRevenue || 0).toLocaleString('en-IN')}</h3>
                         </div>
                         <Receipt className="h-8 w-8 text-green-500 opacity-20" />
                     </CardContent>
@@ -240,7 +245,7 @@ const SalesOrders = () => {
                                 placeholder="Search by Order ID or Customer..."
                                 className="pl-10 w-full sm:w-80 border-slate-200"
                                 value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
+                                onChange={(e) => changeSearch(e.target.value)}
                             />
                         </div>
                     </div>
@@ -323,6 +328,13 @@ const SalesOrders = () => {
                             </TableBody>
                         </Table>
                     </div>
+                    {pagination.pages > 1 && (
+                        <div className="flex items-center justify-center gap-2 py-4 border-t">
+                            <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={pagination.page <= 1}>Previous</Button>
+                            <span className="text-sm text-slate-500">Page {pagination.page} of {pagination.pages} ({pagination.total} orders)</span>
+                            <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)} disabled={pagination.page >= pagination.pages}>Next</Button>
+                        </div>
+                    )}
                 </CardContent>
             </Card>
 

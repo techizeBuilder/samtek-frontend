@@ -72,9 +72,10 @@ export default function CustomerMaster() {
 
     // Fetch customers
     const { data: customersResponse, isLoading, refetch } = useQuery({
-        queryKey: ['/api/customers', { page: currentPage, search: searchTerm, status: statusFilter }],
+        queryKey: ['/api/customers', { page: currentPage, name: searchTerm, status: statusFilter }],
         queryFn: () => {
-            let url = `/api/customers?page=${currentPage}&limit=20&search=${searchTerm}`;
+            // Backend (getCustomers) reads the text-search filter as `name`, not `search`.
+            let url = `/api/customers?page=${currentPage}&limit=20&name=${encodeURIComponent(searchTerm)}`;
             if (statusFilter !== 'All') {
                 url += `&status=${statusFilter}`;
             }

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import {
@@ -88,37 +88,31 @@ const itemCheckState = (qcStatus, lastRejectionSource) => {
 const StoreOrders = () => {
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
+  const [page, setPage] = useState(1);
   const [viewOrderOpen, setViewOrderOpen] = useState(false);
   const [selectedOrderDetails, setSelectedOrderDetails] = useState(null);
   const [isLoadingOrderDetails, setIsLoadingOrderDetails] = useState(false);
   const [loadingItemId, setLoadingItemId] = useState(null);
   const [checkingKey, setCheckingKey] = useState(null); // `${orderRowId}` (all) or `${orderRowId}:${itemKey}`
 
-  const { data: trackingData, isLoading, refetch } = useQuery({
-    queryKey: ['/api/orders/get-tracking'],
+  // Reset to page 1 whenever the search changes so the user doesn't land on
+  // a now-out-of-range page.
+  useEffect(() => { setPage(1); }, [searchTerm]);
+
+  const { data: trackingResponse, isLoading, refetch } = useQuery({
+    queryKey: ['/api/orders/get-tracking', 'store-orders', page, searchTerm],
     queryFn: async () => {
-      const response = await apiRequest('GET', '/api/orders/get-tracking');
-      return response.data;
-    }
+      const params = new URLSearchParams({ page: String(page), limit: '20' });
+      if (searchTerm) params.set('search', searchTerm);
+      return apiRequest('GET', `/api/orders/get-tracking?${params.toString()}`);
+    },
+    keepPreviousData: true,
   });
 
-  const orders = Array.isArray(trackingData) ? trackingData : (trackingData?.data || []);
-
-  // Filter for orders that are service-verified (pending) or fully approved
-  const storeOrders = orders
-    .filter(item => {
-      const isVisible =
-        item.orderStatus === 'approved' ||
-        item.orderStatus === 'pending' ||
-        item.paymentStatus === 'Paid';
-
-      const matchesSearch =
-        (item.orderCode || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (item.customerName || '').toLowerCase().includes(searchTerm.toLowerCase());
-
-      return isVisible && matchesSearch;
-    })
-    .sort((a, b) => new Date(b.orderDate) - new Date(a.orderDate));
+  // Visibility filter (service-verified/approved/paid) and sort are now
+  // applied server-side, so this is already the correctly-scoped page.
+  const storeOrders = trackingResponse?.data || [];
+  const pagination = trackingResponse?.pagination || { page: 1, pages: 1, total: 0 };
 
   // Build a uniform per-item row list for an order:
   //  - saleItems (multi-item scoreboard) when the Sale exists
@@ -259,7 +253,7 @@ const StoreOrders = () => {
               />
             </div>
             <Badge variant="secondary" className="px-3 py-1 text-sm font-medium">
-              Total: {storeOrders.length}
+              Total: {pagination.total}
             </Badge>
           </div>
         </CardHeader>
@@ -460,6 +454,14 @@ const StoreOrders = () => {
           </Table>
         </CardContent>
       </Card>
+
+      {pagination.pages > 1 && (
+        <div className="flex items-center justify-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={pagination.page <= 1}>Previous</Button>
+          <span className="text-sm text-muted-foreground">Page {pagination.page} of {pagination.pages}</span>
+          <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)} disabled={pagination.page >= pagination.pages}>Next</Button>
+        </div>
+      )}
 
       {/* View Order Details Modal */}
       <Dialog open={viewOrderOpen} onOpenChange={setViewOrderOpen}>

@@ -119,6 +119,16 @@ export function RDProvider({ children }) {
   const createMachineMut = useMutation({ mutationFn: (d) => apiRequest('POST', `${BASE}/machines`, d), onSuccess: invMachines });
   const updateMachineMut = useMutation({ mutationFn: ({ id, data }) => apiRequest('PUT', `${BASE}/machines/${id}`, data), onSuccess: invMachines });
   const addMasterOptionMut = useMutation({ mutationFn: (data) => apiRequest('POST', `${BASE}/master-options`, data), onSuccess: invMasterOptions });
+  // Renaming/deleting an option cascades server-side into machines, BOM material snapshots and
+  // custom field templates, so all of those caches need invalidating too, not just the option list.
+  const updateMasterOptionMut = useMutation({
+    mutationFn: ({ id, value }) => apiRequest('PUT', `${BASE}/master-options/${id}`, { value }),
+    onSuccess: () => { invMasterOptions(); invMachines(); invBOMs(); invCustomFieldTemplates(); }
+  });
+  const deleteMasterOptionMut = useMutation({
+    mutationFn: (id) => apiRequest('DELETE', `${BASE}/master-options/${id}`),
+    onSuccess: invMasterOptions
+  });
   const saveCustomFieldTemplateMut = useMutation({ mutationFn: (data) => apiRequest('POST', `${BASE}/custom-field-templates`, data), onSuccess: invCustomFieldTemplates });
   const deleteCustomFieldTemplateMut = useMutation({ mutationFn: (id) => apiRequest('DELETE', `${BASE}/custom-field-templates/${id}`), onSuccess: invCustomFieldTemplates });
   const designStatusMut = useMutation({ mutationFn: ({ id, status, note }) => apiRequest('PUT', `${BASE}/machines/${id}/design-status`, { status, note }), onSuccess: invMachines });
@@ -251,6 +261,12 @@ export function RDProvider({ children }) {
   const addMasterOption = useCallback(async (data) => {
     return addMasterOptionMut.mutateAsync(data);
   }, []);
+  const updateMasterOption = useCallback(async (id, value) => {
+    return updateMasterOptionMut.mutateAsync({ id, value });
+  }, []);
+  const deleteMasterOption = useCallback(async (id) => {
+    return deleteMasterOptionMut.mutateAsync(id);
+  }, []);
 
   const saveCustomFieldTemplate = useCallback(async (data) => {
     return saveCustomFieldTemplateMut.mutateAsync(data);
@@ -279,7 +295,7 @@ export function RDProvider({ children }) {
   return (
     <RDContext.Provider value={{
       machines, boms, prototypes, changeRequests, toolProcesses, qualityParams, documents, stats,
-      masterOptions, masterOptionsLoading, addMasterOption,
+      masterOptions, masterOptionsLoading, addMasterOption, updateMasterOption, deleteMasterOption,
       customFieldTemplates, customFieldTemplatesLoading, saveCustomFieldTemplate, deleteCustomFieldTemplate, getCustomFieldTemplate,
 
       // Production Requests state

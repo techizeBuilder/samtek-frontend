@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { getServicemen } from '@/api/complaintApi';
@@ -11,7 +11,7 @@ import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import { CalendarCheck, MapPin, CheckCircle, Package, User, Phone, MessageCircle, Mail, Send, ChevronDown } from 'lucide-react';
+import { CalendarCheck, MapPin, CheckCircle, Package, User, Phone, MessageCircle, Mail, Send, ChevronDown, Search } from 'lucide-react';
 
 // One consolidated installation entity per sales order — a multi-machine
 // order used to render one card per machine, each needing its own schedule
@@ -36,6 +36,13 @@ export default function InstallationSchedule() {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [selectedGroup, setSelectedGroup] = useState(null);
+  const [search, setSearch] = useState('');
+  const [activeTab, setActiveTab] = useState('pending');
+  const [historyPage, setHistoryPage] = useState(1);
+
+  // Reset to page 1 whenever the search changes so the user doesn't land on
+  // a now-out-of-range page.
+  useEffect(() => { setHistoryPage(1); }, [search]);
 
   const [formState, setFormState] = useState({
     status: 'Scheduled',
@@ -45,9 +52,30 @@ export default function InstallationSchedule() {
     remarks: ''
   });
 
-  const { data: ordersData, isLoading } = useQuery({
-    queryKey: ['dispatched-orders'],
-    queryFn: () => apiRequest('GET', '/api/complaints/dispatched-orders')
+  // Pending/Scheduled are the "active worklist" — one technician visit
+  // installs every machine of an order together (see
+  // bulkUpdateInstallationSchedule), so this bucket only ever holds orders
+  // still awaiting/undergoing installation; fetched in full, no pagination
+  // needed since it drains as work gets done.
+  const { data: activeData, isLoading: activeLoading } = useQuery({
+    queryKey: ['dispatched-orders', 'installation', 'active', search],
+    queryFn: () => {
+      const params = new URLSearchParams({ stage: 'installation', bucket: 'active' });
+      if (search) params.set('search', search);
+      return apiRequest('GET', `/api/complaints/dispatched-orders?${params.toString()}`);
+    },
+  });
+
+  // Completed is the ever-growing history — real backend pagination, 10
+  // orders per page.
+  const { data: historyData, isLoading: historyLoading } = useQuery({
+    queryKey: ['dispatched-orders', 'installation', 'history', historyPage, search],
+    queryFn: () => {
+      const params = new URLSearchParams({ stage: 'installation', bucket: 'history', page: String(historyPage), limit: '10' });
+      if (search) params.set('search', search);
+      return apiRequest('GET', `/api/complaints/dispatched-orders?${params.toString()}`);
+    },
+    keepPreviousData: true,
   });
 
   const { data: servicemenData } = useQuery({
@@ -83,16 +111,23 @@ export default function InstallationSchedule() {
     }
   });
 
-  const orders = ordersData?.data || [];
+  const isLoading = activeLoading || historyLoading;
+  const orders = activeData?.data || [];
   const servicemen = servicemenData?.servicemen || servicemenData?.data || [];
 
   const groups = groupByOrder(orders);
   // Installation can only proceed once every machine of the order has been
-  // confirmed as reached safely — a partially-confirmed order isn't ready yet.
+  // confirmed as reached safely — a partially-confirmed order isn't ready
+  // yet. (Backend's stage=installation fetch already guarantees this; kept
+  // as a defensive no-op filter.)
   const reachedGroups = groups.filter(g => g.jobs.every(o => o.customerConfirmation?.status === 'Reached Safely'));
   const pendingOrders = reachedGroups.filter(g => groupInstallationStatus(g.jobs) === 'Pending');
   const scheduledOrders = reachedGroups.filter(g => groupInstallationStatus(g.jobs) === 'Scheduled');
-  const completedOrders = reachedGroups.filter(g => groupInstallationStatus(g.jobs) === 'Completed');
+
+  const historyOrders = historyData?.data || [];
+  const completedOrders = groupByOrder(historyOrders); // already all "Completed" — backend-filtered
+  const historyPagination = historyData?.pagination || { page: 1, pages: 1, total: 0 };
+  const noOrdersAtAll = reachedGroups.length === 0 && historyPagination.total === 0;
 
   const openModal = (group) => {
     setSelectedGroup(group);
@@ -202,10 +237,15 @@ export default function InstallationSchedule() {
         </div>
       </div>
 
+      <div className="relative max-w-sm">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+        <Input placeholder="Search by order ID or customer name..." className="pl-9" value={search} onChange={e => setSearch(e.target.value)} />
+      </div>
+
       <div className="w-full space-y-4">
         {isLoading ? (
           <div className="text-center py-10 text-slate-500">Loading...</div>
-        ) : reachedGroups.length === 0 ? (
+        ) : noOrdersAtAll ? (
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-16">
               <CalendarCheck className="h-12 w-12 text-slate-300 mb-4" />
@@ -214,7 +254,7 @@ export default function InstallationSchedule() {
             </CardContent>
           </Card>
         ) : (
-          <Tabs defaultValue="pending" className="w-full">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsList className="mb-4 bg-slate-100">
               <TabsTrigger value="pending" className="data-[state=active]:bg-white">
                 Pending ({pendingOrders.length})
@@ -223,7 +263,7 @@ export default function InstallationSchedule() {
                 Scheduled ({scheduledOrders.length})
               </TabsTrigger>
               <TabsTrigger value="completed" className="data-[state=active]:bg-white">
-                Completed ({completedOrders.length})
+                Completed ({historyPagination.total})
               </TabsTrigger>
             </TabsList>
 
@@ -272,15 +312,18 @@ export default function InstallationSchedule() {
                   <p className="text-lg font-medium text-slate-600">No completed installations</p>
                 </CardContent></Card>
               ) : (
-                <InstallationList
-                  list={completedOrders}
-                  setSelectedGroup={setSelectedGroup}
-                  notifyCustomer={notifyCustomer}
-                  handleWhatsApp={handleWhatsApp}
-                  handleCall={handleCall}
-                  handleEmail={handleEmail}
-                  canEdit={false}
-                />
+                <>
+                  <InstallationList
+                    list={completedOrders}
+                    setSelectedGroup={setSelectedGroup}
+                    notifyCustomer={notifyCustomer}
+                    handleWhatsApp={handleWhatsApp}
+                    handleCall={handleCall}
+                    handleEmail={handleEmail}
+                    canEdit={false}
+                  />
+                  <Pager page={historyPage} totalPages={historyPagination.pages} setPage={setHistoryPage} />
+                </>
               )}
             </TabsContent>
           </Tabs>
@@ -573,6 +616,17 @@ function InstallationList({ list, setSelectedGroup, notifyCustomer, handleWhatsA
         </Card>
         );
       })}
+    </div>
+  );
+}
+
+function Pager({ page, totalPages, setPage }) {
+  if (totalPages <= 1) return null;
+  return (
+    <div className="flex items-center justify-center gap-2 pt-4">
+      <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1}>Previous</Button>
+      <span className="text-sm text-muted-foreground">Page {page} of {totalPages}</span>
+      <Button variant="outline" size="sm" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages}>Next</Button>
     </div>
   );
 }

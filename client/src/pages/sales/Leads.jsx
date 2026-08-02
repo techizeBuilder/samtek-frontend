@@ -74,12 +74,14 @@ import {
   Handshake,
   Download,
   Stamp,
-  Megaphone
+  Megaphone,
+  CalendarClock
 } from 'lucide-react';
 import { marketingRequestApi } from '@/api/marketingRequestService';
 
 import { cn } from '@/lib/utils';
 import OrderFormModal from '@/components/sales/OrderFormModal';
+import DeliveryEstimatorModal from '@/components/sales/DeliveryEstimatorModal';
 
 const Leads = () => {
   const { user } = useAuth();
@@ -93,6 +95,7 @@ const Leads = () => {
   const [activeTab, setActiveTab] = useState('All Active Leads');
   const [searchTerm, setSearchTerm] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isEstimatorOpen, setIsEstimatorOpen] = useState(false);
   const [step, setStep] = useState(1); // 1: Initial check, 2: Basic info, 3: Company details
   
   // Modal States
@@ -178,6 +181,13 @@ const Leads = () => {
     assignedTo: ''
   });
   const [appliedFilters, setAppliedFilters] = useState({});
+  const [page, setPage] = useState(1);
+
+  // Jump back to page 1 whenever any filter/search/sort/page-size changes —
+  // otherwise you could land on, say, page 4 of a now much smaller result set.
+  useEffect(() => {
+    setPage(1);
+  }, [activeTab, searchTerm, limit, sortBy, appliedFilters]);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -756,18 +766,20 @@ const assignableUsers = (usersData?.users || []).filter(
 
   // Fetch leads
   const { data: leadsData, isLoading, refetch } = useQuery({
-    queryKey: ['leads', activeTab, searchTerm, limit, sortBy, appliedFilters],
+    queryKey: ['leads', activeTab, searchTerm, limit, sortBy, appliedFilters, page],
     queryFn: () => leadApi.getAll({
       status: activeTab,
       search: searchTerm,
       limit,
       sortBy,
+      page,
       ...appliedFilters
     }),
+    keepPreviousData: true,
   });
 
   const leads = leadsData?.leads || [];
-  console.log("Leads Data",leads);
+  const leadsPagination = leadsData?.pagination || {};
 
   // Fetch Call Logs for the selected lead
   const { data: callLogsData, isLoading: callLogsLoading } = useQuery({
@@ -864,6 +876,9 @@ const assignableUsers = (usersData?.users || []).filter(
   const syncIndiamartMutation = useMutation({
     mutationFn: leadApi.syncIndiamart,
     onSuccess: (res) => {
+      // Synced leads sort newest-first, so they land on page 1 — same reasoning
+      // as createLeadMutation below.
+      setPage(1);
       queryClient.invalidateQueries({ queryKey: ['leads'] });
       toast({
         title: "IndiaMart Sync Success",
@@ -886,6 +901,9 @@ const assignableUsers = (usersData?.users || []).filter(
   const syncIvrMutation = useMutation({
     mutationFn: leadApi.syncIvr,
     onSuccess: (res) => {
+      // Synced leads sort newest-first, so they land on page 1 — same reasoning
+      // as createLeadMutation below.
+      setPage(1);
       queryClient.invalidateQueries({ queryKey: ['leads'] });
       toast({
         title: "IVR Sync Success",
@@ -908,6 +926,10 @@ const assignableUsers = (usersData?.users || []).filter(
   const createLeadMutation = useMutation({
     mutationFn: leadApi.create,
     onSuccess: () => {
+      // New leads sort newest-first by default, so they always land on page 1 —
+      // jump back there so the just-created lead is actually visible instead of
+      // silently refreshing whatever later page the user happened to be on.
+      setPage(1);
       queryClient.invalidateQueries({ queryKey: ['leads'] });
       toast({ title: "Success", description: "Lead created successfully" });
       handleCloseModal();
@@ -1430,8 +1452,20 @@ const assignableUsers = (usersData?.users || []).filter(
         <h1 className="text-2xl font-bold text-gray-800">Manage Leads</h1>
 
         <div className="flex flex-wrap items-center gap-3">
-          <Button 
-            variant="outline" 
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <Input
+              placeholder="Search by name, mobile, email, lead code..."
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              className="pl-9 w-64 h-9"
+              name="leads-list-search"
+              autoComplete="off"
+            />
+          </div>
+
+          <Button
+            variant="outline"
             size="sm" 
             className={cn(
               "bg-white border-blue-200 text-blue-600 hover:bg-blue-50",
@@ -1448,9 +1482,19 @@ const assignableUsers = (usersData?.users || []).filter(
             Add Leads
           </Button>
 
-          <Button 
-            variant="outline" 
-            size="sm" 
+          <Button
+            size="sm"
+            variant="outline"
+            className="bg-white border-indigo-200 text-indigo-600 hover:bg-indigo-50"
+            onClick={() => setIsEstimatorOpen(true)}
+          >
+            <CalendarClock className="h-4 w-4 mr-2" />
+            Estimate Delivery Date
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
             className="bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100 font-medium"
             onClick={() => syncIndiamartMutation.mutate()}
             disabled={syncIndiamartMutation.isPending}
@@ -2121,6 +2165,28 @@ const assignableUsers = (usersData?.users || []).filter(
         )}
       </div>
 
+      {leadsPagination.pages > 1 && (
+        <div className="flex items-center justify-center gap-2 mt-4">
+          <Button
+            variant="outline" size="sm"
+            onClick={() => setPage(p => Math.max(1, p - 1))}
+            disabled={leadsPagination.page <= 1}
+          >
+            Previous
+          </Button>
+          <span className="text-sm text-gray-500">
+            Page {leadsPagination.page} of {leadsPagination.pages} ({leadsPagination.total} leads)
+          </span>
+          <Button
+            variant="outline" size="sm"
+            onClick={() => setPage(p => p + 1)}
+            disabled={leadsPagination.page >= leadsPagination.pages}
+          >
+            Next
+          </Button>
+        </div>
+      )}
+
       {/* Multi-step Add Lead Modal */}
       <Dialog open={isAddModalOpen} onOpenChange={handleCloseModal}>
         <DialogContent className={cn(
@@ -2166,6 +2232,7 @@ const assignableUsers = (usersData?.users || []).filter(
                       placeholder="Enter email (e.g. user@example.com)"
                       value={formData.email}
                       onChange={handleInputChange}
+                      autoComplete="off"
                     />
                   </div>
 
@@ -2180,6 +2247,7 @@ const assignableUsers = (usersData?.users || []).filter(
                       onChange={handleInputChange}
                       maxLength={10}
                       inputMode="numeric"
+                      autoComplete="off"
                     />
                     {formData.mobile && formData.mobile.length > 0 && formData.mobile.length < 10 && (
                       <p className="text-xs text-amber-600">{10 - formData.mobile.length} more digits required</p>
@@ -2288,6 +2356,7 @@ const assignableUsers = (usersData?.users || []).filter(
                       placeholder="Enter detailed requirements..."
                       value={formData.describeRequirements}
                       onChange={handleInputChange}
+                      autoComplete="off"
                     />
                   </div>
 
@@ -2316,6 +2385,7 @@ const assignableUsers = (usersData?.users || []).filter(
                       value={formData.contactPerson}
                       onChange={handleInputChange}
                       className="border-gray-300"
+                      autoComplete="off"
                     />
                   </div>
 
@@ -2327,6 +2397,7 @@ const assignableUsers = (usersData?.users || []).filter(
                       value={formData.companyName}
                       onChange={handleInputChange}
                       className="border-gray-300"
+                      autoComplete="off"
                     />
                   </div>
 
@@ -2371,6 +2442,7 @@ const assignableUsers = (usersData?.users || []).filter(
                       value={formData.state}
                       onChange={handleInputChange}
                       className="border-gray-300"
+                      autoComplete="off"
                     />
                   </div>
 
@@ -2382,6 +2454,7 @@ const assignableUsers = (usersData?.users || []).filter(
                       value={formData.city}
                       onChange={handleInputChange}
                       className="border-gray-300"
+                      autoComplete="off"
                     />
                   </div>
 
@@ -2429,7 +2502,7 @@ const assignableUsers = (usersData?.users || []).filter(
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
                   <div className="space-y-2">
                     <Label className="font-bold">Company Name</Label>
-                    <Input name="companyName" value={formData.companyName} onChange={handleInputChange} className="border-gray-300" />
+                    <Input name="companyName" value={formData.companyName} onChange={handleInputChange} className="border-gray-300" autoComplete="off" />
                   </div>
 
                   <div className="space-y-2">
@@ -2439,12 +2512,12 @@ const assignableUsers = (usersData?.users || []).filter(
 
                   <div className="space-y-2">
                     <Label className="font-bold">Contact Person <span className="text-red-500">*</span></Label>
-                    <Input name="contactPerson" value={formData.contactPerson} onChange={handleInputChange} className="border-gray-300" />
+                    <Input name="contactPerson" value={formData.contactPerson} onChange={handleInputChange} className="border-gray-300" autoComplete="off" />
                   </div>
 
                   <div className="space-y-2">
                     <Label className="font-bold">Designation</Label>
-                    <Input name="designation" placeholder="Designation (sirf text)" value={formData.designation} onChange={handleInputChange} className="border-gray-300" />
+                    <Input name="designation" placeholder="Designation (sirf text)" value={formData.designation} onChange={handleInputChange} className="border-gray-300" autoComplete="off" />
                   </div>
 
                   <div className="space-y-2">
@@ -2463,6 +2536,7 @@ const assignableUsers = (usersData?.users || []).filter(
                       type="tel"
                       maxLength={10}
                       inputMode="numeric"
+                      autoComplete="off"
                     />
                   </div>
 
@@ -2505,7 +2579,7 @@ const assignableUsers = (usersData?.users || []).filter(
 
                   <div className="space-y-2">
                     <Label className="font-bold">Alternate Email</Label>
-                    <Input name="alternateEmail" placeholder="Alternate Email" value={formData.alternateEmail} onChange={handleInputChange} className="border-gray-300" />
+                    <Input name="alternateEmail" placeholder="Alternate Email" value={formData.alternateEmail} onChange={handleInputChange} className="border-gray-300" autoComplete="off" />
                   </div>
 
                   <div className="space-y-2 md:col-span-2">
@@ -2516,22 +2590,23 @@ const assignableUsers = (usersData?.users || []).filter(
                       placeholder="Address"
                       value={formData.address}
                       onChange={handleInputChange}
+                      autoComplete="off"
                     />
                   </div>
 
                   <div className="space-y-2">
                     <Label className="font-bold">Select State</Label>
-                    <Input name="state" value={formData.state} onChange={handleInputChange} className="border-gray-300" />
+                    <Input name="state" value={formData.state} onChange={handleInputChange} className="border-gray-300" autoComplete="off" />
                   </div>
 
                   <div className="space-y-2">
                     <Label className="font-bold">Select City</Label>
-                    <Input name="city" value={formData.city} onChange={handleInputChange} className="border-gray-300" />
+                    <Input name="city" value={formData.city} onChange={handleInputChange} className="border-gray-300" autoComplete="off" />
                   </div>
 
                   <div className="space-y-2">
                     <Label className="font-bold">PIN / ZIP Code</Label>
-                    <Input name="pincode" placeholder="6-digit Pincode" value={formData.pincode} onChange={handleInputChange} className="border-gray-300" type="tel" maxLength={6} inputMode="numeric" />
+                    <Input name="pincode" placeholder="6-digit Pincode" value={formData.pincode} onChange={handleInputChange} className="border-gray-300" type="tel" maxLength={6} inputMode="numeric" autoComplete="off" />
                   </div>
 
                   <div className="space-y-2">
@@ -2550,32 +2625,32 @@ const assignableUsers = (usersData?.users || []).filter(
 
                   <div className="space-y-2">
                     <Label className="font-bold">GST Number</Label>
-                    <Input name="gstNumber" placeholder="GST Number (15 characters)" value={formData.gstNumber} onChange={handleInputChange} className="border-gray-300" maxLength={15} style={{ textTransform: 'uppercase' }} />
+                    <Input name="gstNumber" placeholder="GST Number (15 characters)" value={formData.gstNumber} onChange={handleInputChange} className="border-gray-300" maxLength={15} style={{ textTransform: 'uppercase' }} autoComplete="off" />
                   </div>
 
                   <div className="space-y-2">
                     <Label className="font-bold">PAN</Label>
-                    <Input name="pan" placeholder="PAN (e.g. ABCDE1234F)" value={formData.pan} onChange={handleInputChange} className="border-gray-300" maxLength={10} style={{ textTransform: 'uppercase' }} />
+                    <Input name="pan" placeholder="PAN (e.g. ABCDE1234F)" value={formData.pan} onChange={handleInputChange} className="border-gray-300" maxLength={10} style={{ textTransform: 'uppercase' }} autoComplete="off" />
                   </div>
 
                   <div className="space-y-2">
                     <Label className="font-bold">IEC</Label>
-                    <Input name="iec" placeholder="IEC (10 characters)" value={formData.iec} onChange={handleInputChange} className="border-gray-300" maxLength={10} style={{ textTransform: 'uppercase' }} />
+                    <Input name="iec" placeholder="IEC (10 characters)" value={formData.iec} onChange={handleInputChange} className="border-gray-300" maxLength={10} style={{ textTransform: 'uppercase' }} autoComplete="off" />
                   </div>
 
                   <div className="space-y-2">
                     <Label className="font-bold">TAN</Label>
-                    <Input name="tan" placeholder="TAN (10 characters)" value={formData.tan} onChange={handleInputChange} className="border-gray-300" maxLength={10} style={{ textTransform: 'uppercase' }} />
+                    <Input name="tan" placeholder="TAN (10 characters)" value={formData.tan} onChange={handleInputChange} className="border-gray-300" maxLength={10} style={{ textTransform: 'uppercase' }} autoComplete="off" />
                   </div>
 
                   <div className="space-y-2">
                     <Label className="font-bold">CIN / LLPIN</Label>
-                    <Input name="cin" placeholder="CIN/LLPIN (max 21 characters)" value={formData.cin} onChange={handleInputChange} className="border-gray-300" maxLength={21} style={{ textTransform: 'uppercase' }} />
+                    <Input name="cin" placeholder="CIN/LLPIN (max 21 characters)" value={formData.cin} onChange={handleInputChange} className="border-gray-300" maxLength={21} style={{ textTransform: 'uppercase' }} autoComplete="off" />
                   </div>
 
                   <div className="space-y-2">
                     <Label className="font-bold">Website (E.g. https://www.lmsbaba.com)</Label>
-                    <Input name="website" placeholder="Type Website" value={formData.website} onChange={handleInputChange} className="border-gray-300" />
+                    <Input name="website" placeholder="Type Website" value={formData.website} onChange={handleInputChange} className="border-gray-300" autoComplete="off" />
                   </div>
 
                   <div className="space-y-2">
@@ -2585,12 +2660,12 @@ const assignableUsers = (usersData?.users || []).filter(
 
                   <div className="space-y-2">
                     <Label className="font-bold">Profile</Label>
-                    <Input name="profile" placeholder="Profile" value={formData.profile} onChange={handleInputChange} className="border-gray-300" />
+                    <Input name="profile" placeholder="Profile" value={formData.profile} onChange={handleInputChange} className="border-gray-300" autoComplete="off" />
                   </div>
 
                   <div className="space-y-2">
                     <Label className="font-bold">Reference</Label>
-                    <Input name="reference" placeholder="Reference" value={formData.reference} onChange={handleInputChange} className="border-gray-300" />
+                    <Input name="reference" placeholder="Reference" value={formData.reference} onChange={handleInputChange} className="border-gray-300" autoComplete="off" />
                   </div>
                 </div>
 
@@ -4856,6 +4931,8 @@ const assignableUsers = (usersData?.users || []).filter(
           onSaved={() => queryClient.invalidateQueries({ queryKey: ['leads'] })}
         />
       )}
+
+      <DeliveryEstimatorModal open={isEstimatorOpen} onOpenChange={setIsEstimatorOpen} />
     </div>
   );
 };

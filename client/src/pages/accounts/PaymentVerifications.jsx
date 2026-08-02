@@ -57,6 +57,10 @@ const PaymentVerifications = () => {
   // Search & Filtering State
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [page, setPage] = useState(1);
+
+  const changeSearch = (value) => { setSearchTerm(value); setPage(1); };
+  const changeStatusFilter = (value) => { setStatusFilter(value); setPage(1); };
 
   // Dialog State for Status Update
   const [updateOpen, setUpdateOpen] = useState(false);
@@ -81,21 +85,36 @@ const PaymentVerifications = () => {
     remarks: ''
   });
 
-  // Fetch leads that have payment check requested
+  // Fetch leads that have payment check requested — paginated + filtered
+  // server-side (search matches lead code/company/contact; status filters
+  // the paymentCheckStatus value directly).
   const { data: leadsData, isLoading, refetch, isFetching } = useQuery({
-    queryKey: ['accounts-payment-verifications'],
-    queryFn: () => leadApi.getAll({ paymentCheckRequested: 'true' }),
+    queryKey: ['accounts-payment-verifications', page, searchTerm, statusFilter],
+    queryFn: () => leadApi.getAll({
+      paymentCheckRequested: 'true',
+      page,
+      limit: 20,
+      search: searchTerm,
+      paymentCheckStatusFilter: statusFilter,
+    }),
+    keepPreviousData: true,
   });
 
-  // Fetch lead payments
+  const leads = leadsData?.leads || [];
+  const leadIds = leads.map(l => l._id).join(',');
+
+  // Scoped to just this page's leads instead of the company's entire
+  // payment history — only (re)fetched once we know which leads are on
+  // the current page.
   const { data: leadPaymentsData, isLoading: paymentsLoading, refetch: refetchPayments } = useQuery({
-    queryKey: ['lead-payments-verification'],
+    queryKey: ['lead-payments-verification', leadIds],
     queryFn: () => {
       const token = localStorage.getItem('token');
-      return apiRequest('/lead-payments', {
+      return apiRequest(`/lead-payments?leadIds=${encodeURIComponent(leadIds)}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
     },
+    enabled: leadIds.length > 0,
   });
 
   // Fetch bank accounts for Add Payment modal
@@ -110,9 +129,10 @@ const PaymentVerifications = () => {
     enabled: addPaymentOpen
   });
 
-  const leads = leadsData?.leads || [];
   const leadPayments = leadPaymentsData?.payments || [];
   const bankAccounts = bankAccountsData?.bankAccounts || [];
+  const pagination = leadsData?.pagination || {};
+  const paymentCheckSummary = leadsData?.paymentCheckSummary || {};
 
   // Combine leads with their advanced payments
   const leadsWithPayments = leads.map(lead => {
@@ -237,19 +257,11 @@ const PaymentVerifications = () => {
     });
   };
 
-  // Filter and search logic for leads
+  // Search/status filtering now happens server-side (see queryFn above);
+  // this just re-sorts the current page — a fallback for legacy leads
+  // without paymentCheckRequestedAt set, which the DB-level sort can't see.
   const filteredLeads = leadsWithPayments
-    .filter(lead => {
-      const matchesSearch =
-        (lead.leadCode || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (lead.companyName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (lead.contactPerson || '').toLowerCase().includes(searchTerm.toLowerCase());
-
-      const matchesStatus = statusFilter === 'all' ||
-        (lead.paymentCheckStatus || '').toLowerCase() === statusFilter.toLowerCase();
-
-      return matchesSearch && matchesStatus;
-    })
+    .slice()
     .sort((a, b) => {
       const getRequestDate = (lead) => {
         if (lead.paymentCheckRequestedAt) return new Date(lead.paymentCheckRequestedAt);
@@ -269,10 +281,13 @@ const PaymentVerifications = () => {
     });
 
   // Calculate Metrics
-  const totalRequests = leads.length;
-  const pendingRequests = leads.filter(l => l.paymentCheckStatus === 'Pending').length;
-  const verifiedRequests = leads.filter(l => l.paymentCheckStatus === 'Paid' || l.paymentCheckStatus === 'Partially Paid').length;
-  const rejectedRequests = leads.filter(l => l.paymentCheckStatus === 'Rejected').length;
+  // From the backend's paymentCheckSummary — reflects ALL payment-check
+  // requests regardless of the current page/search/status filter, not just
+  // whatever happens to be on the currently loaded page.
+  const totalRequests = paymentCheckSummary.total || 0;
+  const pendingRequests = paymentCheckSummary.pending || 0;
+  const verifiedRequests = paymentCheckSummary.verified || 0;
+  const rejectedRequests = paymentCheckSummary.rejected || 0;
 
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(amount);
@@ -388,10 +403,10 @@ const PaymentVerifications = () => {
                 placeholder="Search by lead ID, company, or customer..."
                 className="pl-10 border-slate-200 focus-visible:ring-blue-500"
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e) => changeSearch(e.target.value)}
               />
             </div>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <Select value={statusFilter} onValueChange={changeStatusFilter}>
               <SelectTrigger className="w-full md:w-[200px] border-slate-200">
                 <SelectValue placeholder="Filter by Status" />
               </SelectTrigger>
@@ -549,6 +564,27 @@ const PaymentVerifications = () => {
               </TableBody>
             </Table>
           </div>
+          {pagination.pages > 1 && (
+            <div className="flex items-center justify-center gap-2 py-4">
+              <Button
+                variant="outline" size="sm"
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={pagination.page <= 1}
+              >
+                Previous
+              </Button>
+              <span className="text-sm text-slate-500">
+                Page {pagination.page} of {pagination.pages} ({pagination.total} requests)
+              </span>
+              <Button
+                variant="outline" size="sm"
+                onClick={() => setPage(p => p + 1)}
+                disabled={pagination.page >= pagination.pages}
+              >
+                Next
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 

@@ -23,14 +23,20 @@ const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-IN') : '—';
 export default function OrderForms() {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
+  const [page, setPage] = useState(1);
   const [viewingId, setViewingId] = useState(null);
 
+  const changeSearch = (value) => { setSearch(value); setPage(1); };
+  const changeStatus = (value) => { setStatus(value); setPage(1); };
+
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['order-forms', status, search],
-    queryFn: () => orderFormApi.list({ status, search }),
+    queryKey: ['order-forms', status, search, page],
+    queryFn: () => orderFormApi.list({ status, search, page, limit: 20 }),
+    keepPreviousData: true,
   });
 
   const forms = data?.orderForms || [];
+  const pagination = data?.pagination || {};
 
   return (
     <div className="p-6 space-y-6 bg-slate-50 min-h-screen">
@@ -45,7 +51,7 @@ export default function OrderForms() {
           <Input
             placeholder="Search by customer, company, quotation no..."
             value={search}
-            onChange={e => setSearch(e.target.value)}
+            onChange={e => changeSearch(e.target.value)}
             className="bg-white pl-9"
           />
         </div>
@@ -53,7 +59,7 @@ export default function OrderForms() {
           {STATUS_TABS.map(t => (
             <button
               key={t.key}
-              onClick={() => setStatus(t.key)}
+              onClick={() => changeStatus(t.key)}
               className={cn(
                 'px-3 py-1.5 rounded-full text-sm font-medium transition-colors',
                 status === t.key
@@ -118,6 +124,13 @@ export default function OrderForms() {
                 ))}
               </TableBody>
             </Table>
+          )}
+          {pagination.totalPages > 1 && (
+            <div className="flex items-center justify-center gap-2 py-4 border-t">
+              <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={pagination.currentPage <= 1}>Previous</Button>
+              <span className="text-sm text-slate-500">Page {pagination.currentPage} of {pagination.totalPages} ({pagination.totalOrders} forms)</span>
+              <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)} disabled={pagination.currentPage >= pagination.totalPages}>Next</Button>
+            </div>
           )}
         </CardContent>
       </Card>

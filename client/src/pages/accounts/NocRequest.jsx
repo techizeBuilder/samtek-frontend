@@ -71,6 +71,8 @@ const NocRequest = () => {
     : null;
 
   const [searchTerm, setSearchTerm] = useState('');
+  const [page, setPage] = useState(1);
+  const changeSearch = (value) => { setSearchTerm(value); setPage(1); };
 
   // State for Gate Pass Modal
   const [gatePassModalOpen, setGatePassModalOpen] = useState(false);
@@ -83,21 +85,17 @@ const NocRequest = () => {
   const [viewGatePassOpen, setViewGatePassOpen] = useState(false);
   const [gatePassData, setGatePassData] = useState(null);
 
-  const { data: nocRequests, isLoading, refetch } = useQuery({
-    queryKey: ['/api/orders/noc-requests'],
-    queryFn: async () => {
-      const response = await apiRequest('GET', '/api/orders/noc-requests');
-      return response.data;
-    }
+  const { data: nocResponse, isLoading, refetch } = useQuery({
+    queryKey: ['/api/orders/noc-requests', page, searchTerm],
+    queryFn: () => apiRequest('GET', `/api/orders/noc-requests?page=${page}&limit=20&search=${encodeURIComponent(searchTerm)}`),
+    keepPreviousData: true,
   });
 
-  const filteredRequests = (nocRequests || []).filter(item => {
-    return (
-      (item.orderCode || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (item.customerName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (item.machineName || '').toLowerCase().includes(searchTerm.toLowerCase())
-    );
-  });
+  // Search now happens server-side — `nocRequests` is already the current
+  // page's filtered slice.
+  const nocRequests = nocResponse?.data || [];
+  const pagination = nocResponse?.pagination || {};
+  const filteredRequests = nocRequests;
 
   // Mutation for Approving NOC
   const approveNOCMutation = useMutation({
@@ -573,11 +571,11 @@ const NocRequest = () => {
                 placeholder="Search orders, customers..."
                 className="pl-10"
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e) => changeSearch(e.target.value)}
               />
             </div>
             <Badge variant="secondary" className="px-3 py-1 text-sm font-medium">
-              Total: {filteredRequests.length}
+              Total: {pagination.total ?? filteredRequests.length}
             </Badge>
           </div>
         </CardHeader>
@@ -720,6 +718,13 @@ const NocRequest = () => {
               ))}
             </TableBody>
           </Table>
+          {pagination.pages > 1 && (
+            <div className="flex items-center justify-center gap-2 py-4 border-t">
+              <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={pagination.page <= 1}>Previous</Button>
+              <span className="text-sm text-slate-500">Page {pagination.page} of {pagination.pages} ({pagination.total} requests)</span>
+              <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)} disabled={pagination.page >= pagination.pages}>Next</Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 

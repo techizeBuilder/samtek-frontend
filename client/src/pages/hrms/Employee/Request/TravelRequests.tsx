@@ -10,6 +10,8 @@ const TravelRequests = () => {
   const token = localStorage.getItem("token");
 
   const [requests, setRequests] = useState<any[]>([]);
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({ page: 1, pages: 1, total: 0 });
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<any>(null);
   const [deleteItem, setDeleteItem] = useState<any>(null);
@@ -17,20 +19,21 @@ const TravelRequests = () => {
 
 
   /* ================= FETCH ================= */
-  const fetchRequests = async () => {
+  const fetchRequests = async (pageNum: number = page) => {
     try {
-      const res = await axios.get(`${API_BASE}/travel-requests/me`, {
+      const res = await axios.get(`${API_BASE}/travel-requests/me?page=${pageNum}&limit=15`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      setRequests(res.data || []);
+      setRequests(res.data?.data || []);
+      setPagination(res.data?.pagination || { page: 1, pages: 1, total: 0 });
     } catch (err) {
       console.error("Failed to fetch travel requests");
     }
   };
 
   useEffect(() => {
-    fetchRequests();
-  }, []);
+    fetchRequests(page);
+  }, [page]);
 
   /* ================= DELETE ================= */
 const confirmDelete = async () => {
@@ -164,6 +167,26 @@ const confirmDelete = async () => {
           </tbody>
         </table>
       </div>
+
+      {pagination.pages > 1 && (
+        <div className="flex items-center justify-center gap-2 mt-4">
+          <button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={pagination.page <= 1}
+            className="px-3 py-1.5 text-sm border rounded-md disabled:opacity-50"
+          >
+            Previous
+          </button>
+          <span className="text-sm text-gray-500">Page {pagination.page} of {pagination.pages}</span>
+          <button
+            onClick={() => setPage((p) => p + 1)}
+            disabled={pagination.page >= pagination.pages}
+            className="px-3 py-1.5 text-sm border rounded-md disabled:opacity-50"
+          >
+            Next
+          </button>
+        </div>
+      )}
 
       {/* ADD / EDIT MODAL */}
       {open && (

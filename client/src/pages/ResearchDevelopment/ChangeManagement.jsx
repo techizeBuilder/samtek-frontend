@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
 import { useRD } from '@/contexts/RDContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -31,9 +33,10 @@ const deptColor = {
 const emptyForm = { machineId: '', raisedBy: '', department: 'Production', changeType: 'Design', description: '' };
 
 export default function ChangeManagement() {
-  const { machines, changeRequests, addChangeRequest, resolveChangeRequest } = useRD();
+  const { machines, addChangeRequest, resolveChangeRequest } = useRD();
   const [activeTab, setActiveTab] = useState('Pending');
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
   const [addOpen, setAddOpen] = useState(false);
   const [viewOpen, setViewOpen] = useState(false);
   const [resolveOpen, setResolveOpen] = useState(false);
@@ -44,18 +47,24 @@ export default function ChangeManagement() {
 
   const activeMachines = machines.filter(m => !m.isDiscontinued);
 
-  const counts = {
-    Pending: changeRequests.filter(cr => cr.status === 'Pending').length,
-    Approved: changeRequests.filter(cr => cr.status === 'Approved').length,
-    Rejected: changeRequests.filter(cr => cr.status === 'Rejected').length,
-    All: changeRequests.length,
-  };
+  // Reset to page 1 whenever the tab/search changes so the user doesn't
+  // land on a now-out-of-range page.
+  useEffect(() => { setPage(1); }, [activeTab, search]);
 
-  const filtered = changeRequests.filter(cr => {
-    if (activeTab !== 'All' && cr.status !== activeTab) return false;
-    const q = search.toLowerCase();
-    return !q || cr.machineName.toLowerCase().includes(q) || cr.machineCode.toLowerCase().includes(q) || cr.description.toLowerCase().includes(q);
-  }).sort((a, b) => b.raisedAt.localeCompare(a.raisedAt));
+  const { data: changeRequestsResponse, isLoading: changeRequestsLoading } = useQuery({
+    queryKey: ['rd-change-requests', 'list', { page, activeTab, search }],
+    queryFn: () => {
+      const params = new URLSearchParams({ page: String(page), limit: '20', status: activeTab, withStatusCounts: 'true' });
+      if (search) params.set('search', search);
+      return apiRequest('GET', `/api/rd/change-requests?${params.toString()}`);
+    },
+    keepPreviousData: true,
+  });
+  const pagination = changeRequestsResponse?.pagination || { page: 1, pages: 1, total: 0, limit: 20 };
+  const counts = changeRequestsResponse?.statusCounts || { Pending: 0, Approved: 0, Rejected: 0, All: 0 };
+  // Backend already sorts by createdAt desc and filters by tab/search/page;
+  // this secondary sort is just a same-day tiebreaker over the current page.
+  const filtered = (changeRequestsResponse?.data || []).slice().sort((a, b) => b.raisedAt.localeCompare(a.raisedAt));
 
   const handleAdd = () => {
     if (!form.machineId || !form.raisedBy || !form.description) return;
@@ -118,7 +127,9 @@ export default function ChangeManagement() {
       </div>
 
       {/* Change Requests List */}
-      {filtered.length === 0 ? (
+      {changeRequestsLoading ? (
+        <Card className="border-none shadow-sm"><CardContent className="py-12 text-center text-slate-400">Loading...</CardContent></Card>
+      ) : filtered.length === 0 ? (
         <Card className="border-none shadow-sm"><CardContent className="py-12 text-center text-slate-400">No change requests in this category.</CardContent></Card>
       ) : (
         <div className="space-y-3">
@@ -167,6 +178,14 @@ export default function ChangeManagement() {
               </Card>
             );
           })}
+        </div>
+      )}
+
+      {pagination.pages > 1 && (
+        <div className="flex items-center justify-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={pagination.page <= 1}>Previous</Button>
+          <span className="text-sm text-muted-foreground">Page {pagination.page} of {pagination.pages} ({pagination.total} requests)</span>
+          <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)} disabled={pagination.page >= pagination.pages}>Next</Button>
         </div>
       )}
 

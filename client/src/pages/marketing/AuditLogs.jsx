@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
-import { useMarketing } from '@/contexts/MarketingContext';
+import React, { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Upload, Edit, Trash2, Share2, History } from 'lucide-react';
 
@@ -15,10 +17,24 @@ const ACTION_CONFIG = {
 const METHOD_COLORS = { WhatsApp: 'bg-green-100 text-green-700', Email: 'bg-blue-100 text-blue-700' };
 
 export default function AuditLogs() {
-  const { auditLogs, auditLoading } = useMarketing();
   const [filter, setFilter] = useState('all');
+  const [page, setPage] = useState(1);
 
-  const filtered = filter === 'all' ? auditLogs : auditLogs.filter(l => l.action === filter);
+  // Reset to page 1 whenever the filter changes so the user doesn't land on
+  // a now-out-of-range page.
+  useEffect(() => { setPage(1); }, [filter]);
+
+  const { data: auditData, isLoading: auditLoading } = useQuery({
+    queryKey: ['mkt-audit', 'list', { page, filter }],
+    queryFn: () => {
+      const params = new URLSearchParams({ page: String(page), limit: '30' });
+      if (filter !== 'all') params.set('action', filter);
+      return apiRequest('GET', `/api/marketing/audit-logs?${params.toString()}`);
+    },
+    keepPreviousData: true,
+  });
+  const filtered = auditData?.data || [];
+  const pagination = { page: auditData?.page || 1, pages: auditData?.pages || 1, total: auditData?.total || 0 };
 
   const fmt = (d) => new Date(d).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
@@ -29,7 +45,7 @@ export default function AuditLogs() {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Audit Logs</h1>
-          <p className="text-slate-500 text-sm mt-1">{filtered.length} records</p>
+          <p className="text-slate-500 text-sm mt-1">{pagination.total} record{pagination.total === 1 ? '' : 's'}</p>
         </div>
         <Select value={filter} onValueChange={setFilter}>
           <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
@@ -83,6 +99,14 @@ export default function AuditLogs() {
           )}
         </CardContent>
       </Card>
+
+      {pagination.pages > 1 && (
+        <div className="flex items-center justify-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={pagination.page <= 1}>Previous</Button>
+          <span className="text-sm text-muted-foreground">Page {pagination.page} of {pagination.pages}</span>
+          <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)} disabled={pagination.page >= pagination.pages}>Next</Button>
+        </div>
+      )}
     </div>
   );
 }

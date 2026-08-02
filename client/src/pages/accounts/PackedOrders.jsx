@@ -58,6 +58,8 @@ const PackedOrders = () => {
   const { user } = useAuthContext();
 
   const [searchTerm, setSearchTerm] = useState('');
+  const [page, setPage] = useState(1);
+  const changeSearch = (value) => { setSearchTerm(value); setPage(1); };
   
   // Upload Proof Modal State
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
@@ -87,14 +89,14 @@ const PackedOrders = () => {
   const userCompany = user?.company || {};
   const displayCompanyName = userCompany.name || settings?.company?.name || 'SAMTEK MACHINERY';
 
-  // Fetch packed orders
-  const { data: packedOrdersResponse, isLoading, refetch } = useQuery({
-    queryKey: ['/api/accounts/packed-orders'],
-    queryFn: async () => {
-      const response = await apiRequest('GET', '/api/accounts/packed-orders');
-      return response.data;
-    }
+  // Fetch packed orders — paginated + search-filtered server-side
+  const { data: packedOrdersFullResponse, isLoading, refetch } = useQuery({
+    queryKey: ['/api/accounts/packed-orders', page, searchTerm],
+    queryFn: () => apiRequest('GET', `/api/accounts/packed-orders?page=${page}&limit=20&search=${encodeURIComponent(searchTerm)}`),
+    keepPreviousData: true,
   });
+  const packedOrdersResponse = packedOrdersFullResponse?.data || [];
+  const packedOrdersPagination = packedOrdersFullResponse?.pagination || {};
 
   // Fetch bank accounts for payment receipt
   const { data: bankAccountsResponse } = useQuery({
@@ -312,16 +314,9 @@ const PackedOrders = () => {
     window.open(`mailto:${item.customer.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`, '_self');
   };
 
-  const filteredOrders = (packedOrdersResponse || []).filter(item => {
-    const term = searchTerm.toLowerCase();
-    return (
-      (item.orderCode || '').toLowerCase().includes(term) ||
-      (item.customer?.name || '').toLowerCase().includes(term) ||
-      (item.customer?.mobile || '').toLowerCase().includes(term) ||
-      (item.machineName || '').toLowerCase().includes(term) ||
-      (item.serialNumber || '').toLowerCase().includes(term)
-    );
-  });
+  // Search now happens server-side — `packedOrdersResponse` is already the
+  // current page's filtered slice.
+  const filteredOrders = packedOrdersResponse;
 
   return (
     <div className="min-h-screen bg-slate-50/50 p-4 md:p-8 space-y-8">
@@ -357,7 +352,7 @@ const PackedOrders = () => {
                 placeholder="Search code, customer, machine..."
                 className="pl-9 bg-white border-slate-200 rounded-lg h-10"
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e) => changeSearch(e.target.value)}
               />
             </div>
           </div>
@@ -623,6 +618,13 @@ const PackedOrders = () => {
                   })}
                 </TableBody>
               </Table>
+            </div>
+          )}
+          {packedOrdersPagination.pages > 1 && (
+            <div className="flex items-center justify-center gap-2 py-4 border-t">
+              <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={packedOrdersPagination.page <= 1}>Previous</Button>
+              <span className="text-sm text-slate-500">Page {packedOrdersPagination.page} of {packedOrdersPagination.pages} ({packedOrdersPagination.total} orders)</span>
+              <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)} disabled={packedOrdersPagination.page >= packedOrdersPagination.pages}>Next</Button>
             </div>
           )}
         </CardContent>
