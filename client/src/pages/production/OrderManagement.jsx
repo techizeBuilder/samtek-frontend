@@ -1111,10 +1111,6 @@ export default function OrderManagement() {
             <div className="space-y-4 py-2">
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-slate-50 rounded-lg p-3">
-                  <p className="text-xs text-slate-500 mb-1">Material Type</p>
-                  <p className="text-sm font-medium text-slate-800">{viewMat.itemType || 'N/A'}</p>
-                </div>
-                <div className="bg-slate-50 rounded-lg p-3">
                   <p className="text-xs text-slate-500 mb-1">BOM Quantity</p>
                   <p className="text-sm font-medium text-slate-800">{viewMat.quantity} {viewMat.unit}</p>
                 </div>

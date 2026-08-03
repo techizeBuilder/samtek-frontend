@@ -348,7 +348,6 @@ export default function BOMManagement() {
                       <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Material Code</th>
                       <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Hierarchy (Child &gt; Sub-Child)</th>
                       <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Material Name</th>
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Material Type</th>
                       <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Qty</th>
                       <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Unit</th>
                       <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
@@ -357,7 +356,7 @@ export default function BOMManagement() {
                   </thead>
                   <tbody>
                     {bom.materials.length === 0 ? (
-                      <tr><td colSpan={9} className="text-center py-10 text-slate-400">No materials added. Click "Add Material" to start building the BOM.</td></tr>
+                      <tr><td colSpan={8} className="text-center py-10 text-slate-400">No materials added. Click "Add Material" to start building the BOM.</td></tr>
                     ) : bom.materials.map((mat, i) => (
                       <tr key={mat._id} className={`border-b border-slate-50 transition-colors ${mat.isDiscontinued ? 'bg-red-50/40 opacity-70' : 'hover:bg-slate-50'}`}>
                         <td className="px-5 py-3.5 text-slate-400 text-xs font-semibold">{i + 1}</td>
@@ -366,7 +365,6 @@ export default function BOMManagement() {
                           {[mat.childPart, mat.subChildPart].filter(Boolean).join(' > ') || '—'}
                         </td>
                         <td className={`px-5 py-3.5 font-medium ${mat.isDiscontinued ? 'text-slate-400 line-through' : 'text-slate-900'}`}>{mat.item}</td>
-                        <td className="px-5 py-3.5 text-slate-600 text-xs">{mat.itemType}</td>
                         <td className="px-5 py-3.5 font-bold text-slate-800">{mat.quantity}</td>
                         <td className="px-5 py-3.5 text-slate-600">{mat.unit}</td>
                         <td className="px-5 py-3.5">
@@ -566,10 +564,6 @@ export default function BOMManagement() {
           {viewMat && (
             <div className="space-y-4 py-2">
               <div className="grid grid-cols-2 gap-3">
-                <div className="bg-slate-50 rounded-lg p-3">
-                  <p className="text-xs text-slate-500 mb-1">Material Type</p>
-                  <p className="text-sm font-medium text-slate-800">{viewMat.itemType || 'N/A'}</p>
-                </div>
                 <div className="bg-slate-50 rounded-lg p-3">
                   <p className="text-xs text-slate-500 mb-1">Quantity</p>
                   <p className="text-sm font-medium text-slate-800">{viewMat.quantity} {viewMat.unit}</p>
