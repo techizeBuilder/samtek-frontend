@@ -20,10 +20,11 @@ export const adminSettingsApi = {
   // Full settings
   getAll: () => apiFetch('/'),
 
-  // SMTP
-  addSmtp: (body) => apiFetch('/smtp', { method: 'POST', body: JSON.stringify(body) }),
-  updateSmtp: (id, body) => apiFetch(`/smtp/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
-  deleteSmtp: (id) => apiFetch(`/smtp/${id}`, { method: 'DELETE' }),
+  // SMTP (platform-wide, Super Admin only)
+  getGlobalSmtp: () => apiFetch('/global-smtp'),
+  addSmtp: (body) => apiFetch('/global-smtp', { method: 'POST', body: JSON.stringify(body) }),
+  updateSmtp: (id, body) => apiFetch(`/global-smtp/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deleteSmtp: (id) => apiFetch(`/global-smtp/${id}`, { method: 'DELETE' }),
 
   // Lead Stages
   addLeadStage: (body) => apiFetch('/lead-stages', { method: 'POST', body: JSON.stringify(body) }),

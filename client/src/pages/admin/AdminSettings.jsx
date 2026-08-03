@@ -15,6 +15,7 @@ import {
   ChevronRight, Truck, ClipboardList,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/hooks/useAuth';
 import { apiRequest } from '@/lib/queryClient';
 import { buildQuotationNumber } from '@/utils/quotationNumber';
 
@@ -240,6 +241,8 @@ function QuotationNumberSettingSection({ items = [], onAdd, onUpdate, onDelete }
 export default function AdminSettings() {
   const { toast } = useToast();
   const qc = useQueryClient();
+  const { user } = useAuth();
+  const isSuperAdmin = user?.role === 'Super Admin';
 
   const [category, setCategory] = useState('company');   // 'company' | 'general' | 'api'
   const [generalSection, setGeneralSection] = useState('smtp'); // 'smtp' | 'lead' | 'quotation' | 'other'
@@ -256,13 +259,14 @@ export default function AdminSettings() {
     { value: 'CASH_ACCESS', label: 'Cash Access — OTP approval' },
   ];
 
-  // Fetch all admin settings
+  // Fetch all admin settings — these sections are still per-company, so skip
+  // the call for a Super Admin with no companyId (e.g. viewing just SMTP).
   const { data, isLoading } = useQuery({
     queryKey: ['admin-settings'],
     queryFn: () => adminSettingsApi.getAll(),
+    enabled: !!user?.companyId,
   });
   const settings      = data?.settings || {};
-  const smtpList      = settings.smtp || [];
   const leadStages    = settings.leadStages || [];
   const leadSources   = settings.leadSources || [];
   const businessTypes = settings.businessTypes || [];
@@ -278,9 +282,16 @@ export default function AdminSettings() {
   const inv = () => qc.invalidateQueries({ queryKey: ['admin-settings'] });
   const m = (fn, msg) => ({ mutationFn: fn, onSuccess: () => { inv(); toast({ title: msg }); }, onError: e => toast({ title: 'Error', description: e.message, variant: 'destructive' }) });
 
-  // SMTP
-  const addSmtpM    = useMutation({ ...m(b => adminSettingsApi.addSmtp(b), 'SMTP added'), onSuccess: () => { inv(); toast({ title: 'SMTP added' }); setSmtpForm({ department: 'SALES', provider: 'Gmail', mailServer: 'smtp.gmail.com', port: 587, email: '', password: '' }); } });
-  const delSmtpM    = useMutation(m(id => adminSettingsApi.deleteSmtp(id), 'SMTP deleted'));
+  // SMTP — platform-wide, shared by every company, Super Admin only
+  const { data: smtpData } = useQuery({
+    queryKey: ['global-smtp'],
+    queryFn: () => adminSettingsApi.getGlobalSmtp(),
+    enabled: isSuperAdmin,
+  });
+  const smtpList = smtpData?.smtp || [];
+  const invSmtp = () => qc.invalidateQueries({ queryKey: ['global-smtp'] });
+  const addSmtpM    = useMutation({ mutationFn: b => adminSettingsApi.addSmtp(b), onSuccess: () => { invSmtp(); toast({ title: 'SMTP added' }); setSmtpForm({ department: 'SALES', provider: 'Gmail', mailServer: 'smtp.gmail.com', port: 587, email: '', password: '' }); }, onError: e => toast({ title: 'Error', description: e.message, variant: 'destructive' }) });
+  const delSmtpM    = useMutation({ mutationFn: id => adminSettingsApi.deleteSmtp(id), onSuccess: () => { invSmtp(); toast({ title: 'SMTP deleted' }); }, onError: e => toast({ title: 'Error', description: e.message, variant: 'destructive' }) });
 
   // Lead stages
   const addStageM   = useMutation(m(b => adminSettingsApi.addLeadStage(b), 'Stage added'));
@@ -646,6 +657,16 @@ export default function AdminSettings() {
             {generalSection === 'smtp' && (
               <>
                 <h1 className="text-xl font-semibold text-gray-900">SMTP Settings</h1>
+                <p className="text-sm text-gray-500 -mt-2">
+                  One mailbox per department, shared by every company on the platform.
+                  {!isSuperAdmin && ' Only a Super Admin can add or remove these.'}
+                </p>
+                {!isSuperAdmin ? (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-800">
+                    You don't have permission to view or manage platform SMTP settings. Ask a Super Admin to configure this.
+                  </div>
+                ) : (
+                <>
                 {/* Add form */}
                 <div className="bg-white rounded-lg border border-gray-200 p-5 space-y-4">
                   <p className="text-sm font-medium text-gray-700 border-b border-gray-100 pb-3">Add New SMTP Configuration</p>
@@ -713,6 +734,8 @@ export default function AdminSettings() {
                     ))
                   }
                 </div>
+                </>
+                )}
               </>
             )}
 
