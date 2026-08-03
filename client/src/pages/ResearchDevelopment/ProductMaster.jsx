@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
 import { useRD } from '@/contexts/RDContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -6,12 +8,11 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import {
-  Package, Plus, Search, Filter, Eye, Edit2, Ban, RefreshCw,
+  Package, Plus, Search, Filter, Eye, Edit2, Ban, RefreshCw, Trash2,
   CheckCircle2, Clock, XCircle, FileText, Layers, Settings2
 } from 'lucide-react';
 import { showSuccessToast, showSmartToast } from '@/lib/toast-utils';
-
-const MACHINE_TYPES = ['Standard', 'Custom', 'Special Purpose Machine (SPM)'];
+import { UNIT_TYPES, getUnitsForType } from '@/utils/unitTypes';
 
 // Predefined fallback options for the smart suggestions in the + modal
 const DEFAULT_OPTIONS = {
@@ -54,7 +55,9 @@ const releaseStatusBadge = (status) => status === 'Released'
 const emptyForm = {
   code: '', name: '', description: '', category: '', pType: '', pSourceType: '',
   specifications: [], brand: '', machineType: 'Standard',
-  metrology: '', customFields: [], forwardToNextPhase: false
+  metrology: '', customFields: [], forwardToNextPhase: false,
+  size: '', unitWeightValue: '', unitWeightUnitType: '', unitWeightUnit: '',
+  inputUnitType: '', inputUnit: '', outputUnitType: '', outputUnit: ''
 };
 
 const emptyTemplateForm = { pType: '', category: '', pSourceType: '', groups: [] };
@@ -62,13 +65,19 @@ const emptyTemplateForm = { pType: '', category: '', pSourceType: '', groups: []
 export default function ProductMaster() {
   const {
     machines, stats, addMachine, updateMachine, discontinueMachine, reactivateMachine,
-    masterOptions, addMasterOption,
+    masterOptions, addMasterOption, updateMasterOption, deleteMasterOption,
     customFieldTemplates, getCustomFieldTemplate, saveCustomFieldTemplate, deleteCustomFieldTemplate,
   } = useRD();
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('All');
   const [filterRelease, setFilterRelease] = useState('All');
   const [showDiscontinued, setShowDiscontinued] = useState(false);
+  // Classification filters — find every product under a given P-Type/Category/P-Source Type
+  // (e.g. before renaming or deleting that option, to reassign items instead of hunting for them).
+  const [filterPType, setFilterPType] = useState('');
+  const [filterCategory, setFilterCategory] = useState('');
+  const [filterPSourceType, setFilterPSourceType] = useState('');
+  const [page, setPage] = useState(1);
   const [addOpen, setAddOpen] = useState(false);
   const [viewOpen, setViewOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -80,6 +89,29 @@ export default function ProductMaster() {
   const [templateManagerOpen, setTemplateManagerOpen] = useState(false);
   const [templateForm, setTemplateForm] = useState(emptyTemplateForm);
   const [hierarchyInputs, setHierarchyInputs] = useState({ pType: '', category: '', pSourceType: '' });
+  const [editOptionModal, setEditOptionModal] = useState({ open: false, option: null, value: '' });
+  const [deleteOptionConfirm, setDeleteOptionConfirm] = useState(null);
+
+  // Dynamic Unit Types (same source BOM Management uses) for Unit Weight / Input Unit / Output Unit
+  const { data: unitTypesData } = useQuery({
+    queryKey: ['/api/inventory/unit-types'],
+    queryFn: () => apiRequest('GET', '/api/inventory/unit-types'),
+  });
+  const unitTypesList = React.useMemo(() => {
+    if (unitTypesData?.unitTypes) return unitTypesData.unitTypes.map(ut => ut.name);
+    return UNIT_TYPES;
+  }, [unitTypesData]);
+  const getUnitsForTypeDynamic = (unitTypeName, currentUnit) => {
+    if (!unitTypeName) return [];
+    if (unitTypesData?.unitTypes) {
+      const found = unitTypesData.unitTypes.find(ut => ut.name === unitTypeName);
+      if (found) {
+        const units = found.units || [];
+        return currentUnit && !units.includes(currentUnit) ? [currentUnit, ...units] : units;
+      }
+    }
+    return getUnitsForType(unitTypeName, currentUnit);
+  };
 
   const handleAddOption = async () => {
     if (!newOptionModal.value) return;
@@ -128,14 +160,30 @@ export default function ProductMaster() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editForm.pType, editForm.category, editForm.pSourceType, editOpen]);
 
-  const filtered = machines.filter(m => {
-    if (!showDiscontinued && m.isDiscontinued) return false;
-    if (showDiscontinued && !m.isDiscontinued) return false;
-    if (filterStatus !== 'All' && m.designStatus !== filterStatus) return false;
-    if (filterRelease !== 'All' && m.releaseStatus !== filterRelease) return false;
-    const q = search.toLowerCase();
-    return !q || m.name.toLowerCase().includes(q) || m.code.toLowerCase().includes(q) || m.category.toLowerCase().includes(q);
+  // Reset to page 1 whenever a filter/search changes so the user doesn't
+  // land on a now-out-of-range page.
+  useEffect(() => { setPage(1); }, [search, filterStatus, filterRelease, showDiscontinued, filterPType, filterCategory, filterPSourceType]);
+
+  const { data: machinesListResponse, isLoading: machinesListLoading } = useQuery({
+    queryKey: ['rd-machines', 'list', { page, search, filterStatus, filterRelease, showDiscontinued, filterPType, filterCategory, filterPSourceType }],
+    queryFn: () => {
+      const params = new URLSearchParams({
+        page: String(page),
+        limit: '20',
+        designStatus: filterStatus,
+        releaseStatus: filterRelease,
+        discontinued: showDiscontinued ? 'true' : 'false',
+      });
+      if (search) params.set('search', search);
+      if (filterPType) params.set('pType', filterPType);
+      if (filterCategory) params.set('category', filterCategory);
+      if (filterPSourceType) params.set('pSourceType', filterPSourceType);
+      return apiRequest('GET', `/api/rd/machines?${params.toString()}`);
+    },
+    keepPreviousData: true,
   });
+  const filtered = machinesListResponse?.data || [];
+  const pagination = machinesListResponse?.pagination || { page: 1, pages: 1, total: 0, limit: 20 };
 
   const handleAdd = () => {
     if (!form.code || !form.name || !form.category || !form.pType || !form.pSourceType) return;
@@ -161,6 +209,14 @@ export default function ProductMaster() {
       metrology: m.metrology || '',
       customFields: Array.isArray(m.customFields) ? m.customFields : [],
       forwardToNextPhase: !!m.forwardToNextPhase,
+      size: m.size || '',
+      unitWeightValue: m.unitWeightValue !== null && m.unitWeightValue !== undefined ? String(m.unitWeightValue) : '',
+      unitWeightUnitType: m.unitWeightUnitType || '',
+      unitWeightUnit: m.unitWeightUnit || '',
+      inputUnitType: m.inputUnitType || '',
+      inputUnit: m.inputUnit || '',
+      outputUnitType: m.outputUnitType || '',
+      outputUnit: m.outputUnit || '',
     });
     setEditOpen(true);
   };
@@ -227,11 +283,11 @@ export default function ProductMaster() {
   const renderDropdownWithAdd = (label, field, fieldKey, options, state, setState, opts = {}) => {
     const { disabled = false, disabledHint = '', parentValueForAdd = '', resetKeys = [], required = true, showAddButton = true } = opts;
     return (
-      <div>
+      <div className="min-w-0">
         <label className="text-xs font-semibold text-slate-600 mb-1 block">{label}{required && ' *'}</label>
-        <div className="flex gap-2">
+        <div className="flex gap-2 min-w-0">
           <select
-            className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+            className="flex-1 min-w-0 truncate border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
             value={state[fieldKey]}
             disabled={disabled}
             onChange={e => {
@@ -262,6 +318,35 @@ export default function ProductMaster() {
       </div>
     );
   };
+
+  // ── Unit Type -> Unit cascading pair (dynamic, same system as BOM Management) ──
+  const renderUnitTypeUnitPair = (label, typeKey, unitKey, state, setState) => (
+    <>
+      <div>
+        <label className="text-xs font-semibold text-slate-600 mb-1 block">{label} Type</label>
+        <select
+          className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+          value={state[typeKey]}
+          onChange={e => setState(f => ({ ...f, [typeKey]: e.target.value, [unitKey]: '' }))}
+        >
+          <option value="">Select</option>
+          {unitTypesList.map(t => <option key={t} value={t}>{t}</option>)}
+        </select>
+      </div>
+      <div>
+        <label className="text-xs font-semibold text-slate-600 mb-1 block">{label}</label>
+        <select
+          className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white disabled:bg-slate-50 disabled:text-slate-400"
+          value={state[unitKey]}
+          disabled={!state[typeKey]}
+          onChange={e => setState(f => ({ ...f, [unitKey]: e.target.value }))}
+        >
+          <option value="">{state[typeKey] ? 'Select' : 'Select Type first'}</option>
+          {getUnitsForTypeDynamic(state[typeKey], state[unitKey]).map(u => <option key={u} value={u}>{u}</option>)}
+        </select>
+      </div>
+    </>
+  );
 
   // ── Custom fields block: renders parent label -> sub-field name -> value input ──
   const renderCustomFieldsBlock = (state, setState) => {
@@ -375,6 +460,45 @@ export default function ProductMaster() {
 
   const label = (field) => field === 'P-SourceType' ? 'P-Source Type' : field;
 
+  const handleRenameOption = async () => {
+    if (!editOptionModal.option || !editOptionModal.value.trim()) return;
+    const { option } = editOptionModal;
+    const newValue = editOptionModal.value.trim();
+    const oldValue = option.value;
+    try {
+      await updateMasterOption(option._id, newValue);
+      const fieldKey = FIELD_KEY_MAP[option.field];
+      if (fieldKey && templateForm[fieldKey] === oldValue) {
+        setTemplateForm(f => ({ ...f, [fieldKey]: newValue }));
+      }
+      showSuccessToast('Option Renamed', `"${oldValue}" renamed to "${newValue}"`);
+      setEditOptionModal({ open: false, option: null, value: '' });
+    } catch (e) {
+      showSmartToast(e, 'Failed to rename option');
+    }
+  };
+
+  const handleDeleteOption = async () => {
+    if (!deleteOptionConfirm) return;
+    const option = deleteOptionConfirm;
+    try {
+      await deleteMasterOption(option._id);
+      const fieldKey = FIELD_KEY_MAP[option.field];
+      if (fieldKey && templateForm[fieldKey] === option.value) {
+        setTemplateForm(f => {
+          if (fieldKey === 'pType') return { ...f, pType: '', category: '', pSourceType: '' };
+          if (fieldKey === 'category') return { ...f, category: '', pSourceType: '' };
+          return { ...f, pSourceType: '' };
+        });
+      }
+      showSuccessToast('Option Deleted', `"${option.value}" removed`);
+      setDeleteOptionConfirm(null);
+    } catch (e) {
+      showSmartToast(e, 'Failed to delete option');
+      setDeleteOptionConfirm(null);
+    }
+  };
+
   const renderHierarchyColumn = ({ fieldLabel, field, fieldKey, options, disabled, disabledHint, parentValue }) => (
     <div className={`rounded-lg border p-3 ${disabled ? 'bg-slate-50 border-slate-100' : 'bg-white border-slate-200'}`}>
       <p className="text-xs font-bold text-slate-700 mb-2">{fieldLabel}</p>
@@ -402,16 +526,36 @@ export default function ProductMaster() {
           <div className="space-y-1 max-h-40 overflow-y-auto">
             {options.length === 0 ? (
               <p className="text-xs text-slate-400 italic text-center py-2">None yet</p>
-            ) : options.map(o => (
-              <button
-                type="button"
-                key={o.value}
-                onClick={() => selectHierarchyValue(fieldKey, o.value)}
-                className={`w-full text-left px-2 py-1.5 rounded-md text-xs font-medium transition-colors ${templateForm[fieldKey] === o.value ? 'bg-blue-600 text-white' : 'text-slate-700 hover:bg-slate-100'}`}
-              >
-                {o.value}
-              </button>
-            ))}
+            ) : options.map(o => {
+              const isSelected = templateForm[fieldKey] === o.value;
+              return (
+                <div key={o.value} className="flex items-center gap-1 group">
+                  <button
+                    type="button"
+                    onClick={() => selectHierarchyValue(fieldKey, o.value)}
+                    className={`flex-1 min-w-0 text-left px-2 py-1.5 rounded-md text-xs font-medium transition-colors truncate ${isSelected ? 'bg-blue-600 text-white' : 'text-slate-700 hover:bg-slate-100'}`}
+                  >
+                    {o.value}
+                  </button>
+                  <button
+                    type="button"
+                    title={`Rename ${label(field)}`}
+                    onClick={() => setEditOptionModal({ open: true, option: { ...o, field }, value: o.value })}
+                    className={`flex-shrink-0 p-1 rounded transition-colors ${isSelected ? 'text-blue-100 hover:text-white' : 'text-slate-300 hover:text-blue-600'}`}
+                  >
+                    <Edit2 className="h-3 w-3" />
+                  </button>
+                  <button
+                    type="button"
+                    title={`Delete ${label(field)}`}
+                    onClick={() => setDeleteOptionConfirm({ ...o, field })}
+                    className={`flex-shrink-0 p-1 rounded transition-colors ${isSelected ? 'text-blue-100 hover:text-white' : 'text-slate-300 hover:text-red-600'}`}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </button>
+                </div>
+              );
+            })}
           </div>
         </>
       )}
@@ -468,7 +612,7 @@ export default function ProductMaster() {
             <Settings2 className="h-4 w-4 mr-2" /> Manage Classifications &amp; Fields
           </Button>
           <Button onClick={() => setAddOpen(true)} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow">
-            <Plus className="h-4 w-4 mr-2" /> Add Machine
+            <Plus className="h-4 w-4 mr-2" /> Add Item
           </Button>
         </div>
       </div>
@@ -515,6 +659,44 @@ export default function ProductMaster() {
               {showDiscontinued ? 'Show Active' : 'Show Discontinued'}
             </button>
           </div>
+
+          <div className="flex flex-col md:flex-row md:items-center gap-2 mt-3 pt-3 border-t border-slate-100">
+            <span className="text-xs font-semibold text-slate-500 flex-shrink-0">Classification:</span>
+            <select
+              className="border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              value={filterPType}
+              onChange={e => { setFilterPType(e.target.value); setFilterCategory(''); setFilterPSourceType(''); }}
+            >
+              <option value="">All P-Types</option>
+              {(masterOptions.PType || []).map(o => <option key={o.value} value={o.value}>{o.value}</option>)}
+            </select>
+            <select
+              className="border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-400"
+              value={filterCategory}
+              disabled={!filterPType}
+              onChange={e => { setFilterCategory(e.target.value); setFilterPSourceType(''); }}
+            >
+              <option value="">{filterPType ? 'All Categories' : 'Select P-Type first'}</option>
+              {categoryOptionsFor(filterPType, masterOptions).map(o => <option key={o.value} value={o.value}>{o.value}</option>)}
+            </select>
+            <select
+              className="border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-400"
+              value={filterPSourceType}
+              disabled={!filterCategory}
+              onChange={e => setFilterPSourceType(e.target.value)}
+            >
+              <option value="">{filterCategory ? 'All P-Source Types' : 'Select Category first'}</option>
+              {pSourceOptionsFor(filterCategory, masterOptions).map(o => <option key={o.value} value={o.value}>{o.value}</option>)}
+            </select>
+            {(filterPType || filterCategory || filterPSourceType) && (
+              <button
+                onClick={() => { setFilterPType(''); setFilterCategory(''); setFilterPSourceType(''); }}
+                className="text-xs font-semibold text-blue-600 hover:text-blue-800 px-2 py-1"
+              >
+                Clear
+              </button>
+            )}
+          </div>
         </CardContent>
       </Card>
 
@@ -536,7 +718,9 @@ export default function ProductMaster() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.length === 0 ? (
+                {machinesListLoading ? (
+                  <tr><td colSpan={8} className="text-center py-12 text-slate-400">Loading...</td></tr>
+                ) : filtered.length === 0 ? (
                   <tr><td colSpan={8} className="text-center py-12 text-slate-400">No machines found matching the filters.</td></tr>
                 ) : filtered.map(m => (
                   <tr key={m._id} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
@@ -572,6 +756,13 @@ export default function ProductMaster() {
               </tbody>
             </table>
           </div>
+          {pagination.pages > 1 && (
+            <div className="flex items-center justify-center gap-2 py-4">
+              <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={pagination.page <= 1}>Previous</Button>
+              <span className="text-sm text-muted-foreground">Page {pagination.page} of {pagination.pages} ({pagination.total} machines)</span>
+              <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)} disabled={pagination.page >= pagination.pages}>Next</Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -614,13 +805,30 @@ export default function ProductMaster() {
                 <label className="text-xs font-semibold text-slate-600 mb-1 block">Brand</label>
                 <Input className="bg-white" placeholder="Enter brand" value={form.brand} onChange={e => setForm(f => ({ ...f, brand: e.target.value }))} />
               </div>
-              <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Machine Type</label>
-                <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" value={form.machineType} onChange={e => setForm(f => ({ ...f, machineType: e.target.value }))}>
-                  {MACHINE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-              </div>
               {renderDropdownWithAdd('Metrology', 'Metrology', 'metrology', masterOptions.Metrology, form, setForm, { required: false })}
+              <div>
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">Size</label>
+                <Input className="bg-white" placeholder="e.g. 500x300x200mm" value={form.size} onChange={e => setForm(f => ({ ...f, size: e.target.value }))} />
+              </div>
+            </div>
+
+            <div className="p-4 bg-slate-50 rounded-lg border border-slate-100 space-y-4">
+              <p className="text-xs font-semibold text-slate-700">Unit Weight &amp; Handling Units</p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 mb-1 block">Unit Weight</label>
+                  <Input type="number" min="0" className="bg-white" placeholder="0" value={form.unitWeightValue} onChange={e => setForm(f => ({ ...f, unitWeightValue: e.target.value }))} />
+                </div>
+                {renderUnitTypeUnitPair('Unit Weight Unit', 'unitWeightUnitType', 'unitWeightUnit', form, setForm)}
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-4">
+                  {renderUnitTypeUnitPair('Input Unit (Purchase)', 'inputUnitType', 'inputUnit', form, setForm)}
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  {renderUnitTypeUnitPair('Output Unit', 'outputUnitType', 'outputUnit', form, setForm)}
+                </div>
+              </div>
             </div>
 
             {renderSpecBuilder(form, setForm)}
@@ -685,13 +893,30 @@ export default function ProductMaster() {
                 <label className="text-xs font-semibold text-slate-600 mb-1 block">Brand</label>
                 <Input className="bg-white" value={editForm.brand} onChange={e => setEditForm(f => ({ ...f, brand: e.target.value }))} />
               </div>
-              <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Machine Type</label>
-                <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" value={editForm.machineType} onChange={e => setEditForm(f => ({ ...f, machineType: e.target.value }))}>
-                  {MACHINE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-              </div>
               {renderDropdownWithAdd('Metrology', 'Metrology', 'metrology', masterOptions.Metrology, editForm, setEditForm, { required: false })}
+              <div>
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">Size</label>
+                <Input className="bg-white" placeholder="e.g. 500x300x200mm" value={editForm.size} onChange={e => setEditForm(f => ({ ...f, size: e.target.value }))} />
+              </div>
+            </div>
+
+            <div className="p-4 bg-slate-50 rounded-lg border border-slate-100 space-y-4">
+              <p className="text-xs font-semibold text-slate-700">Unit Weight &amp; Handling Units</p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 mb-1 block">Unit Weight</label>
+                  <Input type="number" min="0" className="bg-white" placeholder="0" value={editForm.unitWeightValue} onChange={e => setEditForm(f => ({ ...f, unitWeightValue: e.target.value }))} />
+                </div>
+                {renderUnitTypeUnitPair('Unit Weight Unit', 'unitWeightUnitType', 'unitWeightUnit', editForm, setEditForm)}
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-4">
+                  {renderUnitTypeUnitPair('Input Unit (Purchase)', 'inputUnitType', 'inputUnit', editForm, setEditForm)}
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  {renderUnitTypeUnitPair('Output Unit', 'outputUnitType', 'outputUnit', editForm, setEditForm)}
+                </div>
+              </div>
             </div>
 
             {renderSpecBuilder(editForm, setEditForm)}
@@ -756,6 +981,26 @@ export default function ProductMaster() {
                 <div className="bg-slate-50 rounded-lg p-3">
                   <p className="text-xs text-slate-500 mb-1">Metrology</p>
                   <p className="text-sm font-medium text-slate-800">{selected.metrology || 'N/A'}</p>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-xs text-slate-500 mb-1">Size</p>
+                  <p className="text-sm font-medium text-slate-800">{selected.size || 'N/A'}</p>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-xs text-slate-500 mb-1">Unit Weight</p>
+                  <p className="text-sm font-medium text-slate-800">
+                    {selected.unitWeightValue !== null && selected.unitWeightValue !== undefined
+                      ? `${selected.unitWeightValue} ${selected.unitWeightUnit || ''}`.trim()
+                      : 'N/A'}
+                  </p>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-xs text-slate-500 mb-1">Input Unit (Purchase)</p>
+                  <p className="text-sm font-medium text-slate-800">{selected.inputUnit || 'N/A'}</p>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-xs text-slate-500 mb-1">Output Unit</p>
+                  <p className="text-sm font-medium text-slate-800">{selected.outputUnit || 'N/A'}</p>
                 </div>
                 <div className="bg-slate-50 rounded-lg p-3">
                   <p className="text-xs text-slate-500 mb-1">Design &amp; Prototype</p>
@@ -883,6 +1128,45 @@ export default function ProductMaster() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setNewOptionModal({ open: false, field: '', value: '', parentValue: '' })}>Cancel</Button>
             <Button onClick={handleAddOption} disabled={!newOptionModal.value} className="bg-blue-600 hover:bg-blue-700 text-white">Save Option</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Rename Master Option Dialog */}
+      <Dialog open={editOptionModal.open} onOpenChange={(open) => !open && setEditOptionModal({ open: false, option: null, value: '' })}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Rename {editOptionModal.option ? label(editOptionModal.option.field) : ''}</DialogTitle></DialogHeader>
+          <div className="py-4">
+            <label className="text-xs font-semibold text-slate-600 mb-1 block">Value *</label>
+            <input
+              type="text"
+              autoFocus
+              className="flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+              value={editOptionModal.value}
+              onChange={e => setEditOptionModal(prev => ({ ...prev, value: e.target.value }))}
+              onKeyDown={e => e.key === 'Enter' && handleRenameOption()}
+            />
+            <p className="text-xs text-slate-500 mt-2">
+              Renaming updates every existing product, BOM material snapshot and custom field template that currently uses this value.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditOptionModal({ open: false, option: null, value: '' })}>Cancel</Button>
+            <Button onClick={handleRenameOption} disabled={!editOptionModal.value.trim()} className="bg-blue-600 hover:bg-blue-700 text-white">Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Master Option Confirm */}
+      <Dialog open={!!deleteOptionConfirm} onOpenChange={(open) => !open && setDeleteOptionConfirm(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle className="text-red-600">Delete {deleteOptionConfirm ? label(deleteOptionConfirm.field) : ''}</DialogTitle></DialogHeader>
+          <p className="text-sm text-slate-600 py-2">
+            Remove <strong>{deleteOptionConfirm?.value}</strong> from the list? This is blocked if any product or linked sub-classification still uses it.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteOptionConfirm(null)}>Cancel</Button>
+            <Button className="bg-red-600 hover:bg-red-700 text-white" onClick={handleDeleteOption}>Delete</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -9,6 +9,8 @@ const Leave = () => {
   const token = localStorage.getItem("token");
 
   const [leaves, setLeaves] = useState<any[]>([]);
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({ page: 1, pages: 1, total: 0 });
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<any>(null);
 
@@ -18,15 +20,16 @@ const Leave = () => {
 
   /* ================= FETCH LEAVES ================= */
 
-  const fetchLeaves = async () => {
+  const fetchLeaves = async (pageNum: number = page) => {
     try {
-      const res = await axios.get(`${API_BASE}/leaves`, {
+      const res = await axios.get(`${API_BASE}/leaves?page=${pageNum}&limit=15`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
       });
 
-      setLeaves(res.data || []);
+      setLeaves(res.data?.data || []);
+      setPagination(res.data?.pagination || { page: 1, pages: 1, total: 0 });
       setLoading(false);
     } catch (error) {
       console.error("Failed to fetch leaves", error);
@@ -35,8 +38,8 @@ const Leave = () => {
   };
 
   useEffect(() => {
-    fetchLeaves();
-  }, []);
+    fetchLeaves(page);
+  }, [page]);
 
   /* ================= HELPERS ================= */
 
@@ -157,6 +160,26 @@ const confirmDelete = async () => {
           </tbody>
         </table>
       </div>
+
+      {pagination.pages > 1 && (
+        <div className="flex items-center justify-center gap-2 mt-4">
+          <button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={pagination.page <= 1}
+            className="px-3 py-1.5 text-sm border rounded-md disabled:opacity-50"
+          >
+            Previous
+          </button>
+          <span className="text-sm text-gray-500">Page {pagination.page} of {pagination.pages}</span>
+          <button
+            onClick={() => setPage((p) => p + 1)}
+            disabled={pagination.page >= pagination.pages}
+            className="px-3 py-1.5 text-sm border rounded-md disabled:opacity-50"
+          >
+            Next
+          </button>
+        </div>
+      )}
 
       {/* ================= APPLY / EDIT MODAL ================= */}
       {open && (

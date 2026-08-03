@@ -619,6 +619,27 @@ export default function MyDeliveries() {
         </div>
       </div>
 
+      {pagination.pages > 1 && (
+        <div className="flex items-center justify-center gap-2 py-4">
+          <Button
+            variant="outline" size="sm"
+            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+            disabled={pagination.page <= 1}
+          >
+            Previous
+          </Button>
+          <span className="text-sm text-muted-foreground">
+            Page {pagination.page} of {pagination.pages} ({pagination.total} deliveries)
+          </span>
+          <Button
+            variant="outline" size="sm"
+            onClick={() => setCurrentPage(p => Math.min(pagination.pages, p + 1))}
+            disabled={pagination.page >= pagination.pages}
+          >
+            Next
+          </Button>
+        </div>
+      )}
 
       {/* View Modal */}
       <Dialog open={isViewModalOpen} onOpenChange={setIsViewModalOpen}>

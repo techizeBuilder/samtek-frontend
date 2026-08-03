@@ -82,23 +82,29 @@ const TagInput = ({ label, icon: Icon, items, setItems, placeholder, colorClass 
 const VendorMaster = () => {
     const { toast } = useToast();
     const [searchTerm, setSearchTerm] = useState('');
+    const [page, setPage] = useState(1);
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [editingVendor, setEditingVendor] = useState(null);
+
+    const changeSearch = (value) => { setSearchTerm(value); setPage(1); };
 
     // dynamic array state for form
     const [formCategories, setFormCategories] = useState([]);
 
+    // Passing page/limit opts this browse page into the paginated response
+    // shape — vendor-picker dropdowns elsewhere call /api/suppliers with no
+    // params and keep getting the full list, unaffected by this.
     const { data, isLoading } = useQuery({
-        queryKey: ['/api/suppliers'],
-        queryFn: () => apiRequest('GET', '/api/suppliers')
+        queryKey: ['/api/suppliers', page, searchTerm],
+        queryFn: () => apiRequest('GET', `/api/suppliers?page=${page}&limit=20&search=${encodeURIComponent(searchTerm)}`),
+        keepPreviousData: true,
     });
 
     const vendors = data?.suppliers || [];
-
-    const filteredVendors = vendors.filter(v =>
-        v.supplierName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        v.supplierCode?.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const pagination = data?.pagination || {};
+    // Search now happens server-side — `vendors` is already the current
+    // page's filtered slice.
+    const filteredVendors = vendors;
 
     const mutation = useMutation({
         mutationFn: (vendorData) => {
@@ -176,7 +182,7 @@ const VendorMaster = () => {
                             placeholder="Search vendors by name or code..."
                             className="pl-10"
                             value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
+                            onChange={(e) => changeSearch(e.target.value)}
                         />
                     </div>
                 </CardContent>
@@ -242,6 +248,14 @@ const VendorMaster = () => {
                             </CardContent>
                         </Card>
                     ))}
+                </div>
+            )}
+
+            {pagination.pages > 1 && (
+                <div className="flex items-center justify-center gap-2 py-4">
+                    <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={pagination.page <= 1}>Previous</Button>
+                    <span className="text-sm text-slate-500">Page {pagination.page} of {pagination.pages} ({pagination.total} vendors)</span>
+                    <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)} disabled={pagination.page >= pagination.pages}>Next</Button>
                 </div>
             )}
 

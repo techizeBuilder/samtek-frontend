@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useProduction } from '@/contexts/ProductionContext';
+import { useProduction, useProductionOrdersList, PROCESS_STEPS } from '@/contexts/ProductionContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,13 +19,29 @@ const priorityBadge = {
 };
 
 export default function JobCards() {
-  const { orders, teams, getTeamById } = useProduction();
+  const { teams, getTeamById } = useProduction();
   const [search, setSearch] = useState('');
   const [filterStep, setFilterStep] = useState('All');
   const [filterStatus, setFilterStatus] = useState('All');
   const [printCard, setPrintCard] = useState(null);
+  const [page, setPage] = useState(1);
 
-  // Flatten all job cards: one per (order × process)
+  const changeSearch = (value) => { setSearch(value); setPage(1); };
+
+  // Job cards are one-per-(order × process) — printable historical ERP
+  // records, so unlike the board pages this needs full order history, not
+  // just active work. Backed by the same paginated/searchable orders list
+  // the Orders page uses (search matches orderId/machineCode/machineName);
+  // step/status below are then applied client-side on top of this page's
+  // cards, so the pagination boundary is per order-batch, not per exact
+  // card count.
+  const { data: ordersListData, isLoading: ordersLoading } = useProductionOrdersList({
+    page, limit: 20, search,
+  });
+  const orders = ordersListData?.data?.orders || [];
+  const pagination = ordersListData?.data?.pagination || {};
+
+  // Flatten this page's job cards: one per (order × process)
   const allCards = orders.flatMap(order =>
     order.processes.map((proc, idx) => ({
       cardId: `JC-${order.orderId || order.id}-${idx + 1}`,
@@ -50,17 +66,15 @@ export default function JobCards() {
     }))
   );
 
-  const steps = ['All', ...new Set(allCards.map(c => c.step))];
+  // Fixed list (not derived from the current page) so the filter buttons
+  // don't shift around depending on which order page happens to be loaded.
+  const steps = ['All', ...PROCESS_STEPS];
   const statuses = ['All', 'Pending', 'In Progress', 'QC Pending', 'Completed'];
 
   const filtered = allCards.filter(c => {
-    const matchSearch = !search ||
-      c.cardId.toLowerCase().includes(search.toLowerCase()) ||
-      c.orderId.toLowerCase().includes(search.toLowerCase()) ||
-      c.machineName.toLowerCase().includes(search.toLowerCase());
     const matchStep = filterStep === 'All' || c.step === filterStep;
     const matchStatus = filterStatus === 'All' || c.status === filterStatus;
-    return matchSearch && matchStep && matchStatus;
+    return matchStep && matchStatus;
   });
 
   const stats = {
@@ -96,7 +110,7 @@ export default function JobCards() {
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         {[
-          { label: 'Total Cards', value: stats.total, color: 'text-slate-800' },
+          { label: 'Cards (this page)', value: stats.total, color: 'text-slate-800' },
           { label: 'Pending', value: stats.pending, color: 'text-slate-500' },
           { label: 'In Progress', value: stats.inProgress, color: 'text-blue-600' },
           { label: 'QC Pending', value: stats.qcPending, color: 'text-amber-600' },
@@ -116,7 +130,7 @@ export default function JobCards() {
         <CardContent className="p-4 space-y-3">
           <div className="relative max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-            <Input placeholder="Search by Card ID, Order ID, Machine..." className="pl-9" value={search} onChange={e => setSearch(e.target.value)} />
+            <Input placeholder="Search by Order ID or Machine..." className="pl-9" value={search} onChange={e => changeSearch(e.target.value)} />
           </div>
           <div className="flex flex-wrap gap-2">
             <span className="text-xs text-slate-500 self-center">Process:</span>
@@ -152,7 +166,9 @@ export default function JobCards() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.length === 0 ? (
+                {ordersLoading ? (
+                  <tr><td colSpan={9} className="text-center py-12 text-slate-400">Loading job cards...</td></tr>
+                ) : filtered.length === 0 ? (
                   <tr><td colSpan={9} className="text-center py-12 text-slate-400">No job cards match your filters.</td></tr>
                 ) : filtered.map(card => {
                   const cardTeam = card.assignedTeam ? getTeamById(card.assignedTeam) : null;
@@ -185,6 +201,30 @@ export default function JobCards() {
               </tbody>
             </table>
           </div>
+
+          {pagination.pages > 1 && (
+            <div className="flex items-center justify-center gap-2 py-4">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={pagination.page <= 1}
+              >
+                Previous
+              </Button>
+              <span className="text-xs text-slate-500">
+                Order page {pagination.page} of {pagination.pages} ({pagination.total} orders)
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage(p => p + 1)}
+                disabled={pagination.page >= pagination.pages}
+              >
+                Next
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 

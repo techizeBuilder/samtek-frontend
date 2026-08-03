@@ -56,6 +56,8 @@ export default function MarkAttendance() {
   /* ================= STATE ================= */
 
   const [history, setHistory] = useState<AttendanceLog[]>([]);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyPagination, setHistoryPagination] = useState({ page: 1, pages: 1, total: 0 });
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -73,16 +75,25 @@ export default function MarkAttendance() {
 
   /* ================= FETCH DATA ================= */
 
-  const fetchData = useCallback(async () => {
+  // Today's record only ever needs the single most-recent row (records are
+  // sorted date desc, so if today has a record it's always page 1/limit 1)
+  // — kept separate from the history table's own page so browsing older
+  // attendance never affects the punch-in/out state above.
+  const fetchData = useCallback(async (pageNum: number) => {
     try {
       setLoading(true);
-      const res = await api.get("/attendance/me");
-      const data = Array.isArray(res.data) ? res.data : [];
-      setHistory(data);
+      const [todayRes, historyRes] = await Promise.all([
+        api.get("/attendance/me?page=1&limit=1"),
+        api.get(`/attendance/me?page=${pageNum}&limit=15`),
+      ]);
 
       const today = new Date().toISOString().split("T")[0];
-      const todayRec = data.find((a: any) => a.date === today);
+      const todayData = todayRes.data?.data || [];
+      const todayRec = todayData.find((a: any) => a.date === today);
       setTodayRecord(todayRec || null);
+
+      setHistory(historyRes.data?.data || []);
+      setHistoryPagination(historyRes.data?.pagination || { page: 1, pages: 1, total: 0 });
     } catch (err) {
       console.error("Fetch Error:", err);
     } finally {
@@ -91,8 +102,8 @@ export default function MarkAttendance() {
   }, [token]);
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    fetchData(historyPage);
+  }, [fetchData, historyPage]);
 
   /* ================= TIMER LOGIC ================= */
 
@@ -159,7 +170,7 @@ export default function MarkAttendance() {
         title: "Success",
         description: `${type.replace(/[\/-]/g, " ").toUpperCase()} recorded.`,
       });
-      await fetchData();
+      await fetchData(historyPage);
     } catch (err: any) {
       toast({
         title: "Action Failed",
@@ -336,7 +347,7 @@ export default function MarkAttendance() {
              <Card className="border-0 shadow-sm rounded-3xl bg-white overflow-hidden">
                 <CardHeader className="p-6 border-b border-slate-50 flex flex-row items-center justify-between">
                    <CardTitle className="text-lg font-bold">Attendance History</CardTitle>
-                   <Button variant="ghost" size="sm" className="text-indigo-600 font-bold hover:bg-indigo-50">View More</Button>
+                   <span className="text-xs text-slate-400 font-medium">{historyPagination.total} records</span>
                 </CardHeader>
                 <CardContent className="p-0">
                    <div className="overflow-x-auto">
@@ -381,6 +392,13 @@ export default function MarkAttendance() {
                         </tbody>
                       </table>
                    </div>
+                   {historyPagination.pages > 1 && (
+                     <div className="flex items-center justify-center gap-2 py-4">
+                       <Button variant="outline" size="sm" onClick={() => setHistoryPage(p => Math.max(1, p - 1))} disabled={historyPagination.page <= 1}>Previous</Button>
+                       <span className="text-sm text-slate-500">Page {historyPagination.page} of {historyPagination.pages}</span>
+                       <Button variant="outline" size="sm" onClick={() => setHistoryPage(p => p + 1)} disabled={historyPagination.page >= historyPagination.pages}>Next</Button>
+                     </div>
+                   )}
                 </CardContent>
              </Card>
           </div>

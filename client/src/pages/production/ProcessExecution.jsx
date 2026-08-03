@@ -1,13 +1,34 @@
 import React, { useState } from 'react';
-import { useProduction, PROCESS_STEPS } from '@/contexts/ProductionContext';
+import { useProduction, useProductionOrdersList, computeOrderProgress, PROCESS_STEPS, PROCESS_TYPE_MAP } from '@/contexts/ProductionContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import {
   Cog, Play, CheckCircle, XCircle, AlertTriangle, ChevronDown, Lock,
-  Clock, Users, RotateCcw, ThumbsUp, ThumbsDown, Package
+  Clock, Users, RotateCcw, ThumbsUp, ThumbsDown, Package, Search
 } from 'lucide-react';
+
+// Fresh, all-Pending process steps for a unit the backend hasn't
+// materialized into `extraUnits` yet — mirrors ProductionContext's
+// buildDefaultProcesses(), kept local here since this file resolves unit
+// processes directly off a held order object (see getUnitProcessesFor)
+// rather than via a context lookup by id, so it can work for a selected
+// order from either the active list or the paginated Completed tab below.
+const buildDefaultProcesses = () => PROCESS_STEPS.map(step => ({
+  step, type: PROCESS_TYPE_MAP[step], status: 'Pending', assignedTeam: null,
+  startDate: null, endDate: null, qcStatus: 'Pending', qcBy: null, qcDate: null,
+  notes: '', reworks: [], subEntries: [],
+}));
+
+const getUnitCountFor = (order) => Math.max(1, Number(order?.orderQuantity) || 1);
+
+const getUnitProcessesFor = (order, unitNumber = 1) => {
+  if (!order) return [];
+  if (unitNumber <= 1) return order.processes;
+  const extra = order.extraUnits?.[unitNumber - 2];
+  return extra ? extra.processes : buildDefaultProcesses();
+};
 
 const stepColor = {
   'Pending': 'border-slate-200 bg-white',
@@ -37,14 +58,17 @@ const typeColor = {
 
 export default function ProcessExecution() {
   const {
-    orders, teams, getOrderProgress, getTeamById,
+    orders, teams, getTeamById,
     assignTeam, startProcess, markProcessComplete,
     approveQC, rejectQC, updateProcessNotes,
     addSubEntry, completeSubEntry, qcSubEntry,
-    getOrderUnitCount, getUnitProcesses
   } = useProduction();
 
   const [selectedOrderId, setSelectedOrderId] = useState('');
+  // Held directly when an order is picked from the Completed tab below,
+  // since a Completed order may not be present in `orders` (the active-work
+  // feed) — see selectedOrder derivation.
+  const [selectedCompletedOrder, setSelectedCompletedOrder] = useState(null);
   // Which physical machine (1-based) of a multi-quantity order is shown —
   // only relevant when the order's orderQuantity > 1 (tabs render then).
   const [activeUnit, setActiveUnit] = useState(1);
@@ -62,17 +86,49 @@ export default function ProcessExecution() {
   const [assignDialog, setAssignDialog] = useState(null); // { step }
   const [selectedTeam, setSelectedTeam] = useState('');
 
+  // ── Order picker: two tabs — Pending/In Progress (all, from the active-work
+  // feed) and Completed (server-paginated + searchable, since that list only
+  // grows over time and shouldn't all load at once). ─────────────────────────
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerTab, setPickerTab] = useState('active');
+  const [pickerSearch, setPickerSearch] = useState('');
+  const [completedPage, setCompletedPage] = useState(1);
+
+  const changePickerSearch = (value) => { setPickerSearch(value); setCompletedPage(1); };
+
   const activeOrders = orders.filter(o => o.status !== 'Completed');
-  const selectedOrder = orders.find(o => String(o._id || o.id) === selectedOrderId);
-  const progress = selectedOrder ? getOrderProgress(selectedOrder._id || selectedOrder.id) : 0;
+  const activeOrdersFiltered = activeOrders.filter(o => {
+    if (!pickerSearch) return true;
+    const q = pickerSearch.toLowerCase();
+    return (o.orderId || '').toLowerCase().includes(q) ||
+      (o.machineCode || '').toLowerCase().includes(q) ||
+      (o.machineName || '').toLowerCase().includes(q);
+  });
+
+  // Only fetched once the picker is actually open, so switching to this tab
+  // doesn't cost anything until the user asks for it.
+  const { data: completedOrdersData, isLoading: completedLoading } = useProductionOrdersList(
+    { page: completedPage, limit: 20, search: pickerSearch, status: 'Completed' },
+    { enabled: pickerOpen }
+  );
+  const completedOrders = completedOrdersData?.data?.orders || [];
+  const completedPagination = completedOrdersData?.data?.pagination || {};
+
+  // Prefer the live, reactive copy from the active-work feed (so in-flight
+  // mutations update the view immediately); fall back to the snapshot held
+  // from the Completed tab for orders outside that feed.
+  const selectedOrder = orders.find(o => String(o._id || o.id) === selectedOrderId) || selectedCompletedOrder;
+  const progress = selectedOrder ? computeOrderProgress(selectedOrder) : 0;
 
   // How many physical machines this order builds, and which one is on screen.
-  const unitCount = selectedOrder ? getOrderUnitCount(selectedOrder._id || selectedOrder.id) : 1;
-  const activeProcesses = selectedOrder ? getUnitProcesses(selectedOrderId, activeUnit) : [];
+  const unitCount = getUnitCountFor(selectedOrder);
+  const activeProcesses = getUnitProcessesFor(selectedOrder, activeUnit);
 
-  const selectOrder = (id) => {
-    setSelectedOrderId(id);
+  const selectOrder = (order, fromCompletedTab) => {
+    setSelectedOrderId(String(order._id || order.id));
+    setSelectedCompletedOrder(fromCompletedTab ? order : null);
     setActiveUnit(1); // reset to Unit 1 whenever the order selection changes
+    setPickerOpen(false);
   };
 
   // A step can only start if the previous step is Completed (QC Approved)
@@ -133,20 +189,112 @@ export default function ProcessExecution() {
       <Card className="border-none shadow-sm">
         <CardContent className="p-5">
           <label className="text-sm font-semibold text-slate-700 mb-2 block">Select Production Order</label>
-          <div className="relative max-w-sm">
-            <select
-              className="w-full border border-slate-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white appearance-none pr-8"
-              value={selectedOrderId}
-              onChange={e => selectOrder(e.target.value)}
+          <div className="relative max-w-md">
+            <button
+              type="button"
+              onClick={() => setPickerOpen(o => !o)}
+              className="w-full flex items-center justify-between gap-2 border border-slate-200 rounded-lg px-4 py-2.5 text-sm bg-white hover:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              <option value="">-- Select an order --</option>
-              {orders.map(o => (
-                <option key={o._id || o.id} value={String(o._id || o.id)}>
-                  {o.orderId || o.id} — {o.machineName} [{o.status}]
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+              <span className={`truncate ${selectedOrder ? 'text-slate-800' : 'text-slate-400'}`}>
+                {selectedOrder
+                  ? `${selectedOrder.orderId || selectedOrder.id} — ${selectedOrder.machineName} [${selectedOrder.status}]`
+                  : '-- Select an order --'}
+              </span>
+              <ChevronDown className="h-4 w-4 text-slate-400 flex-shrink-0" />
+            </button>
+
+            {pickerOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setPickerOpen(false)} />
+                <div className="absolute z-50 mt-2 w-full bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden">
+                  {/* Tabs */}
+                  <div className="flex border-b border-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => setPickerTab('active')}
+                      className={`flex-1 px-4 py-2.5 text-xs font-semibold transition-colors ${pickerTab === 'active' ? 'text-blue-700 border-b-2 border-blue-600 bg-blue-50/60' : 'text-slate-500 hover:bg-slate-50'}`}
+                    >
+                      Pending / In Progress ({activeOrdersFiltered.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPickerTab('completed')}
+                      className={`flex-1 px-4 py-2.5 text-xs font-semibold transition-colors ${pickerTab === 'completed' ? 'text-emerald-700 border-b-2 border-emerald-600 bg-emerald-50/60' : 'text-slate-500 hover:bg-slate-50'}`}
+                    >
+                      Completed {completedPagination.total != null ? `(${completedPagination.total})` : ''}
+                    </button>
+                  </div>
+
+                  {/* Search */}
+                  <div className="p-2 border-b border-slate-100">
+                    <div className="relative">
+                      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                      <Input
+                        className="pl-8 h-8 text-xs"
+                        placeholder="Search by order no. or machine code..."
+                        value={pickerSearch}
+                        onChange={e => changePickerSearch(e.target.value)}
+                        autoFocus
+                      />
+                    </div>
+                  </div>
+
+                  {/* List */}
+                  <div className="max-h-64 overflow-y-auto">
+                    {pickerTab === 'active' ? (
+                      activeOrdersFiltered.length === 0 ? (
+                        <p className="text-center text-xs text-slate-400 py-6">No matching orders.</p>
+                      ) : activeOrdersFiltered.map(o => (
+                        <button
+                          key={o._id || o.id}
+                          type="button"
+                          onClick={() => selectOrder(o, false)}
+                          className={`w-full text-left px-4 py-2 text-xs hover:bg-blue-50 transition-colors ${selectedOrderId === String(o._id || o.id) ? 'bg-blue-50 font-semibold' : ''}`}
+                        >
+                          {o.orderId || o.id} — {o.machineName} <span className="text-slate-400">[{o.status}]</span>
+                        </button>
+                      ))
+                    ) : completedLoading ? (
+                      <p className="text-center text-xs text-slate-400 py-6">Loading...</p>
+                    ) : completedOrders.length === 0 ? (
+                      <p className="text-center text-xs text-slate-400 py-6">No completed orders match.</p>
+                    ) : completedOrders.map(o => (
+                      <button
+                        key={o._id || o.id}
+                        type="button"
+                        onClick={() => selectOrder(o, true)}
+                        className={`w-full text-left px-4 py-2 text-xs hover:bg-emerald-50 transition-colors ${selectedOrderId === String(o._id || o.id) ? 'bg-emerald-50 font-semibold' : ''}`}
+                      >
+                        {o.orderId || o.id} — {o.machineName} <span className="text-emerald-500">[Completed]</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Pagination — Completed tab only; the active tab shows everything at once */}
+                  {pickerTab === 'completed' && completedPagination.pages > 1 && (
+                    <div className="flex items-center justify-between px-3 py-2 border-t border-slate-100 bg-slate-50">
+                      <Button
+                        size="sm" variant="outline" className="h-6 text-xs px-2"
+                        disabled={completedPagination.page <= 1}
+                        onClick={() => setCompletedPage(p => Math.max(1, p - 1))}
+                      >
+                        Prev
+                      </Button>
+                      <span className="text-[11px] text-slate-500">
+                        Page {completedPagination.page} of {completedPagination.pages}
+                      </span>
+                      <Button
+                        size="sm" variant="outline" className="h-6 text-xs px-2"
+                        disabled={completedPagination.page >= completedPagination.pages}
+                        onClick={() => setCompletedPage(p => p + 1)}
+                      >
+                        Next
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -215,7 +363,7 @@ export default function ProcessExecution() {
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-xs font-semibold text-slate-500 pl-1">Machine:</span>
                   {Array.from({ length: unitCount }, (_, i) => i + 1).map(unitNo => {
-                    const unitProcs = getUnitProcesses(selectedOrderId, unitNo);
+                    const unitProcs = getUnitProcessesFor(selectedOrder, unitNo);
                     const unitDone = unitProcs.filter(p => p.status === 'Completed').length;
                     const unitComplete = unitDone === unitProcs.length;
                     return (

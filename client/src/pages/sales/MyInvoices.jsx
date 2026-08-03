@@ -236,6 +236,28 @@ const MyInvoices = () => {
                 </Table>
             </div>
 
+            {pagination.pages > 1 && (
+                <div className="flex items-center justify-center gap-2">
+                    <Button
+                        variant="outline" size="sm"
+                        onClick={() => setPage(p => Math.max(1, p - 1))}
+                        disabled={pagination.page <= 1}
+                    >
+                        Previous
+                    </Button>
+                    <span className="text-sm text-muted-foreground">
+                        Page {pagination.page} of {pagination.pages} ({pagination.total} invoices)
+                    </span>
+                    <Button
+                        variant="outline" size="sm"
+                        onClick={() => setPage(p => Math.min(pagination.pages, p + 1))}
+                        disabled={pagination.page >= pagination.pages}
+                    >
+                        Next
+                    </Button>
+                </div>
+            )}
+
             {/* Simple View Modal */}
             <Dialog open={!!viewInvoice} onOpenChange={() => setViewInvoice(null)}>
                 <DialogContent className="max-w-2xl">

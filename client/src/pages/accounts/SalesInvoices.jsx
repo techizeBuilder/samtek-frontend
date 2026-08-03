@@ -56,6 +56,9 @@ const SalesInvoices = () => {
     const [autoInvoiceNo, setAutoInvoiceNo] = useState('');
     const [tdsPercent, setTdsPercent] = useState(0);
     const [gstType, setGstType] = useState('CGST_SGST');
+    const [page, setPage] = useState(1);
+
+    const changeSearch = (value) => { setSearchTerm(value); setPage(1); };
 
     // Kachha is a hidden feature — this list only ever shows/creates Pakka
     // invoices; Kachha bills are only reachable via the triple-click gesture
@@ -71,8 +74,9 @@ const SalesInvoices = () => {
     const printClickRef = useRef({ id: null, count: 0, timer: null });
 
     const { data: invoicesResponse, isLoading: isInvoicesLoading } = useQuery({
-        queryKey: ['/api/accounts/sales/account/invoices', searchTerm, activeTab],
-        queryFn: () => apiRequest('GET', `/api/accounts/sales/account/invoices?search=${searchTerm}&type=${activeTab}`)
+        queryKey: ['/api/accounts/sales/account/invoices', page, searchTerm, activeTab],
+        queryFn: () => apiRequest('GET', `/api/accounts/sales/account/invoices?page=${page}&limit=20&search=${encodeURIComponent(searchTerm)}&type=${activeTab}`),
+        keepPreviousData: true,
     });
 
     const { data: customersData } = useQuery({
@@ -86,31 +90,20 @@ const SalesInvoices = () => {
     });
 
 
-    // ─── Fetch All Invoices for Serial Numbering ──────────────────────
-    const { data: allInvoicesResponse } = useQuery({
-        queryKey: ['/api/accounts/sales/account/invoices', 'all'],
-        queryFn: () => apiRequest('GET', '/api/accounts/sales/account/invoices'),
+    // ─── Auto Invoice Number Generator ──────────────────────────────
+    // Fetches just the next available series number for the current year
+    // instead of pulling every invoice the company has ever issued.
+    const { data: nextInvoiceNumberResponse } = useQuery({
+        queryKey: ['/api/accounts/sales/account/invoices/next-number'],
+        queryFn: () => apiRequest('GET', '/api/accounts/sales/account/invoices/next-number'),
         enabled: isAddModalOpen
     });
 
-    // ─── Auto Invoice Number Generator ──────────────────────────────
     useEffect(() => {
-        if (isAddModalOpen) {
-            const currentYear = new Date().getFullYear();
-            const allInvoices = allInvoicesResponse?.data?.invoices || [];
-            const yearInvoices = allInvoices.filter(inv => {
-                const invNo = inv.invoiceNumber || '';
-                return invNo.startsWith(`INV-${currentYear}-`);
-            });
-            let maxSeries = yearInvoices.reduce((max, inv) => {
-                const parts = (inv.invoiceNumber || '').split('-');
-                const num = parseInt(parts[2]) || 0;
-                return Math.max(max, num);
-            }, 0);
-            const nextSeries = String(maxSeries + 1).padStart(2, '0');
-            setAutoInvoiceNo(`INV-${currentYear}-${nextSeries}`);
+        if (isAddModalOpen && nextInvoiceNumberResponse?.invoiceNumber) {
+            setAutoInvoiceNo(nextInvoiceNumberResponse.invoiceNumber);
         }
-    }, [isAddModalOpen, allInvoicesResponse]);
+    }, [isAddModalOpen, nextInvoiceNumberResponse]);
 
     const createMutation = useMutation({
         mutationFn: (invoiceData) => apiRequest('POST', '/api/accounts/sales/account/invoices', invoiceData),
@@ -271,7 +264,7 @@ const SalesInvoices = () => {
                         <div className="p-3 bg-blue-50 rounded-xl text-blue-600"><Receipt className="w-6 h-6" /></div>
                         <div>
                             <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Total Invoice</p>
-                            <h3 className="text-xl font-bold text-slate-900">{invoicesResponse?.data?.invoices?.length || 0}</h3>
+                            <h3 className="text-xl font-bold text-slate-900">{invoicesResponse?.data?.summary?.totalInvoices || 0}</h3>
                         </div>
                     </CardContent>
                 </Card>
@@ -280,7 +273,7 @@ const SalesInvoices = () => {
                         <div className="p-3 bg-green-50 rounded-xl text-green-600"><TrendingUp className="w-6 h-6" /></div>
                         <div>
                             <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Total Revenue</p>
-                            <h3 className="text-xl font-bold text-slate-900">₹{invoicesResponse?.data?.invoices?.reduce((sum, inv) => sum + inv.totalAmount, 0).toLocaleString('en-IN')}</h3>
+                            <h3 className="text-xl font-bold text-slate-900">₹{(invoicesResponse?.data?.summary?.totalRevenue || 0).toLocaleString('en-IN')}</h3>
                         </div>
                     </CardContent>
                 </Card>
@@ -289,7 +282,7 @@ const SalesInvoices = () => {
                         <div className="p-3 bg-amber-50 rounded-xl text-amber-600"><Clock className="w-6 h-6" /></div>
                         <div>
                             <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Pending Orders</p>
-                            <h3 className="text-xl font-bold text-slate-900">{invoicesResponse?.data?.pendingOrders?.length || 0}</h3>
+                            <h3 className="text-xl font-bold text-slate-900">{invoicesResponse?.data?.summary?.pendingOrdersCount ?? invoicesResponse?.data?.pendingOrders?.length ?? 0}</h3>
                         </div>
                     </CardContent>
                 </Card>
@@ -298,7 +291,7 @@ const SalesInvoices = () => {
                         <div className="p-3 bg-red-50 rounded-xl text-red-600"><Trash2 className="w-6 h-6" /></div>
                         <div>
                             <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Unpaid Balance</p>
-                            <h3 className="text-xl font-bold text-slate-900">₹{invoicesResponse?.data?.invoices?.filter(i => i.paymentStatus !== 'Paid').reduce((sum, inv) => sum + inv.totalAmount, 0).toLocaleString('en-IN')}</h3>
+                            <h3 className="text-xl font-bold text-slate-900">₹{(invoicesResponse?.data?.summary?.unpaidBalance || 0).toLocaleString('en-IN')}</h3>
                         </div>
                     </CardContent>
                 </Card>
@@ -316,7 +309,7 @@ const SalesInvoices = () => {
                                     placeholder="Search by invoice or customer..." 
                                     className="pl-10 w-full sm:w-64 border-slate-200"
                                     value={searchTerm}
-                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    onChange={(e) => changeSearch(e.target.value)}
                                 />
                             </div>
                             <Button onClick={() => { setGeneratingInvoice(null); setIsAddModalOpen(true); }} className="bg-blue-600 hover:bg-blue-700 text-white">
@@ -412,6 +405,13 @@ const SalesInvoices = () => {
                             </TableBody>
                         </Table>
                     </div>
+                    {invoicesResponse?.data?.pagination?.pages > 1 && (
+                        <div className="flex items-center justify-center gap-2 py-4 border-t">
+                            <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={invoicesResponse.data.pagination.page <= 1}>Previous</Button>
+                            <span className="text-sm text-slate-500">Page {invoicesResponse.data.pagination.page} of {invoicesResponse.data.pagination.pages} ({invoicesResponse.data.pagination.total} invoices)</span>
+                            <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)} disabled={invoicesResponse.data.pagination.page >= invoicesResponse.data.pagination.pages}>Next</Button>
+                        </div>
+                    )}
                 </CardContent>
             </Card>
 

@@ -10,6 +10,8 @@ const Expense = () => {
   const token = localStorage.getItem("token");
 
   const [expenses, setExpenses] = useState<any[]>([]);
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({ page: 1, pages: 1, total: 0 });
   const [open, setOpen] = useState(false);
 
   const [selectedExpense, setSelectedExpense] = useState<any>(null);
@@ -17,17 +19,18 @@ const Expense = () => {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   /* ================= FETCH ================= */
-  const fetchExpenses = async () => {
-    const res = await axios.get(`${API_BASE}/expense-requests/me`, {
+  const fetchExpenses = async (pageNum: number = page) => {
+    const res = await axios.get(`${API_BASE}/expense-requests/me?page=${pageNum}&limit=15`, {
       headers: { Authorization: `Bearer ${token}` },
     });
-    setExpenses(res.data || []);
+    setExpenses(res.data?.data || []);
+    setPagination(res.data?.pagination || { page: 1, pages: 1, total: 0 });
     setLoading(false);
   };
 
   useEffect(() => {
-    fetchExpenses();
-  }, []);
+    fetchExpenses(page);
+  }, [page]);
 
   /* ================= DELETE ================= */
   const confirmDelete = async () => {
@@ -165,6 +168,26 @@ const Expense = () => {
           </tbody>
         </table>
       </div>
+
+      {pagination.pages > 1 && (
+        <div className="flex items-center justify-center gap-2 mt-4">
+          <button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={pagination.page <= 1}
+            className="px-3 py-1.5 text-sm border rounded-md disabled:opacity-50"
+          >
+            Previous
+          </button>
+          <span className="text-sm text-gray-500">Page {pagination.page} of {pagination.pages}</span>
+          <button
+            onClick={() => setPage((p) => p + 1)}
+            disabled={pagination.page >= pagination.pages}
+            className="px-3 py-1.5 text-sm border rounded-md disabled:opacity-50"
+          >
+            Next
+          </button>
+        </div>
+      )}
 
       {/* ADD */}
       {open && (

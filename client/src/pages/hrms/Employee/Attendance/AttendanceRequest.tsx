@@ -17,6 +17,8 @@ export default function AttendanceRequest() {
   });
 
   const [requests, setRequests] = useState<any[]>([]);
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({ page: 1, pages: 1, total: 0 });
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<"ADD" | "EDIT" | "VIEW" | "DELETE">("ADD");
   const [form, setForm] = useState<any>({});
@@ -25,15 +27,16 @@ export default function AttendanceRequest() {
   const [loading,setLoading]=useState(true);
 
   /* ---------- fetch ---------- */
-  const fetchRequests = async () => {
-    const res = await api.get("/attendance-requests/me");
-    setRequests(res.data);
+  const fetchRequests = async (pageNum: number = page) => {
+    const res = await api.get(`/attendance-requests/me?page=${pageNum}&limit=15`);
+    setRequests(res.data?.data || []);
+    setPagination(res.data?.pagination || { page: 1, pages: 1, total: 0 });
     setLoading(false);
   };
 
   useEffect(() => {
-    fetchRequests();
-  }, []);
+    fetchRequests(page);
+  }, [page]);
 
   /* ---------- open modal ---------- */
   const openModal = (type: any, data?: any) => {
@@ -204,6 +207,26 @@ const submit = async () => {
           </tbody>
         </table>
       </div>
+
+      {pagination.pages > 1 && (
+        <div className="flex items-center justify-center gap-2">
+          <button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={pagination.page <= 1}
+            className="px-3 py-1.5 text-sm border rounded-md disabled:opacity-50"
+          >
+            Previous
+          </button>
+          <span className="text-sm text-gray-500">Page {pagination.page} of {pagination.pages}</span>
+          <button
+            onClick={() => setPage((p) => p + 1)}
+            disabled={pagination.page >= pagination.pages}
+            className="px-3 py-1.5 text-sm border rounded-md disabled:opacity-50"
+          >
+            Next
+          </button>
+        </div>
+      )}
 
       {/* MODAL */}
       <AttendanceRequestModal

@@ -37,7 +37,6 @@ import {
   ChevronDown,
   ChevronRight,
   RotateCcw,
-  Plus,
   Save,
   Loader2,
   ExternalLink
@@ -63,24 +62,11 @@ const MyOrders = () => {
   const [statusFilter, setStatusFilter] = useState('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [viewOrderDetails, setViewOrderDetails] = useState(null);
   const [expandedCategories, setExpandedCategories] = useState({});
-  const [formData, setFormData] = useState({
-    customerId: '',
-    customerName: '',
-    salesPersonId: '',
-    orderDate: new Date().toISOString().split('T')[0],
-    remarks: '',
-    selectedProducts: []
-  });
-
-
-
-
 
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -179,20 +165,6 @@ const MyOrders = () => {
     `Orders allowed until ${orderPermission.cutoffTime || 'N/A'}` :
     orderPermission.message;
 
-  // Create order mutation
-  const createOrderMutation = useMutation({
-    mutationFn: (orderData) => orderApi.create(orderData),
-    onSuccess: () => {
-      toast({ title: "Success", description: "Order created successfully" });
-      resetForm();
-      setIsCreateModalOpen(false);
-      queryClient.invalidateQueries({ queryKey: ['/api/sales/orders'] });
-    },
-    onError: (error) => {
-      toast({ title: "Error", description: error.message || "Failed to create order", variant: "destructive" });
-    }
-  });
-
   // Handle search and filter changes to reset pagination
   const handleSearchChange = (value) => {
     setSearchTerm(value);
@@ -211,118 +183,6 @@ const MyOrders = () => {
 
   const totalPages = pagination.totalPages || 0;
   const totalItems = pagination.totalOrders || 0;
-
-  // Helper functions for create order
-  const resetForm = () => {
-    setFormData({
-      customerId: '',
-      customerName: '',
-      salesPersonId: '',
-      orderDate: new Date().toISOString().split('T')[0],
-      remarks: '',
-      selectedProducts: []
-    });
-  };
-
-  const handleCreate = () => {
-    if (!formData.customerId || formData.selectedProducts.length === 0) {
-      toast({
-        title: "Validation Error",
-        description: "Please select a customer and products",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    console.log('🚀 Creating order with formData.selectedProducts:', formData.selectedProducts);
-
-    const orderData = {
-      customerId: formData.customerId,
-      orderDate: formData.orderDate,
-      products: formData.selectedProducts.map(p => ({
-        productId: p._id,
-        quantity: parseInt(p.quantity),
-        unitPrice: parseFloat(p.price) || parseFloat(p.unitPrice) || 0
-      })),
-      notes: formData.remarks
-    };
-
-    console.log('🚀 Final orderData being sent:', orderData);
-    createOrderMutation.mutate(orderData);
-  };
-
-  const handleProductSelect = (product) => {
-    const existingIndex = formData.selectedProducts.findIndex(p => p._id === product._id);
-    if (existingIndex >= 0) {
-      const updatedProducts = [...formData.selectedProducts];
-      updatedProducts[existingIndex] = {
-        ...updatedProducts[existingIndex],
-        quantity: parseInt(updatedProducts[existingIndex].quantity) + 1
-      };
-      setFormData({ ...formData, selectedProducts: updatedProducts });
-    } else {
-      setFormData({
-        ...formData,
-        selectedProducts: [...formData.selectedProducts, {
-          ...product,
-          quantity: 1,
-          price: product.price || product.sellingPrice || 0,
-          unitPrice: product.price || product.sellingPrice || 0
-        }]
-      });
-    }
-  };
-
-  const handleQuantityChange = (productId, quantity) => {
-    console.log('🔄 handleQuantityChange called with:', { productId, quantity, type: typeof quantity });
-    const updatedProducts = formData.selectedProducts.map(p =>
-      p._id === productId ? { ...p, quantity: Number(quantity) } : p
-    );
-    console.log('🔄 Updated products:', updatedProducts);
-    setFormData({ ...formData, selectedProducts: updatedProducts });
-  };
-
-  const handleProductRemove = (productId) => {
-    setFormData({
-      ...formData,
-      selectedProducts: formData.selectedProducts.filter(p => p._id !== productId)
-    });
-  };
-
-  // Add new product row
-  const addProductRow = () => {
-    setFormData({
-      ...formData,
-      products: [...formData.products, { productId: '', productName: '', quantity: '' }]
-    });
-  };
-
-  // Remove product row
-  const removeProductRow = (index) => {
-    if (formData.products.length > 1) {
-      const updatedProducts = formData.products.filter((_, i) => i !== index);
-      setFormData({ ...formData, products: updatedProducts });
-    }
-  };
-
-  // Update product in specific row
-  const updateProductRow = (index, field, value) => {
-    const updatedProducts = formData.products.map((product, i) => {
-      if (i === index) {
-        if (field === 'productId') {
-          return {
-            ...product,
-            productId: value,
-            productName: 'Product Name' // This will be handled by ProductSelector
-          };
-        } else {
-          return { ...product, [field]: value };
-        }
-      }
-      return product;
-    });
-    setFormData({ ...formData, products: updatedProducts });
-  };
 
   // Update order mutation
   const updateOrderMutation = useMutation({
@@ -659,14 +519,6 @@ const MyOrders = () => {
           </div>
           <div className="flex items-center space-x-2">
             <Button
-              onClick={() => setIsCreateModalOpen(true)}
-              className="bg-white text-blue-600 hover:bg-gray-100 text-sm px-3 py-2"
-              disabled={!canCreateOrders}
-              title={!canCreateOrders ? cutoffMessage : "Create new order"}
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
-            <Button
               variant="outline"
               className="bg-white/10 border-white/20 text-white hover:bg-white/20 text-sm px-3 py-2"
               onClick={() => refetchOrders()}
@@ -685,15 +537,6 @@ const MyOrders = () => {
           </div>
           <div className="flex items-center space-x-3">
             <Button
-              onClick={() => setIsCreateModalOpen(true)}
-              className={`bg-white text-blue-600 hover:bg-gray-100 ${!canCreateOrders ? 'opacity-50 cursor-not-allowed' : ''}`}
-              disabled={!canCreateOrders}
-              title={cutoffMessage}
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Create Order
-            </Button>
-            <Button
               variant="outline"
               className="bg-white/10 border-white/20 text-white hover:bg-white/20 text-sm px-3 py-2"
               onClick={() => refetchOrders()}
@@ -704,24 +547,6 @@ const MyOrders = () => {
           </div>
         </div>
       </div>
-
-      {/* Cutoff Time Status Banner */}
-      {!canCreateOrders && (
-        <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg mx-0 sm:mx-0">
-          <div className="flex items-center gap-2">
-            <Clock className="h-5 w-5" />
-            <div>
-              <p className="font-medium">Order Creation Disabled</p>
-              <p className="text-sm">{cutoffMessage}</p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Cutoff time banner removed - status now shown via button tooltips */}
-
-      {/* Stats Cards */}
-
 
       {/* Filters */}
       <div className="bg-white border border-gray-200 rounded-lg sm:rounded-lg p-3 sm:p-6 mx-0 sm:mx-0">
@@ -1223,104 +1048,6 @@ const MyOrders = () => {
               )}
             </div>
           )}
-        </DialogContent>
-      </Dialog>
-
-      {/* Create Order Modal */}
-      <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto mx-2 sm:mx-auto w-[calc(100vw-1rem)] sm:w-full">
-          <DialogHeader>
-            <DialogTitle className="text-lg sm:text-xl">Create New Order</DialogTitle>
-            <DialogDescription className="text-sm sm:text-base">
-              Fill in the details to create a new production order.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 sm:space-y-6">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-              <div>
-                <Label htmlFor="customer" className="text-sm font-medium">Customer Name *</Label>
-                <Select
-                  value={formData.customerId || ''}
-                  onValueChange={(value) => {
-                    const customer = customersList.find(c => c._id === value);
-                    setFormData({
-                      ...formData,
-                      customerId: value,
-                      customerName: customer?.name || ''
-                    });
-                  }}
-                >
-                  <SelectTrigger className="mt-1">
-                    <SelectValue placeholder="Select customer" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {customersList.map((customer) => (
-                      <SelectItem key={customer._id} value={customer._id}>
-                        {customer.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label htmlFor="orderDate" className="text-sm font-medium">Order Date *</Label>
-                <Input
-                  id="orderDate"
-                  type="date"
-                  value={formData.orderDate}
-                  onChange={(e) => setFormData({ ...formData, orderDate: e.target.value })}
-                  className="mt-1"
-                />
-              </div>
-            </div>
-            <div>
-              <Label className="text-sm font-medium">Select Products *</Label>
-              <div className="mt-1">
-                <ProductSelector
-                  onProductSelect={handleProductSelect}
-                  selectedProducts={formData.selectedProducts}
-                  onQuantityChange={handleQuantityChange}
-                  onProductRemove={handleProductRemove}
-                />
-              </div>
-            </div>
-            <div>
-              <Label htmlFor="remarks">Remarks</Label>
-              <Textarea
-                id="remarks"
-                placeholder="Add any special instructions or notes..."
-                value={formData.remarks}
-                onChange={(e) => setFormData({ ...formData, remarks: e.target.value })}
-                rows={3}
-              />
-            </div>
-            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 pt-3 sm:pt-4">
-              <Button
-                onClick={handleCreate}
-                disabled={createOrderMutation.isPending}
-                className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto"
-              >
-                {createOrderMutation.isPending ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    Creating...
-                  </>
-                ) : (
-                  <>
-                    <Save className="h-4 w-4 mr-2" />
-                    Create Order
-                  </>
-                )}
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => setIsCreateModalOpen(false)}
-                className="w-full sm:w-auto"
-              >
-                Cancel
-              </Button>
-            </div>
-          </div>
         </DialogContent>
       </Dialog>
 

@@ -699,7 +699,7 @@ export default function Employee() {
                   <th className="p-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">DOJ</th>
                   <th className="p-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Probation Ends</th>
                   <th className="p-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Confirmation Date</th>
-                  <th className="p-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-red-500">Termination / Resigned Date</th>
+                  <th className="p-4 text-xs font-semibold uppercase tracking-wider text-red-500">Termination / Resigned Date</th>
                   <th className="p-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Employment Type</th>
                   <th className="p-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Contact</th>
                   <th className="p-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Gender</th>

@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { leadApi } from '@/api/leadService';
 import { apiRequest } from '@/api/index';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Target, Building2, User, Hash, TrendingUp, CheckCircle2, Clock, XCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -17,9 +18,17 @@ const STATUS_CONFIG = {
 };
 
 const PaymentRequests = () => {
+  const [page, setPage] = useState(1);
+
+  // `paymentCheckRequested: 'true'` is what actually scopes this to payment
+  // check requests server-side (was previously called with no params at
+  // all, which meant only the 20 most-recently-created leads company-wide
+  // ever showed up here — a lead's payment request could silently go
+  // unseen once >20 newer leads existed). Now paginated like everywhere else.
   const { data: leadsData, isLoading } = useQuery({
-    queryKey: ['sales-payment-requests'],
-    queryFn: () => leadApi.getAll({}),
+    queryKey: ['sales-payment-requests', page],
+    queryFn: () => leadApi.getAll({ paymentCheckRequested: 'true', page, limit: 20 }),
+    keepPreviousData: true,
   });
 
   const { data: leadPaymentsData } = useQuery({
@@ -30,12 +39,9 @@ const PaymentRequests = () => {
     },
   });
 
-  const leads = leadsData?.leads || [];
+  const paymentRequests = leadsData?.leads || [];
+  const pagination = leadsData?.pagination || {};
   const allPayments = leadPaymentsData?.payments || [];
-
-  const paymentRequests = leads.filter(
-    (l) => l.paymentCheckStatus && l.paymentCheckStatus !== 'Not Requested'
-  );
 
   const getVerifiedAdvanced = (leadId) =>
     allPayments
@@ -154,6 +160,28 @@ const PaymentRequests = () => {
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {pagination.pages > 1 && (
+          <div className="flex items-center justify-center gap-2 mt-6">
+            <Button
+              variant="outline" size="sm"
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={pagination.page <= 1}
+            >
+              Previous
+            </Button>
+            <span className="text-sm text-slate-500">
+              Page {pagination.page} of {pagination.pages} ({pagination.total} requests)
+            </span>
+            <Button
+              variant="outline" size="sm"
+              onClick={() => setPage(p => p + 1)}
+              disabled={pagination.page >= pagination.pages}
+            >
+              Next
+            </Button>
           </div>
         )}
       </div>

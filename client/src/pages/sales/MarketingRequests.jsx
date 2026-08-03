@@ -30,13 +30,19 @@ const STATUS_ICONS = { Pending: Clock, Approved: CheckCircle2, Rejected: XCircle
 export default function MarketingRequests() {
   const { toast } = useToast();
   const [filter, setFilter] = useState('All');
+  const [page, setPage] = useState(1);
+
+  const changeFilter = (value) => { setFilter(value); setPage(1); };
 
   const { data, isLoading, refetch, isFetching } = useQuery({
-    queryKey: ['my-marketing-requests'],
-    queryFn: () => marketingRequestApi.getMy(),
+    queryKey: ['my-marketing-requests', filter, page],
+    queryFn: () => marketingRequestApi.getMy({ status: filter, page, limit: 20 }),
+    keepPreviousData: true,
   });
-  const requests = data?.data || [];
-  const filtered = filter === 'All' ? requests : requests.filter(r => r.status === filter);
+  // Already filtered/paginated server-side — `filtered` name kept for minimal diff below.
+  const filtered = data?.data || [];
+  const pagination = data?.pagination || {};
+  const statusCounts = data?.summary || {};
 
   const comingSoon = () => toast({ title: 'Coming Soon', description: 'Send API is not integrated yet — it will be active soon' });
 
@@ -76,9 +82,9 @@ export default function MarketingRequests() {
             size="sm"
             variant={filter === s ? 'default' : 'outline'}
             className="rounded-full text-xs"
-            onClick={() => setFilter(s)}
+            onClick={() => changeFilter(s)}
           >
-            {s}{s !== 'All' && ` (${requests.filter(r => r.status === s).length})`}
+            {s}{s !== 'All' && ` (${statusCounts[s] || 0})`}
           </Button>
         ))}
       </div>
@@ -182,6 +188,28 @@ export default function MarketingRequests() {
               </Card>
             );
           })}
+        </div>
+      )}
+
+      {pagination.pages > 1 && (
+        <div className="flex items-center justify-center gap-2">
+          <Button
+            variant="outline" size="sm"
+            onClick={() => setPage(p => Math.max(1, p - 1))}
+            disabled={pagination.page <= 1}
+          >
+            Previous
+          </Button>
+          <span className="text-sm text-slate-500">
+            Page {pagination.page} of {pagination.pages} ({pagination.total} requests)
+          </span>
+          <Button
+            variant="outline" size="sm"
+            onClick={() => setPage(p => p + 1)}
+            disabled={pagination.page >= pagination.pages}
+          >
+            Next
+          </Button>
         </div>
       )}
     </div>

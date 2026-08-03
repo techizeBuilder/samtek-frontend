@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
 import { useRD } from '@/contexts/RDContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -30,8 +32,9 @@ const deriveStatus = (perf, out, dur) => {
 const emptyForm = { machineName: '', machineCode: '', machineId: '', prototypeName: '', performanceTest: 'Pending', outputTest: 'Pending', durabilityTest: 'Pending', testNotes: '' };
 
 export default function Prototype() {
-  const { machines, prototypes, addPrototype, updatePrototype, updateReleaseStatus } = useRD();
+  const { machines, addPrototype, updatePrototype, updateReleaseStatus } = useRD();
   const [filterStatus, setFilterStatus] = useState('All');
+  const [page, setPage] = useState(1);
   const [addOpen, setAddOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [viewOpen, setViewOpen] = useState(false);
@@ -40,14 +43,21 @@ export default function Prototype() {
   const [form, setForm] = useState(emptyForm);
   const [editForm, setEditForm] = useState({});
 
-  const counts = {
-    All: prototypes.length,
-    Passed: prototypes.filter(p => p.status === 'Passed').length,
-    'In Progress': prototypes.filter(p => p.status === 'In Progress').length,
-    Failed: prototypes.filter(p => p.status === 'Failed').length,
-  };
+  // Reset to page 1 whenever the status filter changes so the user doesn't
+  // land on a now-out-of-range page.
+  useEffect(() => { setPage(1); }, [filterStatus]);
 
-  const filtered = filterStatus === 'All' ? prototypes : prototypes.filter(p => p.status === filterStatus);
+  const { data: prototypesResponse, isLoading: prototypesLoading } = useQuery({
+    queryKey: ['rd-prototypes', 'list', { page, filterStatus }],
+    queryFn: () => {
+      const params = new URLSearchParams({ page: String(page), limit: '20', status: filterStatus, withStatusCounts: 'true' });
+      return apiRequest('GET', `/api/rd/prototypes?${params.toString()}`);
+    },
+    keepPreviousData: true,
+  });
+  const filtered = prototypesResponse?.data || [];
+  const pagination = prototypesResponse?.pagination || { page: 1, pages: 1, total: 0, limit: 20 };
+  const counts = prototypesResponse?.statusCounts || { All: 0, Passed: 0, 'In Progress': 0, Failed: 0 };
   const approvedMachines = machines.filter(m => m.designStatus === 'Approved' && !m.isDiscontinued && m.forwardToNextPhase);
 
   const handleAdd = () => {
@@ -148,7 +158,9 @@ export default function Prototype() {
       </div>
 
       {/* Prototype Cards */}
-      {filtered.length === 0 ? (
+      {prototypesLoading ? (
+        <Card className="border-none shadow-sm"><CardContent className="py-12 text-center text-slate-400">Loading...</CardContent></Card>
+      ) : filtered.length === 0 ? (
         <Card className="border-none shadow-sm"><CardContent className="py-12 text-center text-slate-400">No prototypes in this category.</CardContent></Card>
       ) : (
         <div className="space-y-4">
@@ -208,6 +220,14 @@ export default function Prototype() {
               </Card>
             );
           })}
+        </div>
+      )}
+
+      {pagination.pages > 1 && (
+        <div className="flex items-center justify-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={pagination.page <= 1}>Previous</Button>
+          <span className="text-sm text-muted-foreground">Page {pagination.page} of {pagination.pages} ({pagination.total} prototypes)</span>
+          <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)} disabled={pagination.page >= pagination.pages}>Next</Button>
         </div>
       )}
 

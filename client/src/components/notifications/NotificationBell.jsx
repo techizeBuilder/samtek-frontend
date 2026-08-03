@@ -73,6 +73,37 @@ export const getNavigationUrl = (notification, userRole = '') => {
     return '/complaints/deal-verifications';
   }
 
+  // HRMS task assignment ("New Task Assigned" etc.) — each department has its
+  // own "My Tasks" inbox, there's no single shared route like the complaints
+  // dashboard this used to (incorrectly) fall through to. Checked early so the
+  // role-based catch-alls below (e.g. Store) never intercept it.
+  if (type === 'task') {
+    const deptRouteMap = {
+      'Production': '/production/my-task',
+      'Packing': '/packing/my-task',
+      'Dispatch': '/dispatch/my-task',
+      'Accounts': '/accounts/my-task',
+      'Sales': '/sales/my-task',
+      'R&D': '/r&d/my-task',
+      'Store': '/store/my-task',
+      'QC': '/qc/my-task',
+    };
+    if (data?.department && deptRouteMap[data.department]) return deptRouteMap[data.department];
+
+    // Fall back to the recipient's own role when the notification has no department on it.
+    if (userRole?.includes('Production')) return '/production/my-task';
+    if (userRole?.includes('Packing')) return '/packing/my-task';
+    if (userRole?.includes('Dispatch')) return '/dispatch/my-task';
+    if (userRole?.includes('Account')) return '/accounts/my-task';
+    if (userRole?.includes('Sales')) return '/sales/my-task';
+    if (userRole?.includes('Research') || userRole?.includes('R&D')) return '/r&d/my-task';
+    if (userRole?.includes('Store')) return '/store/my-task';
+    if (userRole?.includes('QC')) return '/qc/my-task';
+    if (userRole === 'Manager') return '/hrms/Manager/my-task';
+    if (userRole === 'Employee') return '/hrms/Employee/my-task';
+    return '/notifications';
+  }
+
   // Marketing content requests — role decides which screen opens
   if (type === 'marketing') {
     if (isMarketingHead) return '/marketing/sales-requests';
@@ -118,7 +149,7 @@ export const getNavigationUrl = (notification, userRole = '') => {
   // packaging) — Dispatch has no access to the QC module, so route them to
   // their own Packaging Queue instead of the QC Jobs screen.
   if (type === 'qc') return isDispatchRole ? '/packaging/queue' : `/qc/jobs`;
-  if (type === 'complaint' || type === 'task') return `/complaints/dashboard`;
+  if (type === 'complaint') return `/complaints/dashboard`;
   if (type === 'leave') return `/hrms/SuperAdmin/leave-requests`;
   if (type === 'attendance') return `/hrms/SuperAdmin/attendance-requests`;
   if (type === 'payroll') return `/hrms/SuperAdmin/payroll/payslips`;

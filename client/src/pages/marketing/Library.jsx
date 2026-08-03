@@ -1,4 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
 import { useMarketing } from '@/contexts/MarketingContext';
 import { useAuth } from '@/hooks/useAuth';
 import { Card, CardContent } from '@/components/ui/card';
@@ -16,9 +18,10 @@ const FILE_COLORS = { PDF: 'bg-red-100 text-red-700', DOC: 'bg-blue-100 text-blu
 const IMAGE_TYPES = ['JPG', 'JPEG', 'PNG', 'WEBP'];
 const VIDEO_TYPES = ['MP4', 'MOV'];
 const DOC_TYPES   = ['PDF', 'DOC', 'DOCX'];
+const TYPE_BUCKETS = { pdf: DOC_TYPES, image: IMAGE_TYPES, video: VIDEO_TYPES };
 
 export default function MarketingLibrary() {
-  const { assets, assetsLoading, categories, shareAsset, deleteAsset } = useMarketing();
+  const { categories, shareAsset, deleteAsset } = useMarketing();
   const { user } = useAuth();
   const { toast } = useToast();
   const isMarketingHead = user?.role === 'Marketing Head';
@@ -26,6 +29,7 @@ export default function MarketingLibrary() {
   const [search, setSearch]           = useState('');
   const [filterType, setFilterType]   = useState('all');
   const [filterCat, setFilterCat]     = useState('all');
+  const [page, setPage]               = useState(1);
   const [shareModal, setShareModal]   = useState(null); // asset
   const [shareForm, setShareForm]     = useState({ method: 'WhatsApp', customerName: '', customerPhone: '', customerEmail: '' });
   const [sharing, setSharing]         = useState(false);
@@ -33,14 +37,23 @@ export default function MarketingLibrary() {
 
   const mainCategories = categories.filter(c => !c.parentCategory);
 
-  const filtered = useMemo(() => {
-    return assets.filter(a => {
-      const matchSearch = !search || a.fileName.toLowerCase().includes(search.toLowerCase()) || a.product?.toLowerCase().includes(search.toLowerCase()) || a.tags?.some(t => t.toLowerCase().includes(search.toLowerCase()));
-      const matchType = filterType === 'all' || (filterType === 'pdf' && DOC_TYPES.includes(a.fileType)) || (filterType === 'image' && IMAGE_TYPES.includes(a.fileType)) || (filterType === 'video' && VIDEO_TYPES.includes(a.fileType));
-      const matchCat  = filterCat === 'all' || a.category?._id === filterCat;
-      return matchSearch && matchType && matchCat;
-    });
-  }, [assets, search, filterType, filterCat]);
+  // Reset to page 1 whenever a filter/search changes so the user doesn't
+  // land on a now-out-of-range page.
+  useEffect(() => { setPage(1); }, [search, filterType, filterCat]);
+
+  const { data: assetsResponse, isLoading: assetsLoading } = useQuery({
+    queryKey: ['mkt-assets', 'list', { page, search, filterType, filterCat }],
+    queryFn: () => {
+      const params = new URLSearchParams({ page: String(page), limit: '20' });
+      if (search) params.set('search', search);
+      if (filterCat !== 'all') params.set('category', filterCat);
+      if (filterType !== 'all') params.set('fileType', TYPE_BUCKETS[filterType].join(','));
+      return apiRequest('GET', `/api/marketing/assets?${params.toString()}`);
+    },
+    keepPreviousData: true,
+  });
+  const filtered = assetsResponse?.data || [];
+  const pagination = { page: assetsResponse?.page || 1, pages: assetsResponse?.pages || 1, total: assetsResponse?.total || 0 };
 
   const handleShare = async () => {
     if (!shareForm.customerName) return toast({ title: 'Error', description: 'Customer name is required', variant: 'destructive' });
@@ -95,7 +108,7 @@ export default function MarketingLibrary() {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Marketing Library</h1>
-          <p className="text-slate-500 text-sm">{filtered.length} of {assets.length} assets</p>
+          <p className="text-slate-500 text-sm">{pagination.total} asset{pagination.total === 1 ? '' : 's'}</p>
         </div>
       </div>
 
@@ -166,6 +179,14 @@ export default function MarketingLibrary() {
               </CardContent>
             </Card>
           ))}
+        </div>
+      )}
+
+      {pagination.pages > 1 && (
+        <div className="flex items-center justify-center gap-2 pt-2">
+          <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={pagination.page <= 1}>Previous</Button>
+          <span className="text-sm text-muted-foreground">Page {pagination.page} of {pagination.pages}</span>
+          <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)} disabled={pagination.page >= pagination.pages}>Next</Button>
         </div>
       )}
 

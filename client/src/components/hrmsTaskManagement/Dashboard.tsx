@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from "react";
-import axios from "axios";
+import React from "react";
 import { ClipboardList, CheckCircle2, Clock, AlertCircle, Calendar, BarChart3, TrendingUp, Building2 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { useTaskDashboard } from "@/hooks/useTaskManagement";
 
 interface DeptPerf { department: string; total: number; completed: number; completionRate: number; }
 interface DashboardData {
@@ -38,32 +38,16 @@ const getDepartmentFromRole = (role: string) => {
   return role.replace(/(Head|Manager|Employee)/gi, '').trim() || "General";
 };
 
-// FIX: Accepts refreshTrigger
-const TaskDashboardView = ({ refreshTrigger }: { refreshTrigger?: number }) => {
+const TaskDashboardView = ({ myTasksOnly = false }: { myTasksOnly?: boolean }) => {
   const { user } = useAuth() as { user: any };
-  const [data, setData] = useState<DashboardData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { data: response, isLoading } = useTaskDashboard(myTasksOnly);
+  const data: DashboardData | undefined = response?.data;
 
   const isTopAdmin = TOP_LEVEL_ADMINS.includes(user?.role);
   const isDeptHead = DEPT_HEADS.includes(user?.role);
   const userDepartment = getDepartmentFromRole(user?.role);
-  const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
-  
-  useEffect(() => {
-    const fetchDashboardStats = async () => {
-      try {
-        const token = localStorage.getItem("token");
-        const response = await axios.get(`${API_BASE}/hrms/tasks/dashboard`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (response.data.success) setData(response.data.data);
-      } catch (err) { console.error("Dashboard Fetch Error:", err); }
-      finally { setLoading(false); }
-    };
-    fetchDashboardStats();
-  }, [refreshTrigger]); // FIX: Added refreshTrigger
 
-  if (loading) return <div className="p-10 text-center animate-pulse">Loading Analytics...</div>;
+  if (isLoading) return <div className="p-10 text-center animate-pulse">Loading Analytics...</div>;
   if (!data) return null;
 
   return (
@@ -106,7 +90,7 @@ const TaskDashboardView = ({ refreshTrigger }: { refreshTrigger?: number }) => {
         </div>
       </div>
 
-      {(isTopAdmin || isDeptHead) && (
+      {(isTopAdmin || isDeptHead) && !myTasksOnly && (
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
           <div className="flex items-center gap-2 mb-6">
             <Building2 className="w-5 h-5 text-indigo-600" />

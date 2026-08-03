@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useToast } from "@/hooks/use-toast";
@@ -530,11 +530,17 @@ const Damages = () => {
   // State management
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [page, setPage] = useState(1);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
 
   const [selectedEntry, setSelectedEntry] = useState(null);
+
+  // Jump back to page 1 whenever search/status changes.
+  useEffect(() => {
+    setPage(1);
+  }, [searchTerm, statusFilter]);
 
   // Fetch damages data from API
   const {
@@ -543,16 +549,16 @@ const Damages = () => {
     error: damagesError,
     refetch: refetchDamages,
   } = useQuery({
-    queryKey: ["/api/sales/damages", searchTerm, statusFilter],
+    queryKey: ["/api/sales/damages", searchTerm, statusFilter, page],
     queryFn: () => {
       const params = new URLSearchParams();
-      params.append('page', '1');
+      params.append('page', String(page));
       params.append('limit', '50');
       if (searchTerm) params.append('search', searchTerm);
       if (statusFilter !== 'all') params.append('status', statusFilter);
       return apiRequest(`/api/sales/damages?${params}`);
     },
-    enabled: true,
+    keepPreviousData: true,
   });
 
   // Simple API call functions instead of mutations
@@ -621,6 +627,7 @@ const Damages = () => {
   };
 
   const damages = damagesResponse?.damages || [];
+  const damagesPagination = damagesResponse?.pagination || {};
 
   return (
     <div className="p-6 space-y-6">
@@ -874,6 +881,29 @@ const Damages = () => {
           )}
         </CardContent>
       </Card>
+
+      {damagesPagination.pages > 1 && (
+        <div className="flex items-center justify-center gap-2">
+          <Button
+            variant="outline" size="sm"
+            onClick={() => setPage(p => Math.max(1, p - 1))}
+            disabled={damagesPagination.page <= 1}
+          >
+            Previous
+          </Button>
+          <span className="text-sm text-muted-foreground">
+            Page {damagesPagination.page} of {damagesPagination.pages} ({damagesPagination.total} damages)
+          </span>
+          <Button
+            variant="outline" size="sm"
+            onClick={() => setPage(p => p + 1)}
+            disabled={damagesPagination.page >= damagesPagination.pages}
+          >
+            Next
+          </Button>
+        </div>
+      )}
+
       {/* Create Modal */}
       <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
         <DialogContent className="w-[95vw] max-w-2xl max-h-[95vh] overflow-y-auto mx-auto">

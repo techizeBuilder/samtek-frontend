@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { usePackagingDispatch } from '@/contexts/PackagingDispatchContext';
+import { useDispatchOrdersList } from '@/contexts/PackagingDispatchContext';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,30 +12,22 @@ const statusColor = {
 };
 
 export default function DispatchHistoryPage() {
-  const { dispatchOrders, dispatchOrdersLoading } = usePackagingDispatch();
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
+  const [page, setPage] = useState(1);
   const [viewingDocsFor, setViewingDocsFor] = useState(null);
 
-  const historyStatuses = ['Delivered', 'Closed'];
+  const changeSearch = (value) => { setSearch(value); setPage(1); };
+  const changeFilter = (value) => { setFilter(value); setPage(1); };
 
-  const filtered = dispatchOrders.filter(d => {
-    const inHistory = historyStatuses.includes(d.status);
-    const matchFilter = filter === 'all' || d.status === filter;
-    const matchSearch = !search ||
-      d.dispatchId?.toLowerCase().includes(search.toLowerCase()) ||
-      d.orderId?.toLowerCase().includes(search.toLowerCase()) ||
-      d.customerName?.toLowerCase().includes(search.toLowerCase()) ||
-      d.machineCode?.toLowerCase().includes(search.toLowerCase()) ||
-      d.trackingId?.toLowerCase().includes(search.toLowerCase());
-    return inHistory && matchFilter && matchSearch;
+  // scope: 'history' constrains the backend query to Delivered/Closed only;
+  // `filter` (all/Delivered/Closed) further narrows within that scope.
+  const { data: historyData, isLoading: dispatchOrdersLoading } = useDispatchOrdersList({
+    page, limit: 20, search, status: filter, scope: 'history',
   });
-
-  const counts = {
-    all: dispatchOrders.filter(d => historyStatuses.includes(d.status)).length,
-    Delivered: dispatchOrders.filter(d => d.status === 'Delivered').length,
-    Closed: dispatchOrders.filter(d => d.status === 'Closed').length,
-  };
+  const filtered = historyData?.data?.orders || [];
+  const pagination = historyData?.data?.pagination || {};
+  const counts = historyData?.data?.summary || {};
 
   return (
     <div className="p-6 space-y-6 bg-slate-50 min-h-screen">
@@ -48,7 +40,7 @@ export default function DispatchHistoryPage() {
         <Input
           placeholder="Search by Dispatch ID, Order ID, customer, tracking..."
           value={search}
-          onChange={e => setSearch(e.target.value)}
+          onChange={e => changeSearch(e.target.value)}
           className="bg-white max-w-md"
         />
         <div className="flex gap-2">
@@ -59,7 +51,7 @@ export default function DispatchHistoryPage() {
           ].map(f => (
             <button
               key={f.key}
-              onClick={() => setFilter(f.key)}
+              onClick={() => changeFilter(f.key)}
               className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
                 filter === f.key
                   ? 'bg-slate-800 text-white'
@@ -84,7 +76,10 @@ export default function DispatchHistoryPage() {
         <div className="space-y-3">
           {/* One row per ORDER, not per machine — the underlying per-machine
               DispatchOrder records (with their own SN/dates) are listed
-              inside instead of repeating the whole row per machine. */}
+              inside instead of repeating the whole row per machine.
+              Note: pagination below is per DispatchOrder row (server-side),
+              so a multi-machine order could in principle span two pages if
+              its machines' records land right at a page boundary. */}
           {Object.values(
             filtered.reduce((acc, d) => {
               if (!acc[d.orderId]) acc[d.orderId] = { orderId: d.orderId, jobs: [] };
@@ -168,6 +163,28 @@ export default function DispatchHistoryPage() {
               </Card>
             );
           })}
+        </div>
+      )}
+
+      {pagination.pages > 1 && (
+        <div className="flex items-center justify-center gap-2">
+          <Button
+            variant="outline" size="sm"
+            onClick={() => setPage(p => Math.max(1, p - 1))}
+            disabled={pagination.page <= 1}
+          >
+            Previous
+          </Button>
+          <span className="text-xs text-slate-500">
+            Page {pagination.page} of {pagination.pages} ({pagination.total} records)
+          </span>
+          <Button
+            variant="outline" size="sm"
+            onClick={() => setPage(p => p + 1)}
+            disabled={pagination.page >= pagination.pages}
+          >
+            Next
+          </Button>
         </div>
       )}
 

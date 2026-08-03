@@ -8,36 +8,29 @@ const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#64748b'
 export default function SupportDashboard() {
   const { data: response, isLoading, isError } = useSupportTickets({});
 
-  // Calculate our metrics AND chart data from the API response
+  // Metrics AND chart data come straight from the backend's aggregates —
+  // both are computed over the full matching set, not just the current
+  // page's rows, since this endpoint defaults to limit=10 and this
+  // dashboard never sends a larger limit.
   const { metrics, issueTypeData } = useMemo(() => {
     if (!response?.data) {
-        return { 
+        return {
             metrics: { total: 0, completed: 0, pending: 0, breached: 0, avgTime: '0 mins' },
-            issueTypeData: [] 
+            issueTypeData: []
         };
     }
 
-    const tickets = response.data;
-    
-    // 1. Calculate Top Metrics
     const calcMetrics = {
       total: response.pagination.totalTickets,
-      completed: tickets.filter((t: any) => t.status === 'Resolved' || t.status === 'Closed').length,
-      pending: tickets.filter((t: any) => ['Unassigned', 'Pending', 'In Progress', 'Reopened'].includes(t.status)).length,
-      breached: tickets.filter((t: any) => t.sla?.isBreached).length,
+      completed: response.metrics?.statusCounts?.completed ?? 0,
+      pending: response.metrics?.statusCounts?.pending ?? 0,
+      breached: response.metrics?.statusCounts?.breached ?? 0,
       avgTime: response.metrics?.averageResolutionTime || 'N/A'
     };
 
-    // 2. Calculate Issue Type Data for the Chart
-    const issueCounts: Record<string, number> = {};
-    tickets.forEach((t: any) => {
-        const type = t.issue?.issueType || 'Other';
-        issueCounts[type] = (issueCounts[type] || 0) + 1;
-    });
-
-    const chartData = Object.keys(issueCounts).map(key => ({
-        name: key,
-        value: issueCounts[key]
+    const chartData = (response.metrics?.issueTypeBreakdown || []).map((stat: any) => ({
+        name: stat.name,
+        value: stat.value
     }));
 
     return { metrics: calcMetrics, issueTypeData: chartData };

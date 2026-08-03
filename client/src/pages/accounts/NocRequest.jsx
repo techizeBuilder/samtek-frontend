@@ -596,7 +596,7 @@ const NocRequest = () => {
               />
             </div>
             <Badge variant="secondary" className="px-3 py-1 text-sm font-medium">
-              Total: {pagination.total}
+              Total: {pagination.total ?? filteredRequests.length}
             </Badge>
           </div>
           <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-4">
@@ -749,7 +749,7 @@ const NocRequest = () => {
         </CardContent>
         <BackendPagination
           page={pagination.page}
-          totalPages={pagination.totalPages}
+          totalPages={pagination.pages}
           total={pagination.total}
           limit={pagination.limit}
           onPageChange={setPage}

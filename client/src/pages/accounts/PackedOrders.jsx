@@ -108,7 +108,7 @@ const PackedOrders = () => {
   // Fetch packed orders — tab (pending/completed/all) + pagination + search
   // are all resolved on the backend so the browser only ever receives one
   // page's worth of rows, not the company's entire packed-orders history.
-  const { data: packedOrdersResponse, isLoading, refetch } = useQuery({
+  const { data: packedOrdersFullResponse, isLoading, refetch } = useQuery({
     queryKey: ['/api/accounts/packed-orders', activeTab, page, debouncedSearch],
     queryFn: async () => {
       const params = new URLSearchParams({ status: activeTab, page: String(page), limit: String(limit) });
@@ -117,8 +117,8 @@ const PackedOrders = () => {
     },
     placeholderData: keepPreviousData
   });
-  const packedOrders = packedOrdersResponse?.data || [];
-  const pagination = packedOrdersResponse?.pagination || { total: 0, page: 1, limit, totalPages: 1 };
+  const packedOrdersResponse = packedOrdersFullResponse?.data || [];
+  const packedOrdersPagination = packedOrdersFullResponse?.pagination || { total: 0, page: 1, limit, pages: 1 };
 
   // Fetch bank accounts for payment receipt
   const { data: bankAccountsResponse } = useQuery({
@@ -338,7 +338,7 @@ const PackedOrders = () => {
   };
 
   // Search + tab filtering both happen on the backend now (see the query above)
-  const filteredOrders = packedOrders;
+  const filteredOrders = packedOrdersResponse;
 
   return (
     <div className="min-h-screen bg-slate-50/50 p-4 md:p-8 space-y-8">
@@ -665,10 +665,10 @@ const PackedOrders = () => {
           )}
         </CardContent>
         <BackendPagination
-          page={pagination.page}
-          totalPages={pagination.totalPages}
-          total={pagination.total}
-          limit={pagination.limit}
+          page={packedOrdersPagination.page}
+          totalPages={packedOrdersPagination.pages}
+          total={packedOrdersPagination.total}
+          limit={packedOrdersPagination.limit}
           onPageChange={setPage}
         />
       </Card>

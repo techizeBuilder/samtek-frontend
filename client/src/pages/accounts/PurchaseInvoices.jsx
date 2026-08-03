@@ -32,10 +32,13 @@ const PurchaseInvoices = () => {
     const [viewInvoice, setViewInvoice] = useState(null);
     const [tdsPercent, setTdsPercent] = useState(0);
     const [gstType, setGstType] = useState('CGST_SGST');
+    const [page, setPage] = useState(1);
+    const [itemSearchTerm, setItemSearchTerm] = useState('');
 
     const { data: invoicesData } = useQuery({
-        queryKey: ['/api/accounts/purchases/invoices'],
-        queryFn: () => apiRequest('GET', '/api/accounts/purchases/invoices')
+        queryKey: ['/api/accounts/purchases/invoices', page],
+        queryFn: () => apiRequest('GET', `/api/accounts/purchases/invoices?page=${page}&limit=20`),
+        keepPreviousData: true,
     });
 
     const { data: vendorsData } = useQuery({
@@ -43,9 +46,13 @@ const PurchaseInvoices = () => {
         queryFn: () => apiRequest('GET', '/api/suppliers')
     });
 
+    // Type-to-search against the backend instead of only ever showing the
+    // first (alphabetically) 50 inventory items — previously this dropdown
+    // had no search at all, so anything past the first page was simply
+    // unreachable.
     const { data: inventoryData } = useQuery({
-        queryKey: ['/api/accounts/purchases/items'],
-        queryFn: () => apiRequest('GET', '/api/accounts/purchases/items')
+        queryKey: ['/api/accounts/purchases/items', itemSearchTerm],
+        queryFn: () => apiRequest('GET', `/api/accounts/purchases/items?search=${encodeURIComponent(itemSearchTerm)}&limit=50`),
     });
 
     const mutation = useMutation({
@@ -164,6 +171,13 @@ const PurchaseInvoices = () => {
                             ))}
                         </TableBody>
                     </Table>
+                    {invoicesData?.data?.pagination?.pages > 1 && (
+                        <div className="flex items-center justify-center gap-2 pt-4">
+                            <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={invoicesData.data.pagination.page <= 1}>Previous</Button>
+                            <span className="text-sm text-slate-500">Page {invoicesData.data.pagination.page} of {invoicesData.data.pagination.pages} ({invoicesData.data.pagination.total} invoices)</span>
+                            <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)} disabled={invoicesData.data.pagination.page >= invoicesData.data.pagination.pages}>Next</Button>
+                        </div>
+                    )}
                 </CardContent>
             </Card>
 
@@ -237,6 +251,12 @@ const PurchaseInvoices = () => {
                             <div className="flex justify-between items-center mb-4">
                                 <h3 className="font-bold text-slate-900 border-l-4 border-blue-600 pl-2">Bill Items</h3>
                                 <div className="flex gap-2">
+                                    <Input
+                                        placeholder="Search item name/code..."
+                                        className="w-48 text-sm"
+                                        value={itemSearchTerm}
+                                        onChange={(e) => setItemSearchTerm(e.target.value)}
+                                    />
                                     <select
                                         className="border rounded-lg p-2 text-sm"
                                         onChange={(e) => {

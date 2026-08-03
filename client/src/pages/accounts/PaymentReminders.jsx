@@ -20,12 +20,22 @@ const PaymentReminders = () => {
     const [searchQuery, setSearchQuery] = useState('');
     const [overdueFilter, setOverdueFilter] = useState('all'); // 'all' | 'warning' | 'critical'
     const [pendingStatusFilter, setPendingStatusFilter] = useState('all'); // 'all' | 'Pending' | 'Partially Paid'
+    const [page, setPage] = useState(1);
 
-    // ── Fetch Overdue & Pending Invoices ──────────────────────────────────────
+    // Jump back to page 1 whenever the active tab or any filter changes.
+    React.useEffect(() => {
+        setPage(1);
+    }, [activeTab, searchQuery, overdueFilter, pendingStatusFilter]);
+
+    // ── Fetch Overdue & Pending Invoices (server-side filtered/paginated;
+    // `summary` in the response always covers both tabs in full, only the
+    // returned `items` are scoped to whichever tab is currently active) ─────
     const { data: overdueRes, isLoading: overdueLoading, refetch } = useQuery({
-        queryKey: ['/api/accounts/payment-reminders/overdue'],
-        queryFn: () => apiRequest('GET', '/api/accounts/payment-reminders/overdue'),
-        refetchInterval: 60000 // Refresh every 1 min
+        queryKey: ['/api/accounts/payment-reminders/overdue', activeTab, page, searchQuery, overdueFilter, pendingStatusFilter],
+        queryFn: () => apiRequest('GET', `/api/accounts/payment-reminders/overdue?tab=${activeTab}&page=${page}&limit=20&search=${encodeURIComponent(searchQuery)}&level=${overdueFilter}&status=${pendingStatusFilter}`),
+        enabled: activeTab !== 'settings',
+        refetchInterval: 60000, // Refresh every 1 min
+        keepPreviousData: true,
     });
 
     // ── Fetch Reminder Settings ───────────────────────────────────────────────
@@ -64,25 +74,13 @@ const PaymentReminders = () => {
     });
 
     const overdueData = overdueRes?.data;
-    const overdue = overdueData?.overdue || [];
-    const pending = overdueData?.pending || [];
+    // Search/level/status filtering now happens server-side — `items` is
+    // already the filtered, paginated slice for whichever tab is active.
+    const items = overdueData?.items || [];
+    const pagination = overdueData?.pagination || {};
     const summary = overdueData?.summary || {};
-
-    const filteredOverdue = overdue.filter(inv => {
-        const matchSearch = !searchQuery ||
-            inv.invoiceNumber?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            inv.customer?.name?.toLowerCase().includes(searchQuery.toLowerCase());
-        const matchOverdue = overdueFilter === 'all' || inv.overdueLevel === overdueFilter;
-        return matchSearch && matchOverdue;
-    });
-
-    const filteredPending = pending.filter(inv => {
-        const matchSearch = !searchQuery ||
-            inv.invoiceNumber?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            inv.customer?.name?.toLowerCase().includes(searchQuery.toLowerCase());
-        const matchStatus = pendingStatusFilter === 'all' || inv.paymentStatus === pendingStatusFilter;
-        return matchSearch && matchStatus;
-    });
+    const filteredOverdue = activeTab === 'overdue' ? items : [];
+    const filteredPending = activeTab === 'pending' ? items : [];
 
     const getOverdueColor = (days) => {
         if (days > 60) return 'bg-red-100 text-red-800 border-red-200';
@@ -117,14 +115,14 @@ const PaymentReminders = () => {
 
             {/* Summary Cards */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <Card className={cn("border-0 shadow-sm border-l-4", overdue.length > 0 ? "border-red-500" : "border-green-500")}>
+                <Card className={cn("border-0 shadow-sm border-l-4", summary.totalOverdue > 0 ? "border-red-500" : "border-green-500")}>
                     <CardContent className="p-4 flex items-center gap-4">
-                        <div className={cn("p-3 rounded-xl", overdue.length > 0 ? "bg-red-50 text-red-600" : "bg-green-50 text-green-600")}>
+                        <div className={cn("p-3 rounded-xl", summary.totalOverdue > 0 ? "bg-red-50 text-red-600" : "bg-green-50 text-green-600")}>
                             <AlertTriangle className="w-6 h-6" />
                         </div>
                         <div>
                             <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Overdue Invoices</p>
-                            <h3 className="text-xl font-bold text-slate-900">{overdue.length}</h3>
+                            <h3 className="text-xl font-bold text-slate-900">{summary.totalOverdue || 0}</h3>
                         </div>
                     </CardContent>
                 </Card>
@@ -133,7 +131,7 @@ const PaymentReminders = () => {
                         <div className="p-3 bg-amber-50 rounded-xl text-amber-600"><Clock className="w-6 h-6" /></div>
                         <div>
                             <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Pending Invoices</p>
-                            <h3 className="text-xl font-bold text-slate-900">{pending.length}</h3>
+                            <h3 className="text-xl font-bold text-slate-900">{summary.totalPending || 0}</h3>
                         </div>
                     </CardContent>
                 </Card>
@@ -160,8 +158,8 @@ const PaymentReminders = () => {
             {/* Tabs */}
             <div className="flex gap-1 p-1 bg-slate-200/50 rounded-xl w-fit">
                 {[
-                    { key: 'overdue', label: `Overdue (${overdue.length})`, icon: AlertTriangle },
-                    { key: 'pending', label: `Pending (${pending.length})`, icon: Clock },
+                    { key: 'overdue', label: `Overdue (${summary.totalOverdue || 0})`, icon: AlertTriangle },
+                    { key: 'pending', label: `Pending (${summary.totalPending || 0})`, icon: Clock },
                     { key: 'settings', label: 'Settings', icon: Settings }
                 ].map(({ key, label, icon: Icon }) => (
                     <button key={key} onClick={() => setActiveTab(key)}
@@ -238,7 +236,7 @@ const PaymentReminders = () => {
                                 <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-3 opacity-30" />
                                 <p className="font-medium">Loading overdue data...</p>
                             </div>
-                        ) : overdue.length === 0 ? (
+                        ) : summary.totalOverdue === 0 ? (
                             <div className="p-12 text-center">
                                 <CheckCircle2 className="w-12 h-12 text-green-400 mx-auto mb-3" />
                                 <p className="text-slate-500 font-medium">No overdue invoices! 🎉</p>
@@ -301,6 +299,13 @@ const PaymentReminders = () => {
                                 </table>
                             </div>
                         )}
+                        {pagination.pages > 1 && (
+                            <div className="flex items-center justify-center gap-2 py-4 border-t border-slate-100">
+                                <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={pagination.page <= 1}>Previous</Button>
+                                <span className="text-sm text-slate-500">Page {pagination.page} of {pagination.pages} ({pagination.total} invoices)</span>
+                                <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)} disabled={pagination.page >= pagination.pages}>Next</Button>
+                            </div>
+                        )}
                     </CardContent>
                 </Card>
             )}
@@ -315,7 +320,7 @@ const PaymentReminders = () => {
                         <CardDescription>These invoices are unpaid but not yet past due date.</CardDescription>
                     </CardHeader>
                     <CardContent className="p-0">
-                        {pending.length === 0 ? (
+                        {summary.totalPending === 0 ? (
                             <div className="p-12 text-center">
                                 <CheckCircle2 className="w-12 h-12 text-green-400 mx-auto mb-3" />
                                 <p className="text-slate-500 font-medium">No pending invoices!</p>
@@ -374,6 +379,13 @@ const PaymentReminders = () => {
                                         ))}
                                     </tbody>
                                 </table>
+                            </div>
+                        )}
+                        {pagination.pages > 1 && (
+                            <div className="flex items-center justify-center gap-2 py-4 border-t border-slate-100">
+                                <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={pagination.page <= 1}>Previous</Button>
+                                <span className="text-sm text-slate-500">Page {pagination.page} of {pagination.pages} ({pagination.total} invoices)</span>
+                                <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)} disabled={pagination.page >= pagination.pages}>Next</Button>
                             </div>
                         )}
                     </CardContent>

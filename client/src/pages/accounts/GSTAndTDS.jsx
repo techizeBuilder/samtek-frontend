@@ -25,11 +25,18 @@ const formatINR = (value) => `₹${Math.round(Number(value) || 0).toLocaleString
 const GSTAndTDS = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('All');
+  const [page, setPage] = useState(1);
 
-  // Fetch dynamic tax summary
+  const changeSearch = (value) => { setSearchTerm(value); setPage(1); };
+  const changeFilterStatus = (value) => { setFilterStatus(value); setPage(1); };
+
+  // Fetch dynamic tax summary — search/type/page are applied server-side to
+  // the transaction log (see getTaxSummary); the GST/TDS totals above always
+  // reflect the full, unfiltered set regardless of what page you're viewing.
   const { data: taxSummaryResponse, isLoading, error } = useQuery({
-    queryKey: ['/api/accounts/tax/summary'],
-    queryFn: () => apiRequest('GET', '/api/accounts/tax/summary')
+    queryKey: ['/api/accounts/tax/summary', searchTerm, filterStatus, page],
+    queryFn: () => apiRequest('GET', `/api/accounts/tax/summary?page=${page}&limit=20&search=${encodeURIComponent(searchTerm)}&type=${filterStatus}`),
+    keepPreviousData: true,
   });
 
   if (error) {
@@ -48,8 +55,10 @@ const GSTAndTDS = () => {
     tdsReceivable: 0,
     tdsPayable: 0,
     netGSTLiability: 0,
-    transactions: []
+    transactions: [],
+    pagination: {}
   };
+  const pagination = taxData.pagination || {};
 
   const getStatusColor = (status) => {
     switch (status) {
@@ -62,33 +71,40 @@ const GSTAndTDS = () => {
     }
   };
 
-  const filteredTransactions = taxData.transactions.filter(item => {
-    const matchesSearch = item.invoiceNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.period.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesType =
-      filterStatus === 'All' ||
-      (filterStatus === 'Sales' && item.transactionType === 'Sales') ||
-      (filterStatus === 'Purchases' && item.transactionType === 'Purchases');
-    return matchesSearch && matchesType;
-  });
+  // Search/type filtering now happens server-side (see queryFn above) — this
+  // page's transactions are already the filtered, paginated slice.
+  const filteredTransactions = taxData.transactions;
 
-  const handleExportExcel = () => {
-    const exportData = filteredTransactions.map(item => ({
-      'Date': new Date(item.date).toLocaleDateString(),
-      'Period': item.period,
-      'Reference No': item.invoiceNo,
-      'Classification': item.transactionType,
-      'Tax Type': item.taxType,
-      'GST Amount': item.gstAmount,
-      'TDS Amount': item.tdsAmount,
-      'Net Amount': item.netAmount,
-      'Status': item.status || 'Verified'
-    }));
+  const [isExporting, setIsExporting] = useState(false);
 
-    const ws = XLSX.utils.json_to_sheet(exportData);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "TaxRecords");
-    XLSX.writeFile(wb, `Tax_Compliance_Report_${new Date().toISOString().split('T')[0]}.xlsx`);
+  // Export should cover every matching record, not just the current page —
+  // fetches the full filtered set (same search/type filters) in one request
+  // rather than exporting only whatever 20 rows happen to be on screen.
+  const handleExportExcel = async () => {
+    setIsExporting(true);
+    try {
+      const res = await apiRequest('GET', `/api/accounts/tax/summary?page=1&limit=100000&search=${encodeURIComponent(searchTerm)}&type=${filterStatus}`);
+      const allTransactions = res?.data?.transactions || [];
+
+      const exportData = allTransactions.map(item => ({
+        'Date': new Date(item.date).toLocaleDateString(),
+        'Period': item.period,
+        'Reference No': item.invoiceNo,
+        'Classification': item.transactionType,
+        'Tax Type': item.taxType,
+        'GST Amount': item.gstAmount,
+        'TDS Amount': item.tdsAmount,
+        'Net Amount': item.netAmount,
+        'Status': item.status || 'Verified'
+      }));
+
+      const ws = XLSX.utils.json_to_sheet(exportData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "TaxRecords");
+      XLSX.writeFile(wb, `Tax_Compliance_Report_${new Date().toISOString().split('T')[0]}.xlsx`);
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   return (
@@ -111,10 +127,10 @@ const GSTAndTDS = () => {
               variant="outline"
               className="flex-1 lg:flex-none border-slate-200 hover:bg-slate-50"
               onClick={handleExportExcel}
-              disabled={filteredTransactions.length === 0}
+              disabled={isExporting || (pagination.total ?? filteredTransactions.length) === 0}
             >
               <Download className="w-4 h-4 mr-2" />
-              Export Reports
+              {isExporting ? 'Exporting...' : 'Export Reports'}
             </Button>
           </div>
         </div>
@@ -241,7 +257,7 @@ const GSTAndTDS = () => {
                 placeholder="Search tax records by invoice or period..."
                 className="pl-11 h-12 bg-white border-0 shadow-sm rounded-xl"
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e) => changeSearch(e.target.value)}
               />
             </div>
             <div className="flex gap-2 p-1 bg-slate-200/50 rounded-xl overflow-x-auto no-scrollbar">
@@ -258,7 +274,7 @@ const GSTAndTDS = () => {
                       : "text-slate-600 hover:bg-white/50"
                   )}
                   // Modified setFilter logic to handle Sales/Purchases specifically if needed
-                  onClick={() => setFilterStatus(type === 'All' ? 'All' : type)}
+                  onClick={() => changeFilterStatus(type === 'All' ? 'All' : type)}
                 >
                   {type}
                 </Button>
@@ -274,7 +290,7 @@ const GSTAndTDS = () => {
                   <CardDescription className="text-slate-500">Live transaction monitoring for GST & TDS</CardDescription>
                 </div>
                 <Badge variant="outline" className="bg-white border-slate-200 text-slate-600 font-bold px-4 py-1.5">
-                  {filteredTransactions.length} Total Records
+                  {pagination.total ?? filteredTransactions.length} Total Records
                 </Badge>
               </div>
             </CardHeader>
@@ -363,6 +379,27 @@ const GSTAndTDS = () => {
                 </div>
               )}
             </CardContent>
+            {pagination.pages > 1 && (
+              <div className="flex items-center justify-center gap-2 px-8 py-4 border-t border-slate-100">
+                <Button
+                  variant="outline" size="sm"
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  disabled={pagination.page <= 1}
+                >
+                  Previous
+                </Button>
+                <span className="text-sm text-slate-500 font-bold">
+                  Page {pagination.page} of {pagination.pages}
+                </span>
+                <Button
+                  variant="outline" size="sm"
+                  onClick={() => setPage(p => p + 1)}
+                  disabled={pagination.page >= pagination.pages}
+                >
+                  Next
+                </Button>
+              </div>
+            )}
           </Card>
         </div>
       </div>

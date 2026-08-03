@@ -31,6 +31,9 @@ export default function PurchaseRequest() {
   const { toast } = useToast();
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({});
+  const [searchTerm, setSearchTerm] = useState('');
 
   // Core Master data
   const [vendors, setVendors] = useState([]);
@@ -99,7 +102,6 @@ export default function PurchaseRequest() {
   }, [itemId, inventoryItems, selectedRequest]);
 
   useEffect(() => {
-    fetchPurchaseRequests();
     fetchVendors();
     fetchInventoryItems();
   }, []);
@@ -110,11 +112,20 @@ export default function PurchaseRequest() {
     }
   }, [user?.companyId]);
 
+  // Re-fetch whenever the page or search term changes.
+  useEffect(() => {
+    fetchPurchaseRequests();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, searchTerm]);
+
+  const changeSearch = (value) => { setSearchTerm(value); setPage(1); };
+
   const fetchPurchaseRequests = async () => {
     try {
       setLoading(true);
-      const data = await apiRequest('GET', '/api/purchase-requests');
+      const data = await apiRequest('GET', `/api/purchase-requests?page=${page}&limit=20&search=${encodeURIComponent(searchTerm)}`);
       setRequests(data.data || []);
+      setPagination(data.pagination || {});
     } catch (error) {
       console.error("Failed to fetch purchase requests:", error);
       toast({
@@ -501,6 +512,15 @@ export default function PurchaseRequest() {
           <h1 className="text-3xl font-bold text-slate-900">Purchase Requests & POs</h1>
           <p className="text-slate-500 mt-2">Manage purchase indents, draft orders, negotiate pricing, and notify suppliers.</p>
         </div>
+        <div className="relative w-full md:w-72">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+          <Input
+            placeholder="Search by product or request ID..."
+            className="pl-9 bg-white"
+            value={searchTerm}
+            onChange={(e) => changeSearch(e.target.value)}
+          />
+        </div>
       </div>
 
       {/* Main Card */}
@@ -677,6 +697,13 @@ export default function PurchaseRequest() {
                   )}
                 </TableBody>
               </Table>
+            </div>
+          )}
+          {pagination.pages > 1 && (
+            <div className="flex items-center justify-center gap-2 py-4 border-t">
+              <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={pagination.page <= 1}>Previous</Button>
+              <span className="text-sm text-slate-500">Page {pagination.page} of {pagination.pages} ({pagination.total} requests)</span>
+              <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)} disabled={pagination.page >= pagination.pages}>Next</Button>
             </div>
           )}
         </CardContent>

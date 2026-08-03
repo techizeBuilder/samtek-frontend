@@ -10,8 +10,14 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
-import { RotateCcw, AlertCircle } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { RotateCcw, AlertCircle, Search } from 'lucide-react';
 import { showSmartToast } from '@/lib/toast-utils';
+
+const EXCHANGE_STATUSES = [
+  'all', 'Pending Vendor Response', 'Needs Manual Vendor Selection',
+  'Accepted', 'Declined', 'Expired', 'Fulfilled', 'Cancelled',
+];
 
 const statusVariant = {
   'Pending Vendor Response': 'secondary',
@@ -26,12 +32,20 @@ const statusVariant = {
 export default function PurchaseExchanges() {
   const queryClient = useQueryClient();
   const [pendingVendorPick, setPendingVendorPick] = useState({}); // exchangeId -> vendorId
+  const [page, setPage] = useState(1);
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const changeStatusFilter = (value) => { setStatusFilter(value); setPage(1); };
+  const changeSearch = (value) => { setSearchTerm(value); setPage(1); };
 
   const { data, isLoading } = useQuery({
-    queryKey: ['/api/purchase-exchange'],
-    queryFn: () => apiRequest('GET', '/api/purchase-exchange'),
+    queryKey: ['/api/purchase-exchange', page, statusFilter, searchTerm],
+    queryFn: () => apiRequest('GET', `/api/purchase-exchange?page=${page}&limit=20&status=${statusFilter}&search=${encodeURIComponent(searchTerm)}`),
+    keepPreviousData: true,
   });
   const exchanges = data?.data || [];
+  const pagination = data?.pagination || {};
 
   const { data: vendorsData } = useQuery({
     queryKey: ['/api/accounts/purchases/vendors'],
@@ -58,6 +72,27 @@ export default function PurchaseExchanges() {
           <p className="text-sm text-muted-foreground">
             Replacement requests auto-created when QC rejects purchased goods — sent to the original vendor for a like-for-like exchange.
           </p>
+          <div className="flex flex-col sm:flex-row gap-3 pt-3">
+            <div className="relative max-w-sm w-full">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search by item name..."
+                className="pl-9"
+                value={searchTerm}
+                onChange={(e) => changeSearch(e.target.value)}
+              />
+            </div>
+            <Select value={statusFilter} onValueChange={changeStatusFilter}>
+              <SelectTrigger className="w-full sm:w-56">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {EXCHANGE_STATUSES.map(s => (
+                  <SelectItem key={s} value={s}>{s === 'all' ? 'All Statuses' : s}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -124,6 +159,13 @@ export default function PurchaseExchanges() {
                 ))}
               </TableBody>
             </Table>
+          )}
+          {pagination.pages > 1 && (
+            <div className="flex items-center justify-center gap-2 pt-4">
+              <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={pagination.page <= 1}>Previous</Button>
+              <span className="text-sm text-muted-foreground">Page {pagination.page} of {pagination.pages} ({pagination.total} exchanges)</span>
+              <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)} disabled={pagination.page >= pagination.pages}>Next</Button>
+            </div>
           )}
         </CardContent>
       </Card>

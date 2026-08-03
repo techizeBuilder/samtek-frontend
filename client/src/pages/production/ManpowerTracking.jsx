@@ -1,11 +1,25 @@
 import React, { useState } from 'react';
-import { useProduction } from '@/contexts/ProductionContext';
+import { useQuery } from '@tanstack/react-query';
+import { useProduction, PROCESS_STEPS } from '@/contexts/ProductionContext';
+import { apiRequest } from '@/lib/queryClient';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Users, TrendingUp, Wrench, CheckCircle, Clock, Plus, Star, X } from 'lucide-react';
-import { PROCESS_STEPS } from '@/contexts/ProductionContext';
+
+// Shared by the live "Active" board (over context's active-orders) and the
+// on-demand "View Full History" query below (over a team's full history) —
+// both just need to flatten (order × process) down to one team's assignments.
+const assignmentsForTeam = (ordersArr, teamId) =>
+  ordersArr.flatMap(o =>
+    o.processes
+      .filter(p => {
+        const pid = p.assignedTeam?._id || p.assignedTeam;
+        return pid && String(pid) === String(teamId);
+      })
+      .map(p => ({ orderId: o.orderId || o._id || o.id, machineName: o.machineName, priority: o.priority, ...p }))
+  );
 
 const emptyTeam = { name: '', supervisor: '', membersInput: '', skills: [], efficiency: '85' };
 
@@ -52,24 +66,11 @@ export default function ManpowerTracking() {
     }));
   };
 
-  // For each team, find active assignments (assignedTeam may be a populated object or string id)
-  const getTeamAssignments = (teamId) => {
-    return orders.flatMap(o =>
-      o.processes
-        .filter(p => {
-          const pid = p.assignedTeam?._id || p.assignedTeam;
-          return pid && String(pid) === String(teamId);
-        })
-        .map(p => ({ orderId: o.orderId || o._id || o.id, machineName: o.machineName, priority: o.priority, ...p }))
-    );
-  };
-
+  // Active assignments (In Progress / QC Pending) only ever occur on
+  // non-Completed orders, so the context's active-orders feed is safe here —
+  // this is the live "what's happening right now" board.
   const getActiveAssignments = (teamId) => {
-    return getTeamAssignments(teamId).filter(a => a.status === 'In Progress' || a.status === 'QC Pending');
-  };
-
-  const getCompletedCount = (teamId) => {
-    return getTeamAssignments(teamId).filter(a => a.status === 'Completed').length;
+    return assignmentsForTeam(orders, teamId).filter(a => a.status === 'In Progress' || a.status === 'QC Pending');
   };
 
   const totalTeamMembers = teams.reduce((s, t) => s + t.members.length, 0);
@@ -77,7 +78,18 @@ export default function ManpowerTracking() {
   const avgEfficiency = Math.round(teams.reduce((s, t) => s + t.efficiency, 0) / (teams.length || 1));
 
   const selectedTeam = selectedTeamId ? teams.find(t => String(t._id || t.id) === selectedTeamId) : null;
-  const selectedTeamAssignments = selectedTeamId ? getTeamAssignments(selectedTeamId) : [];
+
+  // On-demand — fetched only while the history modal is open, over this
+  // team's full order history (not just the active window), so old
+  // completed assignments still show up here.
+  const { data: teamHistoryData, isLoading: teamHistoryLoading } = useQuery({
+    queryKey: ['production-mfg-orders', 'team-history', selectedTeamId],
+    queryFn: () => apiRequest('GET', `/api/production-mfg/teams/${selectedTeamId}/history`),
+    enabled: !!selectedTeamId && viewDialogOpen,
+  });
+  const selectedTeamAssignments = selectedTeamId
+    ? assignmentsForTeam(teamHistoryData?.data || [], selectedTeamId)
+    : [];
 
   return (
     <div className="p-6 space-y-6 bg-slate-50 min-h-screen">
@@ -126,8 +138,10 @@ export default function ManpowerTracking() {
         {teams.map(team => {
           const tid = team._id || team.id;
           const active = getActiveAssignments(tid);
-          const done = getCompletedCount(tid);
-          const total = getTeamAssignments(tid).length;
+          // All-time counts from the backend (see getTeams) — independent of
+          // the active-orders window, so these don't shrink to "recent only".
+          const done = team.assignmentStats?.completed || 0;
+          const total = team.assignmentStats?.total || 0;
           return (
             <Card key={tid} className="border-none shadow-sm hover:shadow-md transition-shadow">
               <CardContent className="p-5">
@@ -325,13 +339,15 @@ export default function ManpowerTracking() {
                     <p className="text-xs text-slate-400">Members</p>
                   </div>
                   <div className="bg-slate-50 rounded-lg p-3 text-center">
-                    <p className="text-xl font-bold text-slate-800">{selectedTeamAssignments.length}</p>
+                    <p className="text-xl font-bold text-slate-800">{selectedTeam.assignmentStats?.total || 0}</p>
                     <p className="text-xs text-slate-400">Total Assignments</p>
                   </div>
                 </div>
 
-                {/* All Assignments */}
-                {selectedTeamAssignments.length === 0 ? (
+                {/* All Assignments (most recent 100) */}
+                {teamHistoryLoading ? (
+                  <p className="text-slate-400 text-center py-8">Loading history...</p>
+                ) : selectedTeamAssignments.length === 0 ? (
                   <p className="text-slate-400 text-center py-8">No assignments yet for this team.</p>
                 ) : (
                   <table className="w-full text-sm border border-slate-100 rounded-lg overflow-hidden">

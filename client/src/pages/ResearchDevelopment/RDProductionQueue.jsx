@@ -34,9 +34,20 @@ export default function RDProductionQueue() {
     } = useRD();
 
     const [rejectModal, setRejectModal] = useState({ open: false, requestId: null, requestType: 'Initial BOM', reason: '' });
-    const [reviewModal, setReviewModal] = useState({ open: false, data: null, isLoading: false });
+    const [reviewModal, setReviewModal] = useState({ open: false, data: null, isLoading: false, meta: null });
     const [searchTerm, setSearchTerm] = useState(reqFilters.search || '');
     const [typeFilter, setTypeFilter] = useState('All'); // 'All' | 'Initial BOM' | 'Material Change'
+
+    // Production Orders carry two IDs — the real sales order code (e.g. "ORD-0094")
+    // and their own internal orderId (e.g. "PROD-2026-682637"). Mirrors the same
+    // fallback logic Order Management uses so both screens agree on which is "real".
+    const getRealOrderId = (o) => {
+        if (!o) return null;
+        if (o.orderCode) return o.orderCode;
+        if (o.source === 'QC_Rejected') return o.rejectionDetails?.originalOrderId || o.machineCode || null;
+        if (!o.source || o.source === 'Store') return o.machineCode || null;
+        return null; // 'Stock'
+    };
 
     const handleTabChange = (tab) => {
         setReqFilters(prev => ({ ...prev, tab, page: 1 }));
@@ -93,14 +104,14 @@ export default function RDProductionQueue() {
         }
     };
 
-    const handleReview = async (id) => {
-        setReviewModal({ open: true, data: null, isLoading: true });
+    const handleReview = async (req) => {
+        setReviewModal({ open: true, data: null, isLoading: true, meta: req });
         try {
-            const res = await fetchProductionRequestReviewData(id);
-            setReviewModal({ open: true, data: res.data, isLoading: false });
+            const res = await fetchProductionRequestReviewData(req._id);
+            setReviewModal({ open: true, data: res.data, isLoading: false, meta: req });
         } catch (err) {
             showSmartToast(err, 'Failed to fetch review data');
-            setReviewModal({ open: false, data: null, isLoading: false });
+            setReviewModal({ open: false, data: null, isLoading: false, meta: null });
         }
     };
 
@@ -150,7 +161,7 @@ export default function RDProductionQueue() {
                             <div className="relative w-full sm:max-w-xs">
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                                 <Input
-                                    placeholder="Search machine, material code..."
+                                    placeholder="Search machine, material code, order ID..."
                                     className="pl-9 bg-white"
                                     value={searchTerm}
                                     onChange={handleSearch}
@@ -186,6 +197,7 @@ export default function RDProductionQueue() {
                             <thead className="bg-slate-50 border-b border-slate-200">
                                 <tr>
                                     <th className="px-5 py-3 font-semibold text-slate-600">Type</th>
+                                    <th className="px-5 py-3 font-semibold text-slate-600">Order</th>
                                     <th className="px-5 py-3 font-semibold text-slate-600">Machine</th>
                                     <th className="px-5 py-3 font-semibold text-slate-600">Details</th>
                                     <th className="px-5 py-3 font-semibold text-slate-600">Status</th>
@@ -195,7 +207,7 @@ export default function RDProductionQueue() {
                             <tbody className="divide-y divide-slate-100 bg-white">
                                 {productionRequests.length === 0 ? (
                                     <tr>
-                                        <td colSpan={5} className="py-12 text-center text-slate-400">
+                                        <td colSpan={6} className="py-12 text-center text-slate-400">
                                             <Clock className="h-8 w-8 mx-auto mb-2 opacity-20" />
                                             No requests found for the current filters.
                                         </td>
@@ -216,6 +228,25 @@ export default function RDProductionQueue() {
                                                         {isMaterialChange ? <Package className="h-3 w-3" /> : <FileCheck className="h-3 w-3" />}
                                                         {isMaterialChange ? 'Material Change' : 'Initial BOM'}
                                                     </span>
+                                                </td>
+
+                                                {/* Order — both Production IDs (real order code + internal orderId), so history is traceable back to it */}
+                                                <td className="px-5 py-4">
+                                                    {req.productionOrderId ? (
+                                                        (() => {
+                                                            const realOrderId = getRealOrderId(req.productionOrderId);
+                                                            return realOrderId ? (
+                                                                <>
+                                                                    <div className="font-mono font-bold text-blue-700 text-sm">{realOrderId}</div>
+                                                                    <div className="text-[10px] text-slate-400 mt-0.5">{req.productionOrderId.orderId}</div>
+                                                                </>
+                                                            ) : (
+                                                                <div className="font-mono font-bold text-blue-700 text-sm">{req.productionOrderId.orderId}</div>
+                                                            );
+                                                        })()
+                                                    ) : (
+                                                        <span className="text-xs text-slate-400 italic">Order deleted</span>
+                                                    )}
                                                 </td>
 
                                                 {/* Machine */}
@@ -284,6 +315,17 @@ export default function RDProductionQueue() {
                                                         {statusIcons[req.status]}
                                                         {req.status}
                                                     </span>
+                                                    {req.processedBy && (
+                                                        <div className="text-[10px] text-slate-400 mt-1">
+                                                            by {req.processedBy.fullName || req.processedBy.username}
+                                                            {req.processedAt && ` · ${new Date(req.processedAt).toLocaleDateString()}`}
+                                                        </div>
+                                                    )}
+                                                    {req.status === 'Rejected' && req.rejectReason && (
+                                                        <div className="text-[10px] text-red-500 mt-0.5 max-w-[160px] truncate" title={req.rejectReason}>
+                                                            "{req.rejectReason}"
+                                                        </div>
+                                                    )}
                                                 </td>
 
                                                 {/* Actions — only for fresh tab */}
@@ -304,7 +346,7 @@ export default function RDProductionQueue() {
                                                                     size="sm"
                                                                     variant="outline"
                                                                     className="h-8 bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 hover:text-blue-800"
-                                                                    onClick={() => handleReview(req._id)}
+                                                                    onClick={() => handleReview(req)}
                                                                 >
                                                                     <Eye className="h-3.5 w-3.5 mr-1" /> Review
                                                                 </Button>
@@ -414,11 +456,21 @@ export default function RDProductionQueue() {
             </Dialog>
 
             {/* Review Modal */}
-            <Dialog open={reviewModal.open} onOpenChange={(open) => !open && setReviewModal({ open: false, data: null, isLoading: false })}>
+            <Dialog open={reviewModal.open} onOpenChange={(open) => !open && setReviewModal({ open: false, data: null, isLoading: false, meta: null })}>
                 <DialogContent className="max-w-3xl">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2 text-slate-800">
                             <Eye className="h-5 w-5 text-blue-600" /> Review Request Details
+                            {reviewModal.meta?.productionOrderId && (() => {
+                                const order = reviewModal.meta.productionOrderId;
+                                const realOrderId = getRealOrderId(order);
+                                return (
+                                    <span className="font-mono text-sm font-normal text-slate-500">
+                                        — {realOrderId || order.orderId}
+                                        {realOrderId && ` (${order.orderId})`}
+                                    </span>
+                                );
+                            })()}
                         </DialogTitle>
                     </DialogHeader>
                     <div className="py-4">
@@ -494,7 +546,7 @@ export default function RDProductionQueue() {
                         )}
                     </div>
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setReviewModal({ open: false, data: null, isLoading: false })}>
+                        <Button variant="outline" onClick={() => setReviewModal({ open: false, data: null, isLoading: false, meta: null })}>
                             Close
                         </Button>
                     </DialogFooter>

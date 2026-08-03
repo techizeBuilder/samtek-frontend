@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { usePackagingDispatch } from '@/contexts/PackagingDispatchContext';
+import { usePackagingDispatch, usePackagingJobsList } from '@/contexts/PackagingDispatchContext';
 import { adminSettingsApi } from '@/api/adminSettingsApi';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -199,9 +199,12 @@ function JobCard({ job, checklistItems }) {
 }
 
 export default function PackagingJobs() {
-  const { jobs, jobsLoading } = usePackagingDispatch();
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+
+  const changeFilter = (value) => { setFilter(value); setPage(1); };
+  const changeSearch = (value) => { setSearch(value); setPage(1); };
 
   // Checklist items are managed in Admin Settings > General > Dispatch > Manage Checklist
   const { data: settingsData } = useQuery({
@@ -213,18 +216,12 @@ export default function PackagingJobs() {
 
   const statuses = ['all', 'Pending', 'In Progress', 'Packed', 'Dispatched'];
 
-  const filtered = jobs.filter(j => {
-    const matchStatus = filter === 'all' || j.status === filter;
-    const matchSearch = !search || j.jobId?.toLowerCase().includes(search.toLowerCase()) ||
-      j.orderId?.toLowerCase().includes(search.toLowerCase()) ||
-      j.machineCode?.toLowerCase().includes(search.toLowerCase());
-    return matchStatus && matchSearch;
+  const { data: jobsListData, isLoading: jobsLoading } = usePackagingJobsList({
+    page, limit: 20, search, status: filter,
   });
-
-  const counts = statuses.reduce((acc, s) => {
-    acc[s] = s === 'all' ? jobs.length : jobs.filter(j => j.status === s).length;
-    return acc;
-  }, {});
+  const filtered = jobsListData?.data?.jobs || [];
+  const pagination = jobsListData?.data?.pagination || {};
+  const counts = jobsListData?.data?.summary || {};
 
   return (
     <div className="p-6 space-y-6 bg-slate-50 min-h-screen">
@@ -239,21 +236,21 @@ export default function PackagingJobs() {
         <Input
           placeholder="Search by Job ID, Order ID or machine..."
           value={search}
-          onChange={e => setSearch(e.target.value)}
+          onChange={e => changeSearch(e.target.value)}
           className="bg-white max-w-sm"
         />
         <div className="flex gap-2 flex-wrap">
           {statuses.map(s => (
             <button
               key={s}
-              onClick={() => setFilter(s)}
+              onClick={() => changeFilter(s)}
               className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
                 filter === s
                   ? 'bg-slate-800 text-white'
                   : 'bg-white text-slate-600 border border-slate-200 hover:border-slate-300'
               }`}
             >
-              {s === 'all' ? 'All' : s} ({counts[s]})
+              {s === 'all' ? 'All' : s} ({counts[s] || 0})
             </button>
           ))}
         </div>
@@ -269,9 +266,33 @@ export default function PackagingJobs() {
           <p className="text-slate-400 text-sm mt-1">Create jobs from the Packaging Queue</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {filtered.map(job => <JobCard key={job._id} job={job} checklistItems={checklistItems} />)}
-        </div>
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {filtered.map(job => <JobCard key={job._id} job={job} checklistItems={checklistItems} />)}
+          </div>
+
+          {pagination.pages > 1 && (
+            <div className="flex items-center justify-center gap-2 pt-2">
+              <Button
+                variant="outline" size="sm"
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={pagination.page <= 1}
+              >
+                Previous
+              </Button>
+              <span className="text-xs text-slate-500">
+                Page {pagination.page} of {pagination.pages} ({pagination.total} jobs)
+              </span>
+              <Button
+                variant="outline" size="sm"
+                onClick={() => setPage(p => p + 1)}
+                disabled={pagination.page >= pagination.pages}
+              >
+                Next
+              </Button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

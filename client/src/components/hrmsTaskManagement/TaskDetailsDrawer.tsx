@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from "react";
-import axios from "axios";
+import React, { useState } from "react";
 import { X, Paperclip, Clock, User, MessageSquare, Activity, Send, CheckCircle, PauseCircle, PlayCircle, Lock, Download } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { useTaskDetails, useUpdateTaskStatus, useAddTaskComment } from "@/hooks/useTaskManagement";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 const FILE_BASE = API_BASE.replace('/api', '');
@@ -40,48 +40,37 @@ interface DetailedTask {
   comments: Array<{ _id: string; text: string; createdAt: string; user: { username: string; role: string } }>;
 }
 
-interface TaskDetailsDrawerProps { taskId: string | null; onClose: () => void; onTaskUpdated?: () => void; }
+interface TaskDetailsDrawerProps { taskId: string | null; onClose: () => void; }
 
-const TaskDetailsDrawer: React.FC<TaskDetailsDrawerProps> = ({ taskId, onClose, onTaskUpdated }) => {
+const TaskDetailsDrawer: React.FC<TaskDetailsDrawerProps> = ({ taskId, onClose }) => {
   const { user } = useAuth() as { user: any };
-  const [task, setTask] = useState<DetailedTask | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [updatingStatus, setUpdatingStatus] = useState(false);
   const [commentText, setCommentText] = useState("");
-  const [submittingComment, setSubmittingComment] = useState(false);
   const [activeTab, setActiveTab] = useState<"comments" | "activity">("comments");
 
-  useEffect(() => { if (taskId) fetchTaskDetails(); }, [taskId]);
+  const { data: taskResponse, isLoading: loading } = useTaskDetails(taskId);
+  const task: DetailedTask | undefined = taskResponse?.data;
 
-  const fetchTaskDetails = async () => {
-    try {
-      setLoading(true);
-      const token = localStorage.getItem("token");
-      const response = await axios.get(`${API_BASE}/hrms/tasks/task/${taskId}`, { headers: { Authorization: `Bearer ${token}` } });
-      if (response.data.success) setTask(response.data.data);
-    } catch (error) { console.error("Failed to load task details:", error); }
-    finally { setLoading(false); }
-  };
+  const updateStatusMutation = useUpdateTaskStatus();
+  const addCommentMutation = useAddTaskComment();
 
-  const handleAddComment = async (e: React.FormEvent) => {
+  const handleAddComment = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!commentText.trim()) return;
-    try {
-      setSubmittingComment(true);
-      const response = await axios.post(`${API_BASE}/hrms/tasks/comment/${taskId}`, { text: commentText }, { headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } });
-      if (response.data.success) { setTask(response.data.data); setCommentText(""); }
-    } catch (error: any) { alert(error.response?.data?.message || "Failed to post comment."); }
-    finally { setSubmittingComment(false); }
+    if (!commentText.trim() || !taskId) return;
+    addCommentMutation.mutate(
+      { taskId, text: commentText },
+      {
+        onSuccess: () => setCommentText(""),
+        onError: (error: any) => alert(error.response?.data?.message || "Failed to post comment."),
+      }
+    );
   };
 
-  const handleStatusUpdate = async (newStatus: string) => {
-    if (task?.status === newStatus || task?.status === "Completed") return;
-    try {
-      setUpdatingStatus(true);
-      const response = await axios.put(`${API_BASE}/hrms/tasks/update/${taskId}`, { status: newStatus }, { headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } });
-      if (response.data.success) { await fetchTaskDetails(); if (onTaskUpdated) onTaskUpdated(); }
-    } catch (error: any) { alert(error.response?.data?.message || "Server error while updating status."); }
-    finally { setUpdatingStatus(false); }
+  const handleStatusUpdate = (newStatus: string) => {
+    if (!taskId || task?.status === newStatus || task?.status === "Completed") return;
+    updateStatusMutation.mutate(
+      { taskId, status: newStatus },
+      { onError: (error: any) => alert(error.response?.data?.message || "Server error while updating status.") }
+    );
   };
 
   const [previewFile, setPreviewFile] = useState<{ url: string; ext: string; name: string } | null>(null);
@@ -139,9 +128,9 @@ const TaskDetailsDrawer: React.FC<TaskDetailsDrawerProps> = ({ taskId, onClose, 
           <div className="flex-1 overflow-y-auto">
             {canChangeStatus && task.status !== "Completed" && (
               <div className="bg-white px-6 py-4 border-b border-gray-100 flex gap-3">
-                <button onClick={() => handleStatusUpdate("In Progress")} disabled={updatingStatus || !allowedNextStatuses.includes("In Progress")} className="flex-1 flex items-center justify-center gap-2 py-2 bg-blue-50 text-blue-700 hover:bg-blue-100 disabled:opacity-50 rounded-lg text-sm font-semibold transition-colors"><PlayCircle size={16} /> Start</button>
-                <button onClick={() => handleStatusUpdate("Hold")} disabled={updatingStatus || !allowedNextStatuses.includes("Hold")} className="flex-1 flex items-center justify-center gap-2 py-2 bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-50 rounded-lg text-sm font-semibold transition-colors"><PauseCircle size={16} /> Hold</button>
-                <button onClick={() => handleStatusUpdate("Completed")} disabled={updatingStatus || !allowedNextStatuses.includes("Completed")} className="flex-1 flex items-center justify-center gap-2 py-2 bg-green-50 text-green-700 hover:bg-green-100 disabled:opacity-50 rounded-lg text-sm font-semibold transition-colors"><CheckCircle size={16} /> Complete</button>
+                <button onClick={() => handleStatusUpdate("In Progress")} disabled={updateStatusMutation.isPending || !allowedNextStatuses.includes("In Progress")} className="flex-1 flex items-center justify-center gap-2 py-2 bg-blue-50 text-blue-700 hover:bg-blue-100 disabled:opacity-50 rounded-lg text-sm font-semibold transition-colors"><PlayCircle size={16} /> Start</button>
+                <button onClick={() => handleStatusUpdate("Hold")} disabled={updateStatusMutation.isPending || !allowedNextStatuses.includes("Hold")} className="flex-1 flex items-center justify-center gap-2 py-2 bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-50 rounded-lg text-sm font-semibold transition-colors"><PauseCircle size={16} /> Hold</button>
+                <button onClick={() => handleStatusUpdate("Completed")} disabled={updateStatusMutation.isPending || !allowedNextStatuses.includes("Completed")} className="flex-1 flex items-center justify-center gap-2 py-2 bg-green-50 text-green-700 hover:bg-green-100 disabled:opacity-50 rounded-lg text-sm font-semibold transition-colors"><CheckCircle size={16} /> Complete</button>
               </div>
             )}
 
@@ -153,10 +142,10 @@ const TaskDetailsDrawer: React.FC<TaskDetailsDrawerProps> = ({ taskId, onClose, 
 
             <div className="p-6 space-y-6">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-white rounded-xl border border-gray-200 shadow-sm">
-                <div><p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Due Date</p><div className="flex items-center gap-1.5 text-sm font-semibold text-gray-800"><Clock size={14} className="text-gray-400" />{new Date(task.dueDate).toLocaleDateString()}</div></div>
-                <div><p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Priority</p><p className={`text-sm font-bold ${task.priority === 'High' ? 'text-red-600' : 'text-blue-600'}`}>{task.priority}</p></div>
-                <div><p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Created By</p><p className="text-sm font-semibold text-gray-800">{task.createdBy?.username}</p></div>
-                <div><p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Department</p><p className="text-sm font-semibold text-gray-800">{task.department}</p></div>
+                <div className="min-w-0"><p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Due Date</p><div className="flex items-center gap-1.5 text-sm font-semibold text-gray-800"><Clock size={14} className="text-gray-400 shrink-0" />{new Date(task.dueDate).toLocaleDateString()}</div></div>
+                <div className="min-w-0"><p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Priority</p><p className={`text-sm font-bold truncate ${task.priority === 'High' ? 'text-red-600' : 'text-blue-600'}`} title={task.priority}>{task.priority}</p></div>
+                <div className="min-w-0"><p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Created By</p><p className="text-sm font-semibold text-gray-800 truncate" title={task.createdBy?.username}>{task.createdBy?.username}</p></div>
+                <div className="min-w-0"><p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Department</p><p className="text-sm font-semibold text-gray-800 truncate" title={task.department}>{task.department}</p></div>
               </div>
 
               <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
@@ -217,8 +206,8 @@ const TaskDetailsDrawer: React.FC<TaskDetailsDrawerProps> = ({ taskId, onClose, 
 
                       {canComment ? (
                         <form onSubmit={handleAddComment} className="flex gap-2 pt-2 border-t border-gray-100">
-                          <input type="text" value={commentText} onChange={(e) => setCommentText(e.target.value)} placeholder="Type a comment..." className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100 transition-all" disabled={submittingComment} />
-                          <button type="submit" disabled={!commentText.trim() || submittingComment} className="bg-indigo-600 text-white p-2.5 rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"><Send size={16} /></button>
+                          <input type="text" value={commentText} onChange={(e) => setCommentText(e.target.value)} placeholder="Type a comment..." className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100 transition-all" disabled={addCommentMutation.isPending} />
+                          <button type="submit" disabled={!commentText.trim() || addCommentMutation.isPending} className="bg-indigo-600 text-white p-2.5 rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"><Send size={16} /></button>
                         </form>
                       ) : (
                         <div className="pt-2 border-t border-gray-100 text-center text-xs text-gray-400 italic">You do not have permission to comment on this task.</div>

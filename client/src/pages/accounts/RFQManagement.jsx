@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import {
@@ -64,6 +65,10 @@ export default function RFQManagement() {
   const [viewRFQModal, setViewRFQModal] = useState(false);
   const [selectedRFQ, setSelectedRFQ] = useState(null);
 
+  // Active vs History tab for the RFQ list below the Purchase Requests table
+  const [rfqTab, setRfqTab] = useState('active');
+  const [historyPage, setHistoryPage] = useState(1);
+
   // NEW: State for R&D Specifications Modal
   const [viewPRModal, setViewPRModal] = useState(false);
   const [selectedPR, setSelectedPR] = useState(null);
@@ -74,17 +79,38 @@ export default function RFQManagement() {
   const [pqQty, setPqQty] = useState('');
 
   // ── Data fetching ─────────────────────────────────────────────────────────
+  // Only the still-actionable (Pending/Approved) purchase requests are
+  // relevant here — scoped server-side instead of fetching the company's
+  // entire purchase-request history and filtering client-side.
   const { data: prData, isLoading: prLoading, refetch: refetchPRs } = useQuery({
-    queryKey: ['/api/purchase-requests'],
-    queryFn: () => apiRequest('GET', '/api/purchase-requests'),
+    queryKey: ['/api/purchase-requests', 'actionable'],
+    queryFn: () => apiRequest('GET', '/api/purchase-requests?status=Pending,Approved&limit=200'),
     select: (d) => d.data || []
   });
 
+  // Bounded (not truly paginated) — this page cross-checks every open
+  // Purchase Request against the RFQ list to see if one's already been
+  // created for it, so it needs to see all currently-relevant RFQs at once,
+  // not one page at a time. Scoped to status=Open so it's genuinely
+  // self-draining (an RFQ leaves this list the moment it's awarded/closed)
+  // instead of accumulating every RFQ ever sent. Full historical browsing
+  // (Awarded/Closed) is the "RFQ History" tab below, which is really paginated.
   const { data: rfqData, isLoading: rfqLoading, refetch: refetchRFQs } = useQuery({
-    queryKey: ['/api/rfq'],
-    queryFn: () => apiRequest('GET', '/api/rfq'),
+    queryKey: ['/api/rfq', 'active'],
+    queryFn: () => apiRequest('GET', '/api/rfq?status=Open&limit=200'),
     select: (d) => d.data || []
   });
+
+  // RFQ History — Awarded + Closed, real backend pagination since this
+  // genuinely grows forever (unlike the Active tab above).
+  const { data: rfqHistoryData, isLoading: rfqHistoryLoading } = useQuery({
+    queryKey: ['/api/rfq', 'history', historyPage],
+    queryFn: () => apiRequest('GET', `/api/rfq?status=Awarded,Closed&page=${historyPage}&limit=20`),
+    enabled: rfqTab === 'history',
+    keepPreviousData: true,
+  });
+  const rfqHistoryList = rfqHistoryData?.data || [];
+  const rfqHistoryPagination = rfqHistoryData?.pagination || { page: 1, pages: 1, total: 0 };
 
   const { data: statsData } = useQuery({
     queryKey: ['/api/rfq/stats'],
@@ -400,65 +426,146 @@ export default function RFQManagement() {
         </CardContent>
       </Card>
 
-      {rfqList.length > 0 && (
-        <Card className="shadow-sm border-0">
-          <CardHeader className="border-b bg-slate-50/50 py-4">
-            <CardTitle className="text-base font-bold text-slate-800 flex items-center gap-2">
-              <BarChart3 className="w-5 h-5 text-purple-500" />
-              Active RFQs
-            </CardTitle>
-            <CardDescription className="text-xs">All sent RFQs and their bid status</CardDescription>
-          </CardHeader>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-slate-50">
-                  <tr>
-                    <th className="text-left py-3 px-5 font-semibold text-slate-600">RFQ No</th>
-                    <th className="text-left py-3 px-5 font-semibold text-slate-600">Product</th>
-                    <th className="text-center py-3 px-5 font-semibold text-slate-600">Qty</th>
-                    <th className="text-left py-3 px-5 font-semibold text-slate-600">Vendors</th>
-                    <th className="text-center py-3 px-5 font-semibold text-slate-600">Bids Received</th>
-                    <th className="text-center py-3 px-5 font-semibold text-slate-600">Status</th>
-                    <th className="text-center py-3 px-5 font-semibold text-slate-600">Sent On</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rfqList.map(rfq => (
-                    <tr key={rfq._id} className="border-b hover:bg-slate-50 transition-colors">
-                      <td className="py-3 px-5 font-bold text-slate-800">{rfq.rfqNo}</td>
-                      <td className="py-3 px-5 font-medium text-slate-700">{rfq.productName}</td>
-                      <td className="py-3 px-5 text-center font-bold text-slate-700">
-                        {rfq.quantity}
-                        {rfq.quantityUnit && <span className="ml-1 font-medium text-slate-500 text-xs">{rfq.quantityUnit}</span>}
-                      </td>
-                      <td className="py-3 px-5 text-slate-600">
-                        <div className="flex items-center gap-1">
-                          <Users className="w-3.5 h-3.5 text-slate-400" />
-                          {rfq.vendors?.length || 0} vendors
-                        </div>
-                      </td>
-                      <td className="py-3 px-5 text-center">
-                        <span className={`font-bold text-sm ${(rfq.bidCount || 0) > 0 ? 'text-emerald-600' : 'text-amber-500'}`}>
-                          {rfq.bidCount || 0}
-                        </span>
-                      </td>
-                      <td className="py-3 px-5 text-center">
-                        <Badge variant="outline" className={`text-xs font-bold ${rfqStatusColor(rfq.status)}`}>
-                          {rfq.status}
-                        </Badge>
-                      </td>
-                      <td className="py-3 px-5 text-center text-slate-500 text-xs">
-                        {rfq.emailSentAt ? format(new Date(rfq.emailSentAt), 'dd MMM yyyy') : '—'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+      <Card className="shadow-sm border-0">
+        <CardHeader className="border-b bg-slate-50/50 py-4">
+          <Tabs value={rfqTab} onValueChange={setRfqTab}>
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+              <div>
+                <CardTitle className="text-base font-bold text-slate-800 flex items-center gap-2">
+                  <BarChart3 className="w-5 h-5 text-purple-500" />
+                  RFQs
+                </CardTitle>
+                <CardDescription className="text-xs mt-1">
+                  {rfqTab === 'active' ? 'RFQs still awaiting vendor bids' : 'Awarded and closed RFQs'}
+                </CardDescription>
+              </div>
+              <TabsList>
+                <TabsTrigger value="active">Active RFQs</TabsTrigger>
+                <TabsTrigger value="history">RFQ History</TabsTrigger>
+              </TabsList>
             </div>
-          </CardContent>
-        </Card>
-      )}
+          </Tabs>
+        </CardHeader>
+        <CardContent className="p-0">
+          {rfqTab === 'active' ? (
+            rfqList.length === 0 ? (
+              <div className="py-16 text-center text-slate-400">
+                <BarChart3 className="w-10 h-10 mx-auto mb-3 opacity-40" />
+                <p className="font-medium">No RFQs awaiting bids right now</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <th className="text-left py-3 px-5 font-semibold text-slate-600">RFQ No</th>
+                      <th className="text-left py-3 px-5 font-semibold text-slate-600">Product</th>
+                      <th className="text-center py-3 px-5 font-semibold text-slate-600">Qty</th>
+                      <th className="text-left py-3 px-5 font-semibold text-slate-600">Vendors</th>
+                      <th className="text-center py-3 px-5 font-semibold text-slate-600">Bids Received</th>
+                      <th className="text-center py-3 px-5 font-semibold text-slate-600">Status</th>
+                      <th className="text-center py-3 px-5 font-semibold text-slate-600">Sent On</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rfqList.map(rfq => (
+                      <tr key={rfq._id} className="border-b hover:bg-slate-50 transition-colors">
+                        <td className="py-3 px-5 font-bold text-slate-800">{rfq.rfqNo}</td>
+                        <td className="py-3 px-5 font-medium text-slate-700">{rfq.productName}</td>
+                        <td className="py-3 px-5 text-center font-bold text-slate-700">
+                          {rfq.quantity}
+                          {rfq.quantityUnit && <span className="ml-1 font-medium text-slate-500 text-xs">{rfq.quantityUnit}</span>}
+                        </td>
+                        <td className="py-3 px-5 text-slate-600">
+                          <div className="flex items-center gap-1">
+                            <Users className="w-3.5 h-3.5 text-slate-400" />
+                            {rfq.vendors?.length || 0} vendors
+                          </div>
+                        </td>
+                        <td className="py-3 px-5 text-center">
+                          <span className={`font-bold text-sm ${(rfq.bidCount || 0) > 0 ? 'text-emerald-600' : 'text-amber-500'}`}>
+                            {rfq.bidCount || 0}
+                          </span>
+                        </td>
+                        <td className="py-3 px-5 text-center">
+                          <Badge variant="outline" className={`text-xs font-bold ${rfqStatusColor(rfq.status)}`}>
+                            {rfq.status}
+                          </Badge>
+                        </td>
+                        <td className="py-3 px-5 text-center text-slate-500 text-xs">
+                          {rfq.emailSentAt ? format(new Date(rfq.emailSentAt), 'dd MMM yyyy') : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )
+          ) : rfqHistoryLoading ? (
+            <div className="flex justify-center py-16">
+              <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+            </div>
+          ) : rfqHistoryList.length === 0 ? (
+            <div className="py-16 text-center text-slate-400">
+              <BarChart3 className="w-10 h-10 mx-auto mb-3 opacity-40" />
+              <p className="font-medium">No awarded or closed RFQs yet</p>
+            </div>
+          ) : (
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <th className="text-left py-3 px-5 font-semibold text-slate-600">RFQ No</th>
+                      <th className="text-left py-3 px-5 font-semibold text-slate-600">Product</th>
+                      <th className="text-center py-3 px-5 font-semibold text-slate-600">Qty</th>
+                      <th className="text-left py-3 px-5 font-semibold text-slate-600">Selected Vendor</th>
+                      <th className="text-center py-3 px-5 font-semibold text-slate-600">Bids Received</th>
+                      <th className="text-center py-3 px-5 font-semibold text-slate-600">Status</th>
+                      <th className="text-center py-3 px-5 font-semibold text-slate-600">Last Updated</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rfqHistoryList.map(rfq => (
+                      <tr key={rfq._id} className="border-b hover:bg-slate-50 transition-colors">
+                        <td className="py-3 px-5 font-bold text-slate-800">{rfq.rfqNo}</td>
+                        <td className="py-3 px-5 font-medium text-slate-700">{rfq.productName}</td>
+                        <td className="py-3 px-5 text-center font-bold text-slate-700">
+                          {rfq.quantity}
+                          {rfq.quantityUnit && <span className="ml-1 font-medium text-slate-500 text-xs">{rfq.quantityUnit}</span>}
+                        </td>
+                        <td className="py-3 px-5 text-slate-600">
+                          {rfq.selectedVendor?.supplierName || '—'}
+                        </td>
+                        <td className="py-3 px-5 text-center">
+                          <span className={`font-bold text-sm ${(rfq.bidCount || 0) > 0 ? 'text-emerald-600' : 'text-amber-500'}`}>
+                            {rfq.bidCount || 0}
+                          </span>
+                        </td>
+                        <td className="py-3 px-5 text-center">
+                          <Badge variant="outline" className={`text-xs font-bold ${rfqStatusColor(rfq.status)}`}>
+                            {rfq.status}
+                          </Badge>
+                        </td>
+                        <td className="py-3 px-5 text-center text-slate-500 text-xs">
+                          {rfq.updatedAt ? format(new Date(rfq.updatedAt), 'dd MMM yyyy') : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {rfqHistoryPagination.pages > 1 && (
+                <div className="flex items-center justify-center gap-2 py-4">
+                  <Button variant="outline" size="sm" onClick={() => setHistoryPage(p => Math.max(1, p - 1))} disabled={rfqHistoryPagination.page <= 1}>Previous</Button>
+                  <span className="text-sm text-muted-foreground">Page {rfqHistoryPagination.page} of {rfqHistoryPagination.pages} ({rfqHistoryPagination.total} RFQs)</span>
+                  <Button variant="outline" size="sm" onClick={() => setHistoryPage(p => p + 1)} disabled={rfqHistoryPagination.page >= rfqHistoryPagination.pages}>Next</Button>
+                </div>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
 
       {/* ── Purchase Quantity Modal (items ordered in a Purchase Unit) ──────── */}
       <Dialog open={pqModalOpen} onOpenChange={(open) => { if (!open) setPqModalOpen(false); }}>

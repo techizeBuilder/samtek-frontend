@@ -16,13 +16,32 @@ export const PROCESS_TYPE_MAP = {
 
 const BASE = '/api/production-mfg';
 
+// Pure function of an order document — usable directly by pages that hold
+// their own order objects (e.g. from a paginated list) without needing the
+// order to be present in the context's active-orders array.
+export function computeOrderProgress(order) {
+  const buildQty = Math.max(1, Number(order.orderQuantity) || 1);
+  const stepsPerUnit = order.processes.length;
+  const doneInMain = order.processes.filter(p => p.status === 'Completed').length;
+  const doneInExtra = (order.extraUnits || []).reduce(
+    (sum, u) => sum + (u.processes || []).filter(p => p.status === 'Completed').length, 0
+  );
+  const totalSteps = stepsPerUnit * buildQty;
+  return totalSteps ? Math.round(((doneInMain + doneInExtra) / totalSteps) * 100) : 0;
+}
+
 export function ProductionProvider({ children }) {
   const qc = useQueryClient();
 
   // ── Queries ────────────────────────────────────────────────────────────────
+  // Only currently-active work (non-Completed, or completed in the last 7
+  // days) — this is what every board/kanban-style consumer of `orders` below
+  // actually needs. Pages that need full order history (Orders, Job Cards)
+  // run their own paginated queries instead of reading from this context —
+  // see `useProductionOrdersList` below.
   const { data: ordersData, isLoading: ordersLoading } = useQuery({
-    queryKey: ['production-mfg-orders'],
-    queryFn: () => apiRequest('GET', `${BASE}/orders`),
+    queryKey: ['production-mfg-orders', 'active'],
+    queryFn: () => apiRequest('GET', `${BASE}/orders/active`),
   });
 
   const { data: teamsData, isLoading: teamsLoading } = useQuery({
@@ -33,6 +52,11 @@ export function ProductionProvider({ children }) {
   const orders = ordersData?.data || [];
   const teams = teamsData?.data || [];
 
+  // Partial-key match: invalidates the active-orders query above AND any
+  // currently-mounted paginated list / team-history queries (see
+  // useProductionOrdersList / ManpowerTracking) sharing the same prefix.
+  // Only mounted queries actually refetch, so this stays cheap no matter how
+  // many pages happen to be watching production-mfg-orders data.
   const invalidateOrders = () => qc.invalidateQueries({ queryKey: ['production-mfg-orders'] });
   const invalidateTeams = () => qc.invalidateQueries({ queryKey: ['production-mfg-teams'] });
 
@@ -159,7 +183,7 @@ export function ProductionProvider({ children }) {
   const markMaterialIssued = useCallback((id) => markMaterialIssuedMutation.mutateAsync(id), []);
   const decideRework = useCallback((id) => decideReworkMutation.mutateAsync(id), []);
   const decideRepair = useCallback((id) => decideRepairMutation.mutateAsync(id), []);
-  const addMaterialDemand = useCallback((orderId, demand) => addMaterialDemandMutation.mutate({ orderId, demand }), []);
+  const addMaterialDemand = useCallback((orderId, demand) => addMaterialDemandMutation.mutateAsync({ orderId, demand }), []);
   const updateMaterialStatus = useCallback((orderId, materialId, status) => updateMaterialStatusMutation.mutate({ orderId, materialId, status }), []);
   const addTeam = useCallback((data) => addTeamMutation.mutate(data), []);
 
@@ -222,17 +246,14 @@ export function ProductionProvider({ children }) {
   }, [orders]);
 
   // ── Computed helpers (same interface as before) ───────────────────────────
+  // getOrderProgress(orderId) only finds orders within the active-orders set
+  // above — fine for WorkPlanning/ProcessExecution (active-only pages), but
+  // pages with their own paginated order list (OrderManagement, JobCards)
+  // should call computeOrderProgress(order) directly with the order object
+  // they already have in hand, since it may not be in the active set.
   const getOrderProgress = useCallback((orderId) => {
     const order = orders.find(o => o._id === orderId || o.id === orderId);
-    if (!order) return 0;
-    const buildQty = Math.max(1, Number(order.orderQuantity) || 1);
-    const stepsPerUnit = order.processes.length;
-    const doneInMain = order.processes.filter(p => p.status === 'Completed').length;
-    const doneInExtra = (order.extraUnits || []).reduce(
-      (sum, u) => sum + (u.processes || []).filter(p => p.status === 'Completed').length, 0
-    );
-    const totalSteps = stepsPerUnit * buildQty;
-    return totalSteps ? Math.round(((doneInMain + doneInExtra) / totalSteps) * 100) : 0;
+    return order ? computeOrderProgress(order) : 0;
   }, [orders]);
 
   const getPendingQC = useCallback(() => {
@@ -298,4 +319,26 @@ export function useProduction() {
   const ctx = useContext(ProductionContext);
   if (!ctx) throw new Error('useProduction must be used within ProductionProvider');
   return ctx;
+}
+
+// Shared paginated/searchable/filterable order list — for pages that need to
+// browse full order history (Orders, Job Cards), unlike the bounded
+// "active work" feed the provider above exposes as `orders`. Shares the
+// 'production-mfg-orders' key prefix so invalidateOrders() (any mutation)
+// refreshes this too whenever it's mounted.
+export function useProductionOrdersList(filters, options = {}) {
+  return useQuery({
+    queryKey: ['production-mfg-orders', 'list', filters],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '' && value !== 'all') {
+          params.append(key, value.toString());
+        }
+      });
+      return apiRequest('GET', `${BASE}/orders?${params.toString()}`);
+    },
+    keepPreviousData: true,
+    ...options,
+  });
 }

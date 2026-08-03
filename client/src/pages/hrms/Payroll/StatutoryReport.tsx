@@ -91,8 +91,8 @@ const StatutoryReport = () => {
                             <th className="px-4 py-3 font-semibold text-sm text-right text-green-600">ESI</th>
                             <th className="px-4 py-3 font-semibold text-sm text-right text-purple-600">PT</th>
                             <th className="px-4 py-3 font-semibold text-sm text-right text-red-600">TDS</th>
-                            <th className="px-4 py-3 font-semibold text-sm text-right font-bold">Total Ded.</th>
-                            <th className="px-4 py-3 font-semibold text-sm text-right text-green-700 font-bold">Net Salary</th>
+                            <th className="px-4 py-3 text-sm text-right font-bold">Total Ded.</th>
+                            <th className="px-4 py-3 text-sm text-right text-green-700 font-bold">Net Salary</th>
                         </tr>
                     </thead>
                     <tbody>

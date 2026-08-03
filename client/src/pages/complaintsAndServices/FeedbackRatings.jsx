@@ -1,14 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { Star, CheckCircle, User, Package, Phone, MessageCircle, Mail, BadgeCheck, Link2 } from 'lucide-react';
+import { Star, CheckCircle, User, Package, Phone, MessageCircle, Mail, BadgeCheck, Link2, Search } from 'lucide-react';
 import { sendWhatsApp } from '@/lib/whatsapp';
 
 // One consolidated feedback entity per sales order — a multi-machine order
@@ -29,10 +30,38 @@ export default function FeedbackRatings() {
   const qc = useQueryClient();
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [rating, setRating] = useState(0);
+  const [search, setSearch] = useState('');
+  const [activeTab, setActiveTab] = useState('pending');
+  const [historyPage, setHistoryPage] = useState(1);
 
-  const { data: ordersData, isLoading } = useQuery({
-    queryKey: ['dispatched-orders'],
-    queryFn: () => apiRequest('GET', '/api/complaints/dispatched-orders')
+  // Reset to page 1 whenever the search changes so the user doesn't land on
+  // a now-out-of-range page.
+  useEffect(() => { setHistoryPage(1); }, [search]);
+
+  // Pending Feedback is the "active worklist" — one rating from Complaint
+  // Management covers every machine of the order at once (see
+  // bulkUpdateFeedbackAndRatings), so this bucket only ever holds orders
+  // still awaiting feedback; fetched in full, no pagination needed since it
+  // drains as feedback comes in.
+  const { data: activeData, isLoading: activeLoading } = useQuery({
+    queryKey: ['dispatched-orders', 'feedback', 'active', search],
+    queryFn: () => {
+      const params = new URLSearchParams({ stage: 'feedback', bucket: 'active' });
+      if (search) params.set('search', search);
+      return apiRequest('GET', `/api/complaints/dispatched-orders?${params.toString()}`);
+    },
+  });
+
+  // Received is the ever-growing history — real backend pagination, 10
+  // orders per page.
+  const { data: historyData, isLoading: historyLoading } = useQuery({
+    queryKey: ['dispatched-orders', 'feedback', 'history', historyPage, search],
+    queryFn: () => {
+      const params = new URLSearchParams({ stage: 'feedback', bucket: 'history', page: String(historyPage), limit: '10' });
+      if (search) params.set('search', search);
+      return apiRequest('GET', `/api/complaints/dispatched-orders?${params.toString()}`);
+    },
+    keepPreviousData: true,
   });
 
   const updateMutation = useMutation({
@@ -48,13 +77,19 @@ export default function FeedbackRatings() {
     }
   });
 
-  const orders = ordersData?.data || [];
+  const isLoading = activeLoading || historyLoading;
+  const orders = activeData?.data || [];
   const groups = groupByOrder(orders);
 
   // Feedback only makes sense once every machine of the order is installed.
-  const completedOrders = groups.filter(g => g.jobs.every(o => o.installation?.status === 'Completed'));
-  const pendingFeedback = completedOrders.filter(g => !g.jobs[0].feedback?.rating);
-  const receivedFeedback = completedOrders.filter(g => g.jobs[0].feedback?.rating > 0);
+  // (Backend's stage=feedback fetch already guarantees this; kept as a
+  // defensive no-op filter.)
+  const pendingFeedback = groups.filter(g => g.jobs.every(o => o.installation?.status === 'Completed'));
+
+  const historyOrders = historyData?.data || [];
+  const receivedFeedback = groupByOrder(historyOrders); // already rated — backend-filtered
+  const historyPagination = historyData?.pagination || { page: 1, pages: 1, total: 0 };
+  const noOrdersAtAll = pendingFeedback.length === 0 && historyPagination.total === 0;
 
   const handleUpdate = (e) => {
     e.preventDefault();
@@ -108,10 +143,15 @@ export default function FeedbackRatings() {
         <p className="text-slate-500">Collect feedback for completed installations.</p>
       </div>
 
+      <div className="relative max-w-sm">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+        <Input placeholder="Search by order ID or customer name..." className="pl-9" value={search} onChange={e => setSearch(e.target.value)} />
+      </div>
+
       <div className="w-full space-y-4">
         {isLoading ? (
           <div className="text-center py-10 text-slate-500">Loading...</div>
-        ) : completedOrders.length === 0 ? (
+        ) : noOrdersAtAll ? (
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-16">
               <Star className="h-12 w-12 text-slate-300 mb-4" />
@@ -120,13 +160,13 @@ export default function FeedbackRatings() {
             </CardContent>
           </Card>
         ) : (
-          <Tabs defaultValue="pending" className="w-full">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsList className="mb-4 bg-slate-100">
               <TabsTrigger value="pending" className="data-[state=active]:bg-white">
                 Pending Feedback ({pendingFeedback.length})
               </TabsTrigger>
               <TabsTrigger value="received" className="data-[state=active]:bg-white">
-                Received ({receivedFeedback.length})
+                Received ({historyPagination.total})
               </TabsTrigger>
             </TabsList>
 
@@ -155,14 +195,17 @@ export default function FeedbackRatings() {
                   <p className="text-lg font-medium text-slate-600">No feedback received yet</p>
                 </CardContent></Card>
               ) : (
-                <FeedbackList
-                  list={receivedFeedback}
-                  handleSelectGroup={handleSelectGroup}
-                  handleWhatsApp={handleWhatsApp}
-                  handleCall={handleCall}
-                  handleEmail={handleEmail}
-                  canEdit={false}
-                />
+                <>
+                  <FeedbackList
+                    list={receivedFeedback}
+                    handleSelectGroup={handleSelectGroup}
+                    handleWhatsApp={handleWhatsApp}
+                    handleCall={handleCall}
+                    handleEmail={handleEmail}
+                    canEdit={false}
+                  />
+                  <Pager page={historyPage} totalPages={historyPagination.pages} setPage={setHistoryPage} />
+                </>
               )}
             </TabsContent>
           </Tabs>
@@ -326,6 +369,17 @@ function FeedbackList({ list, handleSelectGroup, handleWhatsApp, handleCall, han
         </Card>
         );
       })}
+    </div>
+  );
+}
+
+function Pager({ page, totalPages, setPage }) {
+  if (totalPages <= 1) return null;
+  return (
+    <div className="flex items-center justify-center gap-2 pt-4">
+      <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1}>Previous</Button>
+      <span className="text-sm text-muted-foreground">Page {page} of {totalPages}</span>
+      <Button variant="outline" size="sm" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages}>Next</Button>
     </div>
   );
 }

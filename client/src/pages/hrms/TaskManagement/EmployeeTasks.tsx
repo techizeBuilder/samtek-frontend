@@ -60,9 +60,10 @@ export default function EmployeeTasks() {
 
             {/* Views */}
             <div className="mt-4">
-                {activeTab === "dashboard" && <TaskDashboardView />}
-                
-                {/* 🔥 FIX: Passed myTasksOnly={true} so Dept Heads only see their own tasks here! */}
+                {/* myTasksOnly=true so a Dept Head's personal dashboard doesn't show the same
+                    department-wide numbers as the Task Management dashboard. */}
+                {activeTab === "dashboard" && <TaskDashboardView myTasksOnly={true} />}
+
                 {activeTab === "my_tasks" && <TaskWorkspaceView myTasksOnly={true} />}
             </div>
 

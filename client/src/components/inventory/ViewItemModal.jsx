@@ -87,10 +87,11 @@ export default function ViewItemModal({ isOpen, onClose, item }) {
               <InfoRow icon={Package} label="Item Name" value={item.name} />
               <InfoRow icon={FileText} label="Description" value={item.description} />
               <InfoRow icon={Tag} label="Item Type" value={item.type} variant="badge" />
+              <InfoRow icon={Tag} label="Group" value={item.group} />
               <InfoRow icon={AlertTriangle} label="Importance" value={item.importance} variant="badge" />
-              <InfoRow icon={BarChart3} label="Unit" value={item.unit} />
+              <InfoRow icon={BarChart3} label="Unit" value={item.unitType ? `${item.unit} (${item.unitType})` : item.unit} />
               <InfoRow icon={MapPin} label="Store Location" value={item.storeLocation || item.store || 'No location'} />
-              <InfoRow icon={Tag} label="Qty/Batch" value={item.batch} />
+              <InfoRow icon={Tag} label="Batch" value={item.batch} />
             </CardContent>
           </Card>
 
@@ -123,6 +124,26 @@ export default function ViewItemModal({ isOpen, onClose, item }) {
             </CardContent>
           </Card>
 
+          {/* Product Master Attributes */}
+          {(item.brand || item.metrology || item.size || (item.unitWeightValue !== null && item.unitWeightValue !== undefined && item.unitWeightValue !== '')) && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <Tag className="h-5 w-5 text-teal-600" />
+                  Product Master Attributes
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-1">
+                <InfoRow icon={Tag} label="Brand" value={item.brand} />
+                <InfoRow icon={Tag} label="Metrology" value={item.metrology} />
+                <InfoRow icon={Tag} label="Size" value={item.size} />
+                {(item.unitWeightValue !== null && item.unitWeightValue !== undefined && item.unitWeightValue !== '') && (
+                  <InfoRow icon={BarChart3} label="Unit Weight" value={`${item.unitWeightValue} ${item.unitWeightUnit || ''}`.trim()} />
+                )}
+              </CardContent>
+            </Card>
+          )}
+
           {/* Stock Information */}
           <Card>
             <CardHeader>
@@ -134,6 +155,14 @@ export default function ViewItemModal({ isOpen, onClose, item }) {
             <CardContent className="space-y-1">
               <InfoRow icon={BarChart3} label="Current Stock" value={`${item.qty || 0} ${item.unit}`} />
               <InfoRow icon={AlertTriangle} label="Minimum Stock" value={`${item.minStock || 0} ${item.unit}`} />
+              <InfoRow icon={BarChart3} label="Min Order Qty" value={item.minOrderQty} />
+              {item.purchase && (
+                <InfoRow
+                  icon={BarChart3}
+                  label="Purchase Unit"
+                  value={item.purchaseUnitType ? `${item.purchaseUnit} (${item.purchaseUnitType})` : item.purchaseUnit}
+                />
+              )}
               <div className="py-2">
                 <div className="text-sm text-muted-foreground mb-1">Stock Status</div>
                 <Badge variant={(item.qty || 0) <= (item.minStock || 0) ? 'destructive' : 'default'}>
@@ -155,8 +184,16 @@ export default function ViewItemModal({ isOpen, onClose, item }) {
               <InfoRow icon={BarChart3} label="Standard Cost" value={item.stdCost} variant="currency" />
               <InfoRow icon={BarChart3} label="Purchase Cost" value={item.purchaseCost} variant="currency" />
               <InfoRow icon={BarChart3} label="Sale Price" value={item.salePrice} variant="currency" />
+              <InfoRow icon={BarChart3} label="Dealer Price" value={item.dealerPrice} variant="currency" />
               <InfoRow icon={BarChart3} label="MRP" value={item.mrp} variant="currency" />
               <InfoRow icon={BarChart3} label="GST %" value={`${item.gst || 0}%`} />
+              <InfoRow icon={Tag} label="Cost Source" value={item.costSource || 'Manual'} variant="badge" />
+              {item.costResolutionIssue && (
+                <div className="py-2">
+                  <div className="text-sm text-muted-foreground mb-1 flex items-center gap-1"><AlertTriangle className="h-4 w-4" /> Cost Resolution Issue</div>
+                  <p className="text-sm bg-amber-50 text-amber-800 p-2 rounded-lg">{item.costResolutionIssue}</p>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -242,6 +279,69 @@ export default function ViewItemModal({ isOpen, onClose, item }) {
                     <p className="text-sm bg-muted p-3 rounded-lg">{item.otherInfo}</p>
                   </div>
                 </>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Specifications */}
+        {Array.isArray(item.specifications) && item.specifications.filter(s => s.key).length > 0 && (
+          <Card className="mt-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <FileText className="h-5 w-5 text-slate-600" />
+                Specifications
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
+                {item.specifications.filter(s => s.key).map((s, i) => (
+                  <div key={i} className="flex items-center justify-between py-2 border-b last:border-0">
+                    <span className="text-sm text-muted-foreground">{s.key}</span>
+                    <span className="text-sm font-medium">{s.value || 'N/A'}</span>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Applications */}
+        {Array.isArray(item.applications) && item.applications.filter(Boolean).length > 0 && (
+          <Card className="mt-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Package className="h-5 w-5 text-lime-600" />
+                Applications
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap gap-1.5">
+                {item.applications.filter(Boolean).map((app, i) => (
+                  <Badge key={i} variant="outline">{app}</Badge>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Warranty */}
+        {item.warranty && (item.warranty.period || item.warranty.terms) && (
+          <Card className="mt-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <CheckCircle className="h-5 w-5 text-emerald-600" />
+                Warranty
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-1">
+              <InfoRow icon={Calendar} label="Period" value={`${item.warranty.period || 0} months`} />
+              <InfoRow icon={Tag} label="Type" value={item.warranty.type} variant="badge" />
+              {item.warranty.terms && (
+                <div className="py-2">
+                  <div className="text-sm text-muted-foreground mb-1">Terms</div>
+                  <p className="text-sm bg-muted p-3 rounded-lg">{item.warranty.terms}</p>
+                </div>
               )}
             </CardContent>
           </Card>
