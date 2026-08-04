@@ -107,6 +107,7 @@ export const MODULES = [
       { key: 'dashboard', label: 'Dashboard' },
       { key: 'employeeManagement', label: 'Employee Management' },
       { key: 'myCompany', label: 'My Company' },
+      { key: 'pricingValue', label: 'Pricing Value' },
       { key: 'operatingUnits', label: 'Operating Units' },
       { key: 'departments', label: 'Departments' },
       { key: 'designations', label: 'Designations' },

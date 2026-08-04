@@ -1210,16 +1210,16 @@ const assignableUsers = (usersData?.users || []).filter(
   };
 
   const handleInitialCheck = async () => {
-    if (!formData.email && !formData.mobile) {
-      toast({ title: "Required", description: "Email ya Mobile number mein se ek zaroor enter karein", variant: "destructive" });
+    if (!formData.mobile) {
+      toast({ title: "Required", description: "Mobile number enter karein", variant: "destructive" });
+      return;
+    }
+    if (!isValidMobile(formData.mobile)) {
+      toast({ title: "Invalid Mobile", description: "Mobile number sirf 10 digits ka hona chahiye (sirf numbers)", variant: "destructive" });
       return;
     }
     if (formData.email && !isValidEmail(formData.email)) {
       toast({ title: "Invalid Email", description: "Sahi email format enter karein (e.g. user@example.com)", variant: "destructive" });
-      return;
-    }
-    if (formData.mobile && !isValidMobile(formData.mobile)) {
-      toast({ title: "Invalid Mobile", description: "Mobile number sirf 10 digits ka hona chahiye (sirf numbers)", variant: "destructive" });
       return;
     }
 
@@ -2226,25 +2226,12 @@ const assignableUsers = (usersData?.users || []).filter(
                 </DialogHeader>
 
                 <div className="bg-blue-50 border border-blue-200 p-3 rounded-md text-blue-700 text-sm font-medium">
-                  Buyer's Email ID or Mobile number is mandatory to add a new lead
+                  Buyer's Mobile number is mandatory to add a new lead. Email is optional.
                 </div>
 
                 <div className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="email" className="font-bold">E-mail</Label>
-                    <Input
-                      id="email"
-                      name="email"
-                      type="email"
-                      placeholder="Enter email (e.g. user@example.com)"
-                      value={formData.email}
-                      onChange={handleInputChange}
-                      autoComplete="off"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="mobile" className="font-bold">Mobile</Label>
+                    <Label htmlFor="mobile" className="font-bold">Mobile <span className="text-red-500">*</span></Label>
                     <Input
                       id="mobile"
                       name="mobile"
@@ -2259,6 +2246,19 @@ const assignableUsers = (usersData?.users || []).filter(
                     {formData.mobile && formData.mobile.length > 0 && formData.mobile.length < 10 && (
                       <p className="text-xs text-amber-600">{10 - formData.mobile.length} more digits required</p>
                     )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="email" className="font-bold">E-mail <span className="text-gray-400 font-normal">(optional)</span></Label>
+                    <Input
+                      id="email"
+                      name="email"
+                      type="email"
+                      placeholder="Enter email (e.g. user@example.com)"
+                      value={formData.email}
+                      onChange={handleInputChange}
+                      autoComplete="off"
+                    />
                   </div>
                 </div>
 

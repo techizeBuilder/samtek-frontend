@@ -421,6 +421,7 @@ const companyAdminMenuItems = [
   { label: 'Dashboard', path: '/hrms/CompanyAdmin/dashboard', icon: LayoutDashboard, module: 'hrms', feature: 'dashboard' },
   { label: 'Employee Management', path: '/hrms/CompanyAdmin/employees', icon: Users, module: 'hrms', feature: 'employeeManagement' },
   { label: 'My Company', path: '/hrms/CompanyAdmin/companies', icon: Building2, module: 'hrms', feature: 'myCompany' },
+  { label: 'Pricing Value', path: '/hrms/CompanyAdmin/pricing-value', icon: Calculator, module: 'hrms', feature: 'pricingValue' },
   { label: 'Operating Units', path: '/hrms/CompanyAdmin/branches', icon: Building, module: 'hrms', feature: 'operatingUnits' },
   { label: 'Departments', path: '/hrms/CompanyAdmin/departments', icon: Users, module: 'hrms', feature: 'departments' },
   { label: 'Designations', path: '/hrms/CompanyAdmin/designations', icon: Briefcase, module: 'hrms', feature: 'designations' },

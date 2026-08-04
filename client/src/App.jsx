@@ -129,6 +129,7 @@ import HRMSAttendanceRequests from "@/pages/hrms/Attendance/HRAdminAttendanceReq
 // System Configuration Imports
 import HRMSCompany from "@/pages/hrms/SystemConfigration/Company";
 import MyCompany from "@/pages/hrms/SystemConfigration/MyCompany";
+import PricingValue from "@/pages/hrms/CompanyAdmin/PricingValue";
 import HRMSBranches from "@/pages/hrms/SystemConfigration/Branches";
 import HRMSDepartments from "@/pages/hrms/SystemConfigration/Departments";
 import HRMSDesignation from "@/pages/hrms/SystemConfigration/Desigantion";
@@ -585,6 +586,7 @@ function Router() {
             <Route exact path="/hrms/CompanyAdmin/dashboard" component={CompanyAdminDashboard} />
             <Route exact path="/hrms/CompanyAdmin/employees" component={HRMSEmployees} />
             <Route exact path="/hrms/CompanyAdmin/companies" component={MyCompany} />
+            <Route exact path="/hrms/CompanyAdmin/pricing-value" component={PricingValue} />
             <Route exact path="/hrms/CompanyAdmin/branches" component={HRMSBranches} />
             <Route exact path="/hrms/CompanyAdmin/departments" component={HRMSDepartments} />
             <Route exact path="/hrms/CompanyAdmin/designations" component={HRMSDesignation} />

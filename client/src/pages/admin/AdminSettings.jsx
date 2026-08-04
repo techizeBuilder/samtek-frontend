@@ -278,6 +278,7 @@ export default function AdminSettings() {
   const dispatchChecklist = settings.dispatchChecklist || [];
   const quotationNumberSettings = settings.quotationNumberSettings || [];
   const hrmsDocumentTypes = settings.hrmsDocumentTypes || [];
+  const roles = settings.roles || [];
 
   const inv = () => qc.invalidateQueries({ queryKey: ['admin-settings'] });
   const m = (fn, msg) => ({ mutationFn: fn, onSuccess: () => { inv(); toast({ title: msg }); }, onError: e => toast({ title: 'Error', description: e.message, variant: 'destructive' }) });
@@ -347,6 +348,14 @@ export default function AdminSettings() {
   const addHrmsDocTypeM = useMutation(m(b => adminSettingsApi.addHrmsDocumentType(b), 'Document type added'));
   const updHrmsDocTypeM = useMutation(m(({ id, body }) => adminSettingsApi.updateHrmsDocumentType(id, body), 'Document type updated'));
   const delHrmsDocTypeM = useMutation(m(id => adminSettingsApi.deleteHrmsDocumentType(id), 'Document type deleted'));
+
+  // Role Setting
+  const addRoleM = useMutation(m(b => adminSettingsApi.addRole(b), 'Role added'));
+  const updRoleM = useMutation(m(({ id, body }) => adminSettingsApi.updateRole(id, body), 'Role updated'));
+  const delRoleM = useMutation(m(id => adminSettingsApi.deleteRole(id), 'Role deleted'));
+  const [newRoleName, setNewRoleName] = useState('');
+  const [editingRoleId, setEditingRoleId] = useState(null);
+  const [editingRoleName, setEditingRoleName] = useState('');
   // Stable key derived from the label — stored permanently on each employee's
   // uploaded UserDocument, so it must not change when the label is edited later.
   const slugifyDocKey = (label) => (label || '').trim().toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '') || `DOC_${Date.now()}`;
@@ -497,6 +506,7 @@ export default function AdminSettings() {
       id: 'hrms', label: 'HRMS Setting', icon: Upload,
       children: [
         { id: 'hrms_upload_document', label: 'Upload Document Setting' },
+        { id: 'hrms_role_setting', label: 'Role Setting' },
       ]
     },
     { id: 'other', label: 'Other Settings', icon: Layers },
@@ -919,6 +929,81 @@ export default function AdminSettings() {
                     onDelete={id => delHrmsDocTypeM.mutate(id)}
                     emptyText="No document types yet."
                   />
+                </div>
+              </>
+            )}
+
+            {/* ── HRMS: Role Setting ── */}
+            {generalSection === 'hrms_role_setting' && (
+              <>
+                <h1 className="text-xl font-semibold text-gray-900">Role Setting</h1>
+                <p className="text-sm text-gray-500 -mt-3">
+                  All roles currently in the system — shown here and available in Add User's Role dropdown.
+                  Built-in roles are protected (can't be renamed or deleted). Custom roles you add here can be
+                  freely renamed/removed, but are labels only — assigning modules/pages to a custom role still
+                  needs to be set up separately.
+                </p>
+
+                <div className="bg-white rounded-lg border border-gray-200 p-5 space-y-4">
+                  <p className="text-sm font-medium text-gray-700 border-b border-gray-100 pb-3">Add New Role</p>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="e.g. Store Manager"
+                      value={newRoleName}
+                      onChange={e => setNewRoleName(e.target.value)}
+                      className="max-w-sm"
+                    />
+                    <Button
+                      disabled={!newRoleName.trim() || addRoleM.isPending}
+                      onClick={() => { addRoleM.mutate({ name: newRoleName.trim() }); setNewRoleName(''); }}
+                    >
+                      <Plus className="h-4 w-4 mr-1" />Add Role
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-lg border border-gray-200 p-5 space-y-1.5">
+                  <p className="text-sm font-medium text-gray-700 border-b border-gray-100 pb-3">
+                    All Roles <span className="ml-1 text-xs font-normal text-gray-400 bg-gray-100 rounded px-1.5 py-0.5">{roles.length}</span>
+                  </p>
+                  {roles.length === 0 && <p className="text-sm text-gray-400 italic py-1">No roles yet.</p>}
+                  {roles.map(role => (
+                    <div key={role._id} className="flex items-center justify-between px-4 py-2.5 bg-white rounded-lg border border-gray-200">
+                      {editingRoleId === role._id ? (
+                        <div className="flex items-center gap-2 flex-1">
+                          <Input
+                            className="h-8 text-sm max-w-xs"
+                            value={editingRoleName}
+                            onChange={e => setEditingRoleName(e.target.value)}
+                          />
+                          <Button size="sm" className="h-8" onClick={() => {
+                            updRoleM.mutate({ id: role._id, body: { name: editingRoleName.trim() } });
+                            setEditingRoleId(null);
+                          }}><Save className="h-3 w-3" /></Button>
+                          <Button size="sm" variant="ghost" className="h-8" onClick={() => setEditingRoleId(null)}>✕</Button>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-gray-800 text-sm">{role.name}</span>
+                            {role.isBuiltIn && <Badge variant="secondary" className="text-xs">Built-in</Badge>}
+                          </div>
+                          {!role.isBuiltIn && (
+                            <div className="flex gap-1">
+                              <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-gray-500 hover:text-gray-800"
+                                onClick={() => { setEditingRoleId(role._id); setEditingRoleName(role.name); }}>
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-400 hover:text-red-600"
+                                onClick={() => delRoleM.mutate(role._id)}>
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  ))}
                 </div>
               </>
             )}
