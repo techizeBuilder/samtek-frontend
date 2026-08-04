@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -21,6 +21,8 @@ const getMediaUrl = (p) => {
   return `${baseUrl}${p}`;
 };
 
+const PAGE_SIZE = 15;
+
 export default function UploadContent() {
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -30,7 +32,8 @@ export default function UploadContent() {
   const [searchGroup, setSearchGroup] = useState('All');
   const [searchCategory, setSearchCategory] = useState('All');
   const [searchSubCategory, setSearchSubCategory] = useState('All');
-  const [appliedFilters, setAppliedFilters] = useState({ group: 'All', category: 'All', subCategory: 'All', mode: null });
+  const [appliedFilters, setAppliedFilters] = useState({ group: 'All', category: 'All', subCategory: 'All' });
+  const [page, setPage] = useState(1);
 
   const [selectedItem, setSelectedItem] = useState(null);
   const [imageFile, setImageFile] = useState(null);
@@ -42,25 +45,47 @@ export default function UploadContent() {
     queryFn: () => apiRequest('GET', '/api/marketing/item-filters'),
   });
 
+  // Lightweight, unpaginated group/category/subCategory values across every
+  // product — used only to populate the cascading dropdowns, independent of
+  // whatever page of results is currently displayed below.
+  const { data: facetsData } = useQuery({
+    queryKey: ['mkt-item-facets'],
+    queryFn: () => apiRequest('GET', '/api/marketing/items/facets'),
+  });
+  const facetItems = facetsData?.items || [];
+
+  // Reset to page 1 whenever the applied filter changes so we don't get
+  // stuck on a now out-of-range page.
+  useEffect(() => { setPage(1); }, [appliedFilters]);
+
+  // The actual table data — filtered AND paginated server-side.
   const { data: itemsData, isLoading: itemsLoading } = useQuery({
-    queryKey: ['mkt-items'],
-    queryFn: () => apiRequest('GET', '/api/marketing/items'),
+    queryKey: ['mkt-items', 'list', { page, ...appliedFilters }],
+    queryFn: () => {
+      const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
+      if (appliedFilters.group !== 'All') params.set('group', appliedFilters.group);
+      if (appliedFilters.category !== 'All') params.set('category', appliedFilters.category);
+      if (appliedFilters.subCategory !== 'All') params.set('subCategory', appliedFilters.subCategory);
+      return apiRequest('GET', `/api/marketing/items?${params.toString()}`);
+    },
+    keepPreviousData: true,
   });
 
-  const productsList = itemsData?.items || [];
+  const filteredProducts = itemsData?.items || [];
+  const pagination = { page: itemsData?.page || 1, pages: itemsData?.pages || 1, total: itemsData?.total || 0 };
 
   // Groups primarily from the Group collection, falling back to whatever is on items
   const allGroups = useMemo(() => {
     const fromCollection = (filtersData?.groups || []).map(g => g.name).filter(Boolean);
     if (fromCollection.length > 0) return [...fromCollection].sort();
-    return [...new Set(productsList.map(p => p.group).filter(Boolean))].sort();
-  }, [filtersData, productsList]);
+    return [...new Set(facetItems.map(p => p.group).filter(Boolean))].sort();
+  }, [filtersData, facetItems]);
 
   // Categories derived from items, filtered by the selected group
   const categoriesByGroup = useMemo(() => {
-    const base = searchGroup === 'All' ? productsList : productsList.filter(p => p.group === searchGroup);
+    const base = searchGroup === 'All' ? facetItems : facetItems.filter(p => p.group === searchGroup);
     return [...new Set(base.map(p => p.category).filter(Boolean))].sort();
-  }, [productsList, searchGroup]);
+  }, [facetItems, searchGroup]);
 
   // SubCategories from the Category collection's subcategories array, falling back to items
   const allCategoriesList = filtersData?.categories || [];
@@ -71,21 +96,12 @@ export default function UploadContent() {
     );
     if (catDoc) return (catDoc.subcategories || []).filter(Boolean).sort();
     return [...new Set(
-      productsList
+      facetItems
         .filter(p => p.category?.toLowerCase().trim() === searchCategory.toLowerCase().trim())
         .map(p => p.subCategory)
         .filter(Boolean)
     )].sort();
-  }, [allCategoriesList, searchCategory, productsList]);
-
-  const af = appliedFilters;
-  const filteredProducts = productsList.filter(p => {
-    if (af.mode === null) return true;
-    const matchesGroup = af.group === 'All' || p.group === af.group;
-    const matchesCategory = af.category === 'All' || p.category === af.category;
-    const matchesSubCategory = af.subCategory === 'All' || p.subCategory === af.subCategory;
-    return matchesGroup && matchesCategory && matchesSubCategory;
-  });
+  }, [allCategoriesList, searchCategory, facetItems]);
 
   const handleSearch = () => {
     if (searchGroup !== 'All') {
@@ -98,16 +114,15 @@ export default function UploadContent() {
         return;
       }
     }
-    setAppliedFilters({
-      group: searchGroup, category: searchCategory, subCategory: searchSubCategory,
-      mode: searchGroup === 'All' && searchCategory === 'All' ? null : 'filter'
-    });
+    setAppliedFilters({ group: searchGroup, category: searchCategory, subCategory: searchSubCategory });
   };
 
   const handleReset = () => {
     setSearchGroup('All'); setSearchCategory('All'); setSearchSubCategory('All');
-    setAppliedFilters({ group: 'All', category: 'All', subCategory: 'All', mode: null });
+    setAppliedFilters({ group: 'All', category: 'All', subCategory: 'All' });
   };
+
+  const hasActiveFilter = appliedFilters.group !== 'All' || appliedFilters.category !== 'All' || appliedFilters.subCategory !== 'All';
 
   const selectItem = (item) => {
     setSelectedItem(item);
@@ -213,10 +228,13 @@ export default function UploadContent() {
               <Button className="bg-blue-600 hover:bg-blue-700 text-white px-6" onClick={handleSearch}>
                 <Search className="h-4 w-4 mr-2" /> Search
               </Button>
-              {appliedFilters.mode !== null && (
+              {hasActiveFilter && (
                 <Button variant="ghost" className="text-gray-500" onClick={handleReset}>
                   <X className="h-4 w-4 mr-1" /> Reset
                 </Button>
+              )}
+              {pagination.total > 0 && (
+                <span className="text-sm text-gray-400 ml-auto">{pagination.total} product{pagination.total === 1 ? '' : 's'} found</span>
               )}
             </div>
 
@@ -240,7 +258,7 @@ export default function UploadContent() {
                     <tr><td colSpan={7} className="text-center py-10 text-gray-500">No products found</td></tr>
                   ) : filteredProducts.map((p, idx) => (
                     <tr key={p._id} className="border-b last:border-0 hover:bg-gray-50 transition-colors">
-                      <td className="px-4 py-3">{idx + 1}</td>
+                      <td className="px-4 py-3">{(pagination.page - 1) * PAGE_SIZE + idx + 1}</td>
                       <td className="px-4 py-3">
                         <div className="h-10 w-10 rounded border overflow-hidden bg-gray-100 flex items-center justify-center">
                           {getMediaUrl(p.image) ? (
@@ -281,6 +299,18 @@ export default function UploadContent() {
                 </tbody>
               </table>
             </div>
+
+            {pagination.pages > 1 && (
+              <div className="flex items-center justify-center gap-3">
+                <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={pagination.page <= 1}>
+                  Previous
+                </Button>
+                <span className="text-sm text-muted-foreground">Page {pagination.page} of {pagination.pages}</span>
+                <Button variant="outline" size="sm" onClick={() => setPage(p => Math.min(pagination.pages, p + 1))} disabled={pagination.page >= pagination.pages}>
+                  Next
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
       ) : (

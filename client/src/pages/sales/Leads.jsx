@@ -75,10 +75,8 @@ import {
   Handshake,
   Download,
   Stamp,
-  Megaphone,
   CalendarClock
 } from 'lucide-react';
-import { marketingRequestApi } from '@/api/marketingRequestService';
 
 import { cn } from '@/lib/utils';
 import OrderFormModal from '@/components/sales/OrderFormModal';
@@ -111,11 +109,6 @@ const Leads = () => {
   const [isDialpadOpen, setIsDialpadOpen] = useState(false);
   const [dialpadLead, setDialpadLead] = useState(null);
   const [dialpadInput, setDialpadInput] = useState('');
-
-  // ─── Marketing Request Modal State ──────────────────────────────
-  const [isMktRequestOpen, setIsMktRequestOpen] = useState(false);
-  const [mktRequestLead, setMktRequestLead] = useState(null);
-  const [mktRequestForm, setMktRequestForm] = useState({ category: '', subcategory: '', productName: '', notes: '' });
 
   // API Settings modal state (now just shows redirect info to Super Admin)
   const [isApiSettingsModalOpen, setIsApiSettingsModalOpen] = useState(false);
@@ -418,49 +411,6 @@ const Leads = () => {
       leadId: meetingLead._id,
       data: meetingFormData,
       isUpdate: !!existingMeetingRef.current
-    });
-  };
-
-  // ─── Marketing Request Handlers ────────────────────────────────
-  const { data: mktCategoriesData } = useQuery({
-    queryKey: ['mkt-categories'],
-    queryFn: () => marketingRequestApi.getCategories(),
-    enabled: isMktRequestOpen,
-  });
-  const mktCategories = mktCategoriesData?.data || [];
-  const mktMainCategories = mktCategories.filter(c => !c.parentCategory);
-  const mktSubCategories = mktCategories.filter(c =>
-    (c.parentCategory?._id || c.parentCategory) === mktRequestForm.category
-  );
-
-  const handleOpenMktRequest = (lead) => {
-    setMktRequestLead(lead);
-    setMktRequestForm({ category: '', subcategory: '', productName: lead.productRequired || '', notes: '' });
-    setIsMktRequestOpen(true);
-  };
-
-  const createMktRequestMutation = useMutation({
-    mutationFn: (data) => marketingRequestApi.create(data),
-    onSuccess: () => {
-      toast({ title: 'Request Sent', description: 'Your request has been sent to the Marketing team' });
-      setIsMktRequestOpen(false);
-      queryClient.invalidateQueries({ queryKey: ['my-marketing-requests'] });
-    },
-    onError: (err) => toast({ title: 'Error', description: err.message, variant: 'destructive' }),
-  });
-
-  const handleMktRequestSubmit = () => {
-    if (!mktRequestLead) return;
-    if (!mktRequestForm.productName.trim()) {
-      toast({ title: 'Required', description: 'Product name is required', variant: 'destructive' });
-      return;
-    }
-    createMktRequestMutation.mutate({
-      leadId: mktRequestLead._id,
-      category: mktRequestForm.category || null,
-      subcategory: mktRequestForm.subcategory || null,
-      productName: mktRequestForm.productName,
-      notes: mktRequestForm.notes,
     });
   };
 
@@ -2147,20 +2097,11 @@ const assignableUsers = (usersData?.users || []).filter(
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-7 w-8 border-r border-gray-100 rounded-none hover:bg-purple-50 text-purple-600"
+                          className="h-7 w-8 rounded-none hover:bg-purple-50 text-purple-600"
                           title="Schedule Meeting"
                           onClick={() => handleOpenMeetingModal(lead)}
                         >
                           <Handshake className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-8 rounded-none hover:bg-orange-50 text-orange-600"
-                          title="Request Marketing Content"
-                          onClick={() => handleOpenMktRequest(lead)}
-                        >
-                          <Megaphone className="h-3.5 w-3.5" />
                         </Button>
                       </div>
                     </div>
@@ -3925,82 +3866,6 @@ const assignableUsers = (usersData?.users || []).filter(
                   <Handshake className="h-4 w-4" />
                   Save
                 </>
-              )}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* ─── Request Marketing Content Modal ─────────────────────── */}
-      <Dialog open={isMktRequestOpen} onOpenChange={setIsMktRequestOpen}>
-        <DialogContent className="max-w-md rounded-xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Megaphone className="h-5 w-5 text-orange-600" />
-              Request Marketing Content
-            </DialogTitle>
-            <DialogDescription>
-              Lead: <span className="font-medium text-gray-700">{mktRequestLead?.leadCode} — {mktRequestLead?.companyName}</span>
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div>
-              <Label className="font-bold">Category</Label>
-              <Select
-                value={mktRequestForm.category}
-                onValueChange={(v) => setMktRequestForm(f => ({ ...f, category: v, subcategory: '' }))}
-              >
-                <SelectTrigger className="mt-1"><SelectValue placeholder="Select category" /></SelectTrigger>
-                <SelectContent>
-                  {mktMainCategories.length === 0 && <SelectItem value="__none" disabled>No categories found</SelectItem>}
-                  {mktMainCategories.map(c => <SelectItem key={c._id} value={c._id}>{c.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="font-bold">Sub-Category</Label>
-              <Select
-                value={mktRequestForm.subcategory}
-                onValueChange={(v) => setMktRequestForm(f => ({ ...f, subcategory: v }))}
-                disabled={!mktRequestForm.category}
-              >
-                <SelectTrigger className="mt-1"><SelectValue placeholder={mktRequestForm.category ? 'Select sub-category' : 'Select category first'} /></SelectTrigger>
-                <SelectContent>
-                  {mktSubCategories.length === 0 && <SelectItem value="__none" disabled>No sub-categories</SelectItem>}
-                  {mktSubCategories.map(c => <SelectItem key={c._id} value={c._id}>{c.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="font-bold">Product Name *</Label>
-              <Input
-                className="mt-1"
-                placeholder="e.g. Solar Water Heater 200L"
-                value={mktRequestForm.productName}
-                onChange={(e) => setMktRequestForm(f => ({ ...f, productName: e.target.value }))}
-              />
-            </div>
-            <div>
-              <Label className="font-bold">Notes (optional)</Label>
-              <Input
-                className="mt-1"
-                placeholder="Any specific requirement (optional)"
-                value={mktRequestForm.notes}
-                onChange={(e) => setMktRequestForm(f => ({ ...f, notes: e.target.value }))}
-              />
-            </div>
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setIsMktRequestOpen(false)}>Cancel</Button>
-            <Button
-              className="bg-orange-600 hover:bg-orange-700 text-white gap-2"
-              onClick={handleMktRequestSubmit}
-              disabled={createMktRequestMutation.isPending}
-            >
-              {createMktRequestMutation.isPending ? (
-                <><div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Sending...</>
-              ) : (
-                <><Megaphone className="h-4 w-4" />Send Request</>
               )}
             </Button>
           </div>

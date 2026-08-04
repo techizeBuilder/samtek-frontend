@@ -2,7 +2,7 @@ import React from 'react';
 import { Link } from 'wouter';
 import { useMarketing } from '@/contexts/MarketingContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { FolderOpen, Upload, Share2, BarChart, FileText, Package, Clock, TrendingUp } from 'lucide-react';
+import { FolderOpen, Upload, Share2, BarChart, FileText, Package, Clock, TrendingUp, Image } from 'lucide-react';
 
 const FILE_COLORS = { PDF: 'bg-red-100 text-red-700', DOC: 'bg-blue-100 text-blue-700', DOCX: 'bg-blue-100 text-blue-700', JPG: 'bg-green-100 text-green-700', JPEG: 'bg-green-100 text-green-700', PNG: 'bg-green-100 text-green-700', WEBP: 'bg-green-100 text-green-700', MP4: 'bg-purple-100 text-purple-700', MOV: 'bg-purple-100 text-purple-700' };
 
@@ -18,9 +18,8 @@ export default function MarketingDashboard() {
   ];
 
   const quickLinks = [
-    { label: 'Marketing Library', path: '/marketing/library', icon: FolderOpen, desc: 'Browse all assets', color: 'text-blue-600', bg: 'bg-blue-50' },
     { label: 'Upload Content', path: '/marketing/upload', icon: Upload, desc: 'Add new assets', color: 'text-green-600', bg: 'bg-green-50' },
-    { label: 'Category Management', path: '/marketing/categories', icon: Package, desc: 'Manage categories', color: 'text-indigo-600', bg: 'bg-indigo-50' },
+    { label: 'Event Flyer', path: '/marketing/events', icon: Image, desc: 'Publish event flyers', color: 'text-indigo-600', bg: 'bg-indigo-50' },
     { label: 'Reports', path: '/marketing/reports', icon: BarChart, desc: 'Sharing analytics', color: 'text-orange-600', bg: 'bg-orange-50' },
     { label: 'Audit Logs', path: '/marketing/audit-logs', icon: FileText, desc: 'Track all actions', color: 'text-slate-600', bg: 'bg-slate-100' },
     { label: 'Notifications', path: '/marketing/notifications', icon: Clock, desc: 'Recent updates', color: 'text-pink-600', bg: 'bg-pink-50' },

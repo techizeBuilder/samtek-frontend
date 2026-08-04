@@ -95,7 +95,7 @@ export default function MarketingRequests() {
         <Card><CardContent className="py-16 text-center text-slate-400">
           <Megaphone className="h-10 w-10 mx-auto mb-3" />
           <p className="font-medium">No requests found</p>
-          <p className="text-sm">Send a request from the Megaphone icon on any lead card in the Leads page</p>
+          <p className="text-sm">Looking for marketing content? Use Marketing Content in the sidebar to search, download &amp; share it directly.</p>
         </CardContent></Card>
       ) : (
         <div className="space-y-4">

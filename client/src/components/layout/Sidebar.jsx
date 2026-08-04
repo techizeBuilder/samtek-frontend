@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useLocation, useSearch } from 'wouter';
+import { useQuery } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
 import { useSettings } from '@/hooks/useSettings';
@@ -14,7 +16,7 @@ import {
   PieChart, ShoppingCart, CreditCard, RotateCcw, Calendar, Play, FileText, CheckCircle,
   BarChart, Clock, AlertTriangle, History, UserCheck, Target, Star, MessageSquare, Briefcase,
   ClipboardList, CalendarCheck, CheckSquare, UserCircle, Award, Layers, Beaker, ShieldAlert,
-  FolderOpen, Upload, Folder, Share2, Pen, User, Bell, Megaphone, Inbox, ShieldCheck
+  FolderOpen, Upload, Share2, Pen, User, Bell, Megaphone, Inbox, ShieldCheck, Image
 } from 'lucide-react';
 
 // ============================================================
@@ -127,7 +129,7 @@ const salesMenuItems = [
   { label: 'Returns', path: '/sales/returns', icon: RotateCcw, module: 'sales', feature: 'returns' },
   { label: 'Damages', path: '/sales/damages', icon: AlertTriangle, module: 'sales', feature: 'damages' },
   { label: 'Customers', path: '/customers', icon: Users, module: 'customers' },
-  { label: 'Marketing Requests', path: '/sales/marketing-requests', icon: Megaphone, module: 'marketing' },
+  { label: 'Marketing Content', path: '/sales/marketing-content', icon: Megaphone, module: 'marketing' },
   { label: 'Task Management', path: '/sales/task-management', icon: CheckSquare, module: 'sales' },
   { label: 'My Task', path: '/sales/my-task', icon: CheckSquare, module: 'sales' },
   {
@@ -482,10 +484,9 @@ const complaintAgentMenuItems = [
 
 const marketingMenuItems = [
   { label: 'Dashboard', path: '/marketing/dashboard', icon: LayoutDashboard, module: 'marketing' },
-  { label: 'Marketing Library', path: '/marketing/library', icon: FolderOpen, module: 'marketing' },
   { label: 'Upload Content', path: '/marketing/upload', icon: Upload, module: 'marketing' },
+  { label: 'Event Flyer', path: '/marketing/events', icon: Image, module: 'marketing' },
   { label: 'Sales Requests', path: '/marketing/sales-requests', icon: Inbox, module: 'marketing' },
-  { label: 'Category Management', path: '/marketing/categories', icon: Folder, module: 'marketing' },
   { label: 'Marketing Expenses', path: '/marketing/expenses', icon: Receipt, module: 'marketing' },
   { label: 'Reports', path: '/marketing/reports', icon: BarChart, module: 'marketing' },
   { label: 'Audit Logs', path: '/marketing/audit-logs', icon: History, module: 'marketing' },
@@ -493,8 +494,9 @@ const marketingMenuItems = [
 ];
 
 // Marketing Employee has a narrower scope than Marketing Head — logging
-// expenses only, no access to content library/upload/categories.
+// expenses and publishing event flyers, no access to content library/upload.
 const marketingEmployeeMenuItems = [
+  { label: 'Event Flyer', path: '/marketing/events', icon: Image, module: 'marketing' },
   { label: 'Marketing Expenses', path: '/marketing/expenses', icon: Receipt, module: 'marketing' },
 ];
 
@@ -666,6 +668,22 @@ export default function Sidebar({ isOpen, onClose }) {
   const normalizedRole = user?.role === 'Super Admin' ? 'Superadmin'
     : user?.role === 'HR-Admin' ? 'Hr Admin'
       : user?.role;
+
+  // Company logo shown at the top of the Sidebar — dynamic per company
+  // (whatever the Company Admin uploaded on My Company), falling back to the
+  // default Samtek logo when the company hasn't uploaded one. Superadmin
+  // always sees the default Samtek logo regardless of company.
+  const isSuperAdminRole = normalizedRole === 'Superadmin';
+  const { data: sidebarCompanyData } = useQuery({
+    queryKey: ['sidebar-my-company', user?.companyId],
+    queryFn: () => apiRequest('GET', `/api/super-admin/companies/${user.companyId}`),
+    enabled: !isSuperAdminRole && !!user?.companyId,
+    staleTime: 1000 * 60 * 10,
+  });
+  const companyLogoUrl = sidebarCompanyData?.company?.logoUrl;
+  const sidebarLogoSrc = (!isSuperAdminRole && companyLogoUrl)
+    ? `${(import.meta.env.VITE_API_URL || 'http://localhost:5000').replace('/api', '')}${companyLogoUrl}`
+    : '/logo Semtek.webp';
 
   // Any "...Employee" role (Sales Employee, Production Employee, etc.) is treated
   // as employee-tier here too — same convention RoleBasedLayout.jsx/ProtectedRoute.jsx
@@ -876,9 +894,10 @@ export default function Sidebar({ isOpen, onClose }) {
           <div className="flex items-center justify-between h-16 px-3 border-b border-slate-200 bg-white">
             <div className="flex-1 flex items-center justify-center h-full py-2">
               <img
-                src="/logo Semtek.webp"
-                alt="Samtek Logo"
+                src={sidebarLogoSrc}
+                alt="Company Logo"
                 className="h-full w-auto object-contain"
+                onError={(e) => { e.target.onerror = null; e.target.src = '/logo Semtek.webp'; }}
               />
             </div>
             <Button
