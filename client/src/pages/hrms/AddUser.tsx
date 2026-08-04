@@ -122,6 +122,9 @@ export default function AddUser() {
   const [departments, setDepartments] = useState<any[]>([]);
   const [designations, setDesignations] = useState<any[]>([]);
   const [managers, setManagers] = useState<any[]>([]);
+  // Custom roles added via Admin Settings > HRMS Setting > Role Setting —
+  // labels only, shown alongside the built-in roles below.
+  const [customRoles, setCustomRoles] = useState<{ _id: string; name: string; isBuiltIn: boolean }[]>([]);
   const [employeeIdPreview, setEmployeeIdPreview] = useState<string>("");
 
   const [errors, setErrors] = useState<any>({});
@@ -146,6 +149,14 @@ export default function AddUser() {
         setCompanies(comps);
       })
       .catch(() => setCompanies([]));
+
+    // Custom roles (Admin Settings > HRMS Setting > Role Setting)
+    axios
+      .get(`${API_BASE}/admin-settings/roles`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      .then((res) => setCustomRoles((res.data?.data || []).filter((r: any) => !r.isBuiltIn)))
+      .catch(() => setCustomRoles([]));
   }, []);
 
   /* ================= CASCADING FETCHES ================= */
@@ -693,6 +704,13 @@ export default function AddUser() {
                   <option key={roleValue(role)} value={roleValue(role)}>{roleLabel(role)}</option>
                 ))}
               </optgroup>
+              {customRoles.length > 0 && (
+                <optgroup label="Custom Roles">
+                  {customRoles.map((role) => (
+                    <option key={role._id} value={role.name}>{role.name}</option>
+                  ))}
+                </optgroup>
+              )}
             </select>
             {errors.role && <p className="text-sm text-red-500">{errors.role}</p>}
           </div>

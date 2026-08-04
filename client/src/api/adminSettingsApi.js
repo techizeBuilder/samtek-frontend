@@ -80,4 +80,10 @@ export const adminSettingsApi = {
   addHrmsDocumentType: (body) => apiFetch('/hrms-document-types', { method: 'POST', body: JSON.stringify(body) }),
   updateHrmsDocumentType: (id, body) => apiFetch(`/hrms-document-types/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   deleteHrmsDocumentType: (id) => apiFetch(`/hrms-document-types/${id}`, { method: 'DELETE' }),
+
+  // HRMS: Role Setting
+  getRoles: () => apiFetch('/roles'),
+  addRole: (body) => apiFetch('/roles', { method: 'POST', body: JSON.stringify(body) }),
+  updateRole: (id, body) => apiFetch(`/roles/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deleteRole: (id) => apiFetch(`/roles/${id}`, { method: 'DELETE' }),
 };

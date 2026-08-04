@@ -281,9 +281,10 @@ const ViewEditCandidateModal = ({ isOpen, onClose, onSuccess, candidate, mode }:
             type="text"
             readOnly
             value={
-              jobs.find(j => j._id === form.jobId)?.recruitingManager?.name || 
-              (candidate?.jobId?._id === form.jobId ? candidate?.jobId?.recruitingManager?.name : "") ||
-              (typeof form.recruitingManager === 'object' ? (form.recruitingManager as any).name : "") || 
+              jobs.find(j => j._id === form.jobId)?.recruitingManager?.fullName ||
+              jobs.find(j => j._id === form.jobId)?.recruitingManager?.name ||
+              (candidate?.jobId?._id === form.jobId ? (candidate?.jobId?.recruitingManager?.fullName || candidate?.jobId?.recruitingManager?.name) : "") ||
+              (typeof form.recruitingManager === 'object' ? ((form.recruitingManager as any).fullName || (form.recruitingManager as any).name) : "") ||
               ""
             }
             className="w-full border px-3 py-2 rounded mt-1 text-sm bg-gray-50 text-gray-500 border-gray-100"
