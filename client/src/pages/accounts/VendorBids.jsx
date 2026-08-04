@@ -223,11 +223,11 @@ export default function VendorBids() {
                           <Button
                             size="sm"
                             onClick={() => handleViewBids(rfq)}
-                            className={`h-8 text-xs font-semibold shadow-sm ${(rfq.bidCount || 0) > 0 ? 'bg-purple-600 hover:bg-purple-700 text-white' : 'bg-slate-200 text-slate-500 cursor-default'}`}
-                            disabled={(rfq.bidCount || 0) === 0}
+                            className={`h-8 text-xs font-semibold shadow-sm ${(rfq.vendors?.length || 0) > 0 ? 'bg-purple-600 hover:bg-purple-700 text-white' : 'bg-slate-200 text-slate-500 cursor-default'}`}
+                            disabled={(rfq.vendors?.length || 0) === 0}
                           >
                             <Eye className="w-3.5 h-3.5 mr-1" />
-                            View Bids {(rfq.bidCount || 0) > 0 ? `(${rfq.bidCount})` : ''}
+                            View Bids {(rfq.bidCount || 0) > 0 ? `(${rfq.bidCount})` : (rfq.failedEmailBids?.length || 0) > 0 ? '(email failed)' : ''}
                           </Button>
                         )}
                       </td>

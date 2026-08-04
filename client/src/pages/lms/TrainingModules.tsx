@@ -42,15 +42,27 @@ export default function TrainingModules() {
   // --- FILTER STATE ---
   const [departmentFilter, setDepartmentFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('Active');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [page, setPage] = useState(1);
 
   // --- FETCH DATA ---
   const { data: response, isLoading, isError } = useModules({
+    page,
+    limit: 12,
     ...(departmentFilter && { department: departmentFilter }),
-    ...(statusFilter && { status: statusFilter })
+    ...(statusFilter && { status: statusFilter }),
+    ...(searchTerm && { search: searchTerm })
   });
   const { mutate: deactivateModule } = useDeactivateModule();
 
   const modules: TrainingModule[] = response?.data || [];
+  const totalPages: number = response?.pagination?.pages || 1;
+  const totalModules: number = response?.pagination?.total ?? modules.length;
+
+  const handleFilterChange = (setter: (v: string) => void) => (e: React.ChangeEvent<HTMLSelectElement | HTMLInputElement>) => {
+    setter(e.target.value);
+    setPage(1);
+  };
 
   // --- HANDLERS ---
   const handleDelete = (id: string, title: string) => {
@@ -87,7 +99,19 @@ export default function TrainingModules() {
       </div>
 
       {/* Filter Section */}
-      <div className="mb-6 bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex items-center gap-4">
+      <div className="mb-6 bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex items-center gap-4 flex-wrap">
+
+        {/* SEARCH BOX */}
+        <div className="flex items-center gap-2">
+          <label className="text-sm font-medium text-gray-700">Search:</label>
+          <input
+            type="text"
+            placeholder="Module title..."
+            value={searchTerm}
+            onChange={handleFilterChange(setSearchTerm)}
+            className="rounded-md border-gray-300 shadow-sm p-2 border text-sm w-48"
+          />
+        </div>
 
         {/* 🔥 UPDATED DYNAMIC DEPARTMENT FILTER */}
         {isTopAdmin ? (
@@ -95,7 +119,7 @@ export default function TrainingModules() {
             <label className="text-sm font-medium text-gray-700">Department:</label>
             <select
               value={departmentFilter}
-              onChange={(e) => setDepartmentFilter(e.target.value)}
+              onChange={handleFilterChange(setDepartmentFilter)}
               className="rounded-md border-gray-300 shadow-sm p-2 border text-sm w-48"
             >
               <option value="">All Departments</option>
@@ -124,7 +148,7 @@ export default function TrainingModules() {
           <label className="text-sm font-medium text-gray-700">Status:</label>
           <select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
+            onChange={handleFilterChange(setStatusFilter)}
             className="rounded-md border-gray-300 shadow-sm p-2 border text-sm w-36"
           >
             <option value="Active">Active Only</option>
@@ -134,7 +158,7 @@ export default function TrainingModules() {
         </div>
 
         <div className="ml-auto text-sm text-gray-500">
-          Total Modules: <span className="font-semibold text-gray-900">{modules.length}</span>
+          Total Modules: <span className="font-semibold text-gray-900">{totalModules}</span>
         </div>
       </div>
 
@@ -216,6 +240,26 @@ export default function TrainingModules() {
               </div>
             ))
           )}
+        </div>
+      )}
+
+      {!isLoading && !isError && totalPages > 1 && (
+        <div className="mt-6 flex items-center justify-center gap-4">
+          <button
+            onClick={() => setPage(p => Math.max(1, p - 1))}
+            disabled={page === 1}
+            className="px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+          >
+            Previous
+          </button>
+          <span className="text-sm text-gray-500">Page {page} of {totalPages}</span>
+          <button
+            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+            disabled={page === totalPages}
+            className="px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+          >
+            Next
+          </button>
         </div>
       )}
 
