@@ -22,6 +22,8 @@ import {
   LayoutDashboard,
   ShieldCheck,
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 
 import { LogoutButton } from "@/components/ui/logout-button";
 import { cn } from "@/lib/utils";
@@ -44,6 +46,21 @@ function CompanyAdminLayoutContent({ children }: Props) {
   const { isCollapsed } = useSidebar();
   const { user } = useAuth();
 
+  // Same dynamic-per-company logo as the main Sidebar (components/layout/Sidebar.jsx):
+  // whatever the Company Admin uploaded on My Company, falling back to the
+  // default Samtek logo when none is uploaded.
+  const isSuperAdmin = user?.role === "Superadmin" || user?.role === "Super Admin";
+  const { data: companyAdminCompanyData } = useQuery({
+    queryKey: ["sidebar-my-company", user?.companyId],
+    queryFn: () => apiRequest("GET", `/api/super-admin/companies/${user.companyId}`),
+    enabled: !isSuperAdmin && !!user?.companyId,
+    staleTime: 1000 * 60 * 10,
+  });
+  const companyLogoUrl = companyAdminCompanyData?.company?.logoUrl;
+  const layoutLogoSrc = !isSuperAdmin && companyLogoUrl
+    ? `${(import.meta.env.VITE_API_URL || "http://localhost:5000").replace("/api", "")}${companyLogoUrl}`
+    : "/logo Semtek.webp";
+
   return (
     <div className="flex h-screen">
       <Sidebar className="h-screen">
@@ -51,9 +68,10 @@ function CompanyAdminLayoutContent({ children }: Props) {
           <div className="flex items-center gap-2">
             {!isCollapsed && (
               <img
-                src="/logo Semtek.webp"
-                alt="Samtek Logo"
+                src={layoutLogoSrc}
+                alt="Company Logo"
                 className="h-8 w-8 object-contain"
+                onError={(e) => { (e.target as HTMLImageElement).onerror = null; (e.target as HTMLImageElement).src = "/logo Semtek.webp"; }}
               />
             )}
             <SidebarTitle>Company Admin</SidebarTitle>

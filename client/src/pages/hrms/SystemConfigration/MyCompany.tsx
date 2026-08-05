@@ -44,6 +44,7 @@ interface CompanyData {
   gst?: string;
   website?: string;
   stampUrl?: string;
+  logoUrl?: string;
   socialLinks?: SocialLink[];
   bankDetails?: BankDetails;
   isActive?: boolean;
@@ -171,6 +172,12 @@ export default function MyCompany() {
   const [stampUploading, setStampUploading] = useState(false);
   const stampRef = useRef<HTMLInputElement>(null);
 
+  // logo — shown at the top of the Sidebar for every user of this company
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [logoUploading, setLogoUploading] = useState(false);
+  const logoRef = useRef<HTMLInputElement>(null);
+
   // Cash Password — gates Accounts' access to customers' Cash Amounts.
   // Stored server-side encrypted; only the Company Admin can set/view it here.
   const [cashPwd, setCashPwd] = useState<{ isSet: boolean; password: string | null } | null>(null);
@@ -240,6 +247,8 @@ export default function MyCompany() {
     setSocialLinks(company.socialLinks?.length ? [...company.socialLinks] : []);
     setStampFile(null);
     setStampPreview(null);
+    setLogoFile(null);
+    setLogoPreview(null);
     setEditing(true);
   };
 
@@ -247,6 +256,8 @@ export default function MyCompany() {
     setEditing(false);
     setStampFile(null);
     setStampPreview(null);
+    setLogoFile(null);
+    setLogoPreview(null);
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -297,6 +308,31 @@ export default function MyCompany() {
     }
   };
 
+  // ── logo ───────────────────────────────────────────────────────────────────
+  const handleLogoFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setLogoFile(file);
+    const reader = new FileReader();
+    reader.onload = (ev) => setLogoPreview(ev.target?.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  const uploadLogo = async (companyId: string) => {
+    if (!logoFile) return;
+    setLogoUploading(true);
+    const fd = new FormData();
+    fd.append("logo", logoFile);
+    try {
+      const res = await axios.put(`${API_BASE}/companies/${companyId}/logo`, fd, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      return res.data?.logoUrl;
+    } finally {
+      setLogoUploading(false);
+    }
+  };
+
   // ── save ───────────────────────────────────────────────────────────────────
   const handleSave = async () => {
     if (!company) return;
@@ -314,12 +350,17 @@ export default function MyCompany() {
       if (stampFile) {
         newStampUrl = await uploadStamp(company._id);
       }
+      if (logoFile) {
+        await uploadLogo(company._id);
+      }
 
       toast({ type: "success", title: "Saved", message: "Company details updated successfully" });
       await fetchCompany();
       setEditing(false);
       setStampFile(null);
       setStampPreview(null);
+      setLogoFile(null);
+      setLogoPreview(null);
     } catch (err: any) {
       toast({ type: "error", title: "Save Failed", message: err?.response?.data?.message || "Could not save changes" });
     } finally {
@@ -327,8 +368,9 @@ export default function MyCompany() {
     }
   };
 
-  // ── stamp URL helper ───────────────────────────────────────────────────────
+  // ── stamp / logo URL helpers ───────────────────────────────────────────────
   const stampSrc = stampPreview || (company?.stampUrl ? `${IMG_BASE}${company.stampUrl}` : null);
+  const logoSrc = logoPreview || (company?.logoUrl ? `${IMG_BASE}${company.logoUrl}` : null);
 
   // ── loading ────────────────────────────────────────────────────────────────
   if (loading) {
@@ -373,46 +415,47 @@ export default function MyCompany() {
             </button>
             <button
               onClick={handleSave}
-              disabled={saving || stampUploading}
+              disabled={saving || stampUploading || logoUploading}
               className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg text-sm font-medium hover:bg-green-600 transition-all active:scale-95 shadow-sm disabled:opacity-60"
             >
               <Save className="w-4 h-4" />
-              {saving || stampUploading ? "Saving…" : "Save Changes"}
+              {saving || stampUploading || logoUploading ? "Saving…" : "Save Changes"}
             </button>
           </div>
         )}
       </div>
 
       {/* ── Company Identity Card ─────────────────────────────────────── */}
-      <div className="bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200 rounded-2xl p-6 flex items-center gap-6">
-        {/* Stamp / Logo */}
+      <div className="bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200 rounded-2xl p-6 flex items-center gap-6 flex-wrap">
+        {/* Logo — shown at the top of the Sidebar for every user of this company */}
         <div className="flex-shrink-0">
-          {stampSrc ? (
+          {logoSrc ? (
             <div className="w-24 h-24 rounded-xl border-2 border-orange-200 bg-white overflow-hidden shadow-sm flex items-center justify-center">
-              <img src={stampSrc} alt="Company Stamp" className="max-w-full max-h-full object-contain" />
+              <img src={logoSrc} alt="Company Logo" className="max-w-full max-h-full object-contain" />
             </div>
           ) : (
             <div className="w-24 h-24 rounded-xl border-2 border-dashed border-orange-300 bg-white flex flex-col items-center justify-center gap-1 text-orange-300">
               <ImageIcon className="w-8 h-8" />
-              <span className="text-[10px] font-medium">No Stamp</span>
+              <span className="text-[10px] font-medium text-center px-1">Default Samtek Logo</span>
             </div>
           )}
           {editing && (
             <div className="mt-2 text-center">
-              <input ref={stampRef} type="file" accept="image/*" className="hidden" onChange={handleStampFile} />
+              <input ref={logoRef} type="file" accept="image/*" className="hidden" onChange={handleLogoFile} />
               <button
                 type="button"
-                onClick={() => stampRef.current?.click()}
+                onClick={() => logoRef.current?.click()}
                 className="text-xs text-orange-600 underline hover:text-orange-800 flex items-center gap-1 mx-auto"
               >
                 <Upload className="w-3 h-3" />
-                {company.stampUrl ? "Replace Stamp" : "Upload Stamp"}
+                {company.logoUrl ? "Replace Logo" : "Upload Logo"}
               </button>
-              {stampFile && (
-                <p className="text-[10px] text-green-600 mt-0.5">{stampFile.name}</p>
+              {logoFile && (
+                <p className="text-[10px] text-green-600 mt-0.5">{logoFile.name}</p>
               )}
             </div>
           )}
+          <p className="text-[10px] text-gray-400 text-center mt-1 max-w-[6rem]">Company Logo</p>
         </div>
         {/* Identity */}
         <div className="flex-1 min-w-0">
@@ -729,41 +772,55 @@ export default function MyCompany() {
         )}
       </div>
 
-      {/* ── Stamp (view mode only) ────────────────────────────────────────── */}
-      {!editing && (
-        <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
-          <div className="flex items-center gap-2 mb-4">
-            <div className="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center">
-              <CheckCircle className="w-4 h-4 text-amber-600" />
-            </div>
-            <h3 className="font-semibold text-gray-700 text-sm">Company Stamp / Seal</h3>
+      {/* ── Stamp — the official seal printed on quotation PDFs ─────────────── */}
+      <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+        <div className="flex items-center gap-2 mb-4">
+          <div className="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center">
+            <CheckCircle className="w-4 h-4 text-amber-600" />
           </div>
+          <h3 className="font-semibold text-gray-700 text-sm">Company Stamp / Seal</h3>
+        </div>
+        <div className="flex items-center gap-4">
           {stampSrc ? (
-            <div className="flex items-center gap-4">
-              <div className="w-32 h-24 border border-gray-200 rounded-xl overflow-hidden bg-gray-50 flex items-center justify-center shadow-sm">
-                <img src={stampSrc} alt="Stamp" className="max-w-full max-h-full object-contain" />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-green-700 flex items-center gap-1.5">
-                  <CheckCircle className="w-4 h-4" /> Stamp uploaded
-                </p>
-                <p className="text-xs text-gray-400 mt-1">Click "Edit Details" to replace the stamp.</p>
-              </div>
+            <div className="w-32 h-24 border border-gray-200 rounded-xl overflow-hidden bg-gray-50 flex items-center justify-center shadow-sm">
+              <img src={stampSrc} alt="Stamp" className="max-w-full max-h-full object-contain" />
             </div>
           ) : (
-            <div className="flex items-center gap-4">
-              <div className="w-32 h-24 border-2 border-dashed border-amber-200 rounded-xl bg-amber-50 flex flex-col items-center justify-center gap-1 text-amber-400">
-                <ImageIcon className="w-6 h-6" />
-                <span className="text-[10px] font-medium">No Stamp</span>
-              </div>
-              <p className="text-sm text-gray-500">
-                No stamp uploaded yet.<br />
-                <span className="text-orange-500 font-medium">Click "Edit Details" to upload your company stamp.</span>
-              </p>
+            <div className="w-32 h-24 border-2 border-dashed border-amber-200 rounded-xl bg-amber-50 flex flex-col items-center justify-center gap-1 text-amber-400">
+              <ImageIcon className="w-6 h-6" />
+              <span className="text-[10px] font-medium">No Stamp</span>
             </div>
           )}
+          {editing ? (
+            <div>
+              <input ref={stampRef} type="file" accept="image/*" className="hidden" onChange={handleStampFile} />
+              <button
+                type="button"
+                onClick={() => stampRef.current?.click()}
+                className="flex items-center gap-1.5 px-3 py-1.5 border border-orange-300 text-orange-600 rounded-lg text-xs font-medium hover:bg-orange-50 transition-all"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                {company.stampUrl ? "Replace Stamp" : "Upload Stamp"}
+              </button>
+              {stampFile && (
+                <p className="text-[10px] text-green-600 mt-1.5">{stampFile.name}</p>
+              )}
+            </div>
+          ) : stampSrc ? (
+            <div>
+              <p className="text-sm font-medium text-green-700 flex items-center gap-1.5">
+                <CheckCircle className="w-4 h-4" /> Stamp uploaded
+              </p>
+              <p className="text-xs text-gray-400 mt-1">Click "Edit Details" to replace the stamp.</p>
+            </div>
+          ) : (
+            <p className="text-sm text-gray-500">
+              No stamp uploaded yet.<br />
+              <span className="text-orange-500 font-medium">Click "Edit Details" to upload your company stamp.</span>
+            </p>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }
