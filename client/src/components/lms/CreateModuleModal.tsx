@@ -21,9 +21,15 @@ export default function CreateModuleModal({ isOpen, onClose }: CreateModuleModal
   const [department, setDepartment] = useState('');
   const [category, setCategory] = useState('');
   const [sequenceOrder, setSequenceOrder] = useState<number | ''>('');
-  
+  // '' while the field is being cleared/retyped — clamped to a real minute
+  // count on blur and on submit, not on every keystroke (otherwise clearing
+  // the input to type a new value snaps it straight back to 1 first).
+  const [testDurationMinutes, setTestDurationMinutes] = useState<number | ''>(20);
+
   // File Staging State
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  // Stays in SECONDS internally (unchanged — still what gets uploaded);
+  // only the input the user types into shows/accepts minutes.
   const [watchTimes, setWatchTimes] = useState<number[]>([]);
 
   const { mutate: createModule, isPending } = useCreateTrainingModule();
@@ -31,6 +37,7 @@ export default function CreateModuleModal({ isOpen, onClose }: CreateModuleModal
   useEffect(() => {
     if (isOpen) {
       setTitle(''); setDescription(''); setDepartment(''); setCategory(''); setSequenceOrder('');
+      setTestDurationMinutes(20);
       setSelectedFiles([]); setWatchTimes([]);
     }
   }, [isOpen]);
@@ -48,6 +55,14 @@ export default function CreateModuleModal({ isOpen, onClose }: CreateModuleModal
     const newWatchTimes = [...watchTimes];
     newWatchTimes[index] = value;
     setWatchTimes(newWatchTimes);
+  };
+
+  // User types minutes (decimals allowed, e.g. 1.5 = 90s); converted to
+  // whole seconds before it ever touches `watchTimes`, so the upload
+  // payload (minWatchTimes, in seconds) never changes shape.
+  const handleWatchTimeMinutesChange = (index: number, minutesValue: string) => {
+    const minutes = parseFloat(minutesValue);
+    handleWatchTimeChange(index, isNaN(minutes) ? 0 : Math.round(minutes * 60));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -68,6 +83,7 @@ export default function CreateModuleModal({ isOpen, onClose }: CreateModuleModal
     
     formData.append('category', category);
     formData.append('sequenceOrder', sequenceOrder.toString());
+    formData.append('testDurationMinutes', Math.max(1, Number(testDurationMinutes) || 1).toString());
     formData.append('minWatchTimes', JSON.stringify(watchTimes));
 
     selectedFiles.forEach((file) => {
@@ -132,25 +148,42 @@ export default function CreateModuleModal({ isOpen, onClose }: CreateModuleModal
               <label className="block text-sm font-medium text-gray-700">Sequence Order *</label>
               <input type="number" min="1" value={sequenceOrder} onChange={e => setSequenceOrder(parseInt(e.target.value))} required className="mt-1 w-full rounded-md border-gray-300 shadow-sm p-2 border" />
             </div>
+            <div className="col-span-2">
+              <label className="block text-sm font-medium text-gray-700">Test Duration (minutes) *</label>
+              <input
+                type="number" min="1" step="1" value={testDurationMinutes}
+                onChange={e => {
+                  const val = e.target.value;
+                  setTestDurationMinutes(val === '' ? '' : parseInt(val));
+                }}
+                onBlur={() => setTestDurationMinutes(prev => (prev === '' || isNaN(prev as number) || prev < 1) ? 1 : prev)}
+                required
+                className="mt-1 w-full rounded-md border-gray-300 shadow-sm p-2 border"
+              />
+              <p className="text-xs text-gray-400 mt-1">How long a trainee gets to complete this module's quiz.</p>
+            </div>
           </div>
 
           <div className="pt-4 border-t">
             <label className="block text-sm font-medium text-gray-700 mb-2">Upload Content (Videos, PDFs, PPTs)</label>
             <input type="file" multiple accept=".pdf,.ppt,.pptx,.mp4,.mov,.mkv,.avi,.webm" onChange={handleFileChange} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
-            
+
             {/* Watch Time Configurator */}
             {selectedFiles.length > 0 && (
               <div className="mt-4 space-y-3 bg-gray-50 p-4 rounded border">
-                <p className="text-xs font-semibold text-gray-500 uppercase">Set Minimum Watch Times (Seconds)</p>
+                <p className="text-xs font-semibold text-gray-500 uppercase">Set Minimum Watch Times (Minutes)</p>
                 {selectedFiles.map((file, idx) => (
                   <div key={idx} className="flex justify-between items-center text-sm">
                     <span className="truncate w-2/3">{file.name}</span>
-                    <input 
-                      type="number" min="0" placeholder="Seconds" 
-                      value={watchTimes[idx]} 
-                      onChange={(e) => handleWatchTimeChange(idx, parseInt(e.target.value) || 0)}
-                      className="w-24 rounded border-gray-300 shadow-sm p-1 border text-right"
-                    />
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number" min="0" step="0.5" placeholder="Minutes"
+                        value={watchTimes[idx] ? watchTimes[idx] / 60 : 0}
+                        onChange={(e) => handleWatchTimeMinutesChange(idx, e.target.value)}
+                        className="w-24 rounded border-gray-300 shadow-sm p-1 border text-right"
+                      />
+                      <span className="text-xs text-gray-400 w-12">({watchTimes[idx] || 0}s)</span>
+                    </div>
                   </div>
                 ))}
               </div>

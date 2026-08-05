@@ -13,6 +13,9 @@ export default function EditModuleInfoModal({ module, onClose }: EditModuleInfoM
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('');
   const [sequenceOrder, setSequenceOrder] = useState<number | ''>('');
+  // '' while the field is being cleared/retyped — clamped to a real minute
+  // count on blur and on submit, not on every keystroke.
+  const [testDurationMinutes, setTestDurationMinutes] = useState<number | ''>(20);
 
   const { mutate: updateModule, isPending } = useUpdateTrainingModule();
 
@@ -22,6 +25,7 @@ export default function EditModuleInfoModal({ module, onClose }: EditModuleInfoM
       setDescription(module.description || '');
       setCategory(module.category || '');
       setSequenceOrder(module.sequenceOrder || '');
+      setTestDurationMinutes(module.testDurationMinutes || 20);
     }
   }, [module]);
 
@@ -31,7 +35,7 @@ export default function EditModuleInfoModal({ module, onClose }: EditModuleInfoM
 
     updateModule({
       id: module._id,
-      payload: { title, description, category, sequenceOrder }
+      payload: { title, description, category, sequenceOrder, testDurationMinutes: Math.max(1, Number(testDurationMinutes) || 1) }
     }, {
       onSuccess: () => onClose()
     });
@@ -67,6 +71,20 @@ export default function EditModuleInfoModal({ module, onClose }: EditModuleInfoM
             <div>
               <label className="block text-sm font-medium text-gray-700">Sequence Order *</label>
               <input type="number" min="1" value={sequenceOrder} onChange={e => setSequenceOrder(parseInt(e.target.value))} required className="mt-1 w-full rounded-md border-gray-300 p-2 border" />
+            </div>
+            <div className="col-span-2">
+              <label className="block text-sm font-medium text-gray-700">Test Duration (minutes) *</label>
+              <input
+                type="number" min="1" step="1" value={testDurationMinutes}
+                onChange={e => {
+                  const val = e.target.value;
+                  setTestDurationMinutes(val === '' ? '' : parseInt(val));
+                }}
+                onBlur={() => setTestDurationMinutes(prev => (prev === '' || isNaN(prev as number) || prev < 1) ? 1 : prev)}
+                required
+                className="mt-1 w-full rounded-md border-gray-300 p-2 border"
+              />
+              <p className="text-xs text-gray-400 mt-1">How long a trainee gets to complete this module's quiz.</p>
             </div>
           </div>
 

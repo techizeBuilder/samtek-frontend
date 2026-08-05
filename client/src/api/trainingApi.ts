@@ -117,6 +117,12 @@ export const removeMediaFromModule = async (moduleId: string, contentId: string)
   return data;
 };
 
+// Update a content item's minimum watch time without re-uploading the file
+export const updateMediaWatchTime = async (moduleId: string, contentId: string, minWatchTime: number) => {
+  const { data } = await trainingClient.put(`/modules/${moduleId}/media/${contentId}`, { minWatchTime });
+  return data;
+};
+
 
 // ==========================================
 // 3. QUESTION BANK APIs (Admin/Manager)
@@ -162,6 +168,11 @@ export const getModuleLearningView = async (moduleId: string) => {
 
 export const markContentCompleted = async (payload: { moduleId: string; contentId: string }) => {
   const { data } = await trainingClient.post('/my-learning/module/mark-content-completed', payload);
+  return data;
+};
+
+export const getModuleTestInfo = async (moduleId: string) => {
+  const { data } = await trainingClient.get(`/my-learning/module/${moduleId}/test-info`);
   return data;
 };
 

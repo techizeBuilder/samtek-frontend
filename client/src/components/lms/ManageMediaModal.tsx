@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useAddMediaToModule, useRemoveMediaFromModule } from '../../hooks/useTraining';
+import { useAddMediaToModule, useRemoveMediaFromModule, useUpdateMediaWatchTime } from '../../hooks/useTraining';
 
 interface ManageMediaModalProps {
   module: any | null;
@@ -10,8 +10,14 @@ export default function ManageMediaModal({ module, onClose }: ManageMediaModalPr
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [watchTimes, setWatchTimes] = useState<number[]>([]);
 
+  // Existing content's minute-value while being edited, keyed by contentId —
+  // only populated for rows the admin has actually started editing.
+  const [editingMinutes, setEditingMinutes] = useState<Record<string, number>>({});
+  const [savingContentId, setSavingContentId] = useState<string | null>(null);
+
   const { mutate: addMedia, isPending: isAdding } = useAddMediaToModule();
   const { mutate: removeMedia, isPending: isRemoving } = useRemoveMediaFromModule();
+  const { mutate: updateWatchTime, isPending: isUpdatingWatchTime } = useUpdateMediaWatchTime();
 
   // Helper function to create a clickable link to your backend's static folder
   const getFileUrl = (filePath: string) => {
@@ -28,6 +34,24 @@ export default function ManageMediaModal({ module, onClose }: ManageMediaModalPr
       setSelectedFiles(filesArray);
       setWatchTimes(filesArray.map(() => 0));
     }
+  };
+
+  // User types minutes; converted to whole seconds before it touches
+  // `watchTimes`, so the upload payload (minWatchTimes, in seconds) is unchanged.
+  const handleWatchTimeMinutesChange = (index: number, minutesValue: string) => {
+    const minutes = parseFloat(minutesValue);
+    const newTimes = [...watchTimes];
+    newTimes[index] = isNaN(minutes) ? 0 : Math.round(minutes * 60);
+    setWatchTimes(newTimes);
+  };
+
+  const formatMinWatch = (seconds: number) => {
+    if (!seconds) return '0s';
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    if (mins === 0) return `${secs}s`;
+    if (secs === 0) return `${mins}m`;
+    return `${mins}m ${secs}s`;
   };
 
   const handleAddSubmit = (e: React.FormEvent) => {
@@ -58,8 +82,31 @@ export default function ManageMediaModal({ module, onClose }: ManageMediaModalPr
     }
   };
 
+  const startEditingWatchTime = (contentId: string, currentSeconds: number) => {
+    setEditingMinutes(prev => ({ ...prev, [contentId]: currentSeconds / 60 }));
+  };
+
+  const handleSaveWatchTime = (contentId: string) => {
+    if (!module) return;
+    const minutes = editingMinutes[contentId] ?? 0;
+    setSavingContentId(contentId);
+    updateWatchTime(
+      { moduleId: module._id, contentId, minWatchTime: Math.round(minutes * 60) },
+      {
+        onSettled: () => setSavingContentId(null),
+        onSuccess: () => {
+          setEditingMinutes(prev => {
+            const next = { ...prev };
+            delete next[contentId];
+            return next;
+          });
+        }
+      }
+    );
+  };
+
   if (!module) return null;
-  const isBusy = isAdding || isRemoving;
+  const isBusy = isAdding || isRemoving || isUpdatingWatchTime;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto">
@@ -83,34 +130,84 @@ export default function ManageMediaModal({ module, onClose }: ManageMediaModalPr
             {module.contents.length === 0 ? (
               <p className="text-sm text-gray-500 italic">No media files attached to this module.</p>
             ) : (
-              module.contents.map((content: any) => (
-                <div key={content._id} className="flex justify-between items-center p-3 border rounded bg-white hover:bg-gray-50 transition-colors">
-                  <div className="flex flex-col">
-                    
-                    {/* FIX: Made this an actual clickable anchor tag that opens in a new tab */}
-                    <a 
-                      href={getFileUrl(content.mediaUrl)} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline truncate max-w-xs" 
-                      title="Click to view file"
-                    >
-                      {content.mediaUrl.split('/').pop()}
-                    </a>
+              module.contents.map((content: any) => {
+                const isEditing = content._id in editingMinutes;
+                const isSavingThis = savingContentId === content._id;
 
-                    <span className="text-xs text-gray-500 mt-0.5">
-                      {content.contentType} • Min Watch: {content.minWatchTime}s
-                    </span>
+                return (
+                  <div key={content._id} className="flex justify-between items-center p-3 border rounded bg-white hover:bg-gray-50 transition-colors gap-3">
+                    <div className="flex flex-col min-w-0 flex-1">
+
+                      {/* FIX: Made this an actual clickable anchor tag that opens in a new tab */}
+                      <a
+                        href={getFileUrl(content.mediaUrl)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline truncate max-w-xs"
+                        title="Click to view file"
+                      >
+                        {content.mediaUrl.split('/').pop()}
+                      </a>
+
+                      {isEditing ? (
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-xs text-gray-500">{content.contentType} • Min Watch:</span>
+                          <input
+                            type="number" min="0" step="0.5" autoFocus
+                            value={editingMinutes[content._id]}
+                            onChange={(e) => {
+                              const val = parseFloat(e.target.value);
+                              setEditingMinutes(prev => ({ ...prev, [content._id]: isNaN(val) ? 0 : val }));
+                            }}
+                            className="w-20 rounded border-gray-300 shadow-sm p-1 border text-right text-xs"
+                          />
+                          <span className="text-xs text-gray-400">min</span>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-gray-500 mt-0.5">
+                          {content.contentType} • Min Watch: {formatMinWatch(content.minWatchTime)}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex gap-2 shrink-0">
+                      {isEditing ? (
+                        <>
+                          <button
+                            onClick={() => handleSaveWatchTime(content._id)}
+                            disabled={isBusy}
+                            className="text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 px-2 py-1 rounded transition-colors disabled:opacity-50"
+                          >
+                            {isSavingThis ? 'Saving...' : 'Save'}
+                          </button>
+                          <button
+                            onClick={() => setEditingMinutes(prev => { const n = { ...prev }; delete n[content._id]; return n; })}
+                            disabled={isBusy}
+                            className="text-xs font-medium text-gray-500 hover:bg-gray-100 px-2 py-1 rounded transition-colors disabled:opacity-50"
+                          >
+                            Cancel
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          onClick={() => startEditingWatchTime(content._id, content.minWatchTime || 0)}
+                          disabled={isBusy}
+                          className="text-xs font-medium text-blue-600 hover:bg-blue-50 px-2 py-1 rounded transition-colors disabled:opacity-50"
+                        >
+                          Edit Time
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleDelete(content._id)}
+                        disabled={isBusy}
+                        className="text-xs font-medium text-red-600 hover:bg-red-50 px-2 py-1 rounded transition-colors disabled:opacity-50"
+                      >
+                        {isRemoving ? 'Deleting...' : 'Delete File'}
+                      </button>
+                    </div>
                   </div>
-                  <button 
-                    onClick={() => handleDelete(content._id)}
-                    disabled={isBusy}
-                    className="text-xs font-medium text-red-600 hover:bg-red-50 px-2 py-1 rounded transition-colors disabled:opacity-50"
-                  >
-                    {isRemoving ? 'Deleting...' : 'Delete File'}
-                  </button>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
 
@@ -121,19 +218,19 @@ export default function ManageMediaModal({ module, onClose }: ManageMediaModalPr
             
             {selectedFiles.length > 0 && (
               <div className="mt-4 space-y-2">
+                <p className="text-xs font-semibold text-gray-500 uppercase">Set Minimum Watch Times (Minutes)</p>
                 {selectedFiles.map((file, idx) => (
                   <div key={idx} className="flex justify-between items-center text-sm">
                     <span className="truncate w-2/3">{file.name}</span>
-                    <input 
-                      type="number" min="0" placeholder="Seconds" 
-                      value={watchTimes[idx]} 
-                      onChange={(e) => {
-                        const newTimes = [...watchTimes];
-                        newTimes[idx] = parseInt(e.target.value) || 0;
-                        setWatchTimes(newTimes);
-                      }}
-                      className="w-24 rounded border-gray-300 shadow-sm p-1 border text-right focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                    />
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number" min="0" step="0.5" placeholder="Minutes"
+                        value={watchTimes[idx] ? watchTimes[idx] / 60 : 0}
+                        onChange={(e) => handleWatchTimeMinutesChange(idx, e.target.value)}
+                        className="w-24 rounded border-gray-300 shadow-sm p-1 border text-right focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                      />
+                      <span className="text-xs text-gray-400 w-12">({watchTimes[idx] || 0}s)</span>
+                    </div>
                   </div>
                 ))}
                 <div className="pt-3 flex justify-end">

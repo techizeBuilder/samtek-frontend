@@ -164,8 +164,19 @@ export const useAddMediaToModule = () => {
 export const useRemoveMediaFromModule = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ moduleId, contentId }: { moduleId: string; contentId: string }) => 
+    mutationFn: ({ moduleId, contentId }: { moduleId: string; contentId: string }) =>
       api.removeMediaFromModule(moduleId, contentId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['modules'] });
+    },
+  });
+};
+
+export const useUpdateMediaWatchTime = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ moduleId, contentId, minWatchTime }: { moduleId: string; contentId: string; minWatchTime: number }) =>
+      api.updateMediaWatchTime(moduleId, contentId, minWatchTime),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['modules'] });
     },
@@ -241,6 +252,14 @@ export const useModuleLearningView = (moduleId: string) => {
     queryKey: ['moduleLearningView', moduleId],
     queryFn: () => api.getModuleLearningView(moduleId),
     enabled: !!moduleId, // Only fetch if we have a moduleId
+  });
+};
+
+export const useModuleTestInfo = (moduleId: string) => {
+  return useQuery({
+    queryKey: ['moduleTestInfo', moduleId],
+    queryFn: () => api.getModuleTestInfo(moduleId),
+    enabled: !!moduleId,
   });
 };
 
