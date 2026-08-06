@@ -84,12 +84,19 @@ const Quotation = () => {
   };
   const [searchKeyword, setSearchKeyword] = useState('');
   const [searchCategory, setSearchCategory] = useState('All');
-  const [searchGroup, setSearchGroup] = useState('All');
+  const [searchPlant, setSearchPlant] = useState('All');
   const [searchSubCategory, setSearchSubCategory] = useState('All');
+  // Plant and Category are mutually exclusive starting points: whichever one
+  // the user touches first "claims" the filter bar until Reset. Picking
+  // Plant first still lets Category/SubCategory narrow further (they scope
+  // to that plant's own items), but picking Category first locks the Plant
+  // dropdown out entirely — you can't mix "browse by plant" with "start
+  // from the full product category list" in the same search.
+  const [filterLockedBy, setFilterLockedBy] = useState(null); // null | 'plant' | 'category'
   // Applied filters — only set when Search button is clicked
   const [appliedFilters, setAppliedFilters] = useState({
-    keyword: '', group: 'All', category: 'All', subCategory: 'All', mode: null
-    // mode: null | 'filter' (group+cat+subcat used) | 'keyword'
+    keyword: '', plantId: 'All', plantItemIds: null, category: 'All', subCategory: 'All', mode: null
+    // mode: null | 'filter' (plant+cat+subcat used) | 'keyword'
   });
   const [buyerType, setBuyerType] = useState('Customer'); // Dealer or Customer
   const [selectedPriceListCategory, setSelectedPriceListCategory] = useState(null);
@@ -333,12 +340,14 @@ const Quotation = () => {
     } catch (e) { /* ignore */ }
   }, []); // intentionally empty — run only once on mount
 
-  // Fetch Groups from Group collection (company-filtered)
-  const { data: groupsResponse } = useQuery({
-    queryKey: ['inventory-groups'],
+  // Fetch Plants (Plant Master) — used purely as a filter to narrow the item
+  // list down to just the machines/motors mapped into a selected plant. A
+  // plant has no Item of its own to sell, so it's never a selectable row.
+  const { data: plantsResponse } = useQuery({
+    queryKey: ['rd-plants'],
     queryFn: async () => {
       const token = localStorage.getItem('token');
-      const res = await axios.get(`${import.meta.env.VITE_API_URL || '/api'}/inventory/groups`, {
+      const res = await axios.get(`${import.meta.env.VITE_API_URL || '/api'}/rd/plants?discontinued=false`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       return res.data;
@@ -357,7 +366,10 @@ const Quotation = () => {
     }
   });
 
-  // Fetch Real Items from Sales-specific endpoint
+  // Fetch Real Items from Sales-specific endpoint — Product Master machines
+  // + Motor Master motors. Plant Master bundles are never items in this list
+  // (a plant has no salable Item of its own); they're used below purely as
+  // a filter to narrow this same list down to a plant's mapped components.
   const { data: itemsResponse, isLoading: itemsLoading, refetch: refetchItems } = useQuery({
     queryKey: ['sales-items'],
     queryFn: async () => {
@@ -884,36 +896,45 @@ const Quotation = () => {
     return leadData?.productRequired || '';
   })();
 
-  // Derived filter options from Group and Category collections
-  // Fallback to item fields if collections are empty
-  const allGroups = (() => {
-    const fromCollection = (groupsResponse?.groups || []).map(g => g.name).filter(Boolean);
-    if (fromCollection.length > 0) return fromCollection.sort();
-    // Fallback: derive unique groups from loaded items
-    return [...new Set(productsList.map(p => p.group).filter(Boolean))].sort();
+  // Plants available to filter by (Plant Master bundles for this company)
+  const allPlants = plantsResponse?.data || [];
+
+  // Item ids belonging to the selected plant's mapped machines/motors — null
+  // means "no plant selected", i.e. don't narrow by plant at all.
+  const selectedPlantItemIds = (() => {
+    if (searchPlant === 'All') return null;
+    const plant = allPlants.find(pl => pl._id === searchPlant);
+    if (!plant) return new Set();
+    const ids = [
+      ...(plant.machines || []).map(m => m.item?._id).filter(Boolean),
+      ...(plant.motors || []).map(m => m.item?._id).filter(Boolean),
+    ];
+    return new Set(ids);
   })();
 
-  // Categories filtered by selected group — use Category collection, each category has subcategories array
+  // Categories present among the (optionally plant-narrowed) item list
   const allCategoriesList = categoriesResponse?.categories || [];
-  const categoriesByGroup = (() => {
-    // Always derive from items (most reliable) — filtered by selected group
-    const base = searchGroup === 'All'
+  const categoriesByPlant = (() => {
+    const base = selectedPlantItemIds === null
       ? productsList
-      : productsList.filter(p => p.group === searchGroup);
+      : productsList.filter(p => selectedPlantItemIds.has(p._id));
     return [...new Set(base.map(p => p.category).filter(Boolean))].sort();
   })();
 
   // SubCategories from Category collection's subcategories array, filtered by selected category
-  const subCategoriesByCategoryAndGroup = (() => {
+  const subCategoriesByCategoryAndPlant = (() => {
     if (searchCategory === 'All') return [];
     // Case-insensitive match because item.category and Category collection name may differ in case
     const catDoc = allCategoriesList.find(
       c => c.name.toLowerCase().trim() === searchCategory.toLowerCase().trim()
     );
     if (catDoc) return (catDoc.subcategories || []).filter(Boolean).sort();
-    // Fallback: derive from productsList if no Category doc matched
+    // Fallback: derive from the (optionally plant-narrowed) item list if no Category doc matched
+    const base = selectedPlantItemIds === null
+      ? productsList
+      : productsList.filter(p => selectedPlantItemIds.has(p._id));
     return [...new Set(
-      productsList
+      base
         .filter(p => p.category?.toLowerCase().trim() === searchCategory.toLowerCase().trim())
         .map(p => p.subCategory)
         .filter(Boolean)
@@ -1409,10 +1430,10 @@ const Quotation = () => {
       }
 
       if (af.mode === 'filter') {
-        const matchesGroup = af.group === 'All' || p.group === af.group;
+        const matchesPlant = af.plantId === 'All' || (af.plantItemIds && af.plantItemIds.has(p._id));
         const matchesCategory = af.category === 'All' || p.category === af.category;
         const matchesSubCategory = af.subCategory === 'All' || p.subCategory === af.subCategory;
-        return matchesGroup && matchesCategory && matchesSubCategory;
+        return matchesPlant && matchesCategory && matchesSubCategory;
       }
 
       return true;
@@ -1485,47 +1506,59 @@ const Quotation = () => {
                     value={searchKeyword}
                     onChange={(e) => {
                       setSearchKeyword(e.target.value);
-                      // Clear group/cat/subcat when typing keyword
+                      // Clear plant/cat/subcat when typing keyword
                       if (e.target.value) {
-                        setSearchGroup('All');
+                        setSearchPlant('All');
                         setSearchCategory('All');
                         setSearchSubCategory('All');
+                        setFilterLockedBy(null);
                       }
                     }}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && searchKeyword.trim()) {
-                        setAppliedFilters({ keyword: searchKeyword.trim(), group: 'All', category: 'All', subCategory: 'All', mode: 'keyword' });
+                        setAppliedFilters({ keyword: searchKeyword.trim(), plantId: 'All', plantItemIds: null, category: 'All', subCategory: 'All', mode: 'keyword' });
                       }
                     }}
                   />
                 </div>
               </div>
 
-              {/* Group filter */}
+              {/* Plant filter — narrows the list to just this plant's mapped machines/motors.
+                  Locked out once Category has been picked first (see filterLockedBy). */}
               <div className="space-y-2">
-                <Label>Group</Label>
+                <Label>Plant{filterLockedBy === 'category' && <span className="text-gray-400 font-normal"> (reset filters to use)</span>}</Label>
                 <Select
-                  value={searchGroup}
+                  value={searchPlant}
+                  disabled={filterLockedBy === 'category'}
                   onValueChange={(val) => {
-                    setSearchGroup(val);
+                    setSearchPlant(val);
                     setSearchCategory('All');
                     setSearchSubCategory('All');
                     setSearchKeyword('');
+                    if (val === 'All') {
+                      if (filterLockedBy === 'plant') setFilterLockedBy(null);
+                    } else if (filterLockedBy === null) {
+                      setFilterLockedBy('plant');
+                    }
                   }}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="All Groups" />
+                    <SelectValue placeholder="All Plants" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="All">All Groups</SelectItem>
-                    {allGroups.map(g => (
-                      <SelectItem key={g} value={g}>{g}</SelectItem>
+                    <SelectItem value="All">All Plants</SelectItem>
+                    {allPlants.map(pl => (
+                      <SelectItem key={pl._id} value={pl._id}>{pl.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
 
-              {/* Category filter - filtered by group */}
+              {/* Category filter - when a Plant is selected, narrowed to that
+                  plant's own items (Plant Master); otherwise the full Product
+                  Master category list (includes 'Motor' for Motor Master items).
+                  Picking a category here first (with no Plant selected) locks
+                  the Plant filter out until Reset. */}
               <div className="space-y-2">
                 <Label>Category</Label>
                 <Select
@@ -1534,6 +1567,11 @@ const Quotation = () => {
                     setSearchCategory(val);
                     setSearchSubCategory('All');
                     setSearchKeyword('');
+                    if (val === 'All') {
+                      if (filterLockedBy === 'category') setFilterLockedBy(null);
+                    } else if (filterLockedBy === null) {
+                      setFilterLockedBy('category');
+                    }
                   }}
                 >
                   <SelectTrigger>
@@ -1541,7 +1579,7 @@ const Quotation = () => {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="All">All Categories</SelectItem>
-                    {categoriesByGroup.map(cat => (
+                    {categoriesByPlant.map(cat => (
                       <SelectItem key={cat} value={cat}>{cat}</SelectItem>
                     ))}
                   </SelectContent>
@@ -1562,14 +1600,14 @@ const Quotation = () => {
                     <SelectValue placeholder={
                       searchCategory === 'All'
                         ? 'Select Category first'
-                        : subCategoriesByCategoryAndGroup.length === 0
+                        : subCategoriesByCategoryAndPlant.length === 0
                           ? 'No Sub Categories'
                           : 'All Sub Categories'
                     } />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="All">All Sub Categories</SelectItem>
-                    {subCategoriesByCategoryAndGroup.map(sc => (
+                    {subCategoriesByCategoryAndPlant.map(sc => (
                       <SelectItem key={sc} value={sc}>{sc}</SelectItem>
                     ))}
                   </SelectContent>
@@ -1585,38 +1623,37 @@ const Quotation = () => {
                 onClick={() => {
                   // Keyword mode
                   if (searchKeyword.trim()) {
-                    setAppliedFilters({ keyword: searchKeyword.trim(), group: 'All', category: 'All', subCategory: 'All', mode: 'keyword' });
+                    setAppliedFilters({ keyword: searchKeyword.trim(), plantId: 'All', plantItemIds: null, category: 'All', subCategory: 'All', mode: 'keyword' });
                     return;
                   }
-                  // Filter mode — group selected means category + subCategory mandatory
-                  if (searchGroup !== 'All') {
-                    if (searchCategory === 'All') {
-                      toast({ title: "Please select Category", description: "Category is required when Group is selected.", variant: "destructive" });
-                      return;
-                    }
-                    if (searchSubCategory === 'All' && subCategoriesByCategoryAndGroup.length > 0) {
-                      toast({ title: "Please select Sub Category", description: "Sub Category is required when Category is selected.", variant: "destructive" });
-                      return;
-                    }
-                  }
-                  // Apply filter (even if all 'All', shows all products)
-                  setAppliedFilters({ keyword: '', group: searchGroup, category: searchCategory, subCategory: searchSubCategory, mode: searchGroup === 'All' && searchCategory === 'All' ? null : 'filter' });
+                  // Filter mode — Plant, Category and Sub Category are independent,
+                  // freely combinable narrowing filters (AND together)
+                  const mode = (searchPlant === 'All' && searchCategory === 'All' && searchSubCategory === 'All') ? null : 'filter';
+                  setAppliedFilters({
+                    keyword: '',
+                    plantId: searchPlant,
+                    plantItemIds: searchPlant === 'All' ? null : selectedPlantItemIds,
+                    category: searchCategory,
+                    subCategory: searchSubCategory,
+                    mode
+                  });
                 }}
               >
                 <Search className="h-4 w-4 mr-2" /> Search
               </Button>
 
               {/* Reset */}
-              {appliedFilters.mode !== null && (
+              {(appliedFilters.mode !== null || filterLockedBy !== null) && (
                 <Button
                   variant="ghost"
                   className="text-gray-500"
                   onClick={() => {
                     setSearchKeyword('');
-                    setSearchGroup('All');
+                    setSearchPlant('All');
                     setSearchCategory('All');
                     setSearchSubCategory('All');
-                    setAppliedFilters({ keyword: '', group: 'All', category: 'All', subCategory: 'All', mode: null });
+                    setFilterLockedBy(null);
+                    setAppliedFilters({ keyword: '', plantId: 'All', plantItemIds: null, category: 'All', subCategory: 'All', mode: null });
                   }}
                 >
                   <X className="h-4 w-4 mr-1" /> Reset

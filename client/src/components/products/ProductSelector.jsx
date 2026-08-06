@@ -31,10 +31,14 @@ const ProductSelector = React.memo(({
   // Check if user is Sales to show priority functionality
   const isSalesUser = user && ['Sales', 'sales', 'SALES'].includes(user.role);
 
-  // Determine which API endpoint to use based on user role
+  // Determine which API endpoint to use based on user role.
+  // Sales and the default (everyone-else) case use the shared "sellable
+  // items" source — Product Master machines + Motor Master motors (see
+  // sellableItemsService.js). Super Admin/Unit Head/Unit Manager keep their
+  // own existing admin-scoped endpoints (raw Item lists) for now.
   const getItemsEndpoint = () => {
-    if (!user) return '/api/items';
-    
+    if (!user) return '/api/items/sellable';
+
     switch (user.role) {
       case 'Superadmin':
         return '/api/super-admin/inventory/items';
@@ -45,7 +49,7 @@ const ProductSelector = React.memo(({
       case 'Sales':
         return '/api/sales/items';
       default:
-        return '/api/items';
+        return '/api/items/sellable';
     }
   };
 
@@ -57,14 +61,14 @@ const ProductSelector = React.memo(({
       try {
         const response = await apiRequest('GET', getItemsEndpoint());
         console.log('✅ ProductSelector: API Response:', response);
-        
+
         // Filter items to only show type = "Product" on frontend as well
         if (response?.items) {
           const originalCount = response.items.length;
           response.items = response.items.filter(item => item.type === 'Product');
           console.log(`🎯 ProductSelector: Filtered ${originalCount} items to ${response.items.length} Product items`);
         }
-        
+
         return response;
       } catch (error) {
         console.error('❌ ProductSelector: API Error:', error);
@@ -159,11 +163,11 @@ const ProductSelector = React.memo(({
     const grouped = {};
     
     // Filter items based on search term
-    const filteredItems = items.filter(item => 
-      searchTerm === '' || 
+    const filteredItems = items.filter(item =>
+      searchTerm === '' ||
       item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       item.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.code.toLowerCase().includes(searchTerm.toLowerCase())
+      (item.code || '').toLowerCase().includes(searchTerm.toLowerCase())
     );
 
     filteredItems.forEach(item => {

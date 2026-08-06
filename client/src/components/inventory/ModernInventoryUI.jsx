@@ -57,7 +57,8 @@ import {
   Tags,
   Users,
   GripVertical,
-  Scale
+  Scale,
+  Ban
 } from 'lucide-react';
 
 import {
@@ -202,6 +203,7 @@ function SortableRow({
   handleView,
   handleEdit,
   handleDelete,
+  onToggleStatus,
   inventoryPermissions,
   isDraggable = true
 }) {
@@ -265,6 +267,9 @@ function SortableRow({
         <div>
           <div className="font-medium text-gray-900">{item.name}</div>
           <div className="text-sm text-gray-500">{item.type}</div>
+          {item.isDiscontinued && (
+            <span className="text-[10px] text-red-500 font-semibold">DISCONTINUED</span>
+          )}
         </div>
       </TableCell>
       <TableCell className="py-4 text-gray-600">{item.batch || '-'}</TableCell>
@@ -312,6 +317,17 @@ function SortableRow({
             <Button variant="ghost" size="sm" onClick={() => handleEdit(item)}>
               <Edit className="h-4 w-4" />
             </Button>
+          )}
+          {inventoryPermissions.canEdit && (
+            item.isDiscontinued ? (
+              <Button variant="ghost" size="sm" onClick={() => onToggleStatus(item, false)} className="text-emerald-600 hover:text-emerald-700" title="Reactivate">
+                <RefreshCw className="h-4 w-4" />
+              </Button>
+            ) : (
+              <Button variant="ghost" size="sm" onClick={() => onToggleStatus(item, true)} className="text-orange-500 hover:text-orange-700" title="Discontinue">
+                <Ban className="h-4 w-4" />
+              </Button>
+            )
           )}
           {inventoryPermissions.canDelete && (
             <Button variant="ghost" size="sm" onClick={() => handleDelete(item)} className="text-red-500 hover:text-red-700">
@@ -367,6 +383,7 @@ export default function ModernInventoryUI() {
   const [selectedType, setSelectedType] = useState('all');
   const [selectedStore, setSelectedStore] = useState('all');
   const [selectedGroup, setSelectedGroup] = useState('all');
+  const [showDiscontinued, setShowDiscontinued] = useState(false);
   const [sortBy, setSortBy] = useState('newest');
   const [sortOrder, setSortOrder] = useState('asc'); // Added sortOrder state
   const [currentPage, setCurrentPage] = useState(1);
@@ -400,11 +417,15 @@ export default function ModernInventoryUI() {
 
   // Data fetching with React Query - let API handle ALL filtering
   const { data: itemsData, isLoading: itemsLoading } = useQuery({
-    queryKey: [`${apiBasePath}/items`, debouncedSearchTerm, selectedCategory, selectedSubCategory, selectedType, selectedStore, selectedGroup, sortBy, sortOrder],
+    queryKey: [`${apiBasePath}/items`, debouncedSearchTerm, selectedCategory, selectedSubCategory, selectedType, selectedStore, selectedGroup, showDiscontinued, sortBy, sortOrder],
     queryFn: () => {
       const params = new URLSearchParams({
         page: 1,
         limit: 100, // Fetch more items from API
+        // Exclude Product Master machines / Motor Master motors — this list
+        // is plain Inventory only, items created through this form.
+        productKind: 'none',
+        discontinued: showDiscontinued ? 'true' : 'false',
         ...(debouncedSearchTerm && { search: debouncedSearchTerm }),
         ...(selectedCategory && selectedCategory !== 'all' && { category: selectedCategory }),
         ...(selectedSubCategory && selectedSubCategory !== 'all' && { subCategory: selectedSubCategory }),
@@ -605,6 +626,19 @@ export default function ModernInventoryUI() {
         showSmartToast(error, 'Update Item');
       }
     }
+  });
+
+  const statusMutation = useMutation({
+    mutationFn: ({ id, isDiscontinued }) => apiRequest('PUT', `${apiBasePath}/items/${id}`, { isDiscontinued }),
+    onSuccess: (_, { isDiscontinued }) => {
+      queryClient.invalidateQueries([`${apiBasePath}/items`]);
+      queryClient.invalidateQueries([`${apiBasePath}/stats`]);
+      toast({
+        title: isDiscontinued ? 'Item Discontinued' : 'Item Reactivated',
+        description: isDiscontinued ? 'Item marked as discontinued.' : 'Item marked as active.',
+      });
+    },
+    onError: (error) => showSmartToast(error, 'Update Status'),
   });
 
   // Handlers
@@ -920,6 +954,14 @@ export default function ModernInventoryUI() {
                   </SelectContent>
                 </Select>
 
+                <Button
+                  variant="outline"
+                  onClick={() => setShowDiscontinued(v => !v)}
+                  className={`h-9 text-xs px-3 ${showDiscontinued ? 'bg-red-50 text-red-700 border-red-300 hover:bg-red-100' : 'border-gray-300'}`}
+                >
+                  {showDiscontinued ? 'Show Active' : 'Show Discontinued'}
+                </Button>
+
                 <Select value={sortBy} onValueChange={setSortBy}>
                   <SelectTrigger className="w-[100px] sm:w-[120px] h-9 border-gray-300 focus:border-blue-500 text-xs px-2">
                     <SelectValue placeholder="Sort by" />
@@ -1050,6 +1092,7 @@ export default function ModernInventoryUI() {
                             handleView={handleView}
                             handleEdit={handleEdit}
                             handleDelete={handleDelete}
+                            onToggleStatus={(it, isDiscontinued) => statusMutation.mutate({ id: it._id, isDiscontinued })}
                             inventoryPermissions={inventoryPermissions}
                             isDraggable={sortBy === 'newest' && !searchTerm} // Only allow drag when in default view
                           />

@@ -37,6 +37,8 @@ export default function PricingValue() {
   const [items, setItems] = useState<PricingItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, pages: 1 });
   const [drafts, setDrafts] = useState<Record<string, { profitPercent: string; discountPercent: string }>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
 
@@ -45,9 +47,11 @@ export default function PricingValue() {
       setLoading(true);
       const res = await axios.get(`${API_BASE}/pricing-value/items`, {
         headers: { Authorization: `Bearer ${token}` },
+        params: { page, limit: 20, ...(search.trim() && { search: search.trim() }) },
       });
       const list: PricingItem[] = res.data?.items || [];
       setItems(list);
+      setPagination(res.data?.pagination || { page: 1, limit: 20, total: list.length, pages: 1 });
       const nextDrafts: Record<string, { profitPercent: string; discountPercent: string }> = {};
       list.forEach((it) => {
         nextDrafts[it._id] = {
@@ -63,7 +67,12 @@ export default function PricingValue() {
     }
   };
 
-  useEffect(() => { fetchItems(); }, []);
+  useEffect(() => { fetchItems(); }, [page, search]);
+
+  const handleSearchChange = (value: string) => {
+    setSearch(value);
+    setPage(1);
+  };
 
   const setDraft = (id: string, field: "profitPercent" | "discountPercent", value: string) => {
     setDrafts((d) => ({ ...d, [id]: { ...d[id], [field]: value } }));
@@ -97,12 +106,6 @@ export default function PricingValue() {
       setSavingId(null);
     }
   };
-
-  const filtered = items.filter((it) => {
-    const q = search.trim().toLowerCase();
-    if (!q) return true;
-    return it.code?.toLowerCase().includes(q) || it.name?.toLowerCase().includes(q);
-  });
 
   if (loading) {
     return (
@@ -139,29 +142,34 @@ export default function PricingValue() {
         </p>
       </div>
 
-      {/* ── Search ───────────────────────────────────────────────────────── */}
-      <div className="relative max-w-sm">
-        <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-        <input
-          type="text"
-          placeholder="Search by item code or name..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full border border-gray-300 rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent"
-        />
-      </div>
+      {/* ── Items Table — no separate scroll region here; this rides the
+           page's own single scroll (the layout's <main overflow-auto>).
+           Search bar + column headers stick together as one unit, using
+           position:sticky against that same page scroll. ────────────── */}
+      <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-x-auto relative">
+        {/* ── Sticky Search Bar ───────────────────────────────────────── */}
+        <div className="sticky top-0 z-20 bg-white border-b border-gray-100 px-4 h-16 flex items-center rounded-t-2xl">
+          <div className="relative max-w-sm w-full">
+            <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="Search by item code or name..."
+              value={search}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent"
+            />
+          </div>
+        </div>
 
-      {/* ── Items Table ──────────────────────────────────────────────────── */}
-      <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-x-auto">
-        {filtered.length === 0 ? (
+        {items.length === 0 ? (
           <p className="text-sm text-gray-400 italic p-6 text-center">
-            {items.length === 0
+            {pagination.total === 0 && !search
               ? "No sellable items found. Items appear here once added to Inventory as type \"Product\"."
               : "No items match your search."}
           </p>
         ) : (
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
+            <thead className="sticky top-16 z-10 bg-gray-50 text-xs text-gray-500 uppercase">
               <tr>
                 <th className="px-4 py-3 text-left">Item Code</th>
                 <th className="px-4 py-3 text-left">Item Name</th>
@@ -174,7 +182,7 @@ export default function PricingValue() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((item) => {
+              {items.map((item) => {
                 const cost = resolvedCost(item);
                 const draft = drafts[item._id] || { profitPercent: "", discountPercent: "" };
                 return (
@@ -228,6 +236,28 @@ export default function PricingValue() {
               })}
             </tbody>
           </table>
+        )}
+
+        {pagination.pages > 1 && (
+          <div className="border-t border-gray-100 px-4 py-3 flex items-center justify-center gap-4">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={pagination.page <= 1}
+              className="px-3 py-1.5 border border-gray-300 rounded-lg text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+            >
+              Previous
+            </button>
+            <span className="text-xs text-gray-500">
+              Page {pagination.page} of {pagination.pages} ({pagination.total} items)
+            </span>
+            <button
+              onClick={() => setPage((p) => Math.min(pagination.pages, p + 1))}
+              disabled={pagination.page >= pagination.pages}
+              className="px-3 py-1.5 border border-gray-300 rounded-lg text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+            >
+              Next
+            </button>
+          </div>
         )}
       </div>
     </div>

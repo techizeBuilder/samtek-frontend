@@ -23,9 +23,10 @@ const groupByLabel = (customFields) =>
     return acc;
   }, {});
 
-// BOM materials must reference an existing Product Master entry — no free-typed codes.
-// This picker replaces the old free-text code input with a searchable, selection-only list.
-function MaterialCodePicker({ value, displayName, machines, onSelect }) {
+// BOM materials must reference an existing Inventory item (raw material) —
+// no free-typed codes. This picker replaces the old free-text code input
+// with a searchable, selection-only list.
+function MaterialCodePicker({ value, displayName, items, onSelect }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const wrapperRef = useRef(null);
@@ -38,7 +39,7 @@ function MaterialCodePicker({ value, displayName, machines, onSelect }) {
     return () => document.removeEventListener('mousedown', onClickOutside);
   }, []);
 
-  const candidates = (machines || []).filter(m => !m.isDiscontinued);
+  const candidates = (items || []).filter(m => !m.isDiscontinued);
   const q = query.trim().toLowerCase();
   const matches = (q
     ? candidates.filter(m => (m.code || '').toLowerCase().includes(q) || (m.name || '').toLowerCase().includes(q))
@@ -52,7 +53,7 @@ function MaterialCodePicker({ value, displayName, machines, onSelect }) {
         <input
           type="text"
           className="w-full h-10 rounded-md border border-slate-200 bg-white pl-8 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          placeholder="Search Product Master code or name..."
+          placeholder="Search Inventory code or name..."
           value={open ? query : (value ? `${value}${displayName ? ` — ${displayName}` : ''}` : '')}
           onFocus={() => { setOpen(true); setQuery(''); }}
           onChange={e => setQuery(e.target.value)}
@@ -61,7 +62,7 @@ function MaterialCodePicker({ value, displayName, machines, onSelect }) {
       {open && (
         <div className="absolute z-20 mt-1 w-full max-h-56 overflow-y-auto bg-white border border-slate-200 rounded-md shadow-lg">
           {matches.length === 0 ? (
-            <p className="text-xs text-slate-400 italic text-center py-3">No matching Product Master items</p>
+            <p className="text-xs text-slate-400 italic text-center py-3">No matching Inventory items</p>
           ) : matches.map(m => (
             <button
               type="button"
@@ -98,6 +99,14 @@ export default function BOMManagement() {
     queryFn: () => apiRequest('GET', '/api/inventory/unit-types'),
   });
 
+  // Raw materials for BOM line items — Product Master now holds finished-goods
+  // machines only, not materials, so materials come from plain Inventory.
+  const { data: inventoryResponse } = useQuery({
+    queryKey: ['bom-inventory-items'],
+    queryFn: () => apiRequest('GET', '/api/items?productKind=none&limit=1000'),
+  });
+  const inventoryItems = inventoryResponse?.items || [];
+
   const unitTypesList = React.useMemo(() => {
     if (unitTypesData?.unitTypes) {
       return unitTypesData.unitTypes.map(ut => ut.name);
@@ -117,39 +126,31 @@ export default function BOMManagement() {
     return getUnitsForType(unitTypeName, currentUnit);
   };
 
-  // Look up a Product Master entry by its code (all products, not just In House/Out Source machines —
-  // BOM materials reference raw materials, tools, fabricated parts etc. too).
+  // Look up an Inventory item by its code — BOM materials reference raw
+  // materials, tools, fabricated parts etc., all of which live in Inventory.
   const findProductByCode = (code) => {
     const c = (code || '').trim().toLowerCase();
     if (!c) return null;
-    return machines.find(m => (m.code || '').trim().toLowerCase() === c) || null;
+    return inventoryItems.find(m => (m.code || '').trim().toLowerCase() === c) || null;
   };
 
-  // BOM materials can only be Product Master entries — picking one via MaterialCodePicker
-  // snapshots everything Product Master knows about it (category, source type, brand,
-  // description, metrology, specs, custom fields) into the material record as a point-in-time
-  // copy, even though most of it has no dedicated input on this form. Viewable via the "eye" button.
+  // BOM materials can only be Inventory entries — picking one via MaterialCodePicker
+  // snapshots everything Inventory knows about it (category, brand, description,
+  // specs) into the material record as a point-in-time copy, even though most of
+  // it has no dedicated input on this form. Viewable via the "eye" button.
+  // pType/pSourceType/metrology/size/unitWeight/inputUnit/outputUnit/customFields
+  // were Product-Master-only fields — Inventory items don't have them, so they're
+  // no longer populated here (existing materials snapshotted before this change
+  // still show them fine, this just stops capturing new ones).
   const applyProductMatch = (setState, match) => {
     setState(f => ({
       ...f,
       code: match.code || '',
       item: match.name || f.item,
       category: match.category || '',
-      pType: match.pType || '',
-      pSourceType: match.pSourceType || '',
       brand: match.brand || '',
       description: match.description || '',
-      metrology: match.metrology || '',
       specifications: Array.isArray(match.specifications) ? match.specifications : [],
-      customFields: Array.isArray(match.customFields) ? match.customFields : [],
-      size: match.size || '',
-      unitWeightValue: match.unitWeightValue !== null && match.unitWeightValue !== undefined ? match.unitWeightValue : '',
-      unitWeightUnitType: match.unitWeightUnitType || '',
-      unitWeightUnit: match.unitWeightUnit || '',
-      inputUnitType: match.inputUnitType || '',
-      inputUnit: match.inputUnit || '',
-      outputUnitType: match.outputUnitType || '',
-      outputUnit: match.outputUnit || '',
     }));
   };
 
@@ -159,19 +160,11 @@ export default function BOMManagement() {
     if (!match) return null;
     const extras = [];
     if (match.category) extras.push('Category');
-    if (match.pType) extras.push('P-Type');
-    if (match.pSourceType) extras.push('P-Source Type');
     if (match.brand) extras.push('Brand');
-    if (match.metrology) extras.push('Metrology');
-    if (match.size) extras.push('Size');
-    if (match.unitWeightValue !== null && match.unitWeightValue !== undefined) extras.push('Unit Weight');
-    if (match.inputUnit) extras.push('Input Unit');
-    if (match.outputUnit) extras.push('Output Unit');
     if (Array.isArray(match.specifications) && match.specifications.length) extras.push(`${match.specifications.length} spec${match.specifications.length > 1 ? 's' : ''}`);
-    if (Array.isArray(match.customFields) && match.customFields.length) extras.push(`${match.customFields.length} custom field${match.customFields.length > 1 ? 's' : ''}`);
     return (
       <p className="text-[11px] text-emerald-600 mt-1">
-        ✓ Matched Product Master: {match.name}
+        ✓ Matched Inventory item: {match.name}
         {extras.length > 0 && <span className="text-slate-500"> — also captured: {extras.join(', ')}</span>}
       </p>
     );
@@ -404,8 +397,8 @@ export default function BOMManagement() {
           <DialogHeader><DialogTitle>Add Material Item</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
             <div>
-              <label className="text-xs font-semibold text-slate-600 mb-1 block">Material Code * <span className="text-[10px] text-slate-400 font-normal">(from Product Master)</span></label>
-              <MaterialCodePicker value={form.code} displayName={form.item} machines={machines} onSelect={(m) => applyProductMatch(setForm, m)} />
+              <label className="text-xs font-semibold text-slate-600 mb-1 block">Material Code * <span className="text-[10px] text-slate-400 font-normal">(from Inventory)</span></label>
+              <MaterialCodePicker value={form.code} displayName={form.item} items={inventoryItems} onSelect={(m) => applyProductMatch(setForm, m)} />
               {renderCodeMatchHint(form.code)}
             </div>
 
@@ -460,8 +453,8 @@ export default function BOMManagement() {
           <DialogHeader><DialogTitle>Edit Material</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
             <div>
-              <label className="text-xs font-semibold text-slate-600 mb-1 block">Material Code * <span className="text-[10px] text-slate-400 font-normal">(from Product Master)</span></label>
-              <MaterialCodePicker value={editForm.code} displayName={editForm.item} machines={machines} onSelect={(m) => applyProductMatch(setEditForm, m)} />
+              <label className="text-xs font-semibold text-slate-600 mb-1 block">Material Code * <span className="text-[10px] text-slate-400 font-normal">(from Inventory)</span></label>
+              <MaterialCodePicker value={editForm.code} displayName={editForm.item} items={inventoryItems} onSelect={(m) => applyProductMatch(setEditForm, m)} />
               {renderCodeMatchHint(editForm.code)}
             </div>
 
@@ -583,7 +576,7 @@ export default function BOMManagement() {
               {(viewMat.category || viewMat.pType || viewMat.pSourceType || viewMat.brand || viewMat.metrology || viewMat.description ||
                 viewMat.size || (viewMat.unitWeightValue !== null && viewMat.unitWeightValue !== undefined) || viewMat.inputUnit || viewMat.outputUnit) && (
                 <div className="bg-slate-50 rounded-lg p-3">
-                  <p className="text-xs text-slate-500 mb-2 font-semibold">Product Master Snapshot</p>
+                  <p className="text-xs text-slate-500 mb-2 font-semibold">Inventory Item Snapshot</p>
                   <div className="grid grid-cols-2 gap-2">
                     {viewMat.pType && <div><p className="text-[11px] text-slate-400">P-Type</p><p className="text-sm text-slate-800">{viewMat.pType}</p></div>}
                     {viewMat.category && <div><p className="text-[11px] text-slate-400">Category</p><p className="text-sm text-slate-800">{viewMat.category}</p></div>}

@@ -21,8 +21,7 @@ import {
   CheckCircle,
   XCircle,
   Image as ImageIcon,
-  Video,
-  StickyNote
+  Ruler
 } from 'lucide-react';
 import { config } from '@/config/environment';
 
@@ -70,6 +69,9 @@ export default function ViewItemModal({ isOpen, onClose, item }) {
           <DialogTitle className="flex items-center gap-2">
             <Package className="h-5 w-5" />
             {item.name}
+            <Badge className={item.isDiscontinued ? 'bg-red-100 text-red-700 border-red-200' : 'bg-emerald-100 text-emerald-700 border-emerald-200'}>
+              {item.isDiscontinued ? 'Discontinued' : 'Active'}
+            </Badge>
           </DialogTitle>
         </DialogHeader>
 
@@ -83,11 +85,14 @@ export default function ViewItemModal({ isOpen, onClose, item }) {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-1">
+              {item.image && (
+                <div className="py-2">
+                  <img src={resolveMediaUrl(item.image)} alt={item.name} className="h-24 w-24 object-cover rounded-lg border" />
+                </div>
+              )}
               <InfoRow icon={Tag} label="Item Code" value={item.code} />
               <InfoRow icon={Package} label="Item Name" value={item.name} />
               <InfoRow icon={FileText} label="Description" value={item.description} />
-              <InfoRow icon={Tag} label="Item Type" value={item.type} variant="badge" />
-              <InfoRow icon={Tag} label="Group" value={item.group} />
               <InfoRow icon={AlertTriangle} label="Importance" value={item.importance} variant="badge" />
               <InfoRow icon={BarChart3} label="Unit" value={item.unitType ? `${item.unit} (${item.unitType})` : item.unit} />
               <InfoRow icon={MapPin} label="Store Location" value={item.storeLocation || item.store || 'No location'} />
@@ -106,9 +111,20 @@ export default function ViewItemModal({ isOpen, onClose, item }) {
             <CardContent className="space-y-1">
               <InfoRow icon={Tag} label="Category" value={item.category} />
               <InfoRow icon={Tag} label="Sub Category" value={item.subCategory} />
-              <InfoRow icon={Users} label="Customer Category" value={item.customerCategory} />
+              <InfoRow icon={Tag} label="Source Type" value={item.sourceType} />
+              <InfoRow icon={Tag} label="Item Source Type" value={item.itemSourceType} />
               <InfoRow icon={FileText} label="HSN Code" value={item.hsn} />
               <InfoRow icon={Calendar} label="Lead Time" value={`${item.leadTime || 0} days`} />
+              {Array.isArray(item.itemCategories) && item.itemCategories.length > 0 && (
+                <div className="py-2">
+                  <div className="text-sm text-muted-foreground mb-2">Item Category</div>
+                  <div className="flex flex-wrap gap-1">
+                    {item.itemCategories.map((c, index) => (
+                      <Badge key={index} variant="outline" className="text-xs">{c}</Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
               {item.tags && item.tags.length > 0 && (
                 <div className="py-2">
                   <div className="text-sm text-muted-foreground mb-2">Tags</div>
@@ -124,22 +140,43 @@ export default function ViewItemModal({ isOpen, onClose, item }) {
             </CardContent>
           </Card>
 
-          {/* Product Master Attributes */}
-          {(item.brand || item.metrology || item.size || (item.unitWeightValue !== null && item.unitWeightValue !== undefined && item.unitWeightValue !== '')) && (
+          {/* Item Attributes */}
+          {(item.brand || item.metrology || item.materialGrade || item.modelNumber || item.size || (item.unitWeightValue !== null && item.unitWeightValue !== undefined && item.unitWeightValue !== '')) && (
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-lg">
                   <Tag className="h-5 w-5 text-teal-600" />
-                  Product Master Attributes
+                  Item Attributes
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-1">
                 <InfoRow icon={Tag} label="Brand" value={item.brand} />
+                <InfoRow icon={Tag} label="Model Number" value={item.modelNumber} />
                 <InfoRow icon={Tag} label="Metrology" value={item.metrology} />
+                <InfoRow icon={Tag} label="Material Grade" value={item.materialGrade} />
                 <InfoRow icon={Tag} label="Size" value={item.size} />
                 {(item.unitWeightValue !== null && item.unitWeightValue !== undefined && item.unitWeightValue !== '') && (
                   <InfoRow icon={BarChart3} label="Unit Weight" value={`${item.unitWeightValue} ${item.unitWeightUnit || ''}`.trim()} />
                 )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Dimensions */}
+          {item.dimensions && Object.values(item.dimensions).some(d => d?.value !== null && d?.value !== undefined && d?.value !== '') && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <Ruler className="h-5 w-5 text-cyan-600" />
+                  Dimensions
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-1">
+                {[['length', 'Length'], ['height', 'Height'], ['width', 'Width'], ['diaOD', 'Dia (OD)'], ['diaID', 'Dia (ID)'], ['thickness', 'Thickness']].map(([key, label]) => {
+                  const d = item.dimensions?.[key];
+                  if (d?.value === null || d?.value === undefined || d?.value === '') return null;
+                  return <InfoRow key={key} icon={Ruler} label={label} value={`${d.value} ${d.unit || ''}`.trim()} />;
+                })}
               </CardContent>
             </Card>
           )}
@@ -225,64 +262,6 @@ export default function ViewItemModal({ isOpen, onClose, item }) {
             )}
           </CardContent>
         </Card>
-
-        {/* Media & Documents */}
-        {(item.image || item.brochureUrl || item.videoUrl || item.otherInfo) && (
-          <Card className="mt-6">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <ImageIcon className="h-5 w-5 text-pink-600" />
-                Media & Documents
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <div className="text-sm text-muted-foreground mb-2">Product Image</div>
-                  {item.image ? (
-                    <img src={resolveMediaUrl(item.image)} alt={item.name} className="h-32 w-32 object-cover rounded-lg border" />
-                  ) : (
-                    <div className="h-32 w-32 rounded-lg border border-dashed flex items-center justify-center text-muted-foreground">
-                      <ImageIcon className="h-8 w-8" />
-                    </div>
-                  )}
-                </div>
-                <div className="space-y-1">
-                  <InfoRow
-                    icon={FileText}
-                    label="Brochure"
-                    value={item.brochureUrl ? (
-                      <a href={resolveMediaUrl(item.brochureUrl)} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">
-                        View PDF
-                      </a>
-                    ) : null}
-                  />
-                  <InfoRow
-                    icon={Video}
-                    label="Video"
-                    value={item.videoUrl ? (
-                      <a href={item.videoUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">
-                        Watch Video
-                      </a>
-                    ) : null}
-                  />
-                </div>
-              </div>
-              {item.otherInfo && (
-                <>
-                  <Separator className="my-4" />
-                  <div>
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
-                      <StickyNote className="h-4 w-4" />
-                      Other Info
-                    </div>
-                    <p className="text-sm bg-muted p-3 rounded-lg">{item.otherInfo}</p>
-                  </div>
-                </>
-              )}
-            </CardContent>
-          </Card>
-        )}
 
         {/* Specifications */}
         {Array.isArray(item.specifications) && item.specifications.filter(s => s.key).length > 0 && (

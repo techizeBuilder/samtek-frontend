@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
 import { useRD } from '@/contexts/RDContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -7,7 +9,24 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { ShieldAlert, Plus, Trash2, CheckSquare, ChevronDown, Package, Target, ClipboardList } from 'lucide-react';
 
 export default function QualityParameters() {
+  // RDQualityParam.machine is just an ObjectId ref with no productKind
+  // constraint — the backend already accepts any Item id. This page only
+  // ever offered Product Master machines to pick from; pull in Inventory
+  // materials and Motor Master motors too so parameters/checklists can be
+  // defined on any item, not just Product Master's.
   const { machines, getQualityParams, addQualityParam, deleteQualityParam, addQCItem, deleteQCItem } = useRD();
+
+  const { data: inventoryResponse } = useQuery({
+    queryKey: ['quality-params-inventory-items'],
+    queryFn: () => apiRequest('GET', '/api/items?productKind=none&limit=1000'),
+  });
+  const { data: motorsResponse } = useQuery({
+    queryKey: ['quality-params-motors'],
+    queryFn: () => apiRequest('GET', '/api/items?type=Product&productKind=Motor&limit=1000'),
+  });
+  const inventoryItems = inventoryResponse?.items || [];
+  const motors = motorsResponse?.items || [];
+
   const [selectedMachineId, setSelectedMachineId] = useState('');
   const [activeTab, setActiveTab] = useState('parameters');
   const [addParamOpen, setAddParamOpen] = useState(false);
@@ -17,7 +36,12 @@ export default function QualityParameters() {
   const [paramForm, setParamForm] = useState({ parameter: '', tolerance: '', performanceStandard: '' });
   const [qcForm, setQcForm] = useState({ item: '' });
 
-  const activeMachines = machines.filter(m => !m.isDiscontinued);
+  const groupedItems = [
+    { label: 'Inventory', items: inventoryItems.filter(m => !m.isDiscontinued) },
+    { label: 'Product Master', items: machines.filter(m => !m.isDiscontinued) },
+    { label: 'Motor Master', items: motors.filter(m => !m.isDiscontinued) },
+  ];
+  const activeMachines = groupedItems.flatMap(g => g.items);
   const selectedMachine = activeMachines.find(m => String(m._id) === selectedMachineId);
   const qp = selectedMachineId ? getQualityParams(selectedMachineId) : null;
 
@@ -47,14 +71,18 @@ export default function QualityParameters() {
         <p className="text-slate-500 text-sm mt-0.5">R&D defines quality standards — the Quality department follows these parameters for inspection</p>
       </div>
 
-      {/* Machine Selector */}
+      {/* Item Selector */}
       <Card className="border-none shadow-sm">
         <CardContent className="p-5">
-          <label className="text-sm font-semibold text-slate-700 mb-2 block">Select Machine</label>
+          <label className="text-sm font-semibold text-slate-700 mb-2 block">Select Item</label>
           <div className="relative max-w-sm">
             <select className="w-full border border-slate-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white appearance-none pr-8" value={selectedMachineId} onChange={e => setSelectedMachineId(e.target.value)}>
-              <option value="">-- Select a machine to view quality parameters --</option>
-              {activeMachines.map(m => <option key={m._id} value={m._id}>{m.code} — {m.name}</option>)}
+              <option value="">-- Select an item to view quality parameters --</option>
+              {groupedItems.map(g => g.items.length > 0 && (
+                <optgroup key={g.label} label={g.label}>
+                  {g.items.map(m => <option key={m._id} value={m._id}>{m.code} — {m.name}</option>)}
+                </optgroup>
+              ))}
             </select>
             <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
           </div>
@@ -65,7 +93,7 @@ export default function QualityParameters() {
         <Card className="border-none shadow-sm">
           <CardContent className="py-16 text-center text-slate-400">
             <Package className="h-10 w-10 mx-auto mb-3 opacity-30" />
-            <p>Select a machine to view or define quality parameters and QC checklist</p>
+            <p>Select an item to view or define quality parameters and QC checklist</p>
           </CardContent>
         </Card>
       ) : (
