@@ -404,19 +404,23 @@ export default function OrderFormModal({ open, onOpenChange, orderId, order, lea
       toast({ title: 'Required fields missing', description: 'Bill Amt is required for every item row.', variant: 'destructive' });
       return;
     }
-    // Bill Amt must clear the item's own BOM material cost by more than 10% —
-    // items with no BOM for their M/C Code are skipped (nothing to check).
+    // Bill Amt must clear the item's own BOM cost (materials + production
+    // cost/expense, PER UNIT — see computeBOMMaterialsMrpCost) times however
+    // many units this row orders, by more than 10% — items with no BOM for
+    // their M/C Code are skipped (nothing to check).
     const bomViolation = visibleItems.find(({ it }) => {
       const bomInfo = bomCostByCode[(it.mcCode || '').trim()];
       if (!bomInfo || bomInfo === 'loading' || !bomInfo.found) return false;
-      return num(it.billAmount) <= bomInfo.totalCost * 1.1;
+      const qty = num(it.qty) || 1;
+      return num(it.billAmount) <= bomInfo.totalCost * qty * 1.1;
     });
     if (bomViolation) {
       const bomInfo = bomCostByCode[(bomViolation.it.mcCode || '').trim()];
-      const minRequired = bomInfo.totalCost * 1.1;
+      const qty = num(bomViolation.it.qty) || 1;
+      const minRequired = bomInfo.totalCost * qty * 1.1;
       toast({
         title: 'Billing Amount too low',
-        description: `${bomViolation.it.itemName || bomViolation.it.mcCode}: Bill Amt must be above ₹${minRequired.toLocaleString('en-IN')} (BOM cost ₹${bomInfo.totalCost.toLocaleString('en-IN')} + 10%).`,
+        description: `${bomViolation.it.itemName || bomViolation.it.mcCode}: Bill Amt must be above ₹${minRequired.toLocaleString('en-IN')} (BOM cost ₹${bomInfo.totalCost.toLocaleString('en-IN')}/unit × ${qty} unit${qty > 1 ? 's' : ''} + 10%).`,
         variant: 'destructive'
       });
       return;
@@ -599,7 +603,7 @@ export default function OrderFormModal({ open, onOpenChange, orderId, order, lea
                           <TableCell className="align-top"><QtyCell value={it.qty} onChange={v => setItemField(originalIdx, 'qty', v)} disabled={lockedDisabled} /></TableCell>
                           <TableCell className="align-top">
                             <CellInput type="number" value={it.billAmount} onChange={v => setItemField(originalIdx, 'billAmount', v)} disabled={disabled} className="text-right" size="lg" />
-                            <BomCostHint bomInfo={bomCostByCode[(it.mcCode || '').trim()]} billAmount={it.billAmount} />
+                            <BomCostHint bomInfo={bomCostByCode[(it.mcCode || '').trim()]} billAmount={it.billAmount} qty={it.qty} />
                           </TableCell>
                           <TableCell className="align-top"><CellInput type="number" value={it.gstAmount} onChange={() => {}} disabled title="Auto: 18% of Bill Amt" className="text-right" size="lg" /></TableCell>
                           <TableCell className="align-top"><CellInput type="number" value={it.quotationAmount} onChange={v => setItemField(originalIdx, 'quotationAmount', v)} disabled={lockedDisabled} className="text-right" size="lg" /></TableCell>
@@ -793,16 +797,21 @@ function QtyCell({ value, onChange, disabled }) {
   );
 }
 
-// Shows the item's BOM material cost (Σ material MRP × qty) and the minimum
-// Billing Amount (BOM cost + 10%) under the Bill Amt input — nothing renders
-// when the item has no BOM (bomInfo is null/undefined/'loading').
-function BomCostHint({ bomInfo, billAmount }) {
+// Shows the item's BOM cost (Σ material MRP × qty + production cost/expense,
+// PER UNIT — see computeBOMMaterialsMrpCost) × how many units this row
+// orders, and the minimum Billing Amount (that × 1.1) under the Bill Amt
+// input — nothing renders when the item has no BOM (bomInfo is
+// null/undefined/'loading').
+function BomCostHint({ bomInfo, billAmount, qty }) {
   if (!bomInfo || bomInfo === 'loading' || !bomInfo.found) return null;
-  const minRequired = bomInfo.totalCost * 1.1;
+  const units = num(qty) || 1;
+  const bomCostForQty = bomInfo.totalCost * units;
+  const minRequired = bomCostForQty * 1.1;
   const isBelowMin = num(billAmount) > 0 && num(billAmount) <= minRequired;
   return (
     <p className={`text-[10px] mt-1 leading-tight ${isBelowMin ? 'text-red-500 font-semibold' : 'text-gray-400'}`}>
       Billing Amount must be above ₹{minRequired.toLocaleString('en-IN')}
+      {units > 1 && <span> (₹{bomInfo.totalCost.toLocaleString('en-IN')}/unit × {units})</span>}
     </p>
   );
 }
