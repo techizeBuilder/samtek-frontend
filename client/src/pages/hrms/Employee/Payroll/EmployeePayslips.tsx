@@ -18,17 +18,23 @@ const EmployeePayslips = () => {
     const [company, setCompany] = useState("");
     const [loading, setLoading] = useState(true);
 
+    // Pagination — backend now supports page/limit (opt-in via `page`, see
+    // payslipController.js getMyPayslips).
+    const [page, setPage] = useState(1);
+    const [pagination, setPagination] = useState({ page: 1, pages: 1, total: 0 });
+    const limit = 15;
+
     /* ================= FETCH ================= */
     const fetchPayslips = async () => {
         setLoading(true);
-        const params = new URLSearchParams();
+        const params = new URLSearchParams({ page: String(page), limit: String(limit) });
         if (month) params.set("month", month);
         if (year) params.set("year", year);
-        const qs = params.toString();
-        const res = await axios.get(`${API_BASE}/payslips/me/my-payslips${qs ? `?${qs}` : ""}`, {
+        const res = await axios.get(`${API_BASE}/payslips/me/my-payslips?${params.toString()}`, {
             headers: { Authorization: `Bearer ${token}` },
         });
-        setFiltered(res.data || []);
+        setFiltered(res.data?.data || []);
+        setPagination(res.data?.pagination || { page: 1, pages: 1, total: 0 });
         setLoading(false);
     };
 
@@ -39,9 +45,12 @@ const EmployeePayslips = () => {
         setCompany(res.data?.companyId?.name || "Your Company");
     };
 
+    useEffect(() => { setPage(1); }, [month, year]);
+
     useEffect(() => {
         fetchPayslips();
-    }, [month, year]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [month, year, page]);
 
     useEffect(() => {
         fetchCompany();
@@ -217,6 +226,30 @@ const EmployeePayslips = () => {
                             Clear all filters
                         </button>
                     )}
+                </div>
+            )}
+
+            {pagination.pages > 1 && (
+                <div className="flex items-center justify-between mt-6 text-sm text-gray-600">
+                    <span>
+                        Page {pagination.page} of {pagination.pages} ({pagination.total} payslips)
+                    </span>
+                    <div className="flex gap-2">
+                        <button
+                            onClick={() => setPage((p) => Math.max(1, p - 1))}
+                            disabled={pagination.page <= 1}
+                            className="px-3 py-1.5 border border-gray-300 rounded-md disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
+                        >
+                            Previous
+                        </button>
+                        <button
+                            onClick={() => setPage((p) => Math.min(pagination.pages, p + 1))}
+                            disabled={pagination.page >= pagination.pages}
+                            className="px-3 py-1.5 border border-gray-300 rounded-md disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
+                        >
+                            Next
+                        </button>
+                    </div>
                 </div>
             )}
 

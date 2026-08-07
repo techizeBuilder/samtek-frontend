@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import axios from "axios";
-import { MoreVertical, Eye } from "lucide-react";
+import { MoreVertical, Eye, Search } from "lucide-react";
 import ViewEditJobModal from "./ViewEditJobModal";
 import Loader from "@/pages/hrms/Loader";
 
@@ -34,22 +34,42 @@ const JobOpening = () => {
   const [openModal, setOpenModal] = useState(false);
   const [selectedJob, setSelectedJob] = useState<JobOpening | null>(null);
   const [mode, setMode] = useState<"view" | "edit" | "add">("add");
+  const [initialLoad, setInitialLoad] = useState(true);
+
+  // Search + pagination — backend now supports search/page/limit (opt-in
+  // via `page`, see jobOpeningController.js getAllJobOpenings).
+  const [search, setSearch] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({ current: 1, total: 1, count: 0 });
+  const limit = 15;
+
+  useEffect(() => {
+    const t = setTimeout(() => setSearch(searchInput), 400);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  useEffect(() => { setPage(1); }, [search]);
 
   const fetchJobs = async () => {
     try {
       setLoading(true);
       const res = await axios.get(`${API_BASE}/job-openings`, {
         headers: { Authorization: `Bearer ${token}` },
+        params: { page, limit, search: search || undefined },
       });
-      setJobs(res.data);
+      setJobs(res.data?.data || []);
+      setPagination(res.data?.pagination || { current: 1, total: 1, count: 0 });
     } finally {
       setLoading(false);
+      setInitialLoad(false);
     }
   };
 
   useEffect(() => {
     fetchJobs();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, search]);
 
   const closeJob = async (id: string) => {
     await axios.patch(
@@ -59,7 +79,7 @@ const JobOpening = () => {
     );
     fetchJobs();
   };
-   if (loading) {
+   if (loading && initialLoad) {
      return (
        <div className="relative min-h-[300px]">
          <Loader />
@@ -69,22 +89,34 @@ const JobOpening = () => {
   return (
     <div className="p-6">
       {/* HEADER */}
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex justify-between items-center mb-6 gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-semibold">Job Openings</h1>
           <p className="text-sm text-gray-500">Recruitment / Job Openings</p>
         </div>
 
-        <button
-          onClick={() => {
-            setMode("add");
-            setSelectedJob(null);
-            setOpenModal(true);
-          }}
-          className="bg-orange-500 text-white px-4 py-2 rounded-md font-medium hover:bg-orange-600"
-        >
-          + Add Job Opening
-        </button>
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="relative w-56">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search job title..."
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+            />
+          </div>
+          <button
+            onClick={() => {
+              setMode("add");
+              setSelectedJob(null);
+              setOpenModal(true);
+            }}
+            className="bg-orange-500 text-white px-4 py-2 rounded-md font-medium hover:bg-orange-600"
+          >
+            + Add Job Opening
+          </button>
+        </div>
       </div>
 
       {/* TABLE */}
@@ -209,6 +241,30 @@ const JobOpening = () => {
           </tbody>
         </table>
       </div>
+
+      {pagination.total > 1 && (
+        <div className="flex items-center justify-between mt-4 text-sm text-gray-600">
+          <span>
+            Page {pagination.current} of {pagination.total} ({pagination.count} job openings)
+          </span>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={pagination.current <= 1}
+              className="px-3 py-1.5 border border-gray-300 rounded-md disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
+            >
+              Previous
+            </button>
+            <button
+              onClick={() => setPage((p) => Math.min(pagination.total, p + 1))}
+              disabled={pagination.current >= pagination.total}
+              className="px-3 py-1.5 border border-gray-300 rounded-md disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
 
       <ViewEditJobModal
         isOpen={openModal}

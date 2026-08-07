@@ -56,15 +56,32 @@ export default function DocumentVerification() {
   const [docs, setDocs] = useState<DocRecord[]>([]);
   const [docTypes, setDocTypes] = useState<DocTypeConfig[]>([]);
   const [loading, setLoading] = useState(true);
+  const [initialLoad, setInitialLoad] = useState(true);
   const [search, setSearch] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({ current: 1, total: 1, count: 0 });
+  const limit = 15;
   const [selectedEmp, setSelectedEmp] = useState<EmployeeRow | null>(null);
   const [actingDocId, setActingDocId] = useState<string | null>(null);
 
+  useEffect(() => {
+    const t = setTimeout(() => setSearch(searchInput), 400);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  useEffect(() => { setPage(1); }, [search]);
+
+  // Documents aren't paginated here — they're supporting data used to
+  // compute the uploaded/verified badges for whichever employees are on the
+  // current page, not the resource being listed, so the bulk fetch stays.
   const fetchAll = async () => {
     try {
+      setLoading(true);
       const [usersRes, docsRes, typesRes] = await Promise.all([
-        axios.get(`${API}/users?limit=1000`, {
+        axios.get(`${API}/users`, {
           headers: { Authorization: `Bearer ${token}` },
+          params: { page, limit, search: search || undefined },
         }),
         axios.get(`${API}/documents/all`, {
           headers: { Authorization: `Bearer ${token}` },
@@ -77,6 +94,15 @@ export default function DocumentVerification() {
       const userList =
         usersRes.data?.data?.users || usersRes.data?.users || usersRes.data?.data || [];
       setEmployees(Array.isArray(userList) ? userList : []);
+      setPagination(
+        usersRes.data?.data?.pagination
+          ? {
+              current: usersRes.data.data.pagination.page,
+              total: usersRes.data.data.pagination.pages,
+              count: usersRes.data.data.pagination.total,
+            }
+          : { current: 1, total: 1, count: userList.length }
+      );
       setDocs(Array.isArray(docsRes.data) ? docsRes.data : []);
       const types = typesRes.data?.data;
       setDocTypes(Array.isArray(types) ? types : []);
@@ -84,12 +110,14 @@ export default function DocumentVerification() {
       console.error("Failed to load document verification data", error);
     } finally {
       setLoading(false);
+      setInitialLoad(false);
     }
   };
 
   useEffect(() => {
     fetchAll();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, search]);
 
   // Returns one document per type for this employee — the most recently
   // uploaded one — so stale duplicate rows never cause the counts or the
@@ -108,16 +136,9 @@ export default function DocumentVerification() {
     return Array.from(latestByType.values());
   };
 
-  const filteredEmployees = employees.filter((e) => {
-    const name = (e.fullName || e.name || e.username || "").toLowerCase();
-    const q = search.trim().toLowerCase();
-    return (
-      !q ||
-      name.includes(q) ||
-      (e.employeeId || "").toLowerCase().includes(q) ||
-      (e.email || "").toLowerCase().includes(q)
-    );
-  });
+  // Search is now applied server-side (getUsers already supports it) — the
+  // employees state already reflects the current page's filtered results.
+  const filteredEmployees = employees;
 
   const handleSetStatus = async (docId: string, status: "VERIFIED" | "REJECTED", remarks?: string) => {
     try {
@@ -144,7 +165,7 @@ export default function DocumentVerification() {
     }
   };
 
-  if (loading) return <Loader />;
+  if (loading && initialLoad) return <Loader />;
 
   return (
     <div className="p-4 md:p-6 space-y-6">
@@ -158,8 +179,8 @@ export default function DocumentVerification() {
         <div className="relative">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
             placeholder="Search by name, employee ID, email..."
             className="pl-9 pr-3 py-2 border rounded-lg text-sm w-72 focus:outline-none focus:ring-2 focus:ring-indigo-400"
           />
@@ -232,6 +253,31 @@ export default function DocumentVerification() {
           </tbody>
         </table>
       </div>
+
+      {/* PAGINATION */}
+      {pagination.total > 1 && (
+        <div className="flex items-center justify-between text-sm text-gray-600">
+          <span>
+            Page {pagination.current} of {pagination.total} ({pagination.count} employees)
+          </span>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={pagination.current <= 1}
+              className="px-3 py-1.5 border border-gray-300 rounded-md disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
+            >
+              Previous
+            </button>
+            <button
+              onClick={() => setPage((p) => Math.min(pagination.total, p + 1))}
+              disabled={pagination.current >= pagination.total}
+              className="px-3 py-1.5 border border-gray-300 rounded-md disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
 
       {selectedEmp && (
         <DocumentReviewModal

@@ -1,6 +1,6 @@
 /** @format */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import axios from "axios";
 import { 
@@ -54,15 +54,24 @@ const LeavesEmployee = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
 
-  const { data: leaves = [], isLoading } = useQuery({
-    queryKey: ["manager-today-leaves"],
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchTerm), 400);
+    return () => clearTimeout(t);
+  }, [searchTerm]);
+
+  const { data: todayRes, isLoading } = useQuery({
+    queryKey: ["manager-today-leaves", debouncedSearch],
     queryFn: async () => {
-      const res = await axios.get(`${API_BASE}/leaves/manager/today`, {
+      const params = new URLSearchParams();
+      if (debouncedSearch) params.set("search", debouncedSearch);
+      const res = await axios.get(`${API_BASE}/leaves/manager/today?${params.toString()}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       return res.data;
     },
   });
+  const leaves = todayRes || [];
 
   const { data: allRequests = [] } = useQuery({
     queryKey: ["manager-all-leaves"],
@@ -90,10 +99,8 @@ const LeavesEmployee = () => {
     });
   };
 
-  const filteredLeaves = leaves.filter((leave: any) => 
-    leave.employee?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    leave.leaveType?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Search is now applied server-side (see the /leaves/manager/today call above).
+  const filteredLeaves = leaves;
 
   return (
     <div className="p-4 sm:p-8 space-y-8 bg-[#F8FAFC] min-h-screen">

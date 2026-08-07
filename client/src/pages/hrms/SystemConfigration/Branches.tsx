@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import axios from "axios";
-import { MoreVertical } from "lucide-react";
+import { MoreVertical, Search } from "lucide-react";
 import BranchModal from "./BranchModal";
 import DeleteBranchModal from "./DeleteBranchModal";
 import Loader from "../Loader";
@@ -47,10 +47,28 @@ export default function Branch() {
   // ✅ DELETE MODAL STATES
   const [openDeleteModal, setOpenDeleteModal] = useState(false);
   const [branchToDelete, setBranchToDelete] = useState<Branch | null>(null);
-  /* ================= FETCH COMPANIES ================= */
+
+  // Search + pagination — backend already supports search/page/limit
+  // (getCompanies in companyController.js), just wasn't being sent.
+  const [search, setSearch] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({ current: 1, total: 1, count: 0 });
+  const [initialLoad, setInitialLoad] = useState(true);
+  const limit = 15;
+
+  useEffect(() => {
+    const t = setTimeout(() => setSearch(searchInput), 400);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  useEffect(() => { setPage(1); }, [search, selectedCompanyId]);
+
+  /* ================= FETCH COMPANIES (for the filter dropdown — full list, unpaged) ================= */
   const fetchCompanies = async () => {
     const res = await axios.get(`${API_BASE}/companies`, {
       headers: { Authorization: `Bearer ${token}` },
+      params: { limit: 1000 },
     });
     setCompanies(res.data?.companies || []);
   };
@@ -58,8 +76,13 @@ export default function Branch() {
   /* ================= FETCH UNITS FROM COMPANIES ================= */
   const fetchBranches = async () => {
     try {
+      setLoading(true);
+      const selectedCompanyName = selectedCompanyId === "all"
+        ? undefined
+        : companies.find((c) => c._id === selectedCompanyId)?.name;
       const res = await axios.get(`${API_BASE}/companies`, {
         headers: { Authorization: `Bearer ${token}` },
+        params: { page, limit, search: search || undefined, name: selectedCompanyName },
       });
       const companiesData = res.data?.companies || [];
       const mappedUnits = companiesData.map((comp: any) => ({
@@ -77,15 +100,21 @@ export default function Branch() {
         createdAt: comp.createdAt,
       }));
       setBranches(mappedUnits);
+      setPagination(res.data?.pagination || { current: 1, total: 1, count: 0 });
     } finally {
       setLoading(false);
+      setInitialLoad(false);
     }
   };
 
   useEffect(() => {
     fetchCompanies();
-    fetchBranches();
   }, []);
+
+  useEffect(() => {
+    fetchBranches();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, search, selectedCompanyId]);
 
   const handleDeleteBranch = async () => {
     if (!branchToDelete) return;
@@ -129,13 +158,11 @@ export default function Branch() {
     }
   });
 
-  const filteredBranches = sortedBranches.filter((branch) => {
-    if (selectedCompanyId === "all") return true;
-    const id = typeof branch.companyId === "string" ? branch.companyId : (branch.companyId as any)?._id;
-    return id === selectedCompanyId;
-  });
+  // Company filter + search are both applied server-side now (see fetchBranches),
+  // so `branches` already reflects the current page's filtered results.
+  const filteredBranches = sortedBranches;
 
-  if (loading) {
+  if (loading && initialLoad) {
     return (
       <div className="relative min-h-screen">
         <Loader />
@@ -146,13 +173,23 @@ export default function Branch() {
   return (
     <div className="p-6">
       {/* HEADER */}
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex justify-between items-center mb-6 gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-semibold">Units</h1>
           <p className="text-sm text-gray-500">System Configuration / Unit</p>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="relative w-full sm:w-64">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search units..."
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+            />
+          </div>
           <select
             value={selectedCompanyId}
             onChange={(e) => setSelectedCompanyId(e.target.value)}
@@ -263,6 +300,31 @@ export default function Branch() {
           </tbody>
         </table>
       </div>
+
+      {/* PAGINATION */}
+      {pagination.total > 1 && (
+        <div className="flex items-center justify-between mt-4 text-sm text-gray-600">
+          <span>
+            Page {pagination.current} of {pagination.total} ({pagination.count} units)
+          </span>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={pagination.current <= 1}
+              className="px-3 py-1.5 border border-gray-300 rounded-md disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
+            >
+              Previous
+            </button>
+            <button
+              onClick={() => setPage((p) => Math.min(pagination.total, p + 1))}
+              disabled={pagination.current >= pagination.total}
+              className="px-3 py-1.5 border border-gray-300 rounded-md disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
 
       <BranchModal
         isOpen={openModal}
