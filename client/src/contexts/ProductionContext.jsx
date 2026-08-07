@@ -133,8 +133,8 @@ export function ProductionProvider({ children }) {
   });
 
   const approveQCMutation = useMutation({
-    mutationFn: ({ orderId, stepIndex, qcBy, unitNumber = 1 }) =>
-      apiRequest('PUT', `${BASE}/orders/${orderId}/processes/${stepIndex}/approve-qc?unit=${unitNumber}`, { qcBy }),
+    mutationFn: ({ orderId, stepIndex, qcBy, unitNumber = 1, productionCost, productionExpense }) =>
+      apiRequest('PUT', `${BASE}/orders/${orderId}/processes/${stepIndex}/approve-qc?unit=${unitNumber}`, { qcBy, productionCost, productionExpense }),
     onSuccess: invalidateOrders,
   });
 
@@ -201,8 +201,8 @@ export function ProductionProvider({ children }) {
   const markProcessComplete = useCallback((orderId, stepName, unitNumber = 1) =>
     markProcessCompleteMutation.mutate({ orderId, stepIndex: stepIndex(stepName), unitNumber }), []);
 
-  const approveQC = useCallback((orderId, stepName, qcBy, unitNumber = 1) =>
-    approveQCMutation.mutate({ orderId, stepIndex: stepIndex(stepName), qcBy, unitNumber }), []);
+  const approveQC = useCallback((orderId, stepName, qcBy, unitNumber = 1, productionCost, productionExpense) =>
+    approveQCMutation.mutate({ orderId, stepIndex: stepIndex(stepName), qcBy, unitNumber, productionCost, productionExpense }), []);
 
   const rejectQC = useCallback((orderId, stepName, qcBy, reason, unitNumber = 1) =>
     rejectQCMutation.mutate({ orderId, stepIndex: stepIndex(stepName), qcBy, reason, unitNumber }), []);

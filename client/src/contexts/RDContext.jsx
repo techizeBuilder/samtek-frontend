@@ -144,6 +144,7 @@ export function RDProvider({ children }) {
   const lockBOMMut = useMutation({ mutationFn: (bomId) => apiRequest('PUT', `${BASE}/boms/${bomId}/lock`), onSuccess: invBOMs });
   const discontinueMaterialMut = useMutation({ mutationFn: ({ bomId, matId }) => apiRequest('PUT', `${BASE}/boms/${bomId}/materials/${matId}/discontinue`), onSuccess: invBOMs });
   const reactivateMaterialMut = useMutation({ mutationFn: ({ bomId, matId }) => apiRequest('PUT', `${BASE}/boms/${bomId}/materials/${matId}/reactivate`), onSuccess: invBOMs });
+  const updateProductionCostMut = useMutation({ mutationFn: ({ bomId, productionCost, productionExpense }) => apiRequest('PUT', `${BASE}/boms/${bomId}/production-cost`, { productionCost, productionExpense }), onSuccess: invBOMs });
 
   // ── Prototype mutations ──────────────────────────────────────────────────────
   const createPrototypeMut = useMutation({ mutationFn: (d) => apiRequest('POST', `${BASE}/prototypes`, d), onSuccess: invPrototypes });
@@ -209,6 +210,8 @@ export function RDProvider({ children }) {
   const lockBOM = useCallback((bomId) => lockBOMMut.mutate(bomId), []);
   const discontinueMaterial = useCallback((bomId, matId) => discontinueMaterialMut.mutate({ bomId, matId }), []);
   const reactivateMaterial = useCallback((bomId, matId) => reactivateMaterialMut.mutate({ bomId, matId }), []);
+  const updateProductionCost = useCallback((bomId, productionCost, productionExpense) =>
+    updateProductionCostMut.mutateAsync({ bomId, productionCost, productionExpense }), []);
 
   const addPrototype = useCallback((data) => createPrototypeMut.mutate(data), []);
   const updatePrototype = useCallback((id, data) => updatePrototypeMut.mutate({ id, data }), []);
@@ -319,7 +322,7 @@ export function RDProvider({ children }) {
       machinesLoading, bomsLoading, prototypesLoading, changeRequestsLoading,
       toolProcessesLoading, qualityParamsLoading, documentsLoading,
       addMachine, updateMachine, updateDesignStatus, updateReleaseStatus, discontinueMachine, reactivateMachine,
-      getBOMForMachine, addBOM, addMaterial, addMaterials, updateMaterial, deleteMaterial, lockBOM, discontinueMaterial, reactivateMaterial,
+      getBOMForMachine, addBOM, addMaterial, addMaterials, updateMaterial, deleteMaterial, lockBOM, discontinueMaterial, reactivateMaterial, updateProductionCost,
       addPrototype, updatePrototype,
       addChangeRequest, resolveChangeRequest,
       getToolsProcess, addTool, removeTool, discontinueTool, reactivateTool, addProcess, removeProcess,

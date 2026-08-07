@@ -75,6 +75,10 @@ export default function ProcessExecution() {
   const [qcDialog, setQcDialog] = useState(null); // { step, action: 'approve'|'reject' }
   const [qcBy, setQcBy] = useState('');
   const [rejectReason, setRejectReason] = useState('');
+  // Only asked for when approving 'Final Testing' — that's the step that
+  // means this physical unit is now built (see handleQCSubmit).
+  const [productionCost, setProductionCost] = useState('');
+  const [productionExpense, setProductionExpense] = useState('');
   const [notesDialog, setNotesDialog] = useState(null); // { step, notes }
   const [notesValue, setNotesValue] = useState('');
   const [subEntryDialog, setSubEntryDialog] = useState(null); // { step }
@@ -137,16 +141,25 @@ export default function ProcessExecution() {
     return processes[stepIndex - 1].status === 'Completed';
   };
 
+  const isFinalStepApproval = qcDialog?.action === 'approve' && qcDialog?.step === 'Final Testing';
+
   const handleQCSubmit = () => {
     if (!qcBy.trim()) return;
     if (qcDialog.action === 'approve') {
-      approveQC(selectedOrderId, qcDialog.step, qcBy, activeUnit);
+      if (isFinalStepApproval) {
+        if (productionCost === '' || productionExpense === '' || Number(productionCost) < 0 || Number(productionExpense) < 0) return;
+        approveQC(selectedOrderId, qcDialog.step, qcBy, activeUnit, Number(productionCost), Number(productionExpense));
+      } else {
+        approveQC(selectedOrderId, qcDialog.step, qcBy, activeUnit);
+      }
     } else {
       rejectQC(selectedOrderId, qcDialog.step, qcBy, rejectReason, activeUnit);
     }
     setQcDialog(null);
     setQcBy('');
     setRejectReason('');
+    setProductionCost('');
+    setProductionExpense('');
   };
 
   const handleSubQCSubmit = () => {
@@ -600,7 +613,7 @@ export default function ProcessExecution() {
       )}
 
       {/* QC Dialog */}
-      <Dialog open={!!qcDialog} onOpenChange={() => setQcDialog(null)}>
+      <Dialog open={!!qcDialog} onOpenChange={() => { setQcDialog(null); setProductionCost(''); setProductionExpense(''); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle className={qcDialog?.action === 'approve' ? 'text-emerald-700' : 'text-red-700'}>
@@ -613,6 +626,21 @@ export default function ProcessExecution() {
               <label className="text-xs font-semibold text-slate-600 mb-1 block">Supervisor Name *</label>
               <Input placeholder="Enter your name" value={qcBy} onChange={e => setQcBy(e.target.value)} />
             </div>
+            {isFinalStepApproval && (
+              <div className="space-y-3 bg-emerald-50 border border-emerald-200 rounded-lg p-3">
+                <p className="text-xs font-semibold text-emerald-800">This unit is now built — enter what it actually cost, so its BOM/pricing stays accurate.</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-semibold text-slate-600 mb-1 block">Production Cost *</label>
+                    <Input type="number" min="0" placeholder="0" value={productionCost} onChange={e => setProductionCost(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-600 mb-1 block">Production Expense *</label>
+                    <Input type="number" min="0" placeholder="0" value={productionExpense} onChange={e => setProductionExpense(e.target.value)} />
+                  </div>
+                </div>
+              </div>
+            )}
             {qcDialog?.action === 'reject' && (
               <div>
                 <label className="text-xs font-semibold text-slate-600 mb-1 block">Rejection Reason *</label>
@@ -627,10 +655,10 @@ export default function ProcessExecution() {
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setQcDialog(null)}>Cancel</Button>
+            <Button variant="outline" onClick={() => { setQcDialog(null); setProductionCost(''); setProductionExpense(''); }}>Cancel</Button>
             <Button
               onClick={handleQCSubmit}
-              disabled={!qcBy.trim() || (qcDialog?.action === 'reject' && !rejectReason.trim())}
+              disabled={!qcBy.trim() || (qcDialog?.action === 'reject' && !rejectReason.trim()) || (isFinalStepApproval && (productionCost === '' || productionExpense === '' || Number(productionCost) < 0 || Number(productionExpense) < 0))}
               className={qcDialog?.action === 'approve' ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : 'bg-red-600 hover:bg-red-700 text-white'}
             >
               {qcDialog?.action === 'approve' ? 'Approve' : 'Reject & Send for Rework'}

@@ -168,17 +168,19 @@ function InventoryCostPanel({ tab }) {
                 <th className="px-4 py-3 text-left">Category</th>
                 <th className="px-4 py-3 text-right">Current Stock</th>
                 <th className="px-4 py-3 text-right">Purchase Cost</th>
+                <th className="px-4 py-3 text-right">MRP</th>
+                <th className="px-4 py-3 text-right">Sale Price</th>
                 <th className="px-4 py-3 text-center">Action</th>
               </tr>
             </thead>
             <tbody>
               {isLoading ? (
-                <tr><td colSpan={6} className="text-center py-12 text-slate-400">Loading items...</td></tr>
+                <tr><td colSpan={8} className="text-center py-12 text-slate-400">Loading items...</td></tr>
               ) : isError ? (
-                <tr><td colSpan={6} className="text-center py-12 text-red-400">Failed to load items.</td></tr>
+                <tr><td colSpan={8} className="text-center py-12 text-red-400">Failed to load items.</td></tr>
               ) : filteredItems.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="text-center py-12 text-slate-400">
+                  <td colSpan={8} className="text-center py-12 text-slate-400">
                     {items.length === 0 ? tab.emptyHint : 'No items match your search.'}
                   </td>
                 </tr>
@@ -205,6 +207,8 @@ function InventoryCostPanel({ tab }) {
                       />
                     </div>
                   </td>
+                  <td className="px-4 py-3 text-right text-slate-600 text-xs">{money(item.mrp)}</td>
+                  <td className="px-4 py-3 text-right text-slate-600 text-xs">{money(item.salePrice)}</td>
                   <td className="px-4 py-3 text-center">
                     <button
                       onClick={() => saveItem(item)}
