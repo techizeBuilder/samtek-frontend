@@ -69,6 +69,7 @@ import PurchaseRequest from "@/pages/accounts/PurchaseRequest";
 import VendorPayments from "@/pages/accounts/VendorPayments";
 import PayableAgeing from "@/pages/accounts/PayableAgeing";
 import PurchaseExpenses from "@/pages/accounts/PurchaseExpenses";
+import PurchaseInventory from "@/pages/accounts/PurchaseInventory";
 import GSTAndTDS from "@/pages/accounts/GSTAndTDS";
 import DamageAndExpiry from "@/pages/accounts/DamageAndExpiry";
 import SalesmanSettlement from "@/pages/accounts/SalesmanSettlement";
@@ -1137,6 +1138,11 @@ function Router() {
       <Route path="/accounts/purchases/vendors">
         <ProtectedRoute requiredRole="Accounts">
           <VendorMaster />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/accounts/purchases/inventory">
+        <ProtectedRoute requiredRole="Accounts">
+          <PurchaseInventory />
         </ProtectedRoute>
       </Route>
       <Route path="/accounts/purchases/requests">
