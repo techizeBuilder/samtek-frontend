@@ -912,6 +912,22 @@ const Quotation = () => {
     return new Set(ids);
   })();
 
+  // itemId -> quantity the applied plant needs of it (e.g. 2 of a motor).
+  // Keyed off appliedFilters.plantId (the plant actually narrowing the list
+  // right now), not the live searchPlant dropdown, so it always matches what
+  // the picker is showing. Used to seed a selected item's quantity so the
+  // quotation total reflects the plant's real bill of materials instead of
+  // silently defaulting every item to 1.
+  const appliedPlantItemQuantities = (() => {
+    if (appliedFilters.plantId === 'All') return null;
+    const plant = allPlants.find(pl => pl._id === appliedFilters.plantId);
+    if (!plant) return new Map();
+    const map = new Map();
+    (plant.machines || []).forEach(m => { if (m.item?._id) map.set(m.item._id, m.quantity || 1); });
+    (plant.motors || []).forEach(m => { if (m.item?._id) map.set(m.item._id, m.quantity || 1); });
+    return map;
+  })();
+
   // Categories present among the (optionally plant-narrowed) item list
   const allCategoriesList = categoriesResponse?.categories || [];
   const categoriesByPlant = (() => {
@@ -951,7 +967,7 @@ const Quotation = () => {
       ...product,
       id: product._id,
       price: buyerType === 'Dealer' ? (product.dealerPrice || product.mrp || 0) : (product.mrp || 0),
-      quantity: 1,
+      quantity: appliedPlantItemQuantities?.get(product._id) || 1,
       gst: 18
     }]);
   };
@@ -1454,7 +1470,7 @@ const Quotation = () => {
           .map(p => ({
             ...p,
             id: p._id,
-            quantity: 1,
+            quantity: appliedPlantItemQuantities?.get(p._id) || 1,
             price: quotationType === 'Dealer' ? (p.dealerPrice || p.mrp || 0) : (p.mrp || 0),
             gst: p.gst || 18,
             description: p.description || ''
