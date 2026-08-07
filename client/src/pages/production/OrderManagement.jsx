@@ -8,12 +8,13 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import {
   ClipboardList, Plus, CheckCircle, AlertTriangle, Clock, Package,
-  ChevronRight, FileCheck, Wrench, Send, Search, Filter, FileText, ExternalLink, ShoppingCart, ArrowDownToLine, Eye
+  ChevronRight, FileCheck, Wrench, Send, Search, Filter, FileText, ExternalLink, ShoppingCart, ArrowDownToLine, Eye, Layers
 } from 'lucide-react';
 import { useProduction as useProd } from '@/contexts/ProductionContext';
 import { apiRequest } from '@/lib/queryClient';
 import { showSuccessToast, showSmartToast } from '@/lib/toast-utils';
 import { config } from '@/config/environment';
+import { formatCatalogFieldValue } from '@/utils/bomFieldFormat';
 
 const statusColor = {
   'Pending': 'bg-slate-100 text-slate-700 border-slate-200',
@@ -37,12 +38,6 @@ const statusIcon = {
 
 const emptyOrder = { machineCode: '', machineName: '', priority: 'Normal', deliveryDate: '', source: 'Stock' };
 const emptyDemand = { materialCode: '', materialName: '', quantity: '', unitType: '', unit: '' };
-
-const groupByLabel = (customFields) =>
-  (customFields || []).reduce((acc, cf) => {
-    (acc[cf.groupLabel] = acc[cf.groupLabel] || []).push(cf);
-    return acc;
-  }, {});
 
 export default function OrderManagement() {
   const {
@@ -106,6 +101,18 @@ export default function OrderManagement() {
     if (unitTypesData?.unitTypes) return unitTypesData.unitTypes.map(ut => ut.name);
     return UNIT_TYPES;
   }, [unitTypesData]);
+
+  // BOM Format & Modification (R&D-configured) — drives both the "Bill of
+  // Materials by Part" section's extra columns and the View Material dialog,
+  // same as BOM Management, so Production always sees the same fields R&D
+  // chose to surface.
+  const { data: bomFieldConfigResponse } = useQuery({
+    queryKey: ['rd-bom-field-config'],
+    queryFn: () => apiRequest('GET', '/api/rd/bom-field-config'),
+  });
+  const enabledBOMFields = bomFieldConfigResponse?.data?.enabledFields || [];
+  const bomFieldCatalog = bomFieldConfigResponse?.data?.catalog || [];
+  const extraViewFields = bomFieldCatalog.filter(f => enabledBOMFields.includes(f.key) && !['code', 'name', 'unit', 'purchaseCost'].includes(f.key));
   const getUnitsForTypeDynamic = (unitTypeName, currentUnit) => {
     if (!unitTypeName) return [];
     if (unitTypesData?.unitTypes) {
@@ -294,6 +301,28 @@ export default function OrderManagement() {
     const bomMat = bomView.bom?.materials?.find(mm => (mm.code || '').toLowerCase() === (materialCode || '').toLowerCase());
     setViewMat(bomMat ? { found: true, ...bomMat } : { found: false, code: materialCode });
   };
+
+  // Groups the BOM's materials by Child Part -> Sub Child Part, straight from
+  // R&D's BOM (independent of the flat Material Demand transaction list) —
+  // shows Production what's actually needed to build each part, not just
+  // what's been requested/issued so far.
+  const bomMaterialGroups = React.useMemo(() => {
+    const materials = bomView.bom?.materials || [];
+    const groups = new Map();
+    for (const mat of materials) {
+      const cpKey = mat.childPartCode || mat.childPart || '__none__';
+      if (!groups.has(cpKey)) {
+        groups.set(cpKey, { childPart: mat.childPart || 'Uncategorized', childPartCode: mat.childPartCode || '', subGroups: new Map() });
+      }
+      const cpGroup = groups.get(cpKey);
+      const scKey = mat.subChildPartCode || mat.subChildPart || '__none__';
+      if (!cpGroup.subGroups.has(scKey)) {
+        cpGroup.subGroups.set(scKey, { subChildPart: mat.subChildPart || 'Uncategorized', subChildPartCode: mat.subChildPartCode || '', materials: [] });
+      }
+      cpGroup.subGroups.get(scKey).materials.push(mat);
+    }
+    return Array.from(groups.values()).map(g => ({ ...g, subGroups: Array.from(g.subGroups.values()) }));
+  }, [bomView.bom]);
 
   const handleRaiseRDRequest = async (id) => {
     try {
@@ -823,6 +852,63 @@ export default function OrderManagement() {
                   )}
                 </div>
 
+                {/* Bill of Materials by Part — read-only breakdown of which Child
+                    Part / Sub Child Part each BOM material builds, straight from
+                    R&D's BOM (already fetched above for the View button).
+                    Independent of Material Demand: this shows what's needed to
+                    build the machine, not what's been requested/issued so far. */}
+                <div>
+                  <h3 className="text-sm font-bold text-slate-700 mb-2 flex items-center gap-1.5"><Layers className="h-4 w-4" /> Bill of Materials by Part</h3>
+                  {bomView.loading ? (
+                    <p className="text-xs text-slate-400 py-3 text-center">Loading BOM…</p>
+                  ) : bomMaterialGroups.length === 0 ? (
+                    <p className="text-xs text-slate-400 py-3 text-center">No BOM found for this machine.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {bomMaterialGroups.map((cp, cpIdx) => (
+                        <div key={cpIdx} className="border border-slate-200 rounded-lg overflow-hidden">
+                          <div className="bg-slate-50 px-3 py-2 flex items-center gap-2">
+                            {cp.childPartCode && <span className="font-mono text-[10px] text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">{cp.childPartCode}</span>}
+                            <span className="text-xs font-bold text-slate-700">{cp.childPart}</span>
+                          </div>
+                          <div className="divide-y divide-slate-100">
+                            {cp.subGroups.map((sc, scIdx) => (
+                              <div key={scIdx} className="px-3 py-2">
+                                <div className="flex items-center gap-2 mb-1.5">
+                                  {sc.subChildPartCode && <span className="font-mono text-[10px] text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200">{sc.subChildPartCode}</span>}
+                                  <span className="text-xs font-semibold text-slate-600">{sc.subChildPart}</span>
+                                </div>
+                                <table className="w-full text-xs">
+                                  <tbody>
+                                    {sc.materials.map(mat => (
+                                      <tr key={mat._id} className="border-t border-slate-50">
+                                        <td className="py-1.5 pr-2 font-mono text-blue-700 w-20">{mat.code}</td>
+                                        <td className="py-1.5 pr-2 text-slate-800">{mat.item}</td>
+                                        <td className="py-1.5 pr-2 text-slate-500 whitespace-nowrap">
+                                          {mat.quantity * (detailOrderLive.orderQuantity || 1)} {mat.unit}
+                                          {(detailOrderLive.orderQuantity || 1) > 1 && <span className="text-slate-400"> ({mat.quantity}/unit)</span>}
+                                        </td>
+                                        <td className="py-1.5 text-right">
+                                          <button
+                                            onClick={() => openMaterialView(mat.code)}
+                                            className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 transition-colors ml-auto"
+                                          >
+                                            <Eye className="h-3 w-3" /> View
+                                          </button>
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
                 {/* Process Summary */}
                 <div>
                   <h3 className="text-sm font-bold text-slate-700 mb-2 flex items-center gap-1.5"><Wrench className="h-4 w-4" /> Process Status</h3>
@@ -1109,6 +1195,8 @@ export default function OrderManagement() {
             </p>
           ) : viewMat && (
             <div className="space-y-4 py-2">
+              {/* Core — same fields captured on the Add Material form in BOM
+                  Management, always shown regardless of BOM Format & Modification. */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-slate-50 rounded-lg p-3">
                   <p className="text-xs text-slate-500 mb-1">BOM Quantity</p>
@@ -1119,6 +1207,10 @@ export default function OrderManagement() {
                   <p className="text-sm font-medium text-slate-800">{[viewMat.childPart, viewMat.subChildPart].filter(Boolean).join(' > ') || '—'}</p>
                 </div>
                 <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-xs text-slate-500 mb-1">Price</p>
+                  <p className="text-sm font-medium text-slate-800">₹{(viewMat.totalPrice || 0).toLocaleString()} <span className="text-xs text-slate-400">(₹{viewMat.unitPrice || 0}/unit)</span></p>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-3">
                   <p className="text-xs text-slate-500 mb-1">Status</p>
                   <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${viewMat.isDiscontinued ? 'bg-red-100 text-red-600 border-red-200' : 'bg-emerald-100 text-emerald-700 border-emerald-200'}`}>
                     {viewMat.isDiscontinued ? 'Discontinued' : 'Active'}
@@ -1126,64 +1218,56 @@ export default function OrderManagement() {
                 </div>
               </div>
 
-              {(viewMat.category || viewMat.pType || viewMat.pSourceType || viewMat.brand || viewMat.metrology || viewMat.description ||
-                viewMat.size || (viewMat.unitWeightValue !== null && viewMat.unitWeightValue !== undefined) || viewMat.inputUnit || viewMat.outputUnit) && (
+              {/* Everything below is exactly whatever R&D's BOM Format &
+                  Modification has enabled — same fields shown in BOM
+                  Management's table/view, kept in sync via bomFieldFormat.js. */}
+              {extraViewFields.length > 0 && (
                 <div className="bg-slate-50 rounded-lg p-3">
-                  <p className="text-xs text-slate-500 mb-2 font-semibold">Product Master Snapshot</p>
+                  <p className="text-xs text-slate-500 mb-2 font-semibold">Additional Details <span className="text-[10px] text-slate-400 font-normal">(from BOM Format & Modification)</span></p>
                   <div className="grid grid-cols-2 gap-2">
-                    {viewMat.pType && <div><p className="text-[11px] text-slate-400">P-Type</p><p className="text-sm text-slate-800">{viewMat.pType}</p></div>}
-                    {viewMat.category && <div><p className="text-[11px] text-slate-400">Category</p><p className="text-sm text-slate-800">{viewMat.category}</p></div>}
-                    {viewMat.pSourceType && <div><p className="text-[11px] text-slate-400">P-Source Type</p><p className="text-sm text-slate-800">{viewMat.pSourceType}</p></div>}
-                    {viewMat.brand && <div><p className="text-[11px] text-slate-400">Brand</p><p className="text-sm text-slate-800">{viewMat.brand}</p></div>}
-                    {viewMat.metrology && <div><p className="text-[11px] text-slate-400">Metrology</p><p className="text-sm text-slate-800">{viewMat.metrology}</p></div>}
-                    {viewMat.size && <div><p className="text-[11px] text-slate-400">Size</p><p className="text-sm text-slate-800">{viewMat.size}</p></div>}
-                    {(viewMat.unitWeightValue !== null && viewMat.unitWeightValue !== undefined) && (
-                      <div><p className="text-[11px] text-slate-400">Unit Weight</p><p className="text-sm text-slate-800">{viewMat.unitWeightValue} {viewMat.unitWeightUnit || ''}</p></div>
-                    )}
-                    {viewMat.inputUnit && <div><p className="text-[11px] text-slate-400">Input Unit (Purchase)</p><p className="text-sm text-slate-800">{viewMat.inputUnit}</p></div>}
-                    {viewMat.outputUnit && <div><p className="text-[11px] text-slate-400">Output Unit</p><p className="text-sm text-slate-800">{viewMat.outputUnit}</p></div>}
+                    {extraViewFields.map(f => {
+                      if (f.key === 'specifications' || f.key === 'itemCategories' || f.key === 'applications') return null;
+                      const value = formatCatalogFieldValue(f.key, viewMat);
+                      if (value === '—') return null;
+                      return <div key={f.key}><p className="text-[11px] text-slate-400">{f.label}</p><p className="text-sm text-slate-800 break-words">{value}</p></div>;
+                    })}
                   </div>
-                  {viewMat.description && (
-                    <div className="mt-2">
-                      <p className="text-[11px] text-slate-400">Description</p>
-                      <p className="text-sm text-slate-700">{viewMat.description}</p>
+
+                  {enabledBOMFields.includes('itemCategories') && Array.isArray(viewMat.itemCategories) && viewMat.itemCategories.length > 0 && (
+                    <div className="mt-3">
+                      <p className="text-[11px] text-slate-400 mb-1">Item Category</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {viewMat.itemCategories.map((c, i) => (
+                          <span key={i} className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">{c}</span>
+                        ))}
+                      </div>
                     </div>
                   )}
-                </div>
-              )}
 
-              {Array.isArray(viewMat.specifications) && viewMat.specifications.filter(s => s.key).length > 0 && (
-                <div className="bg-slate-50 rounded-lg p-3">
-                  <p className="text-xs text-slate-500 mb-2 font-semibold">Specifications</p>
-                  <div className="divide-y divide-slate-100">
-                    {viewMat.specifications.filter(s => s.key).map((s, i) => (
-                      <div key={i} className="flex items-center justify-between py-1.5">
-                        <span className="text-xs font-semibold text-slate-500 w-2/5">{s.key}</span>
-                        <span className="text-sm text-slate-800 font-medium">{s.value || '—'}</span>
+                  {enabledBOMFields.includes('applications') && Array.isArray(viewMat.applications) && viewMat.applications.length > 0 && (
+                    <div className="mt-3">
+                      <p className="text-[11px] text-slate-400 mb-1">Applications</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {viewMat.applications.map((a, i) => (
+                          <span key={i} className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-purple-50 text-purple-700 border border-purple-200">{a}</span>
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+                    </div>
+                  )}
 
-              {Array.isArray(viewMat.customFields) && viewMat.customFields.length > 0 && (
-                <div className="bg-slate-50 rounded-lg p-3">
-                  <p className="text-xs text-slate-500 mb-2 font-semibold">Custom Fields</p>
-                  <div className="space-y-3">
-                    {Object.entries(groupByLabel(viewMat.customFields)).map(([groupLabel, fields]) => (
-                      <div key={groupLabel}>
-                        <p className="text-xs font-bold text-slate-600 mb-1">{groupLabel}</p>
-                        <div className="divide-y divide-slate-100">
-                          {fields.map((cf, i) => (
-                            <div key={i} className="flex items-center justify-between py-1.5">
-                              <span className="text-xs font-semibold text-slate-500 w-2/5">{cf.fieldName}</span>
-                              <span className="text-sm text-slate-800 font-medium">{cf.value || '—'}</span>
-                            </div>
-                          ))}
-                        </div>
+                  {enabledBOMFields.includes('specifications') && Array.isArray(viewMat.specifications) && viewMat.specifications.filter(s => s.key).length > 0 && (
+                    <div className="mt-3">
+                      <p className="text-[11px] text-slate-400 mb-1">Specifications</p>
+                      <div className="divide-y divide-slate-100">
+                        {viewMat.specifications.filter(s => s.key).map((s, i) => (
+                          <div key={i} className="flex items-center justify-between py-1.5">
+                            <span className="text-xs font-semibold text-slate-500 w-2/5">{s.key}</span>
+                            <span className="text-sm text-slate-800 font-medium">{s.value || '—'}</span>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

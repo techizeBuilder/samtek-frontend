@@ -195,6 +195,15 @@ export function RDProvider({ children }) {
 
   const addBOM = useCallback((machineId, variant) => createBOMMut.mutate({ machineId, variant }), []);
   const addMaterial = useCallback((bomId, mat) => addMaterialMut.mutate({ bomId, mat }), []);
+  // A Child Part/Sub Child Part is typically built from several raw
+  // materials, not just one — this adds each of them as its own material
+  // row, sequentially, so the BOM Creation form can submit a whole batch in
+  // one "Add to BOM" action instead of forcing one dialog round-trip per item.
+  const addMaterials = useCallback(async (bomId, mats) => {
+    for (const mat of mats) {
+      await addMaterialMut.mutateAsync({ bomId, mat });
+    }
+  }, []);
   const updateMaterial = useCallback((bomId, matId, data) => updateMaterialMut.mutate({ bomId, matId, data }), []);
   const deleteMaterial = useCallback((bomId, matId) => deleteMaterialMut.mutate({ bomId, matId }), []);
   const lockBOM = useCallback((bomId) => lockBOMMut.mutate(bomId), []);
@@ -310,7 +319,7 @@ export function RDProvider({ children }) {
       machinesLoading, bomsLoading, prototypesLoading, changeRequestsLoading,
       toolProcessesLoading, qualityParamsLoading, documentsLoading,
       addMachine, updateMachine, updateDesignStatus, updateReleaseStatus, discontinueMachine, reactivateMachine,
-      getBOMForMachine, addBOM, addMaterial, updateMaterial, deleteMaterial, lockBOM, discontinueMaterial, reactivateMaterial,
+      getBOMForMachine, addBOM, addMaterial, addMaterials, updateMaterial, deleteMaterial, lockBOM, discontinueMaterial, reactivateMaterial,
       addPrototype, updatePrototype,
       addChangeRequest, resolveChangeRequest,
       getToolsProcess, addTool, removeTool, discontinueTool, reactivateTool, addProcess, removeProcess,

@@ -4,24 +4,36 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { ClipboardList, Lock, Plus, Trash2, Edit2, Eye, AlertTriangle, ChevronDown, Package, Ban, RefreshCw, Search } from 'lucide-react';
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
+import { ClipboardList, Lock, Plus, Trash2, Edit2, Eye, AlertTriangle, Ban, RefreshCw, Search, Settings2 } from 'lucide-react';
 import { UNIT_TYPES, getUnitTypeForUnit, getUnitsForType } from '@/utils/unitTypes';
 import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
+import BOMFieldConfigModal from './BOMFieldConfigModal';
+import { formatCatalogFieldValue } from '@/utils/bomFieldFormat';
 
 const emptyMaterial = {
-  code: '', childPart: '', subChildPart: '', item: '', itemType: '', quantity: '', unitType: '', unit: '',
+  code: '', childPart: '', subChildPart: '', childPartCode: '', subChildPartCode: '',
+  item: '', itemType: '', quantity: '', unitType: '', unit: '',
+  unitPrice: 0, // display-only, always recomputed server-side on save
   // Product Master snapshot fields, silently captured on code match
   category: '', pType: '', pSourceType: '', brand: '', description: '', metrology: '', specifications: [], customFields: [],
-  size: '', unitWeightValue: '', unitWeightUnitType: '', unitWeightUnit: '',
-  inputUnitType: '', inputUnit: '', outputUnitType: '', outputUnit: ''
+  size: '', unitWeightValue: '', unitWeightUnitType: '', unitWeightUnit: ''
 };
 
-const groupByLabel = (customFields) =>
-  (customFields || []).reduce((acc, cf) => {
-    (acc[cf.groupLabel] = acc[cf.groupLabel] || []).push(cf);
-    return acc;
-  }, {});
+// A Sub Child Part is normally built from several raw materials, not just
+// one — so the Add dialog collects Child Part/Sub Child Part once, then any
+// number of these rows (one per Inventory item) submitted together as
+// separate material lines sharing that same Child Part/Sub Child Part.
+const emptyMaterialRow = {
+  code: '', item: '', itemType: '', quantity: '', unitType: '', unit: '', unitPrice: 0,
+  category: '', brand: '', description: '', specifications: [],
+};
+const emptyAddForm = {
+  childPartCode: '', childPart: '', subChildPartCode: '', subChildPart: '',
+  rows: [{ ...emptyMaterialRow }],
+};
+
 
 // BOM materials must reference an existing Inventory item (raw material) —
 // no free-typed codes. This picker replaces the old free-text code input
@@ -80,16 +92,20 @@ function MaterialCodePicker({ value, displayName, items, onSelect }) {
   );
 }
 
-export default function BOMManagement() {
-  const { machines, boms, getBOMForMachine, addBOM, addMaterial, updateMaterial, deleteMaterial, lockBOM, discontinueMaterial, reactivateMaterial } = useRD();
-  const [selectedMachineId, setSelectedMachineId] = useState('');
+export default function BOMCreationTab({ product }) {
+  const { boms, getBOMForMachine, addBOM, addMaterials, updateMaterial, deleteMaterial, lockBOM, discontinueMaterial, reactivateMaterial } = useRD();
+  const selectedMachineId = product?._id || '';
+  const selectedMachine = product;
+
   const [addOpen, setAddOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [lockOpen, setLockOpen] = useState(false);
   const [newBOMOpen, setNewBOMOpen] = useState(false);
+  const [bomFormatOpen, setBomFormatOpen] = useState(false);
   const [deleteMat, setDeleteMat] = useState(null);
   const [viewMat, setViewMat] = useState(null);
-  const [form, setForm] = useState(emptyMaterial);
+  const [isAdding, setIsAdding] = useState(false);
+  const [form, setForm] = useState(emptyAddForm);
   const [editForm, setEditForm] = useState(emptyMaterial);
   const [editingMat, setEditingMat] = useState(null);
 
@@ -106,6 +122,28 @@ export default function BOMManagement() {
     queryFn: () => apiRequest('GET', '/api/items?productKind=none&limit=1000'),
   });
   const inventoryItems = inventoryResponse?.items || [];
+
+  // Child Parts created (via the Child Part Creation tab) for this product —
+  // Child Part / Sub Child Part are picked from here, not typed.
+  const { data: childPartsResponse } = useQuery({
+    queryKey: ['rd-child-parts', selectedMachineId],
+    queryFn: () => apiRequest('GET', `/api/rd/child-parts?productId=${selectedMachineId}`),
+    enabled: !!selectedMachineId,
+  });
+  const childPartsForMachine = childPartsResponse?.data?.filter(cp => !cp.isDiscontinued) || [];
+
+  // BOM Format & Modification — which Inventory fields show as extra columns
+  // in the materials table, same set applied across every BOM.
+  const { data: bomFieldConfigResponse } = useQuery({
+    queryKey: ['rd-bom-field-config'],
+    queryFn: () => apiRequest('GET', '/api/rd/bom-field-config'),
+  });
+  const enabledBOMFields = bomFieldConfigResponse?.data?.enabledFields || [];
+  const bomFieldCatalog = bomFieldConfigResponse?.data?.catalog || [];
+  const enabledCatalogEntries = bomFieldCatalog.filter(f => enabledBOMFields.includes(f.key));
+  // Code/Name/Unit/purchaseCost already have their own dedicated columns
+  // (Material Code, Material Name, Unit, Price) — don't duplicate them.
+  const extraColumns = enabledCatalogEntries.filter(f => !['code', 'name', 'unit', 'purchaseCost'].includes(f.key));
 
   const unitTypesList = React.useMemo(() => {
     if (unitTypesData?.unitTypes) {
@@ -138,10 +176,6 @@ export default function BOMManagement() {
   // snapshots everything Inventory knows about it (category, brand, description,
   // specs) into the material record as a point-in-time copy, even though most of
   // it has no dedicated input on this form. Viewable via the "eye" button.
-  // pType/pSourceType/metrology/size/unitWeight/inputUnit/outputUnit/customFields
-  // were Product-Master-only fields — Inventory items don't have them, so they're
-  // no longer populated here (existing materials snapshotted before this change
-  // still show them fine, this just stops capturing new ones).
   const applyProductMatch = (setState, match) => {
     setState(f => ({
       ...f,
@@ -151,7 +185,53 @@ export default function BOMManagement() {
       brand: match.brand || '',
       description: match.description || '',
       specifications: Array.isArray(match.specifications) ? match.specifications : [],
+      // Base unit auto-filled from the Inventory item's own stocking unit —
+      // still just a starting point, editable afterward if this BOM line
+      // genuinely needs a different unit.
+      unitType: match.unitType || getUnitTypeForUnit(match.unit) || f.unitType,
+      unit: match.unit || f.unit,
+      // Display-only preview — the server always recomputes this
+      // authoritatively from the Inventory item on save.
+      unitPrice: match.purchaseCost || 0,
     }));
+  };
+
+  // Same as applyProductMatch above, but scoped to one row of the Add
+  // dialog's material list instead of the whole form.
+  const applyMatchToRow = (rowIndex, match) => {
+    setForm(f => {
+      const rows = [...f.rows];
+      const row = rows[rowIndex];
+      rows[rowIndex] = {
+        ...row,
+        code: match.code || '',
+        item: match.name || row.item,
+        category: match.category || '',
+        brand: match.brand || '',
+        description: match.description || '',
+        specifications: Array.isArray(match.specifications) ? match.specifications : [],
+        unitType: match.unitType || getUnitTypeForUnit(match.unit) || row.unitType,
+        unit: match.unit || row.unit,
+        unitPrice: match.purchaseCost || 0,
+      };
+      return { ...f, rows };
+    });
+  };
+  const updateRow = (rowIndex, patch) => {
+    setForm(f => {
+      const rows = [...f.rows];
+      rows[rowIndex] = { ...rows[rowIndex], ...patch };
+      return { ...f, rows };
+    });
+  };
+  const addRow = () => setForm(f => ({ ...f, rows: [...f.rows, { ...emptyMaterialRow }] }));
+  const removeRow = (rowIndex) => setForm(f => ({ ...f, rows: f.rows.filter((_, i) => i !== rowIndex) }));
+
+  // Sub Child Part options are scoped to whichever Child Part is currently
+  // selected on the form (matched by childPartCode).
+  const getSubChildPartOptions = (childPartCode) => {
+    const cp = childPartsForMachine.find(c => c.code === childPartCode);
+    return (cp?.subChildParts || []).filter(s => !s.isDiscontinued);
   };
 
   const renderCodeMatchHint = (code) => {
@@ -170,19 +250,33 @@ export default function BOMManagement() {
     );
   };
 
-  const activeMachines = machines.filter(m => !m.isDiscontinued && ['In House Manufacturing', 'Out Source Manufactured'].includes(m.pSourceType));
-  const selectedMachine = activeMachines.find(m => String(m._id) === selectedMachineId);
   const bom = selectedMachineId ? getBOMForMachine(selectedMachineId) : null;
 
-  const handleAddMaterial = () => {
-    if (!form.code || !form.item || !form.quantity || !form.unitType || !form.unit) return;
-    addMaterial(bom._id, { ...form, quantity: Number(form.quantity) });
-    setForm(emptyMaterial);
-    setAddOpen(false);
+  const rowsValid = form.rows.length > 0 && form.rows.every(r => r.code && r.item && r.quantity && r.unitType && r.unit);
+  const addFormValid = !!form.childPartCode && !!form.subChildPartCode && rowsValid;
+  const addFormTotal = form.rows.reduce((sum, r) => sum + (Number(r.quantity) || 0) * (r.unitPrice || 0), 0);
+
+  const handleAddMaterial = async () => {
+    if (!addFormValid) return;
+    setIsAdding(true);
+    try {
+      await addMaterials(bom._id, form.rows.map(row => ({
+        ...row,
+        quantity: Number(row.quantity),
+        childPart: form.childPart,
+        subChildPart: form.subChildPart,
+        childPartCode: form.childPartCode,
+        subChildPartCode: form.subChildPartCode,
+      })));
+      setForm(emptyAddForm);
+      setAddOpen(false);
+    } finally {
+      setIsAdding(false);
+    }
   };
 
   const handleEditMaterial = () => {
-    if (!editForm.code || !editForm.item || !editForm.quantity || !editForm.unit) return;
+    if (!editForm.childPartCode || !editForm.subChildPartCode || !editForm.code || !editForm.item || !editForm.quantity || !editForm.unit) return;
     updateMaterial(bom._id, editingMat._id, { ...editForm, quantity: Number(editForm.quantity) });
     setEditOpen(false);
   };
@@ -193,11 +287,14 @@ export default function BOMManagement() {
       code: mat.code || '',
       childPart: mat.childPart || '',
       subChildPart: mat.subChildPart || '',
+      childPartCode: mat.childPartCode || '',
+      subChildPartCode: mat.subChildPartCode || '',
       item: mat.item || '',
       itemType: mat.itemType || '',
       quantity: String(mat.quantity),
       unitType: mat.unitType || getUnitTypeForUnit(mat.unit),
       unit: mat.unit || '',
+      unitPrice: mat.unitPrice || 0,
       category: mat.category || '',
       pType: mat.pType || '',
       pSourceType: mat.pSourceType || '',
@@ -225,45 +322,19 @@ export default function BOMManagement() {
     setNewBOMOpen(false);
   };
 
+  if (!selectedMachineId) return null;
+
   return (
-    <div className="p-6 space-y-6 bg-slate-50 min-h-screen">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-          <ClipboardList className="h-6 w-6 text-blue-600" /> BOM Management
-        </h1>
-        <p className="text-slate-500 text-sm mt-0.5">R&D defines Bill of Materials — locked BOMs cannot be modified by Production</p>
+    <div className="space-y-6">
+      <div className="flex items-center justify-end">
+        <Button variant="outline" size="sm" onClick={() => setBomFormatOpen(true)}>
+          <Settings2 className="h-4 w-4 mr-1.5" /> BOM Format & Modification
+        </Button>
       </div>
 
-      {/* Machine Selector */}
-      <Card className="border-none shadow-sm">
-        <CardContent className="p-5">
-          <label className="text-sm font-semibold text-slate-700 mb-2 block">Select Machine</label>
-          <div className="relative max-w-sm">
-            <select
-              className="w-full border border-slate-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white appearance-none pr-8"
-              value={selectedMachineId}
-              onChange={e => setSelectedMachineId(e.target.value)}
-            >
-              <option value="">-- Select a machine to view BOM --</option>
-              {activeMachines.map(m => (
-                <option key={m._id} value={m._id}>{m.code} — {m.name}</option>
-              ))}
-            </select>
-            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
-          </div>
-        </CardContent>
-      </Card>
+      <BOMFieldConfigModal open={bomFormatOpen} onOpenChange={setBomFormatOpen} />
 
-      {!selectedMachineId && (
-        <Card className="border-none shadow-sm">
-          <CardContent className="py-16 text-center text-slate-400">
-            <Package className="h-10 w-10 mx-auto mb-3 opacity-30" />
-            <p>Select a machine above to view or manage its Bill of Materials</p>
-          </CardContent>
-        </Card>
-      )}
-
-      {selectedMachineId && !bom && (
+      {!bom && (
         <Card className="border-none shadow-sm">
           <CardContent className="py-12 text-center space-y-3">
             <ClipboardList className="h-10 w-10 mx-auto text-slate-300" />
@@ -276,7 +347,7 @@ export default function BOMManagement() {
         </Card>
       )}
 
-      {selectedMachineId && bom && (
+      {bom && (
         <>
           {/* BOM Header */}
           <Card className="border-none shadow-sm">
@@ -343,13 +414,17 @@ export default function BOMManagement() {
                       <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Material Name</th>
                       <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Qty</th>
                       <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Unit</th>
+                      <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Price</th>
+                      {extraColumns.map(f => (
+                        <th key={f.key} className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">{f.label}</th>
+                      ))}
                       <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
                       <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {bom.materials.length === 0 ? (
-                      <tr><td colSpan={8} className="text-center py-10 text-slate-400">No materials added. Click "Add Material" to start building the BOM.</td></tr>
+                      <tr><td colSpan={9 + extraColumns.length} className="text-center py-10 text-slate-400">No materials added. Click "Add Material" to start building the BOM.</td></tr>
                     ) : bom.materials.map((mat, i) => (
                       <tr key={mat._id} className={`border-b border-slate-50 transition-colors ${mat.isDiscontinued ? 'bg-red-50/40 opacity-70' : 'hover:bg-slate-50'}`}>
                         <td className="px-5 py-3.5 text-slate-400 text-xs font-semibold">{i + 1}</td>
@@ -360,6 +435,22 @@ export default function BOMManagement() {
                         <td className={`px-5 py-3.5 font-medium ${mat.isDiscontinued ? 'text-slate-400 line-through' : 'text-slate-900'}`}>{mat.item}</td>
                         <td className="px-5 py-3.5 font-bold text-slate-800">{mat.quantity}</td>
                         <td className="px-5 py-3.5 text-slate-600">{mat.unit}</td>
+                        <td className="px-5 py-3.5 text-slate-700">₹{(mat.totalPrice || 0).toLocaleString()} <span className="text-[10px] text-slate-400">(₹{mat.unitPrice || 0}/unit)</span></td>
+                        {extraColumns.map(f => {
+                          const display = formatCatalogFieldValue(f.key, mat);
+                          return (
+                            <td key={f.key} className="px-5 py-3.5 text-xs text-slate-600 max-w-[160px]">
+                              {display === '—' ? '—' : (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className="block truncate cursor-default">{display}</span>
+                                  </TooltipTrigger>
+                                  <TooltipContent className="max-w-xs whitespace-pre-wrap break-words">{display}</TooltipContent>
+                                </Tooltip>
+                              )}
+                            </td>
+                          );
+                        })}
                         <td className="px-5 py-3.5">
                           {mat.isDiscontinued
                             ? <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-600 border border-red-200">Discontinued</span>
@@ -391,58 +482,122 @@ export default function BOMManagement() {
         </>
       )}
 
-      {/* Add Material Dialog */}
+      {/* Add Material Dialog — Child Part/Sub Child Part picked once, then any
+          number of raw materials (rows) added together under that same pair,
+          since a sub-part is normally built from several materials, not one. */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle>Add Material Item</DialogTitle></DialogHeader>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>Add Materials</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
-            <div>
-              <label className="text-xs font-semibold text-slate-600 mb-1 block">Material Code * <span className="text-[10px] text-slate-400 font-normal">(from Inventory)</span></label>
-              <MaterialCodePicker value={form.code} displayName={form.item} items={inventoryItems} onSelect={(m) => applyProductMatch(setForm, m)} />
-              {renderCodeMatchHint(form.code)}
-            </div>
-
+            {childPartsForMachine.length === 0 && (
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                No Child Parts exist yet for {selectedMachine?.name}. Create them first in the Child Part Creation tab.
+              </p>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Child Part</label>
-                <Input placeholder="e.g. Main Body" value={form.childPart} onChange={e => setForm(f => ({ ...f, childPart: e.target.value }))} />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Sub-Child Part</label>
-                <Input placeholder="e.g. Side Panel" value={form.subChildPart} onChange={e => setForm(f => ({ ...f, subChildPart: e.target.value }))} />
-              </div>
-            </div>
-
-            <div>
-              <label className="text-xs font-semibold text-slate-600 mb-1 block">Material Name *</label>
-              <Input placeholder="e.g. Sheet Metal 5mm" value={form.item} onChange={e => setForm(f => ({ ...f, item: e.target.value }))} />
-            </div>
-
-            <div>
-              <label className="text-xs font-semibold text-slate-600 mb-1 block">Quantity *</label>
-              <Input type="number" placeholder="0" min="0" value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Unit Type *</label>
-                <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.unitType} onChange={e => setForm(f => ({ ...f, unitType: e.target.value, unit: '' }))}>
-                  <option value="">Select</option>
-                  {unitTypesList.map(t => <option key={t} value={t}>{t}</option>)}
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">Child Part *</label>
+                <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={form.childPartCode}
+                  onChange={e => {
+                    const cp = childPartsForMachine.find(c => c.code === e.target.value);
+                    setForm(f => ({ ...f, childPartCode: e.target.value, childPart: cp?.name || '', subChildPartCode: '', subChildPart: '' }));
+                  }}>
+                  <option value="">Select Child Part</option>
+                  {childPartsForMachine.map(cp => <option key={cp._id} value={cp.code}>{cp.code} — {cp.name}</option>)}
                 </select>
               </div>
               <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Unit *</label>
-                <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-400" value={form.unit} disabled={!form.unitType} onChange={e => setForm(f => ({ ...f, unit: e.target.value }))}>
-                  <option value="">{form.unitType ? 'Select' : 'Select Unit Type first'}</option>
-                  {getUnitsForTypeDynamic(form.unitType, form.unit).map(u => <option key={u} value={u}>{u}</option>)}
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">Sub Child Part *</label>
+                <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-400"
+                  value={form.subChildPartCode}
+                  disabled={!form.childPartCode}
+                  onChange={e => {
+                    const sub = getSubChildPartOptions(form.childPartCode).find(s => s.code === e.target.value);
+                    setForm(f => ({ ...f, subChildPartCode: e.target.value, subChildPart: sub?.name || '' }));
+                  }}>
+                  <option value="">{form.childPartCode ? 'Select Sub Child Part' : 'Select Child Part first'}</option>
+                  {getSubChildPartOptions(form.childPartCode).map(sub => <option key={sub._id} value={sub.code}>{sub.code} — {sub.name}</option>)}
                 </select>
               </div>
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-semibold text-slate-700">Raw Materials</label>
+                <Button type="button" variant="outline" size="sm" onClick={addRow} className="h-7 px-2 text-xs border-blue-300 text-blue-700 hover:bg-blue-50">
+                  <Plus className="h-3 w-3 mr-1" /> Add Another Material
+                </Button>
+              </div>
+
+              {form.rows.map((row, idx) => (
+                <div key={idx} className="border border-slate-200 rounded-lg p-3 space-y-3 bg-slate-50/50">
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="text-[11px] font-semibold text-slate-400 uppercase pt-2">Material {idx + 1}</span>
+                    {form.rows.length > 1 && (
+                      <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0 text-red-400 hover:text-red-600 hover:bg-red-50 flex-shrink-0" onClick={() => removeRow(idx)}>
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-slate-600 mb-1 block">Inventory Item * <span className="text-[10px] text-slate-400 font-normal">(Raw Material / Tool / Readymade Material)</span></label>
+                    <MaterialCodePicker value={row.code} displayName={row.item} items={inventoryItems} onSelect={(m) => applyMatchToRow(idx, m)} />
+                    {renderCodeMatchHint(row.code)}
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-slate-600 mb-1 block">Material Name *</label>
+                    <Input placeholder="e.g. Sheet Metal 5mm" value={row.item} onChange={e => updateRow(idx, { item: e.target.value })} className="bg-white" />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-semibold text-slate-600 mb-1 block">Quantity *</label>
+                      <Input type="number" placeholder="0" min="0" value={row.quantity} onChange={e => updateRow(idx, { quantity: e.target.value })} className="bg-white" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-slate-600 mb-1 block">Price <span className="text-[10px] text-slate-400 font-normal">(auto)</span></label>
+                      <div className="h-10 flex items-center px-3 rounded-lg border border-slate-200 bg-white text-sm text-slate-700">
+                        ₹{((Number(row.quantity) || 0) * (row.unitPrice || 0)).toLocaleString()}
+                        <span className="text-[10px] text-slate-400 ml-1.5">(₹{row.unitPrice || 0}/unit)</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-semibold text-slate-600 mb-1 block">Unit Type *</label>
+                      <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" value={row.unitType} onChange={e => updateRow(idx, { unitType: e.target.value, unit: '' })}>
+                        <option value="">Select</option>
+                        {unitTypesList.map(t => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-slate-600 mb-1 block">Unit *</label>
+                      <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-400 bg-white" value={row.unit} disabled={!row.unitType} onChange={e => updateRow(idx, { unit: e.target.value })}>
+                        <option value="">{row.unitType ? 'Select' : 'Select Unit Type first'}</option>
+                        {getUnitsForTypeDynamic(row.unitType, row.unit).map(u => <option key={u} value={u}>{u}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              {form.rows.length > 1 && (
+                <div className="flex justify-between items-center px-1 text-sm">
+                  <span className="text-slate-500">Total ({form.rows.length} materials)</span>
+                  <span className="font-semibold text-slate-800">₹{addFormTotal.toLocaleString()}</span>
+                </div>
+              )}
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
-            <Button onClick={handleAddMaterial} disabled={!form.code || !form.item || !form.quantity || !form.unitType || !form.unit} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">Add to BOM</Button>
+            <Button onClick={handleAddMaterial} disabled={!addFormValid || isAdding} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">
+              {isAdding ? 'Adding...' : `Add ${form.rows.length > 1 ? `${form.rows.length} Materials` : 'to BOM'}`}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -452,30 +607,59 @@ export default function BOMManagement() {
         <DialogContent className="max-w-lg">
           <DialogHeader><DialogTitle>Edit Material</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">Child Part *</label>
+                <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={editForm.childPartCode}
+                  onChange={e => {
+                    const cp = childPartsForMachine.find(c => c.code === e.target.value);
+                    setEditForm(f => ({ ...f, childPartCode: e.target.value, childPart: cp?.name || '', subChildPartCode: '', subChildPart: '' }));
+                  }}>
+                  <option value="">Select Child Part</option>
+                  {childPartsForMachine.map(cp => <option key={cp._id} value={cp.code}>{cp.code} — {cp.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">Sub Child Part *</label>
+                <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-400"
+                  value={editForm.subChildPartCode}
+                  disabled={!editForm.childPartCode}
+                  onChange={e => {
+                    const sub = getSubChildPartOptions(editForm.childPartCode).find(s => s.code === e.target.value);
+                    setEditForm(f => ({ ...f, subChildPartCode: e.target.value, subChildPart: sub?.name || '' }));
+                  }}>
+                  <option value="">{editForm.childPartCode ? 'Select Sub Child Part' : 'Select Child Part first'}</option>
+                  {getSubChildPartOptions(editForm.childPartCode).map(sub => <option key={sub._id} value={sub.code}>{sub.code} — {sub.name}</option>)}
+                </select>
+              </div>
+            </div>
+
             <div>
-              <label className="text-xs font-semibold text-slate-600 mb-1 block">Material Code * <span className="text-[10px] text-slate-400 font-normal">(from Inventory)</span></label>
+              <label className="text-xs font-semibold text-slate-600 mb-1 block">Inventory Item * <span className="text-[10px] text-slate-400 font-normal">(Raw Material / Tool / Readymade Material)</span></label>
               <MaterialCodePicker value={editForm.code} displayName={editForm.item} items={inventoryItems} onSelect={(m) => applyProductMatch(setEditForm, m)} />
               {renderCodeMatchHint(editForm.code)}
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Child Part</label>
-                <Input value={editForm.childPart} onChange={e => setEditForm(f => ({ ...f, childPart: e.target.value }))} />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Sub-Child Part</label>
-                <Input value={editForm.subChildPart} onChange={e => setEditForm(f => ({ ...f, subChildPart: e.target.value }))} />
-              </div>
-            </div>
             <div>
               <label className="text-xs font-semibold text-slate-600 mb-1 block">Material Name *</label>
               <Input value={editForm.item} onChange={e => setEditForm(f => ({ ...f, item: e.target.value }))} />
             </div>
-            <div>
-              <label className="text-xs font-semibold text-slate-600 mb-1 block">Quantity *</label>
-              <Input type="number" value={editForm.quantity} onChange={e => setEditForm(f => ({ ...f, quantity: e.target.value }))} />
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">Quantity *</label>
+                <Input type="number" value={editForm.quantity} onChange={e => setEditForm(f => ({ ...f, quantity: e.target.value }))} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">Price <span className="text-[10px] text-slate-400 font-normal">(auto, from Purchase Cost)</span></label>
+                <div className="h-10 flex items-center px-3 rounded-lg border border-slate-200 bg-slate-50 text-sm text-slate-700">
+                  ₹{((Number(editForm.quantity) || 0) * (editForm.unitPrice || 0)).toLocaleString()}
+                  <span className="text-[10px] text-slate-400 ml-1.5">(₹{editForm.unitPrice || 0}/unit)</span>
+                </div>
+              </div>
             </div>
+
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-xs font-semibold text-slate-600 mb-1 block">Unit Type *</label>
@@ -495,7 +679,7 @@ export default function BOMManagement() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
-            <Button onClick={handleEditMaterial} disabled={!editForm.code || !editForm.item || !editForm.quantity || !editForm.unit} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">Save Changes</Button>
+            <Button onClick={handleEditMaterial} disabled={!editForm.childPartCode || !editForm.subChildPartCode || !editForm.code || !editForm.item || !editForm.quantity || !editForm.unit} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">Save Changes</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -556,6 +740,8 @@ export default function BOMManagement() {
           </DialogHeader>
           {viewMat && (
             <div className="space-y-4 py-2">
+              {/* Core — data captured directly on the Add Material form itself,
+                  always shown regardless of BOM Format & Modification. */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-slate-50 rounded-lg p-3">
                   <p className="text-xs text-slate-500 mb-1">Quantity</p>
@@ -566,6 +752,10 @@ export default function BOMManagement() {
                   <p className="text-sm font-medium text-slate-800">{[viewMat.childPart, viewMat.subChildPart].filter(Boolean).join(' > ') || '—'}</p>
                 </div>
                 <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-xs text-slate-500 mb-1">Price</p>
+                  <p className="text-sm font-medium text-slate-800">₹{(viewMat.totalPrice || 0).toLocaleString()} <span className="text-xs text-slate-400">(₹{viewMat.unitPrice || 0}/unit)</span></p>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-3">
                   <p className="text-xs text-slate-500 mb-1">Status</p>
                   <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${viewMat.isDiscontinued ? 'bg-red-100 text-red-600 border-red-200' : 'bg-emerald-100 text-emerald-700 border-emerald-200'}`}>
                     {viewMat.isDiscontinued ? 'Discontinued' : 'Active'}
@@ -573,72 +763,56 @@ export default function BOMManagement() {
                 </div>
               </div>
 
-              {(viewMat.category || viewMat.pType || viewMat.pSourceType || viewMat.brand || viewMat.metrology || viewMat.description ||
-                viewMat.size || (viewMat.unitWeightValue !== null && viewMat.unitWeightValue !== undefined) || viewMat.inputUnit || viewMat.outputUnit) && (
+              {/* Everything below is exactly whatever BOM Format & Modification
+                  has enabled — the same fields shown as columns in the table. */}
+              {extraColumns.length > 0 && (
                 <div className="bg-slate-50 rounded-lg p-3">
-                  <p className="text-xs text-slate-500 mb-2 font-semibold">Inventory Item Snapshot</p>
+                  <p className="text-xs text-slate-500 mb-2 font-semibold">Additional Details <span className="text-[10px] text-slate-400 font-normal">(from BOM Format & Modification)</span></p>
                   <div className="grid grid-cols-2 gap-2">
-                    {viewMat.pType && <div><p className="text-[11px] text-slate-400">P-Type</p><p className="text-sm text-slate-800">{viewMat.pType}</p></div>}
-                    {viewMat.category && <div><p className="text-[11px] text-slate-400">Category</p><p className="text-sm text-slate-800">{viewMat.category}</p></div>}
-                    {viewMat.pSourceType && <div><p className="text-[11px] text-slate-400">P-Source Type</p><p className="text-sm text-slate-800">{viewMat.pSourceType}</p></div>}
-                    {viewMat.brand && <div><p className="text-[11px] text-slate-400">Brand</p><p className="text-sm text-slate-800">{viewMat.brand}</p></div>}
-                    {viewMat.metrology && <div><p className="text-[11px] text-slate-400">Metrology</p><p className="text-sm text-slate-800">{viewMat.metrology}</p></div>}
-                    {viewMat.size && <div><p className="text-[11px] text-slate-400">Size</p><p className="text-sm text-slate-800">{viewMat.size}</p></div>}
-                    {(viewMat.unitWeightValue !== null && viewMat.unitWeightValue !== undefined) && (
-                      <div><p className="text-[11px] text-slate-400">Unit Weight</p><p className="text-sm text-slate-800">{viewMat.unitWeightValue} {viewMat.unitWeightUnit || ''}</p></div>
-                    )}
-                    {viewMat.inputUnit && <div><p className="text-[11px] text-slate-400">Input Unit (Purchase)</p><p className="text-sm text-slate-800">{viewMat.inputUnit}</p></div>}
-                    {viewMat.outputUnit && <div><p className="text-[11px] text-slate-400">Output Unit</p><p className="text-sm text-slate-800">{viewMat.outputUnit}</p></div>}
+                    {extraColumns.map(f => {
+                      if (f.key === 'specifications' || f.key === 'itemCategories' || f.key === 'applications') return null;
+                      const value = formatCatalogFieldValue(f.key, viewMat);
+                      if (value === '—') return null;
+                      return <div key={f.key}><p className="text-[11px] text-slate-400">{f.label}</p><p className="text-sm text-slate-800 break-words">{value}</p></div>;
+                    })}
                   </div>
-                  {viewMat.description && (
-                    <div className="mt-2">
-                      <p className="text-[11px] text-slate-400">Description</p>
-                      <p className="text-sm text-slate-700">{viewMat.description}</p>
+
+                  {enabledBOMFields.includes('itemCategories') && Array.isArray(viewMat.itemCategories) && viewMat.itemCategories.length > 0 && (
+                    <div className="mt-3">
+                      <p className="text-[11px] text-slate-400 mb-1">Item Category</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {viewMat.itemCategories.map((c, i) => (
+                          <span key={i} className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">{c}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {enabledBOMFields.includes('applications') && Array.isArray(viewMat.applications) && viewMat.applications.length > 0 && (
+                    <div className="mt-3">
+                      <p className="text-[11px] text-slate-400 mb-1">Applications</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {viewMat.applications.map((a, i) => (
+                          <span key={i} className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-purple-50 text-purple-700 border border-purple-200">{a}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {enabledBOMFields.includes('specifications') && Array.isArray(viewMat.specifications) && viewMat.specifications.filter(s => s.key).length > 0 && (
+                    <div className="mt-3">
+                      <p className="text-[11px] text-slate-400 mb-1">Specifications</p>
+                      <div className="divide-y divide-slate-100">
+                        {viewMat.specifications.filter(s => s.key).map((s, i) => (
+                          <div key={i} className="flex items-center justify-between py-1.5">
+                            <span className="text-xs font-semibold text-slate-500 w-2/5">{s.key}</span>
+                            <span className="text-sm text-slate-800 font-medium">{s.value || '—'}</span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
-              )}
-
-              {Array.isArray(viewMat.specifications) && viewMat.specifications.filter(s => s.key).length > 0 && (
-                <div className="bg-slate-50 rounded-lg p-3">
-                  <p className="text-xs text-slate-500 mb-2 font-semibold">Specifications</p>
-                  <div className="divide-y divide-slate-100">
-                    {viewMat.specifications.filter(s => s.key).map((s, i) => (
-                      <div key={i} className="flex items-center justify-between py-1.5">
-                        <span className="text-xs font-semibold text-slate-500 w-2/5">{s.key}</span>
-                        <span className="text-sm text-slate-800 font-medium">{s.value || '—'}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {Array.isArray(viewMat.customFields) && viewMat.customFields.length > 0 && (
-                <div className="bg-slate-50 rounded-lg p-3">
-                  <p className="text-xs text-slate-500 mb-2 font-semibold">Custom Fields</p>
-                  <div className="space-y-3">
-                    {Object.entries(groupByLabel(viewMat.customFields)).map(([groupLabel, fields]) => (
-                      <div key={groupLabel}>
-                        <p className="text-xs font-bold text-slate-600 mb-1">{groupLabel}</p>
-                        <div className="divide-y divide-slate-100">
-                          {fields.map((cf, i) => (
-                            <div key={i} className="flex items-center justify-between py-1.5">
-                              <span className="text-xs font-semibold text-slate-500 w-2/5">{cf.fieldName}</span>
-                              <span className="text-sm text-slate-800 font-medium">{cf.value || '—'}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {!viewMat.category && !viewMat.pType && !viewMat.pSourceType && !viewMat.brand && !viewMat.metrology && !viewMat.description &&
-                !viewMat.size && (viewMat.unitWeightValue === null || viewMat.unitWeightValue === undefined) &&
-                !viewMat.inputUnit && !viewMat.outputUnit &&
-                (!viewMat.specifications || viewMat.specifications.length === 0) && (!viewMat.customFields || viewMat.customFields.length === 0) && (
-                <p className="text-xs text-slate-400 italic text-center py-2">No additional Product Master data was captured for this material.</p>
               )}
             </div>
           )}
