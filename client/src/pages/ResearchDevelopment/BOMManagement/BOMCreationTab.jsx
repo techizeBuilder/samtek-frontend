@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
-import { ClipboardList, Lock, Plus, Trash2, Edit2, Eye, AlertTriangle, Ban, RefreshCw, Search, Settings2 } from 'lucide-react';
+import { ClipboardList, Lock, Plus, Trash2, Edit2, Eye, AlertTriangle, Ban, RefreshCw, Search, Settings2, IndianRupee, Save, Factory } from 'lucide-react';
 import { UNIT_TYPES, getUnitTypeForUnit, getUnitsForType } from '@/utils/unitTypes';
 import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
@@ -93,9 +93,13 @@ function MaterialCodePicker({ value, displayName, items, onSelect }) {
 }
 
 export default function BOMCreationTab({ product }) {
-  const { boms, getBOMForMachine, addBOM, addMaterials, updateMaterial, deleteMaterial, lockBOM, discontinueMaterial, reactivateMaterial } = useRD();
+  const { boms, getBOMForMachine, addBOM, addMaterials, updateMaterial, deleteMaterial, lockBOM, discontinueMaterial, reactivateMaterial, updateProductionCost } = useRD();
   const selectedMachineId = product?._id || '';
   const selectedMachine = product;
+
+  const [prodCostDraft, setProdCostDraft] = useState('');
+  const [prodExpenseDraft, setProdExpenseDraft] = useState('');
+  const [savingProdCost, setSavingProdCost] = useState(false);
 
   const [addOpen, setAddOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -252,6 +256,26 @@ export default function BOMCreationTab({ product }) {
 
   const bom = selectedMachineId ? getBOMForMachine(selectedMachineId) : null;
 
+  // Keep the Production Cost/Expense draft inputs in sync with the loaded
+  // BOM whenever the selected product (or its BOM data) changes.
+  useEffect(() => {
+    setProdCostDraft(bom?.productionCost != null ? String(bom.productionCost) : '');
+    setProdExpenseDraft(bom?.productionExpense != null ? String(bom.productionExpense) : '');
+  }, [bom?._id, bom?.productionCost, bom?.productionExpense]);
+
+  const materialsCost = (bom?.materials || []).filter(m => !m.isDiscontinued).reduce((sum, m) => sum + (m.totalPrice || 0), 0);
+  const totalBOMCost = materialsCost + (bom?.productionCost || 0) + (bom?.productionExpense || 0);
+
+  const handleSaveProductionCost = async () => {
+    if (!bom) return;
+    setSavingProdCost(true);
+    try {
+      await updateProductionCost(bom._id, prodCostDraft === '' ? 0 : Number(prodCostDraft), prodExpenseDraft === '' ? 0 : Number(prodExpenseDraft));
+    } finally {
+      setSavingProdCost(false);
+    }
+  };
+
   const rowsValid = form.rows.length > 0 && form.rows.every(r => r.code && r.item && r.quantity && r.unitType && r.unit);
   const addFormValid = !!form.childPartCode && !!form.subChildPartCode && rowsValid;
   const addFormTotal = form.rows.reduce((sum, r) => sum + (Number(r.quantity) || 0) * (r.unitPrice || 0), 0);
@@ -394,6 +418,68 @@ export default function BOMCreationTab({ product }) {
                   <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5" />
                   <span>This BOM is locked. Production cannot modify it. Contact R&D to request changes via the Change Management system.</span>
                 </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Production Cost & Total BOM Cost */}
+          <Card className="border-none shadow-sm">
+            <CardHeader className="border-b border-slate-50 pb-3">
+              <CardTitle className="text-base font-semibold text-slate-800 flex items-center gap-2">
+                <Factory className="h-4 w-4 text-slate-500" /> Production Cost
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-5">
+              <div className="flex flex-col md:flex-row md:items-end gap-4">
+                <div className="flex-1 grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-semibold text-slate-600 mb-1 block">Production Cost <span className="text-[10px] text-slate-400 font-normal">(labor / job-work to build one unit)</span></label>
+                    <Input type="number" min="0" placeholder="0" value={prodCostDraft} onChange={e => setProdCostDraft(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-600 mb-1 block">Production Expense <span className="text-[10px] text-slate-400 font-normal">(other one-off costs)</span></label>
+                    <Input type="number" min="0" placeholder="0" value={prodExpenseDraft} onChange={e => setProdExpenseDraft(e.target.value)} />
+                  </div>
+                </div>
+                <Button onClick={handleSaveProductionCost} disabled={savingProdCost} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">
+                  <Save className="h-4 w-4 mr-1.5" /> {savingProdCost ? 'Saving...' : 'Save'}
+                </Button>
+              </div>
+
+              <div className="mt-3">
+                {bom.productionCostSource === 'Actual' ? (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-700 border border-emerald-200">
+                    Actual — auto-filled from the last completed production run
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+                    R&D Estimate — will be overwritten once Production completes a build
+                  </span>
+                )}
+              </div>
+
+              <div className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-xs text-slate-500 mb-1">Materials Cost</p>
+                  <p className="text-sm font-semibold text-slate-800">₹{materialsCost.toLocaleString()}</p>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-xs text-slate-500 mb-1">Production Cost</p>
+                  <p className="text-sm font-semibold text-slate-800">₹{(bom.productionCost || 0).toLocaleString()}</p>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-xs text-slate-500 mb-1">Production Expense</p>
+                  <p className="text-sm font-semibold text-slate-800">₹{(bom.productionExpense || 0).toLocaleString()}</p>
+                </div>
+                <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
+                  <p className="text-xs text-blue-600 mb-1 flex items-center gap-1"><IndianRupee className="h-3 w-3" /> Total BOM Cost</p>
+                  <p className="text-sm font-bold text-blue-800">₹{totalBOMCost.toLocaleString()}</p>
+                </div>
+              </div>
+              {!selectedMachine?.firstBuiltAt && (
+                <p className="text-[11px] text-slate-400 mt-3">
+                  This product hasn't completed a production run yet — Standard Cost / MRP / Sale Price will start using this total once it's first built.
+                </p>
               )}
             </CardContent>
           </Card>
