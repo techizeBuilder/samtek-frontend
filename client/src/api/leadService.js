@@ -97,6 +97,15 @@ export const leadApi = {
     });
   },
 
+  getPlants: () => {
+    const token = localStorage.getItem('token');
+    return apiRequest('/rd/plants?discontinued=false', {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+  },
+
   markAsWon: (id, salesChecklist) => {
     const token = localStorage.getItem('token');
     return apiRequest(`/leads/${id}/won`, {

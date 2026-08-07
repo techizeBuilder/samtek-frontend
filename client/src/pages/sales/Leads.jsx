@@ -713,6 +713,23 @@ const assignableUsers = (usersData?.users || []).filter(
 
   const availableItems = itemsData?.items || [];
 
+  // Fetch Plants (Plant Master, R&D) for the product picker. Unlike
+  // Quotation's picker — where a plant is filter-only and never a priced
+  // line item, since a formal quotation needs accurate per-item pricing —
+  // a Lead is just an informal capture of interest with a single free-text
+  // product field, so here the plant itself is a selectable option, shown
+  // with the combined MRP of its mapped machines + motors.
+  const { data: plantsData, isLoading: plantsLoading } = useQuery({
+    queryKey: ['lead-plants'],
+    queryFn: () => leadApi.getPlants(),
+  });
+
+  const availablePlants = (plantsData?.data || []).map((plant) => {
+    const machineTotal = (plant.machines || []).reduce((sum, m) => sum + (m.item?.mrp || 0) * (m.quantity || 1), 0);
+    const motorTotal = (plant.motors || []).reduce((sum, m) => sum + (m.item?.mrp || 0) * (m.quantity || 1), 0);
+    return { ...plant, combinedPrice: machineTotal + motorTotal };
+  });
+
   const [showProductDropdown, setShowProductDropdown] = useState(false);
 
   // Fetch leads
@@ -2238,48 +2255,73 @@ const assignableUsers = (usersData?.users || []).filter(
                       <Search className="absolute right-3 top-2.5 h-4 w-4 text-gray-400" />
                     </div>
 
-                    {showProductDropdown && (
-                      <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
-                        {itemsLoading ? (
-                          <div className="px-4 py-3 text-sm text-gray-500 text-center flex items-center justify-center gap-2">
-                            <div className="h-4 w-4 border-2 border-blue-600 border-t-transparent animate-spin rounded-full" />
-                            Loading items...
-                          </div>
-                        ) : availableItems.filter(item =>
-                          item.name.toLowerCase().includes(formData.productRequired.toLowerCase()) ||
-                          item.code.toLowerCase().includes(formData.productRequired.toLowerCase())
-                        ).length > 0 ? (
-                          availableItems
-                            .filter(item =>
-                              item.name.toLowerCase().includes(formData.productRequired.toLowerCase()) ||
-                              item.code.toLowerCase().includes(formData.productRequired.toLowerCase())
-                            )
-                            .map((item) => (
-                              <div
-                                key={item._id}
-                                className="px-4 py-2 hover:bg-blue-50 cursor-pointer flex flex-col border-b border-gray-50 last:border-0"
-                                onMouseDown={(e) => {
-                                  // Prevent input from losing focus immediately
-                                  e.preventDefault();
-                                  setFormData(prev => ({ ...prev, productRequired: item.name }));
-                                  setShowProductDropdown(false);
-                                }}
-                              >
-                                <span className="text-sm font-medium text-gray-800">{item.name}</span>
-                                <div className="flex items-center gap-2 mt-1">
-                                  <Badge variant="outline" className="text-[10px] h-4 bg-gray-50">{item.code}</Badge>
-                                  <span className="text-[10px] text-gray-500">{item.category}</span>
-                                  {item.salePrice && <span className="text-[10px] text-blue-600 font-bold ml-auto">₹{item.salePrice}</span>}
+                    {showProductDropdown && (() => {
+                      const q = formData.productRequired.toLowerCase();
+                      const filteredPlants = availablePlants.filter(plant =>
+                        plant.name.toLowerCase().includes(q) ||
+                        (plant.category || '').toLowerCase().includes(q) ||
+                        (plant.subCategory || '').toLowerCase().includes(q)
+                      );
+                      const filteredItems = availableItems.filter(item =>
+                        item.name.toLowerCase().includes(q) ||
+                        item.code.toLowerCase().includes(q)
+                      );
+                      return (
+                        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                          {itemsLoading || plantsLoading ? (
+                            <div className="px-4 py-3 text-sm text-gray-500 text-center flex items-center justify-center gap-2">
+                              <div className="h-4 w-4 border-2 border-blue-600 border-t-transparent animate-spin rounded-full" />
+                              Loading items...
+                            </div>
+                          ) : (filteredPlants.length > 0 || filteredItems.length > 0) ? (
+                            <>
+                              {filteredPlants.map((plant) => (
+                                <div
+                                  key={plant._id}
+                                  className="px-4 py-2 hover:bg-blue-50 cursor-pointer flex flex-col border-b border-gray-50 last:border-0"
+                                  onMouseDown={(e) => {
+                                    // Prevent input from losing focus immediately
+                                    e.preventDefault();
+                                    setFormData(prev => ({ ...prev, productRequired: plant.name }));
+                                    setShowProductDropdown(false);
+                                  }}
+                                >
+                                  <span className="text-sm font-medium text-gray-800">{plant.name}</span>
+                                  <div className="flex items-center gap-2 mt-1">
+                                    <Badge variant="outline" className="text-[10px] h-4 bg-purple-50 text-purple-700 border-purple-200">Plant</Badge>
+                                    <span className="text-[10px] text-gray-500">{[plant.category, plant.subCategory].filter(Boolean).join(' / ')}</span>
+                                    {plant.combinedPrice > 0 && <span className="text-[10px] text-blue-600 font-bold ml-auto">₹{plant.combinedPrice.toLocaleString()}</span>}
+                                  </div>
                                 </div>
-                              </div>
-                            ))
-                        ) : (
-                          <div className="px-4 py-3 text-sm text-gray-500 text-center">
-                            {formData.productRequired ? `No products found matching "${formData.productRequired}"` : "No products available"}
-                          </div>
-                        )}
-                      </div>
-                    )}
+                              ))}
+                              {filteredItems.map((item) => (
+                                <div
+                                  key={item._id}
+                                  className="px-4 py-2 hover:bg-blue-50 cursor-pointer flex flex-col border-b border-gray-50 last:border-0"
+                                  onMouseDown={(e) => {
+                                    // Prevent input from losing focus immediately
+                                    e.preventDefault();
+                                    setFormData(prev => ({ ...prev, productRequired: item.name }));
+                                    setShowProductDropdown(false);
+                                  }}
+                                >
+                                  <span className="text-sm font-medium text-gray-800">{item.name}</span>
+                                  <div className="flex items-center gap-2 mt-1">
+                                    <Badge variant="outline" className="text-[10px] h-4 bg-gray-50">{item.code}</Badge>
+                                    <span className="text-[10px] text-gray-500">{item.category}</span>
+                                    {item.mrp > 0 && <span className="text-[10px] text-blue-600 font-bold ml-auto">₹{item.mrp}</span>}
+                                  </div>
+                                </div>
+                              ))}
+                            </>
+                          ) : (
+                            <div className="px-4 py-3 text-sm text-gray-500 text-center">
+                              {formData.productRequired ? `No products found matching "${formData.productRequired}"` : "No products available"}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   <div className="space-y-2">
