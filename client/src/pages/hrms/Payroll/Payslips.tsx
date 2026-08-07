@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import axios from "axios";
-import { MoreVertical, Download, Loader2 } from "lucide-react";
+import { MoreVertical, Download, Loader2, Search } from "lucide-react";
 import Loader from "@/pages/hrms/Loader";
 import { toast } from "../../../hooks/use-toast";
 interface PayslipRow {
@@ -33,27 +33,47 @@ const Payslips = () => {
   const currentMonth = new Date().toISOString().slice(0, 7);
   const [month, setMonth] = useState(currentMonth);
   const [loading, setLoading] = useState(true);
+  const [initialLoad, setInitialLoad] = useState(true);
   const [generating, setGenerating] = useState(false);
+
+  // Search + pagination — backend now supports month/search/page/limit
+  // (opt-in via `page`, see payslipController.js getAllPayslips).
+  const [search, setSearch] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({ current: 1, total: 1, count: 0 });
+  const limit = 15;
+
+  useEffect(() => {
+    const t = setTimeout(() => setSearch(searchInput), 400);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  useEffect(() => { setPage(1); }, [search, month]);
 
   /* ================= FETCH PAYSLIPS ================= */
   const fetchPayslips = async () => {
     try {
+      setLoading(true);
       const res = await axios.get(`${API_BASE}/payslips`, {
         headers: { Authorization: `Bearer ${token}` },
+        params: { month, page, limit, search: search || undefined },
       });
 
-      const filtered = res.data.filter((p: PayslipRow) => p.month === month);
-
-      setPayslips(filtered);
-      setLoading(false);
+      setPayslips(res.data?.data || []);
+      setPagination(res.data?.pagination || { current: 1, total: 1, count: 0 });
     } catch (err) {
       console.error("Failed to fetch payslips");
+    } finally {
+      setLoading(false);
+      setInitialLoad(false);
     }
   };
 
   useEffect(() => {
     fetchPayslips();
-  }, [month]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [month, page, search]);
 
   /* ================= GENERATE PAYSLIPS (FROM PAYROLL) ================= */
   const generatePayslip = async () => {
@@ -101,7 +121,7 @@ const Payslips = () => {
     link.click();
   };
 
-   if (loading) {
+   if (loading && initialLoad) {
       return (
         <div className="relative min-h-[300px]">
           <Loader />
@@ -112,7 +132,7 @@ const Payslips = () => {
   return (
     <div className="p-6">
       {/* HEADER */}
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex justify-between items-center mb-6 gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-semibold">Payslips</h1>
           <p className="text-sm text-gray-500">
@@ -120,7 +140,18 @@ const Payslips = () => {
           </p>
         </div>
 
-        <div className="flex gap-3">
+        <div className="flex gap-3 flex-wrap items-center">
+          <div className="relative w-56">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search employee..."
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+            />
+          </div>
+
           <input
             type="month"
             value={month}
@@ -222,6 +253,30 @@ const Payslips = () => {
           </tbody>
         </table>
       </div>
+
+      {pagination.total > 1 && (
+        <div className="flex items-center justify-between mt-4 text-sm text-gray-600">
+          <span>
+            Page {pagination.current} of {pagination.total} ({pagination.count} payslips)
+          </span>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={pagination.current <= 1}
+              className="px-3 py-1.5 border border-gray-300 rounded-md disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
+            >
+              Previous
+            </button>
+            <button
+              onClick={() => setPage((p) => Math.min(pagination.total, p + 1))}
+              disabled={pagination.current >= pagination.total}
+              className="px-3 py-1.5 border border-gray-300 rounded-md disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

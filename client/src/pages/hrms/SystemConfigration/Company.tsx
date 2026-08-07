@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import axios from "axios";
-import { MoreVertical } from "lucide-react";
+import { MoreVertical, Search } from "lucide-react";
 import CompanyModal from "./CompanyModal";
 import DeleteCompanyModal from "./DeleteCompanyModel";
 import Loader from "../Loader";
@@ -42,22 +42,42 @@ export default function Company() {
   const [companyToDelete, setCompanyToDelete] = useState<Company | null>(null);
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
 
+  // Search + pagination — backend already supports search/page/limit
+  // (getCompanies in companyController.js), just wasn't being sent.
+  const [search, setSearch] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({ current: 1, total: 1, count: 0 });
+  const [initialLoad, setInitialLoad] = useState(true);
+  const limit = 15;
+
+  // Debounce the search box so we don't fire a request on every keystroke.
+  useEffect(() => {
+    const t = setTimeout(() => setSearch(searchInput), 400);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  useEffect(() => { setPage(1); }, [search]);
 
   const fetchCompanies = async () => {
     try {
       setLoading(true);
       const res = await axios.get(`${API_BASE}/companies`, {
         headers: { Authorization: `Bearer ${token}` },
+        params: { page, limit, search: search || undefined },
       });
       setCompanies(res.data?.companies || []);
+      setPagination(res.data?.pagination || { current: 1, total: 1, count: 0 });
     } finally {
       setLoading(false);
+      setInitialLoad(false);
     }
   };
 
   useEffect(() => {
     fetchCompanies();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, search]);
 
   // ✅ ACTUAL DELETE API
   const handleDeleteCompany = async () => {
@@ -86,7 +106,7 @@ export default function Company() {
     }
   };
 
-  if (loading) {
+  if (loading && initialLoad) {
     return (
       <div className="relative min-h-screen">
         <Loader />
@@ -105,12 +125,23 @@ export default function Company() {
   return (
     <div className="p-6">
       {/* HEADER */}
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex justify-between items-center mb-6 gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-semibold">Companies</h1>
           <p className="text-sm text-gray-500">
             System Configuration / Company
           </p>
+        </div>
+
+        <div className="relative w-full sm:w-72">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Search by name, email, city, state..."
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+          />
         </div>
 
         {/* <button
@@ -246,6 +277,31 @@ export default function Company() {
           </tbody>
         </table>
       </div>
+
+      {/* PAGINATION */}
+      {pagination.total > 1 && (
+        <div className="flex items-center justify-between mt-4 text-sm text-gray-600">
+          <span>
+            Page {pagination.current} of {pagination.total} ({pagination.count} companies)
+          </span>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={pagination.current <= 1}
+              className="px-3 py-1.5 border border-gray-300 rounded-md disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
+            >
+              Previous
+            </button>
+            <button
+              onClick={() => setPage((p) => Math.min(pagination.total, p + 1))}
+              disabled={pagination.current >= pagination.total}
+              className="px-3 py-1.5 border border-gray-300 rounded-md disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ADD / VIEW / EDIT MODAL */}
       <CompanyModal

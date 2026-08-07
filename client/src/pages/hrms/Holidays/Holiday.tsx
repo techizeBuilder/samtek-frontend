@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import axios from "axios";
-import { MoreVertical } from "lucide-react";
+import { MoreVertical, Search } from "lucide-react";
 import AddHolidayModal from "./AddHolidayModel";
 import ViewHolidayModal from "./ViewHolidayModel";
 import Loader from "@/pages/hrms/Loader";
@@ -32,28 +32,47 @@ const Holiday = () => {
 
     const token = localStorage.getItem("token");
 
+    // Search + pagination — backend now supports search/page/limit (opt-in
+    // via `page`, see holidayController.js getAllHolidays).
+    const [search, setSearch] = useState("");
+    const [searchInput, setSearchInput] = useState("");
+    const [page, setPage] = useState(1);
+    const [pagination, setPagination] = useState({ current: 1, total: 1, count: 0 });
+    const [initialLoad, setInitialLoad] = useState(true);
+    const limit = 15;
+
+    useEffect(() => {
+        const t = setTimeout(() => setSearch(searchInput), 400);
+        return () => clearTimeout(t);
+    }, [searchInput]);
+
+    useEffect(() => { setPage(1); }, [search]);
+
     /* ================= FETCH HOLIDAYS ================= */
     const fetchHolidays = async () => {
         try {
             setLoading(true);
             const companyId = typeof currentUser?.companyId === 'string' ? currentUser.companyId : currentUser?.companyId?._id;
             const res = await axios.get(`${API_BASE}/holidays`, {
-                params: { companyId },
+                params: { companyId, page, limit, search: search || undefined },
                 headers: {
                     Authorization: `Bearer ${token}`,
                 },
             });
-            setHolidays(res.data);
+            setHolidays(res.data?.data || []);
+            setPagination(res.data?.pagination || { current: 1, total: 1, count: 0 });
         } catch (error) {
             console.error("Failed to fetch holidays", error);
         } finally {
             setLoading(false);
+            setInitialLoad(false);
         }
     };
 
     useEffect(() => {
         fetchHolidays();
-    }, []);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [page, search]);
 
     /* ================= DELETE HOLIDAY ================= */
     const handleDelete = async () => {
@@ -71,7 +90,7 @@ const Holiday = () => {
             console.error("Delete failed", error);
         }
     };
-    if (loading) {
+    if (loading && initialLoad) {
         return (
             <div className="p-10 flex justify-center">
                 <Loader />
@@ -81,21 +100,34 @@ const Holiday = () => {
     return (
         <div className="p-6">
             {/* Page Heading */}
-            <div className="flex justify-between items-center mb-6">
+            <div className="flex justify-between items-center mb-6 gap-4 flex-wrap">
                 <h1 className="text-2xl font-semibold">Holiday</h1>
 
-                {(currentUser?.role === 'HR-Admin' || currentUser?.role === 'Hr Admin') && (
-                    <button
-                        onClick={() => {
-                            setMode("add");
-                            setSelectedHoliday(null);
-                            setOpenFormModal(true);
-                        }}
-                        className="bg-orange-500 text-white px-4 py-2 rounded-md font-medium hover:bg-orange-600"
-                    >
-                        + Add Holiday
-                    </button>
-                )}
+                <div className="flex items-center gap-3 flex-wrap">
+                    <div className="relative w-56">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                        <input
+                            type="text"
+                            placeholder="Search holidays..."
+                            value={searchInput}
+                            onChange={(e) => setSearchInput(e.target.value)}
+                            className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+                        />
+                    </div>
+
+                    {(currentUser?.role === 'HR-Admin' || currentUser?.role === 'Hr Admin') && (
+                        <button
+                            onClick={() => {
+                                setMode("add");
+                                setSelectedHoliday(null);
+                                setOpenFormModal(true);
+                            }}
+                            className="bg-orange-500 text-white px-4 py-2 rounded-md font-medium hover:bg-orange-600"
+                        >
+                            + Add Holiday
+                        </button>
+                    )}
+                </div>
             </div>
 
             {/* Table */}
@@ -206,6 +238,30 @@ const Holiday = () => {
                     </tbody>
                 </table>
             </div>
+
+            {pagination.total > 1 && (
+                <div className="flex items-center justify-between mt-4 text-sm text-gray-600">
+                    <span>
+                        Page {pagination.current} of {pagination.total} ({pagination.count} holidays)
+                    </span>
+                    <div className="flex gap-2">
+                        <button
+                            onClick={() => setPage((p) => Math.max(1, p - 1))}
+                            disabled={pagination.current <= 1}
+                            className="px-3 py-1.5 border border-gray-300 rounded-md disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
+                        >
+                            Previous
+                        </button>
+                        <button
+                            onClick={() => setPage((p) => Math.min(pagination.total, p + 1))}
+                            disabled={pagination.current >= pagination.total}
+                            className="px-3 py-1.5 border border-gray-300 rounded-md disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
+                        >
+                            Next
+                        </button>
+                    </div>
+                </div>
+            )}
 
             {/* Add Holiday Modal */}
             <AddHolidayModal

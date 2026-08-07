@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import axios from "axios";
-import { MoreVertical, Eye, Download } from "lucide-react";
+import { MoreVertical, Eye, Download, Search } from "lucide-react";
 import AddSalaryStructureModal from "./AddSalaryStructureModal";
 import ViewSalaryStructureModal from "./ViewSalaryStructureModal";
 import DeleteSalaryStructureModal from "./DeleteSalaryStructureModal";
@@ -39,6 +39,7 @@ const SalaryStructure = () => {
 
   const [salaryList, setSalaryList] = useState<SalaryStructure[]>([]);
   const [loading, setLoading] = useState(true);
+  const [initialLoad, setInitialLoad] = useState(true);
 
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [openAddModal, setOpenAddModal] = useState(false);
@@ -51,19 +52,36 @@ const SalaryStructure = () => {
   const [companies, setCompanies] = useState<any[]>([]);
   const [companyFilter, setCompanyFilter] = useState("");
 
+  // Search + pagination — backend now supports search/page/limit (opt-in
+  // via `page`, see salaryStructureController.js getAllSalaryStructures).
+  const [search, setSearch] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({ current: 1, total: 1, count: 0 });
+  const limit = 15;
+
+  useEffect(() => {
+    const t = setTimeout(() => setSearch(searchInput), 400);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  useEffect(() => { setPage(1); }, [search, companyFilter]);
+
   /* ================= FETCH ================= */
   const fetchSalary = async () => {
     try {
       setLoading(true);
       const res = await axios.get(`${API_BASE}/salary-structures`, {
-        params: { companyId: companyFilter },
+        params: { companyId: companyFilter, page, limit, search: search || undefined },
         headers: { Authorization: `Bearer ${token}` },
       });
-      setSalaryList(res.data);
+      setSalaryList(res.data?.data || []);
+      setPagination(res.data?.pagination || { current: 1, total: 1, count: 0 });
     } catch {
       console.error("Fetch failed");
     } finally {
       setLoading(false);
+      setInitialLoad(false);
     }
   };
 
@@ -71,6 +89,7 @@ const SalaryStructure = () => {
     try {
       const res = await axios.get(`${API_BASE}/companies`, {
         headers: { Authorization: `Bearer ${token}` },
+        params: { limit: 1000 },
       });
       setCompanies(res.data.companies);
     } catch (err) {
@@ -80,7 +99,8 @@ const SalaryStructure = () => {
 
   useEffect(() => {
     fetchSalary();
-  }, [companyFilter]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [companyFilter, page, search]);
 
   useEffect(() => {
     fetchCompanies();
@@ -125,12 +145,27 @@ const SalaryStructure = () => {
   const calcNetSalary = (s: SalaryStructure) =>
     calcTotalEarnings(s) - calcTotalDeductions(s);
 
-  const handleDownloadPDF = () => {
-    const companyLabel = companies.find((c) => c._id === companyFilter)?.name || "";
-    generateSalaryStructurePDF(salaryList, companyLabel);
+  // The table only holds the current page — the PDF must cover every
+  // filtered record, so this fetches the full (unpaged) list independently
+  // rather than exporting whatever's currently on screen.
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const handleDownloadPDF = async () => {
+    setDownloadingPdf(true);
+    try {
+      const res = await axios.get(`${API_BASE}/salary-structures`, {
+        params: { companyId: companyFilter, search: search || undefined },
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const companyLabel = companies.find((c) => c._id === companyFilter)?.name || "";
+      generateSalaryStructurePDF(res.data, companyLabel);
+    } catch {
+      console.error("Failed to fetch full salary list for PDF export");
+    } finally {
+      setDownloadingPdf(false);
+    }
   };
 
-  if (loading) {
+  if (loading && initialLoad) {
     return (
       <div className="relative min-h-[300px]">
         <Loader />
@@ -141,7 +176,7 @@ const SalaryStructure = () => {
   return (
     <div className="p-6">
       {/* ================= HEADER ================= */}
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex justify-between items-center mb-6 gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-semibold text-orange-500">Salary Structure</h1>
           <p className="text-sm text-gray-500">
@@ -149,7 +184,18 @@ const SalaryStructure = () => {
           </p>
         </div>
 
-        <div className="flex gap-3">
+        <div className="flex gap-3 flex-wrap items-center">
+          <div className="relative w-56">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search employee..."
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+            />
+          </div>
+
           <select
             className="border px-3 py-2 rounded-md text-sm outline-none focus:border-orange-500"
             value={companyFilter}
@@ -165,10 +211,10 @@ const SalaryStructure = () => {
 
           <button
             onClick={handleDownloadPDF}
-            disabled={salaryList.length === 0}
+            disabled={pagination.count === 0 || downloadingPdf}
             className="flex items-center gap-2 border border-orange-300 text-orange-600 px-4 py-2 rounded-md font-medium hover:bg-orange-50 shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <Download size={16} /> Download PDF
+            <Download size={16} /> {downloadingPdf ? "Preparing..." : "Download PDF"}
           </button>
 
           <button
@@ -341,6 +387,30 @@ const SalaryStructure = () => {
           )}
         </table>
       </div>
+
+      {pagination.total > 1 && (
+        <div className="flex items-center justify-between mt-4 text-sm text-gray-600">
+          <span>
+            Page {pagination.current} of {pagination.total} ({pagination.count} records)
+          </span>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={pagination.current <= 1}
+              className="px-3 py-1.5 border border-gray-300 rounded-md disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
+            >
+              Previous
+            </button>
+            <button
+              onClick={() => setPage((p) => Math.min(pagination.total, p + 1))}
+              disabled={pagination.current >= pagination.total}
+              className="px-3 py-1.5 border border-gray-300 rounded-md disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* VIEW */}
       <ViewSalaryStructureModal

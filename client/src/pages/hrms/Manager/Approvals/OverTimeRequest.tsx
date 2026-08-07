@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Check, X, Clock, Calendar, User, Zap, AlertCircle, Loader2 } from 'lucide-react';
+import { Check, X, Clock, Calendar, User, Zap, AlertCircle, Loader2, Search } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import api from '@/services/api';
 import { format } from 'date-fns';
@@ -13,11 +14,29 @@ export default function OverTimeRequest() {
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 
+  // Search + pagination — backend now supports search/page/limit (opt-in
+  // via `page`, see overtimeController.js getTeamOvertimeRequests).
+  const [search, setSearch] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({ current: 1, total: 1, count: 0 });
+  const limit = 15;
+
+  useEffect(() => {
+    const t = setTimeout(() => setSearch(searchInput), 400);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  useEffect(() => { setPage(1); }, [search]);
+
   const fetchRequests = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/overtime/team-requests');
-      setRequests(Array.isArray(response) ? response : (response?.data || []));
+      const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+      if (search) params.set('search', search);
+      const response = await api.get(`/overtime/team-requests?${params.toString()}`);
+      setRequests(response?.data || []);
+      setPagination(response?.pagination || { current: 1, total: 1, count: 0 });
     } catch (error) {
       toast({
         title: "Error",
@@ -31,7 +50,8 @@ export default function OverTimeRequest() {
 
   useEffect(() => {
     fetchRequests();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, search]);
 
   const handleStatusUpdate = async (id, status) => {
     try {
@@ -61,14 +81,25 @@ export default function OverTimeRequest() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center gap-4 flex-wrap">
         <div>
           <h1 className="text-3xl font-bold text-slate-800 tracking-tight">Overtime Requests</h1>
           <p className="text-slate-500 mt-1">Manage extra hours submitted by your team.</p>
         </div>
-        <Button onClick={fetchRequests} variant="outline" className="gap-2">
-          <Clock className="h-4 w-4" /> Refresh
-        </Button>
+        <div className="flex items-center gap-3">
+          <div className="relative w-64">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <Input
+              placeholder="Search employee..."
+              className="pl-9"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+            />
+          </div>
+          <Button onClick={fetchRequests} variant="outline" className="gap-2">
+            <Clock className="h-4 w-4" /> Refresh
+          </Button>
+        </div>
       </div>
 
       <Card className="border-none shadow-xl bg-white/50 backdrop-blur-sm">
@@ -171,6 +202,30 @@ export default function OverTimeRequest() {
           </Table>
         </CardContent>
       </Card>
+
+      {pagination.total > 1 && (
+        <div className="flex items-center justify-between text-sm text-slate-600">
+          <span>
+            Page {pagination.current} of {pagination.total} ({pagination.count} requests)
+          </span>
+          <div className="flex gap-2">
+            <Button
+              variant="outline" size="sm"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={pagination.current <= 1}
+            >
+              Previous
+            </Button>
+            <Button
+              variant="outline" size="sm"
+              onClick={() => setPage((p) => Math.min(pagination.total, p + 1))}
+              disabled={pagination.current >= pagination.total}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

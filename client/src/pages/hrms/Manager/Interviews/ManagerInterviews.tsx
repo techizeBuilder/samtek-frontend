@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import axios from "axios";
-import { User, Briefcase, Calendar, MessageSquare, CheckCircle, XCircle, Clock } from "lucide-react";
+import { User, Briefcase, Calendar, MessageSquare, CheckCircle, XCircle, Clock, Search } from "lucide-react";
 import InterviewFeedbackModal from "./InterviewFeedbackModal";
 import Loader from "../../Loader";
 
@@ -32,13 +32,30 @@ const ManagerInterviews = () => {
   const [selectedCandidate, setSelectedCandidate] = useState<Candidate | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
+  // Search + pagination — backend now supports search/page/limit (opt-in
+  // via `page`, see candidateController.js getCandidatesForManager).
+  const [search, setSearch] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({ current: 1, total: 1, count: 0 });
+  const limit = 12;
+
+  useEffect(() => {
+    const t = setTimeout(() => setSearch(searchInput), 400);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  useEffect(() => { setPage(1); }, [search]);
+
   const fetchCandidates = async () => {
     try {
       setLoading(true);
       const res = await axios.get(`${API_BASE}/candidates/manager/interviews`, {
         headers: { Authorization: `Bearer ${token}` },
+        params: { page, limit, search: search || undefined },
       });
-      setCandidates(res.data || []);
+      setCandidates(res.data?.data || []);
+      setPagination(res.data?.pagination || { current: 1, total: 1, count: 0 });
     } catch (error) {
       console.error("Failed to fetch candidates", error);
     } finally {
@@ -48,21 +65,35 @@ const ManagerInterviews = () => {
 
   useEffect(() => {
     fetchCandidates();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, search]);
 
   const openFeedbackModal = (candidate: Candidate) => {
     setSelectedCandidate(candidate);
     setIsModalOpen(true);
   };
 
-  if (loading) return <Loader />;
+  const [initialLoad, setInitialLoad] = useState(true);
+  useEffect(() => { if (!loading) setInitialLoad(false); }, [loading]);
+
+  if (loading && initialLoad) return <Loader />;
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Interview Feedback</h1>
           <p className="text-sm text-gray-500">Manage candidate interviews and provide feedback</p>
+        </div>
+        <div className="relative w-64">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Search name, email, job..."
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+          />
         </div>
       </div>
 
@@ -154,6 +185,30 @@ const ManagerInterviews = () => {
           </div>
           <p className="text-gray-500 font-medium">No candidates assigned for interview</p>
           <p className="text-xs text-gray-400 mt-1">Candidates added to your job openings will appear here.</p>
+        </div>
+      )}
+
+      {pagination.total > 1 && (
+        <div className="flex items-center justify-between text-sm text-gray-600">
+          <span>
+            Page {pagination.current} of {pagination.total} ({pagination.count} candidates)
+          </span>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={pagination.current <= 1}
+              className="px-3 py-1.5 border border-gray-300 rounded-md disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
+            >
+              Previous
+            </button>
+            <button
+              onClick={() => setPage((p) => Math.min(pagination.total, p + 1))}
+              disabled={pagination.current >= pagination.total}
+              className="px-3 py-1.5 border border-gray-300 rounded-md disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
+            >
+              Next
+            </button>
+          </div>
         </div>
       )}
 
