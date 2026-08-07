@@ -15,6 +15,7 @@ import DispatchDashboard from "@/pages/DispatchDashboard";
 import Sales from "@/pages/Sales";
 import Accounts from "@/pages/Accounts";
 import ModernInventoryUI from "@/components/inventory/ModernInventoryUI";
+import StoreInventory from "@/pages/store/Inventory";
 import Customers from "@/pages/Customers";
 import Suppliers from "@/pages/Suppliers";
 import Purchases from "@/pages/Purchases";
@@ -194,6 +195,8 @@ import StoreMaterialIssues from "@/pages/store/MaterialHandshake/index";
 import DefectiveInventory from "@/pages/store/DefectiveInventory";
 import { RDProvider } from "@/contexts/RDContext";
 import ProductMaster from "@/pages/ResearchDevelopment/ProductMaster";
+import MotorMaster from "@/pages/ResearchDevelopment/MotorMaster";
+import PlantMaster from "@/pages/ResearchDevelopment/PlantMaster";
 import DesignApproval from "@/pages/ResearchDevelopment/DesignApproval";
 import BOMManagement from "@/pages/ResearchDevelopment/BOMManagement";
 import ToolProcess from "@/pages/ResearchDevelopment/ToolProcess";
@@ -672,6 +675,16 @@ function Router() {
       <Route path="/r&d/product-master">
         <ProtectedRoute requiredRole={["Research & Development Head", "Research Development Employee"]}>
           <ProductMaster />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/r&d/motor-master">
+        <ProtectedRoute requiredRole={["Research & Development Head", "Research Development Employee"]}>
+          <MotorMaster />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/r&d/plant-master">
+        <ProtectedRoute requiredRole={["Research & Development Head", "Research Development Employee"]}>
+          <PlantMaster />
         </ProtectedRoute>
       </Route>
       <Route path="/r&d/design-approval">
@@ -1230,7 +1243,7 @@ function Router() {
       </Route>
       <Route path="/store/inventory">
         <ProtectedRoute requiredRole={["Store Head", "Store Employee"]}>
-          <ModernInventoryUI />
+          <StoreInventory />
         </ProtectedRoute>
       </Route>
       <Route path="/store/orders">

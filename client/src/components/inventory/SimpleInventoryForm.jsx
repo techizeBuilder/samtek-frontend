@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
@@ -13,16 +13,20 @@ import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import {
   Loader2, Package, AlertCircle, Upload, Plus, X, Shield, Layers, Wrench, FlaskConical, Trash2,
-  Image as ImageIcon, FileText, Video, StickyNote
+  Image as ImageIcon
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { UNIT_TYPES, getUnitTypeForUnit, getUnitsForType } from '@/utils/unitTypes';
 import { apiRequest } from '@/lib/queryClient';
 import { config } from '@/config/environment';
 
-const ITEM_TYPES = ['Product', 'Material', 'Spares', 'Assemblies'];
 const IMPORTANCE_LEVELS = ['Low', 'Normal', 'High', 'Critical'];
 const WARRANTY_TYPES = ['Parts Only', 'Labor Only', 'Comprehensive'];
+const DIMENSION_UNITS = ['Inch', 'MM', 'Feet', 'Meter'];
+const DIMENSION_FIELDS = [
+  ['length', 'Length'], ['height', 'Height'], ['width', 'Width'],
+  ['diaOD', 'Dia (OD)'], ['diaID', 'Dia (ID)'], ['thickness', 'Thickness'],
+];
 
 function DynamicListField({ label, icon: Icon, items, onChange, placeholder }) {
   const addItem = () => onChange([...items, '']);
@@ -62,23 +66,24 @@ function DynamicListField({ label, icon: Icon, items, onChange, placeholder }) {
 }
 
 export default function SimpleInventoryForm({
-  isOpen, onClose, item = null, categories = [], customerCategories = [], groups = [], unitTypes = [], onSubmit, isLoading = false, onOpenCategoryManagement, onOpenGroupManagement, onOpenUnitTypeManagement
+  isOpen, onClose, item = null, categories = [], unitTypes = [], onSubmit, isLoading = false, onOpenCategoryManagement, onOpenUnitTypeManagement
 }) {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState({});
   const [imagePreview, setImagePreview] = useState(null);
   const [imageUploading, setImageUploading] = useState(false);
-  const [brochureUploading, setBrochureUploading] = useState(false);
-  // Tracks a freshly-uploaded (this session) image/brochure URL that isn't attached to a
+  // Tracks a freshly-uploaded (this session) image URL that isn't attached to a
   // saved item yet — if the user replaces it or cancels the dialog, we discard it from disk
   // so it doesn't sit as an orphaned file. Cleared (without discarding) once the item saves.
   const [pendingImageUpload, setPendingImageUpload] = useState(null);
-  const [pendingBrochureUpload, setPendingBrochureUpload] = useState(null);
 
   const emptyForm = {
-    name: '', code: '', description: '', group: '',
-    category: '', subCategory: '', customerCategory: 'Retail', type: 'Product',
+    name: '', code: '', description: '',
+    // Record Type — not shown in this form (Product/Motor Master set it
+    // themselves elsewhere); defaults silently to 'Material', the common case
+    // for plain Inventory items created here.
+    category: '', subCategory: '', type: 'Material',
     importance: 'Normal', unitType: '', unit: '',
     qty: 0, minStock: 0, batch: '', leadTime: 0,
     stdCost: 0, purchaseCost: 0, salePrice: 0, mrp: 0, gst: 0, hsn: '',
@@ -86,10 +91,15 @@ export default function SimpleInventoryForm({
     // real BOM build or purchase invoice resolves a cost for this item
     costSource: 'Manual', costResolvedAt: null, costResolutionIssue: null,
     internalManufacturing: false, purchase: true, purchaseUnitType: '', purchaseUnit: '', internalNotes: '', image: '',
-    brochureUrl: '', videoUrl: '', otherInfo: '',
     // Optional Product Master attributes — auto-filled when Item Code matches, editable after
-    brand: '', metrology: '', size: '', unitWeightValue: '', unitWeightUnitType: '', unitWeightUnit: '',
+    brand: '', metrology: '', materialGrade: '', modelNumber: '', size: '', unitWeightValue: '', unitWeightUnitType: '', unitWeightUnit: '',
     specifications: [], applications: [],
+    // Inventory's own new classification fields — see InventoryMasterOption.js
+    itemCategories: [], sourceType: '', itemSourceType: '',
+    dimensions: {
+      length: { value: '', unit: '' }, height: { value: '', unit: '' }, width: { value: '', unit: '' },
+      diaOD: { value: '', unit: '' }, diaID: { value: '', unit: '' }, thickness: { value: '', unit: '' },
+    },
     warranty: { period: 12, type: 'Comprehensive', terms: '' }
   };
 
@@ -122,47 +132,68 @@ export default function SimpleInventoryForm({
     return formData.unitWeightUnit && !units.includes(formData.unitWeightUnit) ? [formData.unitWeightUnit, ...units] : units;
   }, [formData.unitWeightUnitType, formData.unitWeightUnit, unitTypes]);
 
-  // Product Master lookup for the optional code-match autofill. Fetched unfiltered
-  // (no page/limit) — same convention other full-list consumers of this endpoint use.
-  const { data: pmMachinesResponse } = useQuery({
-    queryKey: ['rd-machines-all'],
-    queryFn: () => apiRequest('GET', '/api/rd/machines'),
+  // ── Dynamic dropdown values ──────────────────────────────────────────────
+  // ItemCategory/SourceType/ItemSourceType are Inventory's own
+  // ("+"-addable) lists — see InventoryMasterOption.js. Metrology/Material
+  // Grade reuse the SAME shared lists Product Master's dropdowns read from
+  // (RDMasterOption, unscoped) since these are universal specs, not
+  // per-module ones — kept in sync rather than duplicated.
+  const qc = useQueryClient();
+  const { data: invOptionsResponse } = useQuery({
+    queryKey: ['inventory-master-options'],
+    queryFn: () => apiRequest('GET', '/api/inventory/master-options'),
   });
-  const pmMatch = React.useMemo(() => {
-    const c = (formData.code || '').trim().toLowerCase();
-    if (!c) return null;
-    const pmMachines = pmMachinesResponse?.data || [];
-    return pmMachines.find(m => (m.code || '').trim().toLowerCase() === c) || null;
-  }, [formData.code, pmMachinesResponse]);
+  const invMasterOptions = invOptionsResponse?.data || {};
+  const { data: rdOptionsResponse } = useQuery({
+    queryKey: ['rd-master-options'],
+    queryFn: () => apiRequest('GET', '/api/rd/master-options'),
+  });
+  const rdMasterOptions = rdOptionsResponse?.data || {};
 
-  // Fills in Product Master attributes when the Item Code matches — only into fields still
-  // empty, never overwriting what's already typed. Deliberately excludes Category/Sub Category:
-  // Product Master's P-Type/Category/P-Source Type is a different taxonomy from Inventory's own
-  // (shown read-only near the code field for reference instead of ever being written here).
-  const applyPMAutofill = () => {
-    if (!pmMatch) return;
-    setFormData(prev => ({
-      ...prev,
-      name: prev.name || pmMatch.name || '',
-      description: prev.description || pmMatch.description || '',
-      brand: prev.brand || pmMatch.brand || '',
-      metrology: prev.metrology || pmMatch.metrology || '',
-      size: prev.size || pmMatch.size || '',
-      unitWeightValue: (prev.unitWeightValue !== '' && prev.unitWeightValue !== null && prev.unitWeightValue !== undefined)
-        ? prev.unitWeightValue
-        : (pmMatch.unitWeightValue ?? ''),
-      unitWeightUnitType: prev.unitWeightUnitType || pmMatch.unitWeightUnitType || '',
-      unitWeightUnit: prev.unitWeightUnit || pmMatch.unitWeightUnit || '',
-      // Product Master's Input Unit / Output Unit were modeled to mirror Inventory's
-      // purchaseUnitType+purchaseUnit / unitType+unit convention exactly — direct mapping.
-      purchaseUnitType: prev.purchaseUnitType || pmMatch.inputUnitType || '',
-      purchaseUnit: prev.purchaseUnit || pmMatch.inputUnit || '',
-      unitType: prev.unitType || pmMatch.outputUnitType || '',
-      unit: prev.unit || pmMatch.outputUnit || '',
-      specifications: (Array.isArray(prev.specifications) && prev.specifications.length > 0)
-        ? prev.specifications
-        : (Array.isArray(pmMatch.specifications) ? pmMatch.specifications : []),
-    }));
+  const [newOptionModal, setNewOptionModal] = useState({ open: false, scope: '', field: '', value: '' });
+
+  const addInvOptionMutation = useMutation({
+    mutationFn: (data) => apiRequest('POST', '/api/inventory/master-options', data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['inventory-master-options'] }),
+  });
+  const addRdOptionMutation = useMutation({
+    mutationFn: (data) => apiRequest('POST', '/api/rd/master-options', data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['rd-master-options'] }),
+  });
+
+  const INV_FIELD_KEY_MAP = { SourceType: 'sourceType', ItemSourceType: 'itemSourceType' };
+  const RD_FIELD_KEY_MAP = { Metrology: 'metrology', MaterialGrade: 'materialGrade' };
+
+  const handleAddOption = async () => {
+    if (!newOptionModal.value.trim()) return;
+    try {
+      if (newOptionModal.scope === 'inventory') {
+        await addInvOptionMutation.mutateAsync({ field: newOptionModal.field, value: newOptionModal.value.trim() });
+        if (newOptionModal.field === 'ItemCategory') {
+          handleInputChange('itemCategories', [...formData.itemCategories, newOptionModal.value.trim()]);
+        } else {
+          handleInputChange(INV_FIELD_KEY_MAP[newOptionModal.field], newOptionModal.value.trim());
+        }
+      } else {
+        await addRdOptionMutation.mutateAsync({ field: newOptionModal.field, value: newOptionModal.value.trim() });
+        handleInputChange(RD_FIELD_KEY_MAP[newOptionModal.field], newOptionModal.value.trim());
+      }
+      setNewOptionModal({ open: false, scope: '', field: '', value: '' });
+      toast({ title: 'Option Added', description: 'New option added successfully' });
+    } catch (e) {
+      toast({ title: 'Failed to add option', description: e?.message || '', variant: 'destructive' });
+    }
+  };
+
+  // Item Code suggestion: initials of Name words + digits from Name (e.g.
+  // "Sheet 8x16" -> "S816"). Only fills the field — never overwrites what's
+  // already typed, and R&D can always edit it before saving.
+  const suggestItemCode = () => {
+    const initials = (formData.name || '').trim().split(/\s+/).filter(Boolean)
+      .map(w => /^[a-zA-Z]/.test(w) ? w[0].toUpperCase() : '').join('');
+    const digits = (formData.name || '').replace(/[^0-9]/g, '');
+    const suggestion = `${initials}${digits}`;
+    if (suggestion) handleInputChange('code', suggestion);
   };
 
   const getUnitTypeForUnitDynamic = (unitName) => {
@@ -193,12 +224,20 @@ export default function SimpleInventoryForm({
         costResolutionIssue: item.costResolutionIssue || null,
         specifications: Array.isArray(item.specifications) ? item.specifications : [],
         applications: Array.isArray(item.applications) ? item.applications : [],
+        itemCategories: Array.isArray(item.itemCategories) ? item.itemCategories : [],
+        dimensions: {
+          length: { value: item.dimensions?.length?.value ?? '', unit: item.dimensions?.length?.unit || '' },
+          height: { value: item.dimensions?.height?.value ?? '', unit: item.dimensions?.height?.unit || '' },
+          width: { value: item.dimensions?.width?.value ?? '', unit: item.dimensions?.width?.unit || '' },
+          diaOD: { value: item.dimensions?.diaOD?.value ?? '', unit: item.dimensions?.diaOD?.unit || '' },
+          diaID: { value: item.dimensions?.diaID?.value ?? '', unit: item.dimensions?.diaID?.unit || '' },
+          thickness: { value: item.dimensions?.thickness?.value ?? '', unit: item.dimensions?.thickness?.unit || '' },
+        },
         warranty: item.warranty || { period: 12, type: 'Comprehensive', terms: '' }
       });
       setErrors({});
       setImagePreview(item.image || null);
       setPendingImageUpload(null);
-      setPendingBrochureUpload(null);
     } else if (isOpen && !item) {
       resetForm();
     }
@@ -210,16 +249,14 @@ export default function SimpleInventoryForm({
     setImagePreview(null);
     setIsSubmitting(false);
     setImageUploading(false);
-    setBrochureUploading(false);
     setPendingImageUpload(null);
-    setPendingBrochureUpload(null);
   };
 
   // Best-effort cleanup of this session's not-yet-saved uploads (dialog cancelled/closed).
   const discardPendingMedia = () => {
-    [pendingImageUpload, pendingBrochureUpload].filter(Boolean).forEach(url => {
-      apiRequest('POST', '/api/items/media/delete', { url }).catch(() => {});
-    });
+    if (pendingImageUpload) {
+      apiRequest('POST', '/api/items/media/delete', { url: pendingImageUpload }).catch(() => {});
+    }
   };
 
   const handleCancel = () => {
@@ -269,38 +306,6 @@ export default function SimpleInventoryForm({
     }
   };
 
-  const handleBrochureUpload = async (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-    if (file.type !== 'application/pdf') {
-      toast({ title: 'Invalid file', description: 'Only PDF files are allowed for the brochure', variant: 'destructive' });
-      return;
-    }
-    if (file.size > 10 * 1024 * 1024) {
-      toast({ title: 'File too large', description: 'Please select a PDF under 10MB', variant: 'destructive' });
-      return;
-    }
-    setBrochureUploading(true);
-    try {
-      const fd = new FormData();
-      fd.append('brochure', file);
-      const res = await apiRequest('POST', '/api/items/upload-brochure', fd);
-      if (res.success && res.url) {
-        // Replacing an upload from this same session that was never saved — discard it
-        if (pendingBrochureUpload) {
-          apiRequest('POST', '/api/items/media/delete', { url: pendingBrochureUpload }).catch(() => {});
-        }
-        setPendingBrochureUpload(res.url);
-        handleInputChange('brochureUrl', res.url);
-        toast({ title: 'Brochure Uploaded', description: 'Brochure PDF uploaded successfully' });
-      }
-    } catch (error) {
-      toast({ title: 'Brochure Upload Failed', description: error?.message || 'Failed to upload brochure', variant: 'destructive' });
-    } finally {
-      setBrochureUploading(false);
-    }
-  };
-
   const resolveMediaUrl = (url) => (!url ? '' : (url.startsWith('http') || url.startsWith('blob:') || url.startsWith('data:')) ? url : `${config.baseURL}${url}`);
 
   const handleSubmit = async () => {
@@ -343,6 +348,11 @@ export default function SimpleInventoryForm({
           ? Number(formData.unitWeightValue) : null,
         specifications: formData.specifications.filter(s => s.key?.trim() !== ''),
         applications: formData.applications.filter(s => s?.trim() !== ''),
+        itemCategories: formData.itemCategories.filter(c => c?.trim() !== ''),
+        dimensions: Object.fromEntries(DIMENSION_FIELDS.map(([key]) => [key, {
+          value: formData.dimensions[key].value !== '' ? Number(formData.dimensions[key].value) : null,
+          unit: formData.dimensions[key].unit || '',
+        }])),
       };
 
       await onSubmit(processedData);
@@ -358,6 +368,7 @@ export default function SimpleInventoryForm({
   };
 
   return (
+    <>
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open) handleCancel(); }}>
       <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
@@ -380,23 +391,16 @@ export default function SimpleInventoryForm({
               </div>
               <div>
                 <Label className="text-sm font-medium text-gray-700">Item Code (ERP) * <span className="text-xs font-normal text-amber-600">(R&D must define)</span></Label>
-                <Input
-                  value={formData.code}
-                  onChange={(e) => handleInputChange('code', e.target.value)}
-                  onBlur={applyPMAutofill}
-                  placeholder="e.g. MAT-001"
-                  className={`mt-1 font-mono bg-white pr-8 ${errors.code ? 'border-red-500' : ''}`}
-                />
+                <div className="flex gap-2 mt-1">
+                  <Input
+                    value={formData.code}
+                    onChange={(e) => handleInputChange('code', e.target.value)}
+                    placeholder="e.g. MAT-001"
+                    className={`font-mono bg-white pr-8 flex-1 ${errors.code ? 'border-red-500' : ''}`}
+                  />
+                  <Button type="button" variant="outline" size="sm" onClick={suggestItemCode} title="Suggest a code from Item Name">Generate</Button>
+                </div>
                 {errors.code && <p className="text-red-500 text-xs mt-1">{errors.code}</p>}
-                {!errors.code && pmMatch && (
-                  <p className="text-xs text-emerald-600 mt-1">
-                    ✓ Matched Product Master: <strong>{pmMatch.name}</strong> — classified as {pmMatch.pType || '—'} / {pmMatch.category || '—'} / {pmMatch.pSourceType || '—'}
-                    <span className="text-gray-400"> (reference only — doesn't affect this item's Category)</span>
-                  </p>
-                )}
-                {!errors.code && !pmMatch && formData.code && (
-                  <p className="text-xs text-amber-600 mt-1">⚠ No matching Product Master item for this code — you can still save, nothing was auto-filled.</p>
-                )}
               </div>
               <div className="md:col-span-2">
                 <Label className="text-sm font-medium text-gray-700">Description</Label>
@@ -405,22 +409,43 @@ export default function SimpleInventoryForm({
             </div>
           </div>
 
-          {/* ── Product Master Attributes (auto-filled by code, editable) ──── */}
+          {/* ── Item Attributes ─────────────────────────────────────────── */}
           <div className="border border-gray-200 rounded-lg p-4">
-            <h3 className="text-lg font-medium text-gray-900">Product Master Attributes</h3>
-            <p className="text-xs text-gray-400 mb-4">Auto-filled from Product Master when the Item Code matches — optional, safe to edit.</p>
+            <h3 className="text-lg font-medium text-gray-900 mb-4">Item Attributes</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <Label className="text-sm font-medium text-gray-700">Brand</Label>
                 <Input value={formData.brand} onChange={(e) => handleInputChange('brand', e.target.value)} placeholder="e.g. Bosch" className="mt-1 bg-white" />
               </div>
               <div>
-                <Label className="text-sm font-medium text-gray-700">Metrology</Label>
-                <Input value={formData.metrology} onChange={(e) => handleInputChange('metrology', e.target.value)} placeholder="e.g. Vernier Caliper" className="mt-1 bg-white" />
+                <Label className="text-sm font-medium text-gray-700">Model Number</Label>
+                <Input value={formData.modelNumber} onChange={(e) => handleInputChange('modelNumber', e.target.value)} placeholder="e.g. 6600, 4320" className="mt-1 bg-white" />
               </div>
               <div>
                 <Label className="text-sm font-medium text-gray-700">Size</Label>
                 <Input value={formData.size} onChange={(e) => handleInputChange('size', e.target.value)} placeholder="e.g. 200mm x 100mm" className="mt-1 bg-white" />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+              <div>
+                <Label className="text-sm font-medium text-gray-700">Metrology</Label>
+                <div className="flex gap-2 mt-1">
+                  <Select value={formData.metrology} onValueChange={(v) => handleInputChange('metrology', v)}>
+                    <SelectTrigger className="flex-1"><SelectValue placeholder="Select" /></SelectTrigger>
+                    <SelectContent>{(rdMasterOptions.Metrology || []).map(o => <SelectItem key={o.value} value={o.value}>{o.value}</SelectItem>)}</SelectContent>
+                  </Select>
+                  <Button type="button" variant="outline" size="icon" onClick={() => setNewOptionModal({ open: true, scope: 'rd', field: 'Metrology', value: '' })}><Plus className="h-4 w-4" /></Button>
+                </div>
+              </div>
+              <div>
+                <Label className="text-sm font-medium text-gray-700">Material Grade</Label>
+                <div className="flex gap-2 mt-1">
+                  <Select value={formData.materialGrade} onValueChange={(v) => handleInputChange('materialGrade', v)}>
+                    <SelectTrigger className="flex-1"><SelectValue placeholder="Select" /></SelectTrigger>
+                    <SelectContent>{(rdMasterOptions.MaterialGrade || []).map(o => <SelectItem key={o.value} value={o.value}>{o.value}</SelectItem>)}</SelectContent>
+                  </Select>
+                  <Button type="button" variant="outline" size="icon" onClick={() => setNewOptionModal({ open: true, scope: 'rd', field: 'MaterialGrade', value: '' })}><Plus className="h-4 w-4" /></Button>
+                </div>
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
@@ -443,55 +468,55 @@ export default function SimpleInventoryForm({
                 </Select>
               </div>
             </div>
+
+            <div className="mt-4 pt-4 border-t border-gray-100">
+              <Label className="text-sm font-medium text-gray-700 mb-2 block">Dimensions</Label>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {DIMENSION_FIELDS.map(([key, label]) => (
+                  <div key={key} className="flex gap-2">
+                    <div className="flex-1">
+                      <Label className="text-[10px] text-gray-500 uppercase">{label}</Label>
+                      <Input
+                        type="number" min="0" className="mt-1 bg-white" placeholder="0"
+                        value={formData.dimensions[key].value}
+                        onChange={(e) => handleInputChange('dimensions', { ...formData.dimensions, [key]: { ...formData.dimensions[key], value: e.target.value } })}
+                      />
+                    </div>
+                    <div className="w-24">
+                      <Label className="text-[10px] text-gray-500 uppercase">Unit</Label>
+                      <Select
+                        value={formData.dimensions[key].unit}
+                        onValueChange={(v) => handleInputChange('dimensions', { ...formData.dimensions, [key]: { ...formData.dimensions[key], unit: v } })}
+                      >
+                        <SelectTrigger className="mt-1"><SelectValue placeholder="—" /></SelectTrigger>
+                        <SelectContent>{DIMENSION_UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
 
-          {/* ── Media & Documents ──────────────────────────────────────── */}
+          {/* ── Media ────────────────────────────────────────────────────── */}
           <div className="border border-gray-200 rounded-lg p-4">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Media & Documents</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <Label className="text-sm font-medium text-gray-700 flex items-center gap-1.5 mb-2">
-                  <ImageIcon className="h-4 w-4 text-gray-500" /> Product Image
-                </Label>
-                <div className="flex items-center gap-3">
-                  {imagePreview ? (
-                    <img src={resolveMediaUrl(imagePreview)} alt="Product" className="h-16 w-16 object-cover rounded-lg border border-gray-200 flex-shrink-0" />
-                  ) : (
-                    <div className="h-16 w-16 rounded-lg border border-dashed border-gray-300 flex items-center justify-center text-gray-300 flex-shrink-0">
-                      <ImageIcon className="h-6 w-6" />
-                    </div>
-                  )}
-                  <div className="flex-1">
-                    <input type="file" accept="image/*" onChange={handleImageUpload} disabled={imageUploading} className="text-xs text-gray-600 file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
-                    {imageUploading && <p className="text-xs text-blue-600 flex items-center gap-1 mt-1"><Loader2 className="h-3 w-3 animate-spin" /> Uploading...</p>}
+            <h3 className="text-lg font-medium text-gray-900 mb-4">Media</h3>
+            <div>
+              <Label className="text-sm font-medium text-gray-700 flex items-center gap-1.5 mb-2">
+                <ImageIcon className="h-4 w-4 text-gray-500" /> Product Image
+              </Label>
+              <div className="flex items-center gap-3">
+                {imagePreview ? (
+                  <img src={resolveMediaUrl(imagePreview)} alt="Product" className="h-16 w-16 object-cover rounded-lg border border-gray-200 flex-shrink-0" />
+                ) : (
+                  <div className="h-16 w-16 rounded-lg border border-dashed border-gray-300 flex items-center justify-center text-gray-300 flex-shrink-0">
+                    <ImageIcon className="h-6 w-6" />
                   </div>
-                </div>
-              </div>
-
-              <div>
-                <Label className="text-sm font-medium text-gray-700 flex items-center gap-1.5 mb-2">
-                  <FileText className="h-4 w-4 text-gray-500" /> Brochure (PDF)
-                </Label>
-                <input type="file" accept="application/pdf" onChange={handleBrochureUpload} disabled={brochureUploading} className="text-xs text-gray-600 file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
-                {brochureUploading && <p className="text-xs text-blue-600 flex items-center gap-1 mt-1"><Loader2 className="h-3 w-3 animate-spin" /> Uploading...</p>}
-                {formData.brochureUrl && !brochureUploading && (
-                  <a href={resolveMediaUrl(formData.brochureUrl)} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:underline mt-1.5 inline-block">View uploaded brochure</a>
                 )}
-              </div>
-
-              <div>
-                <Label className="text-sm font-medium text-gray-700 flex items-center gap-1.5 mb-2">
-                  <Video className="h-4 w-4 text-gray-500" /> Video URL
-                </Label>
-                <Input value={formData.videoUrl} onChange={(e) => handleInputChange('videoUrl', e.target.value)} placeholder="e.g. https://youtube.com/watch?v=..." className="bg-white" />
-                <p className="text-xs text-gray-400 mt-1">Not uploaded to the server — just a link (YouTube, Drive, etc.)</p>
-              </div>
-
-              <div>
-                <Label className="text-sm font-medium text-gray-700 flex items-center gap-1.5 mb-2">
-                  <StickyNote className="h-4 w-4 text-gray-500" /> Other Info
-                </Label>
-                <Input value={formData.otherInfo} onChange={(e) => handleInputChange('otherInfo', e.target.value)} placeholder="Any other notes for this item" className="bg-white" />
+                <div className="flex-1">
+                  <input type="file" accept="image/*" onChange={handleImageUpload} disabled={imageUploading} className="text-xs text-gray-600 file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
+                  {imageUploading && <p className="text-xs text-blue-600 flex items-center gap-1 mt-1"><Loader2 className="h-3 w-3 animate-spin" /> Uploading...</p>}
+                </div>
               </div>
             </div>
           </div>
@@ -516,32 +541,24 @@ export default function SimpleInventoryForm({
               </Select>
             </div>
             <div>
-              <Label className="text-sm font-medium text-gray-700">Customer Category</Label>
-              <Select value={formData.customerCategory} onValueChange={(v) => handleInputChange('customerCategory', v)}>
-                <SelectTrigger className="mt-1"><SelectValue placeholder="Select" /></SelectTrigger>
-                <SelectContent>{customerCategories.map((c) => <SelectItem key={c._id} value={c.name}>{c.name}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="text-sm font-medium text-gray-700">Group</Label>
+              <Label className="text-sm font-medium text-gray-700">Source Type</Label>
               <div className="flex gap-2 mt-1">
-                <Select value={formData.group || ''} onValueChange={(v) => handleInputChange('group', v)}>
-                  <SelectTrigger className="flex-1"><SelectValue placeholder="Select Group" /></SelectTrigger>
-                  <SelectContent>
-                    {groups.map((g) => <SelectItem key={g._id} value={g.name}>{g.name}</SelectItem>)}
-                  </SelectContent>
+                <Select value={formData.sourceType} onValueChange={(v) => handleInputChange('sourceType', v)}>
+                  <SelectTrigger className="flex-1"><SelectValue placeholder="Select" /></SelectTrigger>
+                  <SelectContent>{(invMasterOptions.SourceType || []).map(o => <SelectItem key={o.value} value={o.value}>{o.value}</SelectItem>)}</SelectContent>
                 </Select>
-                {onOpenGroupManagement && (
-                  <Button type="button" variant="outline" size="icon" onClick={onOpenGroupManagement}><Plus className="h-4 w-4" /></Button>
-                )}
+                <Button type="button" variant="outline" size="icon" onClick={() => setNewOptionModal({ open: true, scope: 'inventory', field: 'SourceType', value: '' })}><Plus className="h-4 w-4" /></Button>
               </div>
             </div>
             <div>
-              <Label className="text-sm font-medium text-gray-700">Item Type *</Label>
-              <Select value={formData.type} onValueChange={(v) => handleInputChange('type', v)}>
-                <SelectTrigger className="mt-1"><SelectValue placeholder="Select" /></SelectTrigger>
-                <SelectContent>{ITEM_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
-              </Select>
+              <Label className="text-sm font-medium text-gray-700">Item Source Type</Label>
+              <div className="flex gap-2 mt-1">
+                <Select value={formData.itemSourceType} onValueChange={(v) => handleInputChange('itemSourceType', v)}>
+                  <SelectTrigger className="flex-1"><SelectValue placeholder="Select" /></SelectTrigger>
+                  <SelectContent>{(invMasterOptions.ItemSourceType || []).map(o => <SelectItem key={o.value} value={o.value}>{o.value}</SelectItem>)}</SelectContent>
+                </Select>
+                <Button type="button" variant="outline" size="icon" onClick={() => setNewOptionModal({ open: true, scope: 'inventory', field: 'ItemSourceType', value: '' })}><Plus className="h-4 w-4" /></Button>
+              </div>
             </div>
             <div>
               <Label className="text-sm font-medium text-gray-700">Unit Type *</Label>
@@ -568,6 +585,35 @@ export default function SimpleInventoryForm({
                 <SelectTrigger className="mt-1"><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent>{IMPORTANCE_LEVELS.map((l) => <SelectItem key={l} value={l}>{l}</SelectItem>)}</SelectContent>
               </Select>
+            </div>
+          </div>
+
+          {/* ── Item Category (multi-select, dynamic) ──────────────────── */}
+          <div className="p-4 border border-gray-200 rounded-lg">
+            <div className="flex items-center justify-between mb-2">
+              <Label className="text-sm font-medium text-gray-700">Item Category</Label>
+              <Button type="button" variant="outline" size="sm" onClick={() => setNewOptionModal({ open: true, scope: 'inventory', field: 'ItemCategory', value: '' })} className="h-7 px-2 text-xs border-blue-300 text-blue-700 hover:bg-blue-50">
+                <Plus className="h-3 w-3 mr-1" /> Add New
+              </Button>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {(invMasterOptions.ItemCategory || []).length === 0 ? (
+                <p className="text-xs text-gray-400 italic">No item categories yet — click "Add New" to create one.</p>
+              ) : invMasterOptions.ItemCategory.map(o => {
+                const selected = formData.itemCategories.includes(o.value);
+                return (
+                  <button
+                    key={o.value}
+                    type="button"
+                    onClick={() => handleInputChange('itemCategories', selected
+                      ? formData.itemCategories.filter(c => c !== o.value)
+                      : [...formData.itemCategories, o.value])}
+                    className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${selected ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300'}`}
+                  >
+                    {o.value}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -694,5 +740,25 @@ export default function SimpleInventoryForm({
         </div>
       </DialogContent>
     </Dialog>
+
+    {/* Add New Master Option (Item Category / Source Type / Item Source Type / Metrology / Material Grade) */}
+    <Dialog open={newOptionModal.open} onOpenChange={(open) => !open && setNewOptionModal({ open: false, scope: '', field: '', value: '' })}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>
+            Add New {({ ItemCategory: 'Item Category', SourceType: 'Source Type', ItemSourceType: 'Item Source Type', Metrology: 'Metrology', MaterialGrade: 'Material Grade' })[newOptionModal.field] || newOptionModal.field}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="py-2">
+          <Label className="text-xs font-semibold text-gray-600 mb-1 block">Value *</Label>
+          <Input autoFocus value={newOptionModal.value} onChange={(e) => setNewOptionModal(prev => ({ ...prev, value: e.target.value }))} onKeyDown={(e) => e.key === 'Enter' && handleAddOption()} />
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={() => setNewOptionModal({ open: false, scope: '', field: '', value: '' })}>Cancel</Button>
+          <Button onClick={handleAddOption} disabled={!newOptionModal.value.trim()} className="bg-blue-600 hover:bg-blue-700 text-white">Save</Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }

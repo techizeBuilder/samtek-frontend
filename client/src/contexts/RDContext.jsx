@@ -184,7 +184,7 @@ export function RDProvider({ children }) {
   const addMachine = useCallback((data) => createMachineMut.mutate(data), []);
   const updateMachine = useCallback((id, data) => updateMachineMut.mutate({ id, data }), []);
   const updateDesignStatus = useCallback((id, status, note = '') => designStatusMut.mutate({ id, status, note }), []);
-  const updateReleaseStatus = useCallback((id, status) => releaseStatusMut.mutate({ id, status }), []);
+  const updateReleaseStatus = useCallback((id, status) => releaseStatusMut.mutateAsync({ id, status }), []);
   const discontinueMachine = useCallback((id) => discontinueMachineMut.mutate(id), []);
   const reactivateMachine = useCallback((id) => reactivateMachineMut.mutate(id), []);
 

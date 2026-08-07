@@ -27,12 +27,24 @@ export default function ModulePlayer() {
   const [activeContentId, setActiveContentId] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
 
+  // Once the required watch time is reached, the video keeps playing (it's
+  // usually longer than the minimum) with nothing pushing the trainee
+  // forward — this flips true so a "Skip" button can appear instead of
+  // making them manually drag the scrubber to the end.
+  const [canSkipVideo, setCanSkipVideo] = useState(false);
+
   useEffect(() => {
     if (contents.length > 0 && !activeContentId) {
       const firstPending = contents.find((c: any) => !completedContentIds.includes(c._id));
       setActiveContentId(firstPending ? firstPending._id : contents[0]._id);
     }
   }, [contents, completedContentIds, activeContentId]);
+
+  // Reset the skip flag whenever the active item changes — a fresh video
+  // must satisfy its own minWatchTime before it can be skipped.
+  useEffect(() => {
+    setCanSkipVideo(false);
+  }, [activeContentId]);
 
   const activeContent = contents.find((c: any) => c._id === activeContentId);
 
@@ -49,11 +61,24 @@ export default function ModulePlayer() {
 
     if (currentTime >= requiredTime && requiredTime > 0) {
       handleContentComplete(activeContent._id);
+      if (!canSkipVideo) setCanSkipVideo(true);
     }
   };
 
   const handleVideoEnded = () => {
     if (activeContent) handleContentComplete(activeContent._id);
+  };
+
+  // Moves to the next playlist item (or just stops here if this was the
+  // last one) — the trainee has already satisfied the watch requirement,
+  // so there's nothing left to gate on.
+  const handleSkipVideo = () => {
+    if (!activeContent) return;
+    handleContentComplete(activeContent._id);
+    if (videoRef.current) videoRef.current.pause();
+    const idx = contents.findIndex((c: any) => c._id === activeContent._id);
+    const next = contents[idx + 1];
+    if (next) setActiveContentId(next._id);
   };
 
   const formatTime = (seconds: number) => {
@@ -180,6 +205,16 @@ export default function ModulePlayer() {
                 <div className="absolute top-4 left-4 bg-green-500/90 text-white px-3 py-1 rounded-full text-xs font-bold backdrop-blur-sm shadow-sm flex items-center gap-1">
                   <span>✓</span> Completed
                 </div>
+              )}
+
+              {activeContent.contentType === 'Video' &&
+                (canSkipVideo || (activeContent.minWatchTime || 0) === 0 || completedContentIds.includes(activeContent._id)) && (
+                <button
+                  onClick={handleSkipVideo}
+                  className="absolute top-4 right-4 bg-black/70 hover:bg-black/90 text-white px-4 py-2 rounded-lg text-sm font-bold backdrop-blur-sm shadow-sm flex items-center gap-1.5 transition-colors"
+                >
+                  Skip {contents[contents.findIndex((c: any) => c._id === activeContent._id) + 1] ? 'to Next' : ''} <span>⏭</span>
+                </button>
               )}
             </>
           ) : (

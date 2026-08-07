@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Beaker, Plus, CheckCircle2, XCircle, Clock, Eye, Edit2, ChevronDown, ArrowRight } from 'lucide-react';
+import { showSuccessToast, showSmartToast } from '@/lib/toast-utils';
 
 const TEST_STATES = ['Pass', 'Fail', 'In Progress', 'Pending'];
 
@@ -91,10 +92,15 @@ export default function Prototype() {
     setEditOpen(true);
   };
 
-  const handleRelease = () => {
+  const handleRelease = async () => {
     const machineId = selected.machine?._id || selected.machine || selected.machineId;
-    updateReleaseStatus(String(machineId), 'Released');
-    setReleaseOpen(false);
+    try {
+      await updateReleaseStatus(String(machineId), 'Released');
+      showSuccessToast('Released for Production', `${selected.machineName || 'Machine'} is now released and can proceed to BOM approval.`);
+      setReleaseOpen(false);
+    } catch (e) {
+      showSmartToast(e, 'Failed to release for production');
+    }
   };
 
   return (
@@ -131,10 +137,10 @@ export default function Prototype() {
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: 'Total Prototypes', value: counts.All, color: 'text-blue-600', bg: 'bg-blue-50' },
-          { label: 'In Progress', value: counts['In Progress'], color: 'text-amber-600', bg: 'bg-amber-50' },
-          { label: 'Passed', value: counts.Passed, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-          { label: 'Failed', value: counts.Failed, color: 'text-red-600', bg: 'bg-red-50' },
+          { label: 'Total Prototypes', value: counts.All ?? 0, color: 'text-blue-600', bg: 'bg-blue-50' },
+          { label: 'In Progress', value: counts['In Progress'] ?? 0, color: 'text-amber-600', bg: 'bg-amber-50' },
+          { label: 'Passed', value: counts.Passed ?? 0, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+          { label: 'Failed', value: counts.Failed ?? 0, color: 'text-red-600', bg: 'bg-red-50' },
         ].map((s, i) => (
           <Card key={i} className="border-none shadow-sm">
             <CardContent className="p-4 flex items-center gap-3">
@@ -152,7 +158,7 @@ export default function Prototype() {
       <div className="flex gap-2 flex-wrap">
         {['All', 'In Progress', 'Passed', 'Failed'].map(tab => (
           <button key={tab} onClick={() => setFilterStatus(tab)} className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold border transition-colors ${filterStatus === tab ? 'bg-blue-600 text-white border-blue-600 shadow' : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300'}`}>
-            {tab} <span className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${filterStatus === tab ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'}`}>{counts[tab] ?? counts.All}</span>
+            {tab} <span className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${filterStatus === tab ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'}`}>{counts[tab] ?? 0}</span>
           </button>
         ))}
       </div>

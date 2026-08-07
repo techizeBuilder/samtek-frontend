@@ -49,18 +49,18 @@ const TestReviewModal = ({ isOpen, onClose, attempt }: { isOpen: boolean, onClos
           {attempt.reviewData?.length > 0 ? (
             attempt.reviewData.map((item: any, idx: number) => (
               <div key={idx} className={`p-5 rounded-lg border shadow-sm bg-white ${item.isCorrect ? 'border-l-4 border-l-green-500' : 'border-l-4 border-l-red-500'}`}>
-                <p className="font-semibold text-gray-900 text-sm mb-4">
+                <p className="font-semibold text-gray-900 text-sm mb-4 break-words">
                   <span className={item.isCorrect ? 'text-green-600' : 'text-red-600'}>Q{idx + 1}.</span> {item.questionText}
                 </p>
 
                 <div className="grid md:grid-cols-2 gap-3 text-sm">
-                  <div className={`p-3 rounded-md border ${item.isCorrect ? 'bg-green-50 border-green-200 text-green-900' : 'bg-red-50 border-red-200 text-red-900'}`}>
+                  <div className={`p-3 rounded-md border break-words ${item.isCorrect ? 'bg-green-50 border-green-200 text-green-900' : 'bg-red-50 border-red-200 text-red-900'}`}>
                     <span className="block text-xs font-bold uppercase mb-1 opacity-75">Candidate's Answer</span>
                     {item.selectedAnswerText}
                   </div>
 
                   {!item.isCorrect && (
-                    <div className="p-3 rounded-md border bg-blue-50 border-blue-200 text-blue-900">
+                    <div className="p-3 rounded-md border bg-blue-50 border-blue-200 text-blue-900 break-words">
                       <span className="block text-xs font-bold uppercase mb-1 opacity-75">Correct Answer</span>
                       {item.correctAnswerText}
                     </div>

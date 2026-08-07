@@ -94,6 +94,18 @@ export default function VendorBids() {
     }
   });
 
+  // ── Resend a failed RFQ invite email ──────────────────────────────────────
+  const resendMutation = useMutation({
+    mutationFn: ({ rfqId, bidId }) => apiRequest('POST', `/api/rfq/${rfqId}/vendor-bid/${bidId}/resend`),
+    onSuccess: (data) => {
+      toast({ title: '📧 Email Resent', description: data.message });
+      refetchBids();
+    },
+    onError: (err) => {
+      toast({ title: 'Resend Failed', description: err.message, variant: 'destructive' });
+    }
+  });
+
   const handleViewBids = (rfq) => {
     setSelectedRFQId(rfq._id);
     setBidsModalOpen(true);
@@ -211,11 +223,11 @@ export default function VendorBids() {
                           <Button
                             size="sm"
                             onClick={() => handleViewBids(rfq)}
-                            className={`h-8 text-xs font-semibold shadow-sm ${(rfq.bidCount || 0) > 0 ? 'bg-purple-600 hover:bg-purple-700 text-white' : 'bg-slate-200 text-slate-500 cursor-default'}`}
-                            disabled={(rfq.bidCount || 0) === 0}
+                            className={`h-8 text-xs font-semibold shadow-sm ${(rfq.vendors?.length || 0) > 0 ? 'bg-purple-600 hover:bg-purple-700 text-white' : 'bg-slate-200 text-slate-500 cursor-default'}`}
+                            disabled={(rfq.vendors?.length || 0) === 0}
                           >
                             <Eye className="w-3.5 h-3.5 mr-1" />
-                            View Bids {(rfq.bidCount || 0) > 0 ? `(${rfq.bidCount})` : ''}
+                            View Bids {(rfq.bidCount || 0) > 0 ? `(${rfq.bidCount})` : (rfq.failedEmailBids?.length || 0) > 0 ? '(email failed)' : ''}
                           </Button>
                         )}
                       </td>
@@ -382,12 +394,41 @@ export default function VendorBids() {
                 <div className="border border-dashed border-amber-200 rounded-xl p-4 bg-amber-50/50">
                   <p className="text-xs font-bold text-amber-700 uppercase mb-2 flex items-center gap-1">
                     <Clock className="w-3.5 h-3.5" /> Awaiting Response ({invitedBids.length})
+                    {invitedBids.some(b => b.emailStatus === 'Failed') && (
+                      <span className="normal-case font-semibold text-red-600 ml-1">
+                        — {invitedBids.filter(b => b.emailStatus === 'Failed').length} email(s) failed to send
+                      </span>
+                    )}
                   </p>
                   <div className="flex flex-wrap gap-2">
                     {invitedBids.map(bid => (
-                      <span key={bid._id} className="text-xs bg-white border border-amber-200 text-amber-700 rounded-full px-3 py-1">
-                        {bid.vendorName}
-                      </span>
+                      bid.emailStatus === 'Failed' ? (
+                        <div
+                          key={bid._id}
+                          title={bid.emailError || 'Email failed to send'}
+                          className="flex items-center gap-1.5 text-xs bg-red-50 border border-red-200 text-red-700 rounded-full pl-3 pr-1.5 py-1"
+                        >
+                          <XCircle className="w-3 h-3 shrink-0" />
+                          <span>{bid.vendorName} — email failed</span>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-5 px-2 text-[11px] font-semibold text-red-700 hover:bg-red-100 hover:text-red-800"
+                            disabled={resendMutation.isPending && resendMutation.variables?.bidId === bid._id}
+                            onClick={() => resendMutation.mutate({ rfqId: selectedRFQId, bidId: bid._id })}
+                          >
+                            {resendMutation.isPending && resendMutation.variables?.bidId === bid._id ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : (
+                              'Resend'
+                            )}
+                          </Button>
+                        </div>
+                      ) : (
+                        <span key={bid._id} className="text-xs bg-white border border-amber-200 text-amber-700 rounded-full px-3 py-1">
+                          {bid.vendorName}
+                        </span>
+                      )
                     ))}
                   </div>
                 </div>

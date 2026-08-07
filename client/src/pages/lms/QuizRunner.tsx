@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useLocation } from 'wouter';
-import { useStartTest, useSubmitTest } from '../../hooks/useTraining';
+import { useStartTest, useSubmitTest, useModuleTestInfo } from '../../hooks/useTraining';
 
 export default function QuizRunner() {
   const params = useParams();
@@ -10,22 +10,28 @@ export default function QuizRunner() {
   // --- 1. API WIRING ---
   const { mutate: startTest, data: testData, isPending: isStarting, isError: isStartError, error: startErrorObj } = useStartTest();
   const { mutate: submitTest, isPending: isSubmitting } = useSubmitTest();
+  // Just for the "Ready to begin?" text below — start-test hasn't been
+  // called yet at that point, so there's no testData.durationSeconds yet.
+  const { data: testInfo } = useModuleTestInfo(moduleId);
+  const preStartDurationMinutes = testInfo?.testDurationMinutes || 20;
 
   const questions = testData?.questions || [];
   const testAttemptId = testData?.testAttemptId;
   const attemptNumber = testData?.attemptNumber;
   const isTestActive = !!testData && questions.length > 0;
+  // Set per-module by whoever authored it (Create/Edit Module Info), sent
+  // back from start-test — falls back to the old fixed 20 minutes for safety.
+  const durationSeconds = testData?.durationSeconds || 1200;
 
   // --- 2. QUIZ & SUBMISSION STATE ---
   const [answersMap, setAnswersMap] = useState<Record<string, string>>({});
   const [timeLeft, setTimeLeft] = useState<number>(0);
   const [warnings, setWarnings] = useState<number>(0);
-  
+
   // 🔥 NEW: State to hold the backend response for the Review Screen
   const [submissionResult, setSubmissionResult] = useState<any>(null);
 
   const MAX_WARNINGS = 3;
-  const DURATION_SECONDS = 1200; 
 
   // --- 3. THE TIMER ---
   useEffect(() => {
@@ -33,8 +39,8 @@ export default function QuizRunner() {
     if (submissionResult) return; 
 
     if (isTestActive && timeLeft === 0 && !answersMap['timer_started']) {
-      setTimeLeft(DURATION_SECONDS);
-      setAnswersMap(prev => ({ ...prev, timer_started: 'true' })); 
+      setTimeLeft(durationSeconds);
+      setAnswersMap(prev => ({ ...prev, timer_started: 'true' }));
     }
 
     if (!isTestActive || timeLeft <= 0) return;
@@ -51,7 +57,7 @@ export default function QuizRunner() {
     }, 1000);
 
     return () => clearInterval(timerId);
-  }, [isTestActive, timeLeft, answersMap, submissionResult]);
+  }, [isTestActive, timeLeft, answersMap, submissionResult, durationSeconds]);
 
   // --- 4. FORMAT SUBMISSION PAYLOAD ---
   const formatAnswersForBackend = () => {
@@ -200,24 +206,24 @@ export default function QuizRunner() {
             {reviewData?.map((item: any, index: number) => (
               <div key={index} className={`bg-white p-6 rounded-xl shadow-sm border-l-4 ${item.isCorrect ? 'border-l-green-500 border-gray-200' : 'border-l-red-500 border-gray-200'}`}>
                 <h3 className="text-lg font-bold text-gray-900 mb-4 flex gap-3">
-                  <span className={item.isCorrect ? 'text-green-600' : 'text-red-600'}>Q{index + 1}.</span> 
-                  {item.questionText}
+                  <span className={`shrink-0 ${item.isCorrect ? 'text-green-600' : 'text-red-600'}`}>Q{index + 1}.</span>
+                  <span className="min-w-0 break-words">{item.questionText}</span>
                 </h3>
-                
+
                 <div className="grid md:grid-cols-2 gap-4">
                   <div className={`p-4 rounded-lg border ${item.isCorrect ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
                     <span className="text-xs font-bold uppercase tracking-wider block mb-1 opacity-70">
                       {item.isCorrect ? 'Your Correct Answer' : 'Your Incorrect Answer'}
                     </span>
-                    <span className="font-medium">{item.selectedAnswerText}</span>
+                    <span className="font-medium break-words">{item.selectedAnswerText}</span>
                   </div>
-                  
+
                   {!item.isCorrect && (
                     <div className="p-4 rounded-lg border bg-blue-50 border-blue-200">
                       <span className="text-xs font-bold uppercase text-blue-800 tracking-wider block mb-1">
                         Correct Answer
                       </span>
-                      <span className="font-medium text-blue-900">{item.correctAnswerText}</span>
+                      <span className="font-medium text-blue-900 break-words">{item.correctAnswerText}</span>
                     </div>
                   )}
                 </div>
@@ -241,7 +247,7 @@ export default function QuizRunner() {
         <div className="bg-white border border-gray-200 p-10 rounded-xl max-w-lg text-center shadow-sm w-full">
           <h2 className="text-2xl font-black text-gray-900 mb-2">Ready to begin?</h2>
           <p className="text-gray-600 mb-6">
-            You will have <span className="font-bold text-gray-900">20 minutes</span> to complete this assessment. Do not close or switch tabs once you start.
+            You will have <span className="font-bold text-gray-900">{preStartDurationMinutes} minute{preStartDurationMinutes === 1 ? '' : 's'}</span> to complete this assessment. Do not close or switch tabs once you start.
           </p>
           
           {isStartError && (
@@ -320,31 +326,31 @@ export default function QuizRunner() {
           {questions.map((q: any, index: number) => (
             <div key={q._id} className="bg-white p-8 rounded-xl shadow-sm border border-gray-200">
               <h3 className="text-lg font-bold text-gray-900 mb-6 flex gap-3">
-                <span className="text-blue-600 shrink-0">{index + 1}.</span> 
-                {q.questionText}
+                <span className="text-blue-600 shrink-0">{index + 1}.</span>
+                <span className="min-w-0 break-words">{q.questionText}</span>
               </h3>
-              
+
               <div className="space-y-3">
                 {q.options.map((option: any) => {
                   const isSelected = answersMap[q._id] === option._id;
                   return (
-                    <label 
-                      key={option._id} 
-                      className={`flex items-center p-4 rounded-lg border cursor-pointer transition-all ${
-                        isSelected 
-                          ? 'bg-blue-50 border-blue-500 shadow-sm ring-1 ring-blue-500' 
+                    <label
+                      key={option._id}
+                      className={`flex items-start p-4 rounded-lg border cursor-pointer transition-all ${
+                        isSelected
+                          ? 'bg-blue-50 border-blue-500 shadow-sm ring-1 ring-blue-500'
                           : 'bg-white border-gray-200 hover:bg-gray-50 hover:border-gray-300'
                       }`}
                     >
-                      <input 
-                        type="radio" 
-                        name={`question-${q._id}`} 
+                      <input
+                        type="radio"
+                        name={`question-${q._id}`}
                         value={option._id}
                         checked={isSelected}
                         onChange={() => handleOptionSelect(q._id, option._id)}
-                        className="w-5 h-5 text-blue-600 border-gray-300 focus:ring-blue-500 cursor-pointer shrink-0"
+                        className="w-5 h-5 mt-0.5 text-blue-600 border-gray-300 focus:ring-blue-500 cursor-pointer shrink-0"
                       />
-                      <span className={`ml-3 text-sm ${isSelected ? 'font-medium text-blue-900' : 'text-gray-700'}`}>
+                      <span className={`ml-3 text-sm min-w-0 break-words ${isSelected ? 'font-medium text-blue-900' : 'text-gray-700'}`}>
                         {option.text}
                       </span>
                     </label>

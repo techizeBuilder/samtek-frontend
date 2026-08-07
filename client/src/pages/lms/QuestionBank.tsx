@@ -269,12 +269,12 @@ export default function QuestionBank() {
               {!isLoadingQuestions && questions.map((q, index) => (
                 <div key={q._id} className={`border rounded-lg p-4 transition-colors shadow-sm ${editingId === q._id ? 'border-orange-400 bg-orange-50/30' : 'border-gray-200 bg-white hover:border-blue-300'}`}>
                   
-                  <div className="flex justify-between items-start mb-4">
-                    <h3 className="font-semibold text-gray-900 text-sm">
-                      <span className="text-blue-600 mr-2">Q{(page - 1) * 10 + index + 1}.</span> 
-                      {q.questionText}
+                  <div className="flex justify-between items-start mb-4 gap-4">
+                    <h3 className="font-semibold text-gray-900 text-sm min-w-0 flex-1">
+                      <span className="text-blue-600 mr-2">Q{(page - 1) * 10 + index + 1}.</span>
+                      <span className="break-words">{q.questionText}</span>
                     </h3>
-                    <div className="flex gap-2 shrink-0 ml-4">
+                    <div className="flex gap-2 shrink-0">
                       <button onClick={() => handleEditClick(q)} disabled={isBusy} className="text-xs font-medium text-blue-600 hover:bg-blue-50 px-2 py-1 rounded transition-colors disabled:opacity-50">Edit</button>
                       <button onClick={() => handleDeleteClick(q._id)} disabled={isBusy} className="text-xs font-medium text-red-600 hover:bg-red-50 px-2 py-1 rounded transition-colors disabled:opacity-50">Delete</button>
                     </div>
@@ -282,25 +282,25 @@ export default function QuestionBank() {
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     {q.options.map((opt, idx) => {
-                      const optLabel = opt.label || String.fromCharCode(65 + idx); 
+                      const optLabel = opt.label || String.fromCharCode(65 + idx);
                       const isCorrect = String(q.correctOption) === optLabel;
-                      
+
                       return (
-                        <div 
-                          key={opt._id || idx} 
-                          className={`text-xs p-2.5 rounded-md border flex justify-between items-center transition-colors ${
-                            isCorrect 
-                              ? 'bg-green-50 border-green-400 font-semibold text-green-900' 
+                        <div
+                          key={opt._id || idx}
+                          className={`text-xs p-2.5 rounded-md border flex justify-between items-start gap-2 transition-colors ${
+                            isCorrect
+                              ? 'bg-green-50 border-green-400 font-semibold text-green-900'
                               : 'bg-gray-50 border-gray-200 text-gray-600'
                           }`}
                         >
-                          <div className="flex-1 pr-2">
+                          <div className="flex-1 min-w-0 break-words">
                             <span className={`mr-2 font-bold ${isCorrect ? 'text-green-700' : 'text-gray-400'}`}>
                               {optLabel}.
                             </span>
                             {opt.text}
                           </div>
-                          
+
                           {isCorrect && (
                             <span className="text-green-600 flex items-center shrink-0">
                                <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
@@ -373,27 +373,36 @@ export default function QuestionBank() {
                     const optLabel = String.fromCharCode(65 + idx); 
                     
                     return (
-                      <div key={idx} className={`flex items-center gap-3 p-2 border rounded-md transition-colors ${correctOption === optLabel ? 'bg-blue-50 border-blue-300' : 'bg-white border-gray-200'}`}>
-                        
-                        <input 
-                          type="radio" 
-                          name="correctOption" 
+                      <div key={idx} className={`flex items-start gap-3 p-2 border rounded-md transition-colors ${correctOption === optLabel ? 'bg-blue-50 border-blue-300' : 'bg-white border-gray-200'}`}>
+
+                        <input
+                          type="radio"
+                          name="correctOption"
                           checked={correctOption === optLabel}
                           onChange={() => setCorrectOption(optLabel)}
-                          className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300 cursor-pointer"
+                          className="w-4 h-4 mt-1.5 text-blue-600 focus:ring-blue-500 border-gray-300 cursor-pointer shrink-0"
                         />
-                        
-                        <span className="text-sm font-bold text-gray-400 w-4">
+
+                        <span className="text-sm font-bold text-gray-400 w-4 mt-1">
                           {optLabel}
                         </span>
                         
-                        <input 
-                          type="text" 
+                        <textarea
+                          ref={(el) => {
+                            // Auto-grow to fit content — re-runs on every
+                            // render (typing or an Edit-click prefill), so
+                            // the box always matches the current text.
+                            if (el) {
+                              el.style.height = 'auto';
+                              el.style.height = `${el.scrollHeight}px`;
+                            }
+                          }}
                           value={opt}
                           onChange={(e) => handleOptionChange(idx, e.target.value)}
                           placeholder={`Option ${idx + 1}`}
                           required
-                          className="flex-1 border-none focus:ring-0 p-1 bg-transparent text-sm"
+                          rows={1}
+                          className="flex-1 border-none focus:ring-0 p-1 bg-transparent text-sm resize-none overflow-hidden leading-normal"
                         />
                       </div>
                     );

@@ -123,6 +123,8 @@ export const MODULES = [
       { key: 'inventory', label: 'Inventory' },
       { key: 'approveRequests', label: 'Approve Requests' },
       { key: 'productMaster', label: 'Product Master' },
+      { key: 'motorMaster', label: 'Motor Master' },
+      { key: 'plantMaster', label: 'Plant Master' },
       { key: 'designApproval', label: 'Design Approval' },
       { key: 'bomManagement', label: 'BOM Management' },
       { key: 'toolProcess', label: 'Tool & Process' },
