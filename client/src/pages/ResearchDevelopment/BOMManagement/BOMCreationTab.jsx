@@ -5,10 +5,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
-import { ClipboardList, Lock, Plus, Trash2, Edit2, Eye, AlertTriangle, Ban, RefreshCw, Search, Settings2, IndianRupee, Save, Factory } from 'lucide-react';
+import { ClipboardList, Lock, Plus, Trash2, Edit2, Eye, AlertTriangle, Ban, RefreshCw, Search, Settings2, IndianRupee, Save, Factory, Download, Loader2 } from 'lucide-react';
 import { UNIT_TYPES, getUnitTypeForUnit, getUnitsForType } from '@/utils/unitTypes';
 import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
+import { showSmartToast } from '@/lib/toast-utils';
+import { config } from '@/config/environment';
 import BOMFieldConfigModal from './BOMFieldConfigModal';
 import { formatCatalogFieldValue } from '@/utils/bomFieldFormat';
 
@@ -104,6 +106,7 @@ export default function BOMCreationTab({ product }) {
   const [addOpen, setAddOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [lockOpen, setLockOpen] = useState(false);
+  const [downloadingBOM, setDownloadingBOM] = useState(false);
   const [newBOMOpen, setNewBOMOpen] = useState(false);
   const [bomFormatOpen, setBomFormatOpen] = useState(false);
   const [deleteMat, setDeleteMat] = useState(null);
@@ -145,9 +148,9 @@ export default function BOMCreationTab({ product }) {
   const enabledBOMFields = bomFieldConfigResponse?.data?.enabledFields || [];
   const bomFieldCatalog = bomFieldConfigResponse?.data?.catalog || [];
   const enabledCatalogEntries = bomFieldCatalog.filter(f => enabledBOMFields.includes(f.key));
-  // Code/Name/Unit/purchaseCost already have their own dedicated columns
-  // (Material Code, Material Name, Unit, Price) — don't duplicate them.
-  const extraColumns = enabledCatalogEntries.filter(f => !['code', 'name', 'unit', 'purchaseCost'].includes(f.key));
+  // Code/Name/Unit already have their own dedicated columns (Material Code,
+  // Material Name, Unit) — don't duplicate them.
+  const extraColumns = enabledCatalogEntries.filter(f => !['code', 'name', 'unit'].includes(f.key));
 
   const unitTypesList = React.useMemo(() => {
     if (unitTypesData?.unitTypes) {
@@ -276,6 +279,37 @@ export default function BOMCreationTab({ product }) {
     }
   };
 
+  // Same fetch+blob+anchor-click pattern as OrderManagement.jsx's Material
+  // Ledger "Download PDF" — binary response, so raw fetch instead of the
+  // JSON apiRequest helper. Works whether the BOM is locked or still being edited.
+  const handleDownloadBOM = async () => {
+    if (!bom?._id) return;
+    setDownloadingBOM(true);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${config.baseURL}/api/rd/boms/${bom._id}/download`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.message || 'Failed to download BOM');
+      }
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `BOM_${bom.machine?.code || bom._id}_${bom.version || 'v1.0'}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      showSmartToast(error, 'Download Failed');
+    } finally {
+      setDownloadingBOM(false);
+    }
+  };
+
   const rowsValid = form.rows.length > 0 && form.rows.every(r => r.code && r.item && r.quantity && r.unitType && r.unit);
   const addFormValid = !!form.childPartCode && !!form.subChildPartCode && rowsValid;
   const addFormTotal = form.rows.reduce((sum, r) => sum + (Number(r.quantity) || 0) * (r.unitPrice || 0), 0);
@@ -401,6 +435,9 @@ export default function BOMCreationTab({ product }) {
                   )}
                 </div>
                 <div className="flex gap-2">
+                  <Button size="sm" variant="outline" disabled={downloadingBOM} onClick={handleDownloadBOM}>
+                    {downloadingBOM ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Download className="h-4 w-4 mr-1" />} Download BOM
+                  </Button>
                   {!bom.isLocked && (
                     <>
                       <Button size="sm" className="bg-gradient-to-r from-blue-600 to-purple-600 text-white" onClick={() => setAddOpen(true)}>
@@ -499,7 +536,7 @@ export default function BOMCreationTab({ product }) {
                       <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Hierarchy (Child &gt; Sub-Child)</th>
                       <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Material Name</th>
                       <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Qty</th>
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Unit</th>
+                      <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Used Unit</th>
                       <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Price</th>
                       {extraColumns.map(f => (
                         <th key={f.key} className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">{f.label}</th>
@@ -856,7 +893,7 @@ export default function BOMCreationTab({ product }) {
                   <p className="text-xs text-slate-500 mb-2 font-semibold">Additional Details <span className="text-[10px] text-slate-400 font-normal">(from BOM Format & Modification)</span></p>
                   <div className="grid grid-cols-2 gap-2">
                     {extraColumns.map(f => {
-                      if (f.key === 'specifications' || f.key === 'itemCategories' || f.key === 'applications') return null;
+                      if (f.key === 'itemCategories') return null;
                       const value = formatCatalogFieldValue(f.key, viewMat);
                       if (value === '—') return null;
                       return <div key={f.key}><p className="text-[11px] text-slate-400">{f.label}</p><p className="text-sm text-slate-800 break-words">{value}</p></div>;
@@ -874,30 +911,6 @@ export default function BOMCreationTab({ product }) {
                     </div>
                   )}
 
-                  {enabledBOMFields.includes('applications') && Array.isArray(viewMat.applications) && viewMat.applications.length > 0 && (
-                    <div className="mt-3">
-                      <p className="text-[11px] text-slate-400 mb-1">Applications</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {viewMat.applications.map((a, i) => (
-                          <span key={i} className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-purple-50 text-purple-700 border border-purple-200">{a}</span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {enabledBOMFields.includes('specifications') && Array.isArray(viewMat.specifications) && viewMat.specifications.filter(s => s.key).length > 0 && (
-                    <div className="mt-3">
-                      <p className="text-[11px] text-slate-400 mb-1">Specifications</p>
-                      <div className="divide-y divide-slate-100">
-                        {viewMat.specifications.filter(s => s.key).map((s, i) => (
-                          <div key={i} className="flex items-center justify-between py-1.5">
-                            <span className="text-xs font-semibold text-slate-500 w-2/5">{s.key}</span>
-                            <span className="text-sm text-slate-800 font-medium">{s.value || '—'}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                 </div>
               )}
             </div>

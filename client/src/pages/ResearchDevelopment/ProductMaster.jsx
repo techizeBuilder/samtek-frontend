@@ -69,11 +69,15 @@ const emptyForm = {
   specifications: [], brand: '', machineType: 'Standard',
   metrology: '', customFields: [], forwardToNextPhase: false,
   size: '', unitWeightValue: '', unitWeightUnitType: '', unitWeightUnit: '',
-  inputUnitType: '', inputUnit: '', outputUnitType: '', outputUnit: '',
+  // Purchase Unit (Pieces) — not shown on the form; every machine is counted
+  // in Pieces regardless of Purchasable vs Internal Manufacturing, so this is
+  // always defaulted rather than gated behind the sourcing radio. Output Unit
+  // defaults to Pieces too (still shown/editable on the form, unlike Purchase Unit).
+  inputUnitType: 'Count Unit', inputUnit: 'Pieces', outputUnitType: 'Count Unit', outputUnit: 'Pieces',
   variant: '', productionRate: '', materialGrade: '', powerSource: '',
   powerRequiredHP: '', powerRequiredKWH: '', powerRequiredRPM: '',
   accessories: [], modelNumber: '', applications: [],
-  purchase: true, internalManufacturing: false,
+  purchase: true, internalManufacturing: false, isDiscontinued: false,
   stdCost: '', purchaseCost: '', salePrice: '', mrp: '', gst: '', qty: '', minStock: '',
 };
 
@@ -86,6 +90,7 @@ export default function ProductMaster() {
     customFieldTemplates, getCustomFieldTemplate, saveCustomFieldTemplate, deleteCustomFieldTemplate,
   } = useRD();
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('All');
   const [filterRelease, setFilterRelease] = useState('All');
   const [showDiscontinued, setShowDiscontinued] = useState(false);
@@ -95,6 +100,7 @@ export default function ProductMaster() {
   const [filterCategory, setFilterCategory] = useState('');
   const [filterPSourceType, setFilterPSourceType] = useState('');
   const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(20);
   const [addOpen, setAddOpen] = useState(false);
   const [viewOpen, setViewOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -177,21 +183,28 @@ export default function ProductMaster() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editForm.pType, editForm.category, editForm.pSourceType, editOpen]);
 
-  // Reset to page 1 whenever a filter/search changes so the user doesn't
-  // land on a now-out-of-range page.
-  useEffect(() => { setPage(1); }, [search, filterStatus, filterRelease, showDiscontinued, filterPType, filterCategory, filterPSourceType]);
+  // Debounce search so it doesn't refetch on every keystroke — same 500ms
+  // pattern already used on Inventory's list page.
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 500);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  // Reset to page 1 whenever a filter/search/page-size changes so the user
+  // doesn't land on a now-out-of-range page.
+  useEffect(() => { setPage(1); }, [debouncedSearch, filterStatus, filterRelease, showDiscontinued, filterPType, filterCategory, filterPSourceType, limit]);
 
   const { data: machinesListResponse, isLoading: machinesListLoading } = useQuery({
-    queryKey: ['rd-machines', 'list', { page, search, filterStatus, filterRelease, showDiscontinued, filterPType, filterCategory, filterPSourceType }],
+    queryKey: ['rd-machines', 'list', { page, limit, search: debouncedSearch, filterStatus, filterRelease, showDiscontinued, filterPType, filterCategory, filterPSourceType }],
     queryFn: () => {
       const params = new URLSearchParams({
         page: String(page),
-        limit: '20',
+        limit: String(limit),
         designStatus: filterStatus,
         releaseStatus: filterRelease,
         discontinued: showDiscontinued ? 'true' : 'false',
       });
-      if (search) params.set('search', search);
+      if (debouncedSearch) params.set('search', debouncedSearch);
       if (filterPType) params.set('pType', filterPType);
       if (filterCategory) params.set('category', filterCategory);
       if (filterPSourceType) params.set('pSourceType', filterPSourceType);
@@ -230,10 +243,11 @@ export default function ProductMaster() {
       unitWeightValue: m.unitWeightValue !== null && m.unitWeightValue !== undefined ? String(m.unitWeightValue) : '',
       unitWeightUnitType: m.unitWeightUnitType || '',
       unitWeightUnit: m.unitWeightUnit || '',
-      inputUnitType: m.inputUnitType || '',
-      inputUnit: m.inputUnit || '',
-      outputUnitType: m.outputUnitType || '',
-      outputUnit: m.outputUnit || '',
+      // Backfill legacy machines saved before Purchase/Output Unit were ever set.
+      inputUnitType: m.inputUnitType || 'Count Unit',
+      inputUnit: m.inputUnit || 'Pieces',
+      outputUnitType: m.outputUnitType || 'Count Unit',
+      outputUnit: m.outputUnit || 'Pieces',
       variant: m.variant || '',
       productionRate: m.productionRate || '',
       materialGrade: m.materialGrade || '',
@@ -246,6 +260,7 @@ export default function ProductMaster() {
       applications: Array.isArray(m.applications) ? m.applications : [],
       purchase: m.purchase !== false,
       internalManufacturing: !!m.internalManufacturing,
+      isDiscontinued: !!m.isDiscontinued,
       stdCost: m.stdCost ?? '', purchaseCost: m.purchaseCost ?? '', salePrice: m.salePrice ?? '',
       mrp: m.mrp ?? '', gst: m.gst ?? '', qty: m.qty ?? '', minStock: m.minStock ?? '',
     });
@@ -502,6 +517,20 @@ export default function ProductMaster() {
     </div>
   );
 
+  const renderStatusDropdown = (state, setState) => (
+    <div>
+      <label className="text-xs font-semibold text-slate-600 mb-1 block">Product Status</label>
+      <select
+        className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+        value={state.isDiscontinued ? 'Discontinue' : 'Continue'}
+        onChange={e => setState(f => ({ ...f, isDiscontinued: e.target.value === 'Discontinue' }))}
+      >
+        <option value="Continue">Continue</option>
+        <option value="Discontinue">Discontinue</option>
+      </select>
+    </div>
+  );
+
   // ── Custom Field Template Manager helpers ────────────────────────────────────
   useEffect(() => {
     if (!templateManagerOpen) return;
@@ -752,6 +781,16 @@ export default function ProductMaster() {
             <button onClick={() => setShowDiscontinued(v => !v)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${showDiscontinued ? 'bg-red-100 text-red-700 border-red-300' : 'bg-white text-slate-600 border-slate-200 hover:border-red-300'}`}>
               {showDiscontinued ? 'Show Active' : 'Show Discontinued'}
             </button>
+            <select
+              className="border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              value={limit}
+              onChange={e => setLimit(Number(e.target.value))}
+            >
+              <option value={20}>20 per page</option>
+              <option value={50}>50 per page</option>
+              <option value={100}>100 per page</option>
+              <option value={150}>150 per page</option>
+            </select>
           </div>
 
           <div className="flex flex-col md:flex-row md:items-center gap-2 mt-3 pt-3 border-t border-slate-100">
@@ -866,31 +905,6 @@ export default function ProductMaster() {
           <DialogHeader><DialogTitle className="text-xl">Add New</DialogTitle></DialogHeader>
 
           <div className="space-y-5 py-2">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Product Code *</label>
-                <div className="flex gap-2">
-                  <Input className="bg-white flex-1" placeholder="e.g. CM-009" value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value }))} />
-                  <Button type="button" variant="outline" size="sm" onClick={() => suggestProductCode(form, setForm)} title="Suggest a code from Name + Metrology + Variant">Generate</Button>
-                </div>
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Product Name *</label>
-                <Input className="bg-white" placeholder="Enter product name" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Product Variant</label>
-                <Input className="bg-white" placeholder="e.g. 6x12, 200 KG/hr" value={form.variant} onChange={e => setForm(f => ({ ...f, variant: e.target.value }))} />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Model Number</label>
-                <Input className="bg-white" placeholder="e.g. 8100" value={form.modelNumber} onChange={e => setForm(f => ({ ...f, modelNumber: e.target.value }))} />
-              </div>
-            </div>
-
             <div className="p-4 bg-slate-50 rounded-lg border border-slate-100 space-y-2">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {renderDropdownWithAdd('Category', 'P-Type', 'pType', masterOptions.PType, form, setForm, {
@@ -908,23 +922,59 @@ export default function ProductMaster() {
               </p>
             </div>
 
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">Product Name *</label>
+                <Input className="bg-white" placeholder="Enter product name" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">Product Variant</label>
+                <Input className="bg-white" placeholder="e.g. 6x12, 200 KG/hr" value={form.variant} onChange={e => setForm(f => ({ ...f, variant: e.target.value }))} />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">Product Code *</label>
+                <div className="flex gap-2">
+                  <Input className="bg-white flex-1" placeholder="e.g. CM-009" value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value }))} />
+                  <Button type="button" variant="outline" size="sm" onClick={() => suggestProductCode(form, setForm)} title="Suggest a code from Name + Metrology + Variant">Generate</Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">Production</label>
+                <Input className="bg-white" placeholder="e.g. 200 Kg/hr" value={form.productionRate} onChange={e => setForm(f => ({ ...f, productionRate: e.target.value }))} />
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Brand</label>
-                <Input className="bg-white" placeholder="Enter brand" value={form.brand} onChange={e => setForm(f => ({ ...f, brand: e.target.value }))} />
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">Product Size</label>
+                <Input className="bg-white" placeholder="e.g. 500x300x200mm" value={form.size} onChange={e => setForm(f => ({ ...f, size: e.target.value }))} />
               </div>
               {renderDropdownWithAdd('Metrology', 'Metrology', 'metrology', masterOptions.Metrology, form, setForm, { required: false })}
               {renderDropdownWithAdd('Material Grade', 'MaterialGrade', 'materialGrade', masterOptions.MaterialGrade, form, setForm, { required: false })}
             </div>
 
+            <div className="p-4 bg-slate-50 rounded-lg border border-slate-100 space-y-4">
+              <p className="text-xs font-semibold text-slate-700">Product Weight</p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 mb-1 block">Product Weight</label>
+                  <Input type="number" min="0" className="bg-white" placeholder="0" value={form.unitWeightValue} onChange={e => setForm(f => ({ ...f, unitWeightValue: e.target.value }))} />
+                </div>
+                {renderUnitTypeUnitPair('Product Weight Unit', 'unitWeightUnitType', 'unitWeightUnit', form, setForm)}
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Product Size</label>
-                <Input className="bg-white" placeholder="e.g. 500x300x200mm" value={form.size} onChange={e => setForm(f => ({ ...f, size: e.target.value }))} />
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">Model Number</label>
+                <Input className="bg-white" placeholder="e.g. 8100" value={form.modelNumber} onChange={e => setForm(f => ({ ...f, modelNumber: e.target.value }))} />
               </div>
               <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Production</label>
-                <Input className="bg-white" placeholder="e.g. 200 Kg/hr" value={form.productionRate} onChange={e => setForm(f => ({ ...f, productionRate: e.target.value }))} />
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">Brand</label>
+                <Input className="bg-white" placeholder="Enter brand" value={form.brand} onChange={e => setForm(f => ({ ...f, brand: e.target.value }))} />
               </div>
             </div>
 
@@ -954,6 +1004,19 @@ export default function ProductMaster() {
               </div>
             </div>
 
+            {renderSpecBuilder(form, setForm)}
+
+            {renderTagListInput('Applications', 'applications', applicationInput, setApplicationInput, form, setForm, 'e.g. Red Chilli, Coriander — press Enter to add')}
+
+            {renderTagListInput('Accessories', 'accessories', accessoryInput, setAccessoryInput, form, setForm, 'e.g. Cloth, Key, 2 Nut — press Enter to add')}
+
+            <div>
+              <label className="text-xs font-semibold text-slate-600 mb-1 block">Description</label>
+              <textarea className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none bg-white" rows={2} placeholder="Brief description..." value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
+            </div>
+
+            {renderStatusDropdown(form, setForm)}
+
             <RadioGroup
               value={form.purchase ? 'purchase' : form.internalManufacturing ? 'internalManufacturing' : ''}
               onValueChange={(v) => setForm(f => ({ ...f, purchase: v === 'purchase', internalManufacturing: v === 'internalManufacturing' }))}
@@ -969,52 +1032,7 @@ export default function ProductMaster() {
               </div>
             </RadioGroup>
 
-            <div className="p-4 bg-slate-50 rounded-lg border border-slate-100 space-y-4">
-              <p className="text-xs font-semibold text-slate-700">Product Weight &amp; Handling Units</p>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label className="text-xs font-semibold text-slate-600 mb-1 block">Product Weight</label>
-                  <Input type="number" min="0" className="bg-white" placeholder="0" value={form.unitWeightValue} onChange={e => setForm(f => ({ ...f, unitWeightValue: e.target.value }))} />
-                </div>
-                {renderUnitTypeUnitPair('Product Weight Unit', 'unitWeightUnitType', 'unitWeightUnit', form, setForm)}
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {form.purchase && (
-                  <div className="grid grid-cols-2 gap-4">
-                    {renderUnitTypeUnitPair('Input Unit (Purchase)', 'inputUnitType', 'inputUnit', form, setForm)}
-                  </div>
-                )}
-                <div className="grid grid-cols-2 gap-4">
-                  {renderUnitTypeUnitPair('Output Unit', 'outputUnitType', 'outputUnit', form, setForm)}
-                </div>
-              </div>
-            </div>
-
-            <div className="border border-slate-200 rounded-lg p-4">
-              <p className="text-sm font-medium text-slate-900 mb-3">Pricing &amp; Stock</p>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <div><label className="text-xs text-slate-500 mb-1 block">Std Cost</label><Input type="number" className="bg-white" value={form.stdCost} onChange={e => setForm(f => ({ ...f, stdCost: e.target.value }))} /></div>
-                <div><label className="text-xs text-slate-500 mb-1 block">Purchase Cost</label><Input type="number" className="bg-white" value={form.purchaseCost} onChange={e => setForm(f => ({ ...f, purchaseCost: e.target.value }))} /></div>
-                <div><label className="text-xs text-slate-500 mb-1 block">Sale Price</label><Input type="number" className="bg-white" value={form.salePrice} onChange={e => setForm(f => ({ ...f, salePrice: e.target.value }))} /></div>
-                <div><label className="text-xs text-slate-500 mb-1 block">MRP</label><Input type="number" className="bg-white" value={form.mrp} onChange={e => setForm(f => ({ ...f, mrp: e.target.value }))} /></div>
-                <div><label className="text-xs text-slate-500 mb-1 block">GST %</label><Input type="number" className="bg-white" value={form.gst} onChange={e => setForm(f => ({ ...f, gst: e.target.value }))} /></div>
-                <div><label className="text-xs text-slate-500 mb-1 block">Available Stock</label><Input type="number" className="bg-white" value={form.qty} onChange={e => setForm(f => ({ ...f, qty: e.target.value }))} /></div>
-                <div><label className="text-xs text-slate-500 mb-1 block">Min Stock</label><Input type="number" className="bg-white" value={form.minStock} onChange={e => setForm(f => ({ ...f, minStock: e.target.value }))} /></div>
-              </div>
-            </div>
-
-            {renderTagListInput('Applications', 'applications', applicationInput, setApplicationInput, form, setForm, 'e.g. Red Chilli, Coriander — press Enter to add')}
-
-            {renderTagListInput('Accessories', 'accessories', accessoryInput, setAccessoryInput, form, setForm, 'e.g. Cloth, Key, 2 Nut — press Enter to add')}
-
-            {renderSpecBuilder(form, setForm)}
-
             {renderCustomFieldsBlock(form, setForm)}
-
-            <div>
-              <label className="text-xs font-semibold text-slate-600 mb-1 block">Description</label>
-              <textarea className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none bg-white" rows={2} placeholder="Brief description..." value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
-            </div>
 
             {renderForwardCheckbox(form, setForm, 'add')}
 
@@ -1036,31 +1054,6 @@ export default function ProductMaster() {
           <DialogHeader><DialogTitle className="text-xl">Edit Machine — {selected?.code}</DialogTitle></DialogHeader>
 
           <div className="space-y-5 py-2">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Product Code *</label>
-                <div className="flex gap-2">
-                  <Input className="bg-white flex-1" value={editForm.code} onChange={e => setEditForm(f => ({ ...f, code: e.target.value }))} />
-                  <Button type="button" variant="outline" size="sm" onClick={() => suggestProductCode(editForm, setEditForm)} title="Suggest a code from Name + Metrology + Variant">Generate</Button>
-                </div>
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Product Name *</label>
-                <Input className="bg-white" value={editForm.name} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))} />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Product Variant</label>
-                <Input className="bg-white" placeholder="e.g. 6x12, 200 KG/hr" value={editForm.variant} onChange={e => setEditForm(f => ({ ...f, variant: e.target.value }))} />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Model Number</label>
-                <Input className="bg-white" placeholder="e.g. 8100" value={editForm.modelNumber} onChange={e => setEditForm(f => ({ ...f, modelNumber: e.target.value }))} />
-              </div>
-            </div>
-
             <div className="p-4 bg-slate-50 rounded-lg border border-slate-100 space-y-2">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {renderDropdownWithAdd('Category', 'P-Type', 'pType', masterOptions.PType, editForm, setEditForm, {
@@ -1078,23 +1071,59 @@ export default function ProductMaster() {
               </p>
             </div>
 
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">Product Name *</label>
+                <Input className="bg-white" value={editForm.name} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">Product Variant</label>
+                <Input className="bg-white" placeholder="e.g. 6x12, 200 KG/hr" value={editForm.variant} onChange={e => setEditForm(f => ({ ...f, variant: e.target.value }))} />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">Product Code *</label>
+                <div className="flex gap-2">
+                  <Input className="bg-white flex-1" value={editForm.code} onChange={e => setEditForm(f => ({ ...f, code: e.target.value }))} />
+                  <Button type="button" variant="outline" size="sm" onClick={() => suggestProductCode(editForm, setEditForm)} title="Suggest a code from Name + Metrology + Variant">Generate</Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">Production</label>
+                <Input className="bg-white" placeholder="e.g. 200 Kg/hr" value={editForm.productionRate} onChange={e => setEditForm(f => ({ ...f, productionRate: e.target.value }))} />
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Brand</label>
-                <Input className="bg-white" value={editForm.brand} onChange={e => setEditForm(f => ({ ...f, brand: e.target.value }))} />
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">Product Size</label>
+                <Input className="bg-white" placeholder="e.g. 500x300x200mm" value={editForm.size} onChange={e => setEditForm(f => ({ ...f, size: e.target.value }))} />
               </div>
               {renderDropdownWithAdd('Metrology', 'Metrology', 'metrology', masterOptions.Metrology, editForm, setEditForm, { required: false })}
               {renderDropdownWithAdd('Material Grade', 'MaterialGrade', 'materialGrade', masterOptions.MaterialGrade, editForm, setEditForm, { required: false })}
             </div>
 
+            <div className="p-4 bg-slate-50 rounded-lg border border-slate-100 space-y-4">
+              <p className="text-xs font-semibold text-slate-700">Product Weight</p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 mb-1 block">Product Weight</label>
+                  <Input type="number" min="0" className="bg-white" placeholder="0" value={editForm.unitWeightValue} onChange={e => setEditForm(f => ({ ...f, unitWeightValue: e.target.value }))} />
+                </div>
+                {renderUnitTypeUnitPair('Product Weight Unit', 'unitWeightUnitType', 'unitWeightUnit', editForm, setEditForm)}
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Product Size</label>
-                <Input className="bg-white" placeholder="e.g. 500x300x200mm" value={editForm.size} onChange={e => setEditForm(f => ({ ...f, size: e.target.value }))} />
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">Model Number</label>
+                <Input className="bg-white" placeholder="e.g. 8100" value={editForm.modelNumber} onChange={e => setEditForm(f => ({ ...f, modelNumber: e.target.value }))} />
               </div>
               <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Production</label>
-                <Input className="bg-white" placeholder="e.g. 200 Kg/hr" value={editForm.productionRate} onChange={e => setEditForm(f => ({ ...f, productionRate: e.target.value }))} />
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">Brand</label>
+                <Input className="bg-white" value={editForm.brand} onChange={e => setEditForm(f => ({ ...f, brand: e.target.value }))} />
               </div>
             </div>
 
@@ -1124,6 +1153,19 @@ export default function ProductMaster() {
               </div>
             </div>
 
+            {renderSpecBuilder(editForm, setEditForm)}
+
+            {renderTagListInput('Applications', 'applications', applicationInput, setApplicationInput, editForm, setEditForm, 'e.g. Red Chilli, Coriander — press Enter to add')}
+
+            {renderTagListInput('Accessories', 'accessories', accessoryInput, setAccessoryInput, editForm, setEditForm, 'e.g. Cloth, Key, 2 Nut — press Enter to add')}
+
+            <div>
+              <label className="text-xs font-semibold text-slate-600 mb-1 block">Description</label>
+              <textarea className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none bg-white" rows={2} value={editForm.description} onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))} />
+            </div>
+
+            {renderStatusDropdown(editForm, setEditForm)}
+
             <RadioGroup
               value={editForm.purchase ? 'purchase' : editForm.internalManufacturing ? 'internalManufacturing' : ''}
               onValueChange={(v) => setEditForm(f => ({ ...f, purchase: v === 'purchase', internalManufacturing: v === 'internalManufacturing' }))}
@@ -1139,52 +1181,7 @@ export default function ProductMaster() {
               </div>
             </RadioGroup>
 
-            <div className="p-4 bg-slate-50 rounded-lg border border-slate-100 space-y-4">
-              <p className="text-xs font-semibold text-slate-700">Product Weight &amp; Handling Units</p>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label className="text-xs font-semibold text-slate-600 mb-1 block">Product Weight</label>
-                  <Input type="number" min="0" className="bg-white" placeholder="0" value={editForm.unitWeightValue} onChange={e => setEditForm(f => ({ ...f, unitWeightValue: e.target.value }))} />
-                </div>
-                {renderUnitTypeUnitPair('Product Weight Unit', 'unitWeightUnitType', 'unitWeightUnit', editForm, setEditForm)}
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {editForm.purchase && (
-                  <div className="grid grid-cols-2 gap-4">
-                    {renderUnitTypeUnitPair('Input Unit (Purchase)', 'inputUnitType', 'inputUnit', editForm, setEditForm)}
-                  </div>
-                )}
-                <div className="grid grid-cols-2 gap-4">
-                  {renderUnitTypeUnitPair('Output Unit', 'outputUnitType', 'outputUnit', editForm, setEditForm)}
-                </div>
-              </div>
-            </div>
-
-            <div className="border border-slate-200 rounded-lg p-4">
-              <p className="text-sm font-medium text-slate-900 mb-3">Pricing &amp; Stock</p>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <div><label className="text-xs text-slate-500 mb-1 block">Std Cost</label><Input type="number" className="bg-white" value={editForm.stdCost} onChange={e => setEditForm(f => ({ ...f, stdCost: e.target.value }))} /></div>
-                <div><label className="text-xs text-slate-500 mb-1 block">Purchase Cost</label><Input type="number" className="bg-white" value={editForm.purchaseCost} onChange={e => setEditForm(f => ({ ...f, purchaseCost: e.target.value }))} /></div>
-                <div><label className="text-xs text-slate-500 mb-1 block">Sale Price</label><Input type="number" className="bg-white" value={editForm.salePrice} onChange={e => setEditForm(f => ({ ...f, salePrice: e.target.value }))} /></div>
-                <div><label className="text-xs text-slate-500 mb-1 block">MRP</label><Input type="number" className="bg-white" value={editForm.mrp} onChange={e => setEditForm(f => ({ ...f, mrp: e.target.value }))} /></div>
-                <div><label className="text-xs text-slate-500 mb-1 block">GST %</label><Input type="number" className="bg-white" value={editForm.gst} onChange={e => setEditForm(f => ({ ...f, gst: e.target.value }))} /></div>
-                <div><label className="text-xs text-slate-500 mb-1 block">Available Stock</label><Input type="number" className="bg-white" value={editForm.qty} onChange={e => setEditForm(f => ({ ...f, qty: e.target.value }))} /></div>
-                <div><label className="text-xs text-slate-500 mb-1 block">Min Stock</label><Input type="number" className="bg-white" value={editForm.minStock} onChange={e => setEditForm(f => ({ ...f, minStock: e.target.value }))} /></div>
-              </div>
-            </div>
-
-            {renderTagListInput('Applications', 'applications', applicationInput, setApplicationInput, editForm, setEditForm, 'e.g. Red Chilli, Coriander — press Enter to add')}
-
-            {renderTagListInput('Accessories', 'accessories', accessoryInput, setAccessoryInput, editForm, setEditForm, 'e.g. Cloth, Key, 2 Nut — press Enter to add')}
-
-            {renderSpecBuilder(editForm, setEditForm)}
-
             {renderCustomFieldsBlock(editForm, setEditForm)}
-
-            <div>
-              <label className="text-xs font-semibold text-slate-600 mb-1 block">Description</label>
-              <textarea className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none bg-white" rows={2} value={editForm.description} onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))} />
-            </div>
 
             {renderForwardCheckbox(editForm, setEditForm, 'edit')}
           </div>
@@ -1220,6 +1217,10 @@ export default function ProductMaster() {
                 <div className="bg-slate-50 rounded-lg p-3">
                   <p className="text-xs text-slate-500 mb-1">Machine Type</p>
                   <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${machineTypeBadge(selected.machineType || 'Standard')}`}>{selected.machineType || 'Standard'}</span>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-xs text-slate-500 mb-1">Product Status</p>
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${selected.isDiscontinued ? 'bg-red-100 text-red-700 border-red-200' : 'bg-emerald-100 text-emerald-700 border-emerald-200'}`}>{selected.isDiscontinued ? 'Discontinue' : 'Continue'}</span>
                 </div>
 
                 {/* Dynamic Classifications */}

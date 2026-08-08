@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { Card, CardContent } from '@/components/ui/card';
@@ -8,9 +8,8 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Cog, Plus, Search, Eye, Edit2, Ban, RefreshCw, XCircle, Loader2, ImageIcon } from 'lucide-react';
+import { Cog, Plus, Search, Eye, Edit2, Ban, RefreshCw, Loader2, ImageIcon } from 'lucide-react';
 import { showSuccessToast, showSmartToast } from '@/lib/toast-utils';
-import { UNIT_TYPES, getUnitsForType } from '@/utils/unitTypes';
 import { config } from '@/config/environment';
 
 const resolveMediaUrl = (url) => (!url ? '' : (url.startsWith('http') || url.startsWith('data:')) ? url : `${config.baseURL}${url}`);
@@ -20,8 +19,10 @@ const emptyForm = {
   serialNumber: '', image: '',
   motorDetails: { modelNumber: '', version: '', hp: '', kwh: '', rpm: '', pole: '', phase: '' },
   specifications: [],
-  purchase: true, internalManufacturing: false,
-  unitType: '', unit: '', purchaseUnitType: '', purchaseUnit: '',
+  purchase: true, internalManufacturing: false, isDiscontinued: false,
+  // Base Unit and Purchase Unit — not shown on the form; every motor is
+  // counted in Pieces, same as Product Master's Purchase/Output Unit.
+  unitType: 'Count Unit', unit: 'Pieces', purchaseUnitType: 'Count Unit', purchaseUnit: 'Pieces',
   stdCost: '', purchaseCost: '', salePrice: '', mrp: '', gst: '', qty: '', minStock: '',
 };
 
@@ -34,7 +35,10 @@ const hpToKwh = (hp) => {
 export default function MotorMaster() {
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [showDiscontinued, setShowDiscontinued] = useState(false);
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(20);
   const [addOpen, setAddOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [viewOpen, setViewOpen] = useState(false);
@@ -72,39 +76,37 @@ export default function MotorMaster() {
     }
   };
 
-  // ── Dynamic unit types (same source used everywhere else) ──
-  const { data: unitTypesData } = useQuery({
-    queryKey: ['/api/inventory/unit-types'],
-    queryFn: () => apiRequest('GET', '/api/inventory/unit-types'),
-  });
-  const unitTypesList = React.useMemo(() => {
-    if (unitTypesData?.unitTypes) return unitTypesData.unitTypes.map(ut => ut.name);
-    return UNIT_TYPES;
-  }, [unitTypesData]);
-  const getUnitsForTypeDynamic = (unitTypeName, currentUnit) => {
-    if (!unitTypeName) return [];
-    if (unitTypesData?.unitTypes) {
-      const found = unitTypesData.unitTypes.find(ut => ut.name === unitTypeName);
-      if (found) {
-        const units = found.units || [];
-        return currentUnit && !units.includes(currentUnit) ? [currentUnit, ...units] : units;
-      }
-    }
-    return getUnitsForType(unitTypeName, currentUnit);
-  };
+  // Debounce search so it doesn't refetch on every keystroke.
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 500);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  // Reset to page 1 whenever search/filter/page-size changes.
+  useEffect(() => { setPage(1); }, [debouncedSearch, showDiscontinued, limit]);
 
   // ── Motor list — Item collection, scoped to type:Product + productKind:Motor.
   // This filter is sent as a query param only, never exposed as a UI control. ──
   const { data: motorsResponse, isLoading } = useQuery({
-    queryKey: ['motor-master', 'list', { search, showDiscontinued }],
+    queryKey: ['motor-master', 'list', { page, limit, search: debouncedSearch, showDiscontinued }],
     queryFn: () => {
-      const params = new URLSearchParams({ type: 'Product', productKind: 'Motor', limit: '100' });
-      if (search) params.set('search', search);
+      // getItems defaults to excluding discontinued items server-side when
+      // `discontinued` isn't sent at all — must be passed explicitly (matches
+      // ModernInventoryUI.jsx's pattern) or a discontinued motor is dropped
+      // from the response before this page's own showDiscontinued toggle
+      // ever gets a chance to filter for it.
+      const params = new URLSearchParams({
+        type: 'Product', productKind: 'Motor',
+        page: String(page), limit: String(limit),
+        discontinued: showDiscontinued ? 'true' : 'false',
+      });
+      if (debouncedSearch) params.set('search', debouncedSearch);
       return apiRequest('GET', `/api/items?${params.toString()}`);
     },
+    keepPreviousData: true,
   });
-  const allMotors = motorsResponse?.items || motorsResponse?.data || [];
-  const motors = allMotors.filter(m => showDiscontinued ? m.isDiscontinued : !m.isDiscontinued);
+  const motors = motorsResponse?.items || motorsResponse?.data || [];
+  const pagination = motorsResponse?.pagination || { page: 1, pages: 1, total: motors.length, limit };
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['motor-master'] });
 
@@ -120,7 +122,10 @@ export default function MotorMaster() {
   });
   const statusMutation = useMutation({
     mutationFn: ({ id, isDiscontinued }) => apiRequest('PUT', `/api/items/${id}`, { isDiscontinued }),
-    onSuccess: () => { invalidate(); },
+    onSuccess: (_, { isDiscontinued }) => {
+      invalidate();
+      showSuccessToast(isDiscontinued ? 'Motor Discontinued' : 'Motor Reactivated', isDiscontinued ? 'Motor marked as discontinued.' : 'Motor marked as active.');
+    },
     onError: (e) => showSmartToast(e, 'Failed to update status'),
   });
 
@@ -201,9 +206,10 @@ export default function MotorMaster() {
       phase: m.motorDetails?.phase || '',
     },
     specifications: Array.isArray(m.specifications) ? m.specifications : [],
-    purchase: m.purchase !== false, internalManufacturing: !!m.internalManufacturing,
-    unitType: m.unitType || '', unit: m.unit || '',
-    purchaseUnitType: m.purchaseUnitType || '', purchaseUnit: m.purchaseUnit || '',
+    purchase: m.purchase !== false, internalManufacturing: !!m.internalManufacturing, isDiscontinued: !!m.isDiscontinued,
+    // Backfill legacy motors saved before Base/Purchase Unit defaulted to Pieces.
+    unitType: m.unitType || 'Count Unit', unit: m.unit || 'Pieces',
+    purchaseUnitType: m.purchaseUnitType || 'Count Unit', purchaseUnit: m.purchaseUnit || 'Pieces',
     stdCost: m.stdCost ?? '', purchaseCost: m.purchaseCost ?? '', salePrice: m.salePrice ?? '',
     mrp: m.mrp ?? '', gst: m.gst ?? '', qty: m.qty ?? '', minStock: m.minStock ?? '',
   });
@@ -271,12 +277,7 @@ export default function MotorMaster() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {renderCascadeSelect('Motor Type', 'MotorType', 'motorType', motorTypeOptions, state, setState)}
-        <div>
-          <Label className="text-xs font-semibold text-slate-600 mb-1 block">Brand Name</Label>
-          <Input value={state.brand} onChange={e => setState(f => ({ ...f, brand: e.target.value }))} placeholder="e.g. Crompton" />
-        </div>
+      <div className="grid grid-cols-2 gap-3">
         <div>
           <Label className="text-xs font-semibold text-slate-600 mb-1 block">Model Number</Label>
           <Input value={state.motorDetails.modelNumber} onChange={e => setState(f => ({ ...f, motorDetails: { ...f.motorDetails, modelNumber: e.target.value } }))} placeholder="e.g. 8100" />
@@ -285,6 +286,14 @@ export default function MotorMaster() {
           <Label className="text-xs font-semibold text-slate-600 mb-1 block">Serial Number</Label>
           <Input value={state.serialNumber} onChange={e => setState(f => ({ ...f, serialNumber: e.target.value }))} />
         </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <Label className="text-xs font-semibold text-slate-600 mb-1 block">Brand Name</Label>
+          <Input value={state.brand} onChange={e => setState(f => ({ ...f, brand: e.target.value }))} placeholder="e.g. Crompton" />
+        </div>
+        {renderCascadeSelect('Motor Type', 'MotorType', 'motorType', motorTypeOptions, state, setState)}
       </div>
 
       <div className="border border-slate-200 rounded-lg p-3 bg-slate-50">
@@ -322,6 +331,11 @@ export default function MotorMaster() {
       </div>
 
       <div>
+        <Label className="text-xs font-semibold text-slate-600 mb-1 block">Description</Label>
+        <Textarea rows={2} value={state.description} onChange={e => setState(f => ({ ...f, description: e.target.value }))} />
+      </div>
+
+      <div>
         <Label className="text-xs font-semibold text-slate-600 mb-1 block flex items-center gap-1.5"><ImageIcon className="h-3.5 w-3.5" /> Image</Label>
         <div className="flex items-center gap-3">
           {state.image ? (
@@ -335,31 +349,15 @@ export default function MotorMaster() {
       </div>
 
       <div>
-        <Label className="text-xs font-semibold text-slate-600 mb-1 block">Description</Label>
-        <Textarea rows={2} value={state.description} onChange={e => setState(f => ({ ...f, description: e.target.value }))} />
-      </div>
-
-      <div>
-        <div className="flex items-center justify-between mb-2">
-          <Label className="text-xs font-semibold text-slate-600">Specifications</Label>
-          <button type="button" onClick={() => setState(f => ({ ...f, specifications: [...f.specifications, { key: '', value: '' }] }))}
-            className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-semibold px-2 py-1 rounded-md hover:bg-blue-50">
-            <Plus className="h-3 w-3" /> Add Row
-          </button>
-        </div>
-        {state.specifications.length === 0 ? (
-          <p className="text-xs text-slate-400 italic py-2 text-center border border-dashed border-slate-200 rounded-lg">No specifications yet.</p>
-        ) : (
-          <div className="space-y-2">
-            {state.specifications.map((spec, idx) => (
-              <div key={idx} className="flex gap-2 items-center">
-                <Input className="flex-1" placeholder="Key" value={spec.key} onChange={e => setState(f => ({ ...f, specifications: f.specifications.map((s, i) => i === idx ? { ...s, key: e.target.value } : s) }))} />
-                <Input className="flex-1" placeholder="Value" value={spec.value} onChange={e => setState(f => ({ ...f, specifications: f.specifications.map((s, i) => i === idx ? { ...s, value: e.target.value } : s) }))} />
-                <button type="button" onClick={() => setState(f => ({ ...f, specifications: f.specifications.filter((_, i) => i !== idx) }))} className="text-slate-400 hover:text-red-500 p-1"><XCircle className="h-4 w-4" /></button>
-              </div>
-            ))}
-          </div>
-        )}
+        <Label className="text-xs font-semibold text-slate-600 mb-1 block">Motor Status</Label>
+        <select
+          className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white"
+          value={state.isDiscontinued ? 'Discontinue' : 'Continue'}
+          onChange={e => setState(f => ({ ...f, isDiscontinued: e.target.value === 'Discontinue' }))}
+        >
+          <option value="Continue">Continue</option>
+          <option value="Discontinue">Discontinue</option>
+        </select>
       </div>
 
       <RadioGroup
@@ -376,55 +374,6 @@ export default function MotorMaster() {
           <Label htmlFor={`mfg-${state === form ? 'add' : 'edit'}`} className="text-sm font-medium text-slate-700">Internal Manufacturing</Label>
         </div>
       </RadioGroup>
-
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <Label className="text-xs font-semibold text-slate-600 mb-1 block">Base Unit Type *</Label>
-          <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white" value={state.unitType} onChange={e => setState(f => ({ ...f, unitType: e.target.value, unit: '' }))}>
-            <option value="">Select</option>
-            {unitTypesList.map(t => <option key={t} value={t}>{t}</option>)}
-          </select>
-        </div>
-        <div>
-          <Label className="text-xs font-semibold text-slate-600 mb-1 block">Base Unit *</Label>
-          <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white disabled:bg-slate-50" value={state.unit} disabled={!state.unitType} onChange={e => setState(f => ({ ...f, unit: e.target.value }))}>
-            <option value="">{state.unitType ? 'Select' : 'Select Unit Type first'}</option>
-            {getUnitsForTypeDynamic(state.unitType, state.unit).map(u => <option key={u} value={u}>{u}</option>)}
-          </select>
-        </div>
-      </div>
-
-      {state.purchase && (
-        <div className="grid grid-cols-2 gap-3 p-3 bg-blue-50/30 border border-blue-100 rounded-md">
-          <div>
-            <Label className="text-xs font-semibold text-slate-600 mb-1 block">Purchase Unit Type *</Label>
-            <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white" value={state.purchaseUnitType} onChange={e => setState(f => ({ ...f, purchaseUnitType: e.target.value, purchaseUnit: '' }))}>
-              <option value="">Select</option>
-              {unitTypesList.map(t => <option key={t} value={t}>{t}</option>)}
-            </select>
-          </div>
-          <div>
-            <Label className="text-xs font-semibold text-slate-600 mb-1 block">Purchase Unit *</Label>
-            <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white disabled:bg-slate-50" value={state.purchaseUnit} disabled={!state.purchaseUnitType} onChange={e => setState(f => ({ ...f, purchaseUnit: e.target.value }))}>
-              <option value="">{state.purchaseUnitType ? 'Select' : 'Select Unit Type first'}</option>
-              {getUnitsForTypeDynamic(state.purchaseUnitType, state.purchaseUnit).map(u => <option key={u} value={u}>{u}</option>)}
-            </select>
-          </div>
-        </div>
-      )}
-
-      <div className="border border-slate-200 rounded-lg p-3">
-        <p className="text-xs font-bold text-slate-700 mb-2">Pricing &amp; Stock</p>
-        <div className="grid grid-cols-3 gap-3">
-          <div><Label className="text-xs text-slate-500 mb-1 block">Std Cost</Label><Input type="number" value={state.stdCost} onChange={e => setState(f => ({ ...f, stdCost: e.target.value }))} /></div>
-          <div><Label className="text-xs text-slate-500 mb-1 block">Purchase Cost</Label><Input type="number" value={state.purchaseCost} onChange={e => setState(f => ({ ...f, purchaseCost: e.target.value }))} /></div>
-          <div><Label className="text-xs text-slate-500 mb-1 block">Sale Price</Label><Input type="number" value={state.salePrice} onChange={e => setState(f => ({ ...f, salePrice: e.target.value }))} /></div>
-          <div><Label className="text-xs text-slate-500 mb-1 block">MRP</Label><Input type="number" value={state.mrp} onChange={e => setState(f => ({ ...f, mrp: e.target.value }))} /></div>
-          <div><Label className="text-xs text-slate-500 mb-1 block">GST %</Label><Input type="number" value={state.gst} onChange={e => setState(f => ({ ...f, gst: e.target.value }))} /></div>
-          <div><Label className="text-xs text-slate-500 mb-1 block">Available Stock</Label><Input type="number" value={state.qty} onChange={e => setState(f => ({ ...f, qty: e.target.value }))} /></div>
-          <div><Label className="text-xs text-slate-500 mb-1 block">Min Stock</Label><Input type="number" value={state.minStock} onChange={e => setState(f => ({ ...f, minStock: e.target.value }))} /></div>
-        </div>
-      </div>
     </div>
   );
 
@@ -452,6 +401,16 @@ export default function MotorMaster() {
             <button onClick={() => setShowDiscontinued(v => !v)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${showDiscontinued ? 'bg-red-100 text-red-700 border-red-300' : 'bg-white text-slate-600 border-slate-200 hover:border-red-300'}`}>
               {showDiscontinued ? 'Show Active' : 'Show Discontinued'}
             </button>
+            <select
+              className="border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              value={limit}
+              onChange={e => setLimit(Number(e.target.value))}
+            >
+              <option value={20}>20 per page</option>
+              <option value={50}>50 per page</option>
+              <option value={100}>100 per page</option>
+              <option value={150}>150 per page</option>
+            </select>
           </div>
         </CardContent>
       </Card>
@@ -506,6 +465,13 @@ export default function MotorMaster() {
               </tbody>
             </table>
           </div>
+          {pagination.pages > 1 && (
+            <div className="flex items-center justify-center gap-2 py-4">
+              <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={pagination.page <= 1}>Previous</Button>
+              <span className="text-sm text-muted-foreground">Page {pagination.page} of {pagination.pages} ({pagination.total} motors)</span>
+              <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)} disabled={pagination.page >= pagination.pages}>Next</Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -561,6 +527,10 @@ export default function MotorMaster() {
                 <div className="bg-slate-50 rounded-lg p-3"><p className="text-xs text-slate-500 mb-1">RPM</p><p className="text-sm font-medium text-slate-800">{selected.motorDetails?.rpm || 'N/A'}</p></div>
                 <div className="bg-slate-50 rounded-lg p-3"><p className="text-xs text-slate-500 mb-1">Pole / Phase</p><p className="text-sm font-medium text-slate-800">{selected.motorDetails?.pole || '—'} / {selected.motorDetails?.phase || '—'}</p></div>
                 <div className="bg-slate-50 rounded-lg p-3"><p className="text-xs text-slate-500 mb-1">Source</p><p className="text-sm font-medium text-slate-800">{selected.purchase ? 'Purchase' : selected.internalManufacturing ? 'In House' : 'N/A'}</p></div>
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-xs text-slate-500 mb-1">Motor Status</p>
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${selected.isDiscontinued ? 'bg-red-100 text-red-700 border-red-200' : 'bg-emerald-100 text-emerald-700 border-emerald-200'}`}>{selected.isDiscontinued ? 'Discontinue' : 'Continue'}</span>
+                </div>
                 <div className="bg-slate-50 rounded-lg p-3"><p className="text-xs text-slate-500 mb-1">Stock</p><p className="text-sm font-medium text-slate-800">{selected.qty ?? 0} {selected.unit}</p></div>
                 <div className="bg-slate-50 rounded-lg p-3"><p className="text-xs text-slate-500 mb-1">Sale Price</p><p className="text-sm font-medium text-slate-800">₹{Number(selected.salePrice || 0).toLocaleString()}</p></div>
               </div>

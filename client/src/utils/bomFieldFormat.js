@@ -6,12 +6,10 @@
 // Inventory's real form (SimpleInventoryForm.jsx).
 
 export const CATALOG_KEY_TO_MATERIAL_FIELD = {
-  name: 'item', code: 'code', description: 'description', brand: 'brand',
-  modelNumber: 'modelNumber', size: 'size', metrology: 'metrology', materialGrade: 'materialGrade',
-  unitWeightValue: 'unitWeightValue', dimensions: 'dimensions',
-  category: 'category', subCategory: 'subCategory', sourceType: 'sourceType', itemSourceType: 'itemSourceType',
-  unit: 'unit', itemCategories: 'itemCategories', specifications: 'specifications', applications: 'applications',
-  stdCost: 'stdCost', purchaseCost: 'unitPrice', salePrice: 'salePrice', mrp: 'mrp', gst: 'gst', hsn: 'hsn',
+  itemType: 'inventoryItemType', name: 'item', code: 'code', modelNumber: 'modelNumber',
+  brand: 'brand', itemCategories: 'itemCategories', sourceType: 'sourceType', itemSourceType: 'itemSourceType',
+  metrology: 'metrology', materialGrade: 'materialGrade', unitWeightValue: 'unitWeightValue',
+  unit: 'unit', dimensions: 'dimensions', description: 'description',
 };
 
 const DIMENSION_LABELS = { length: 'L', height: 'H', width: 'W', diaOD: 'ODia', diaID: 'IDia', thickness: 'Thk' };
@@ -31,10 +29,7 @@ export const formatDimensions = (dims) => {
 export const formatCatalogFieldValue = (catalogKey, mat) => {
   const fieldKey = CATALOG_KEY_TO_MATERIAL_FIELD[catalogKey];
   const raw = mat[fieldKey];
-  if (catalogKey === 'specifications') {
-    return Array.isArray(raw) && raw.length ? raw.filter(s => s.key).map(s => `${s.key}: ${s.value}`).join(', ') : '—';
-  }
-  if (catalogKey === 'itemCategories' || catalogKey === 'applications') {
+  if (catalogKey === 'itemCategories') {
     return Array.isArray(raw) && raw.length ? raw.join(', ') : '—';
   }
   if (catalogKey === 'dimensions') {
