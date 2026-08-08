@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { sendWhatsApp } from '@/lib/whatsapp';
+import SendEmailModal from '@/components/email/SendEmailModal';
 import {
   ShieldCheck, Phone, CheckCircle2, XCircle, MessageSquare, Mail,
   Calendar, User, MapPin, Briefcase, Eye, History, Star, ThumbsUp,
@@ -104,6 +105,7 @@ const DealVerifications = () => {
   const [docsModal,    setDocsModal]    = useState({ open: false, order: null });
   const [priorityModal,setPriorityModal]= useState({ open: false, order: null });
   const [statusModal,  setStatusModal]  = useState({ open: false, order: null });
+  const [emailModal,   setEmailModal]   = useState({ open: false, to: '' });
 
   const [verifyFormData, setVerifyFormData] = useState({
     remarks: '',
@@ -215,7 +217,7 @@ const DealVerifications = () => {
       toast({ title: 'Sent!', description: 'Message sent automatically via WhatsApp' });
     }
   };
-  const email     = (e) => e && window.open(`mailto:${e}`);
+  const email     = (e) => e && setEmailModal({ open: true, to: e });
 
   /* ── handlers ── */
   const handleVerifySubmit = (status) => {
@@ -719,6 +721,16 @@ const DealVerifications = () => {
           </div>
         </div>
       )}
+
+      {/* ══════════════════════════════════════════════════════
+          Send Email Modal
+      ══════════════════════════════════════════════════════ */}
+      <SendEmailModal
+        open={emailModal.open}
+        onOpenChange={(open) => setEmailModal((p) => ({ ...p, open }))}
+        to={emailModal.to}
+        department="INFO"
+      />
 
       {/* ══════════════════════════════════════════════════════
           MODAL 1 – VERIFY

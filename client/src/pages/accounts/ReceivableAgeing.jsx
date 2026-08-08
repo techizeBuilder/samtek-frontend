@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import { sendWhatsApp } from '@/lib/whatsapp';
+import SendEmailModal from '@/components/email/SendEmailModal';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -48,6 +49,7 @@ const ReceivableAgeing = () => {
     const [selectedCustomer, setSelectedCustomer] = useState(null);
     const [isPaymentLinkOpen, setIsPaymentLinkOpen] = useState(false);
     const [copied, setCopied] = useState(false);
+    const [emailModal, setEmailModal] = useState({ open: false, to: '', subject: '', message: '' });
     const [customMessage, setCustomMessage] = useState('');
     const [contactLoading, setContactLoading] = useState(false);
 
@@ -131,9 +133,9 @@ const ReceivableAgeing = () => {
             return;
         }
         const amount = customer?.totalOutstanding?.toLocaleString('en-IN');
-        const subject = encodeURIComponent(`Payment Reminder — Outstanding ₹${amount} | SUNRISE`);
-        const body = encodeURIComponent(buildPaymentMessage(customer).replace(/\*/g, ''));
-        window.location.href = `mailto:${email}?subject=${subject}&body=${body}`;
+        const subject = `Payment Reminder — Outstanding ₹${amount} | SUNRISE`;
+        const body = (customMessage || buildPaymentMessage(customer)).replace(/\*/g, '');
+        setEmailModal({ open: true, to: email, subject, message: body });
     };
 
     const handleCopyMessage = () => {
@@ -299,6 +301,16 @@ const ReceivableAgeing = () => {
                     </div>
                 </CardContent>
             </Card>
+
+            {/* ─── Send Email Modal ───────────────────────────────────────── */}
+            <SendEmailModal
+                open={emailModal.open}
+                onOpenChange={(open) => setEmailModal((p) => ({ ...p, open }))}
+                to={emailModal.to}
+                department="ACCOUNTS"
+                defaultSubject={emailModal.subject}
+                defaultMessage={emailModal.message}
+            />
 
             {/* ─── Customer Detail Modal ───────────────────────────────────────── */}
             <Dialog open={!!selectedCustomer && !isPaymentLinkOpen} onOpenChange={() => setSelectedCustomer(null)}>

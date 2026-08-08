@@ -81,6 +81,7 @@ import {
 import { cn } from '@/lib/utils';
 import OrderFormModal from '@/components/sales/OrderFormModal';
 import DeliveryEstimatorModal from '@/components/sales/DeliveryEstimatorModal';
+import SendEmailModal from '@/components/email/SendEmailModal';
 
 const Leads = () => {
   const { user } = useAuth();
@@ -109,6 +110,10 @@ const Leads = () => {
   const [isDialpadOpen, setIsDialpadOpen] = useState(false);
   const [dialpadLead, setDialpadLead] = useState(null);
   const [dialpadInput, setDialpadInput] = useState('');
+
+  // Send Email Modal State
+  const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
+  const [emailModalLead, setEmailModalLead] = useState(null);
 
   // API Settings modal state (now just shows redirect info to Super Admin)
   const [isApiSettingsModalOpen, setIsApiSettingsModalOpen] = useState(false);
@@ -2106,7 +2111,7 @@ const assignableUsers = (usersData?.users || []).filter(
                           variant="ghost"
                           size="icon"
                           className="h-7 w-8 border-r border-gray-100 rounded-none hover:bg-blue-50 text-blue-700"
-                          onClick={() => window.open(`mailto:${lead.email}`)}
+                          onClick={() => { setEmailModalLead(lead); setIsEmailModalOpen(true); }}
                           title="Send Email"
                         >
                           <Mail className="h-3.5 w-3.5" />
@@ -3669,6 +3674,18 @@ const assignableUsers = (usersData?.users || []).filter(
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* ─── Send Email Modal ──────────────────────────────── */}
+      <SendEmailModal
+        open={isEmailModalOpen}
+        onOpenChange={setIsEmailModalOpen}
+        to={emailModalLead?.email}
+        department="SALES"
+        defaultSubject={`Regarding your enquiry${emailModalLead?.leadCode ? ` — Lead #${emailModalLead.leadCode}` : ''}`}
+        defaultMessage={`Dear ${emailModalLead?.contactPerson || emailModalLead?.companyName || ''},\n\n`}
+        refModel="Lead"
+        refId={emailModalLead?._id}
+      />
 
       {/* ─── Schedule Meeting Modal ──────────────────────────────── */}
       <Dialog open={isMeetingModalOpen} onOpenChange={setIsMeetingModalOpen}>

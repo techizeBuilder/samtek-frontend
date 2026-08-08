@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { useToast } from '@/hooks/use-toast';
 import { Star, CheckCircle, User, Package, Phone, MessageCircle, Mail, BadgeCheck, Link2, Search } from 'lucide-react';
 import { sendWhatsApp } from '@/lib/whatsapp';
+import SendEmailModal from '@/components/email/SendEmailModal';
 
 // One consolidated feedback entity per sales order — a multi-machine order
 // used to render one feedback card per machine, asking the same customer to
@@ -33,6 +34,7 @@ export default function FeedbackRatings() {
   const [search, setSearch] = useState('');
   const [activeTab, setActiveTab] = useState('pending');
   const [historyPage, setHistoryPage] = useState(1);
+  const [emailModal, setEmailModal] = useState({ open: false, to: '', subject: '', message: '' });
 
   // Reset to page 1 whenever the search changes so the user doesn't land on
   // a now-out-of-range page.
@@ -127,11 +129,15 @@ export default function FeedbackRatings() {
 
   const handleEmail = (email, group, e) => {
     if (e) e.stopPropagation();
+    if (!email) {
+      toast({ title: 'No Email', description: 'Customer ka email register nahi hai', variant: 'destructive' });
+      return;
+    }
     const rep = group.jobs[0];
     const machines = group.jobs.map(j => j.machineName).join(', ');
     const subject = `Feedback Request: ${machines}`;
     const body = `Hello ${rep.customerName},\n\nWe hope you are satisfied with the installation of your ${machines}. We would appreciate your feedback on our service and product quality.\n\nThank you,\nSamtek Team`;
-    window.open(`mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
+    setEmailModal({ open: true, to: email, subject, message: body });
   };
 
   const ratingLabel = { 1: 'Poor', 2: 'Fair', 3: 'Good', 4: 'Very Good', 5: 'Excellent' };
@@ -211,6 +217,16 @@ export default function FeedbackRatings() {
           </Tabs>
         )}
       </div>
+
+      {/* Send Email Modal */}
+      <SendEmailModal
+        open={emailModal.open}
+        onOpenChange={(open) => setEmailModal((p) => ({ ...p, open }))}
+        to={emailModal.to}
+        department="INFO"
+        defaultSubject={emailModal.subject}
+        defaultMessage={emailModal.message}
+      />
 
       {/* Dialog Modal */}
       <Dialog open={!!selectedGroup} onOpenChange={(open) => { if (!open) { setSelectedGroup(null); setRating(0); } }}>
@@ -356,7 +372,7 @@ function FeedbackList({ list, handleSelectGroup, handleWhatsApp, handleCall, han
                 <Button variant="outline" size="sm" className="flex-1 bg-blue-50 text-blue-600 hover:bg-blue-100 border-blue-200" onClick={(e) => handleCall(rep.customerContact, e)}>
                   <Phone className="w-4 h-4 mr-1.5" /> Call
                 </Button>
-                <Button variant="outline" size="sm" className="flex-1 bg-slate-50 text-slate-600 hover:bg-slate-100 border-slate-200" onClick={(e) => handleEmail('customer@example.com', group, e)}>
+                <Button variant="outline" size="sm" className="flex-1 bg-slate-50 text-slate-600 hover:bg-slate-100 border-slate-200" onClick={(e) => handleEmail(rep.customerEmail, group, e)}>
                   <Mail className="w-4 h-4 mr-1.5" /> Mail
                 </Button>
               </div>

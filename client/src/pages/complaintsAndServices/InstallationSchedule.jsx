@@ -13,6 +13,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { CalendarCheck, MapPin, CheckCircle, Package, User, Phone, MessageCircle, Mail, Send, ChevronDown, Search } from 'lucide-react';
 import { sendWhatsApp } from '@/lib/whatsapp';
+import SendEmailModal from '@/components/email/SendEmailModal';
 
 // One consolidated installation entity per sales order — a multi-machine
 // order used to render one card per machine, each needing its own schedule
@@ -40,6 +41,7 @@ export default function InstallationSchedule() {
   const [search, setSearch] = useState('');
   const [activeTab, setActiveTab] = useState('pending');
   const [historyPage, setHistoryPage] = useState(1);
+  const [emailModal, setEmailModal] = useState({ open: false, to: '', subject: '', message: '' });
 
   // Reset to page 1 whenever the search changes so the user doesn't land on
   // a now-out-of-range page.
@@ -228,11 +230,15 @@ export default function InstallationSchedule() {
 
   const handleEmail = (email, group, e) => {
     if (e) e.stopPropagation();
+    if (!email) {
+      toast({ title: 'No Email', description: 'Customer ka email register nahi hai', variant: 'destructive' });
+      return;
+    }
     const rep = group.jobs[0];
     const machines = group.jobs.map(j => j.machineName).join(', ');
     const subject = `Installation Schedule: ${machines}`;
     const body = `Hello ${rep.customerName},\n\nWe need to schedule the installation for your ${machines}. Please let us know your preferred date and time.\n\nThank you,\nSamtek Team`;
-    window.open(`mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
+    setEmailModal({ open: true, to: email, subject, message: body });
   };
 
   return (
@@ -336,6 +342,16 @@ export default function InstallationSchedule() {
           </Tabs>
         )}
       </div>
+
+      {/* Send Email Modal */}
+      <SendEmailModal
+        open={emailModal.open}
+        onOpenChange={(open) => setEmailModal((p) => ({ ...p, open }))}
+        to={emailModal.to}
+        department="INFO"
+        defaultSubject={emailModal.subject}
+        defaultMessage={emailModal.message}
+      />
 
       {/* Modal */}
       {!!selectedGroup && (
@@ -610,7 +626,7 @@ function InstallationList({ list, setSelectedGroup, notifyCustomer, handleWhatsA
                 <Button variant="outline" size="sm" className="flex-1 bg-blue-50 text-blue-600 hover:bg-blue-100 border-blue-200" onClick={(e) => handleCall(rep.customerContact, e)}>
                   <Phone className="w-4 h-4 mr-1.5" /> Call
                 </Button>
-                <Button variant="outline" size="sm" className="flex-1 bg-slate-50 text-slate-600 hover:bg-slate-100 border-slate-200" onClick={(e) => handleEmail('customer@example.com', group, e)}>
+                <Button variant="outline" size="sm" className="flex-1 bg-slate-50 text-slate-600 hover:bg-slate-100 border-slate-200" onClick={(e) => handleEmail(rep.customerEmail, group, e)}>
                   <Mail className="w-4 h-4 mr-1.5" /> Mail
                 </Button>
               </div>

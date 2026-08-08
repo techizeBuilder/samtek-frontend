@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast';
 import { Phone, MessageCircle, Mail, MapPin, Truck, CheckCircle, Package, AlertCircle, Search } from 'lucide-react';
 import { sendWhatsApp } from '@/lib/whatsapp';
+import SendEmailModal from '@/components/email/SendEmailModal';
 
 // One consolidated confirmation entity per sales order — an order with
 // several dispatched machines used to render one card per machine here,
@@ -41,6 +42,7 @@ export default function DeliveryConfirmation() {
   const [search, setSearch] = useState('');
   const [activeTab, setActiveTab] = useState('pending');
   const [historyPage, setHistoryPage] = useState(1);
+  const [emailModal, setEmailModal] = useState({ open: false, to: '', subject: '', message: '' });
 
   // Reset to page 1 whenever the search changes so the user doesn't land on
   // a now-out-of-range page.
@@ -119,10 +121,14 @@ export default function DeliveryConfirmation() {
   };
 
   const handleEmail = (email, group) => {
+    if (!email) {
+      toast({ title: 'No Email', description: 'Customer ka email register nahi hai', variant: 'destructive' });
+      return;
+    }
     const rep = group.jobs[0];
     const subject = `Delivery Confirmation: ${rep.machineName}`;
     const body = `Hello ${rep.customerName},\n\nWe dispatched your machine${group.jobs.length > 1 ? 's' : ''} (${group.jobs.map(j => j.machineName).join(', ')}) recently. Please let us know if it has reached safely.\n\nThank you,\nSamtek Team`;
-    window.open(`mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
+    setEmailModal({ open: true, to: email, subject, message: body });
   };
 
   const handleCall = (phone) => {
@@ -237,6 +243,16 @@ export default function DeliveryConfirmation() {
         )}
       </div>
 
+      {/* Send Email Modal */}
+      <SendEmailModal
+        open={emailModal.open}
+        onOpenChange={(open) => setEmailModal((p) => ({ ...p, open }))}
+        to={emailModal.to}
+        department="INFO"
+        defaultSubject={emailModal.subject}
+        defaultMessage={emailModal.message}
+      />
+
       <Dialog open={!!selectedGroup} onOpenChange={(open) => !open && setSelectedGroup(null)}>
         <DialogContent className="sm:max-w-[560px] mt-8 mb-16 max-h-[80vh] overflow-y-auto">
           <DialogHeader>
@@ -337,7 +353,7 @@ function OrderList({ list, canEdit = false, selectedGroup, setSelectedGroup, han
               <Button variant="outline" size="sm" className="flex-1 bg-blue-50 text-blue-600 hover:bg-blue-100 border-blue-200" onClick={(e) => { e.stopPropagation(); handleCall(rep.customerContact); }}>
                 <Phone className="w-4 h-4 mr-1.5" /> Call
               </Button>
-              <Button variant="outline" size="sm" className="flex-1 bg-slate-50 text-slate-600 hover:bg-slate-100 border-slate-200" onClick={(e) => { e.stopPropagation(); handleEmail('customer@example.com', group); }}>
+              <Button variant="outline" size="sm" className="flex-1 bg-slate-50 text-slate-600 hover:bg-slate-100 border-slate-200" onClick={(e) => { e.stopPropagation(); handleEmail(rep.customerEmail, group); }}>
                 <Mail className="w-4 h-4 mr-1.5" /> Mail
               </Button>
             </div>
