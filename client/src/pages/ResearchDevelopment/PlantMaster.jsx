@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { Card, CardContent } from '@/components/ui/card';
@@ -10,7 +10,7 @@ import { Factory, Plus, Search, Eye, Edit2, Ban, RefreshCw, XCircle } from 'luci
 import { showSuccessToast, showSmartToast } from '@/lib/toast-utils';
 
 const emptyForm = {
-  category: '', subCategory: '', name: '', productionRate: '',
+  category: '', subCategory: '', name: '', productionRate: '', isDiscontinued: false,
   machines: [], // [{ item: <Item _id>, quantity }]
   motors: [],   // [{ item: <Item _id>, quantity }]
 };
@@ -18,7 +18,10 @@ const emptyForm = {
 export default function PlantMaster() {
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [showDiscontinued, setShowDiscontinued] = useState(false);
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(20);
   const [addOpen, setAddOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [viewOpen, setViewOpen] = useState(false);
@@ -74,16 +77,32 @@ export default function PlantMaster() {
   });
   const motors = motorsResponse?.items || motorsResponse?.data || [];
 
-  // ── Plants list ──
+  // Debounce search so it doesn't refetch on every keystroke.
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 500);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  // Reset to page 1 whenever search/filter/page-size changes.
+  useEffect(() => { setPage(1); }, [debouncedSearch, showDiscontinued, limit]);
+
+  // ── Plants list — page/limit sent explicitly to opt into getPlants'
+  // server-side pagination (opt-in, since other consumers like Quotation's
+  // Plant filter and Leads' plant picker rely on the unpaginated full list). ──
   const { data: plantsResponse, isLoading } = useQuery({
-    queryKey: ['rd-plants', 'list', { search, showDiscontinued }],
+    queryKey: ['rd-plants', 'list', { page, limit, search: debouncedSearch, showDiscontinued }],
     queryFn: () => {
-      const params = new URLSearchParams({ discontinued: showDiscontinued ? 'true' : 'false' });
-      if (search) params.set('search', search);
+      const params = new URLSearchParams({
+        page: String(page), limit: String(limit),
+        discontinued: showDiscontinued ? 'true' : 'false',
+      });
+      if (debouncedSearch) params.set('search', debouncedSearch);
       return apiRequest('GET', `/api/rd/plants?${params.toString()}`);
     },
+    keepPreviousData: true,
   });
   const plants = plantsResponse?.data || [];
+  const pagination = plantsResponse?.pagination || { page: 1, pages: 1, total: plants.length, limit };
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['rd-plants'] });
 
@@ -116,6 +135,7 @@ export default function PlantMaster() {
     setSelected(p);
     setEditForm({
       category: p.category || '', subCategory: p.subCategory || '', name: p.name || '', productionRate: p.productionRate || '',
+      isDiscontinued: !!p.isDiscontinued,
       machines: (p.machines || []).filter(e => e.item).map(e => ({ item: e.item._id || e.item, quantity: e.quantity || 1 })),
       motors: (p.motors || []).filter(e => e.item).map(e => ({ item: e.item._id || e.item, quantity: e.quantity || 1 })),
     });
@@ -229,6 +249,18 @@ export default function PlantMaster() {
       <div className="p-3 border border-slate-200 rounded-lg bg-slate-50/50">
         {renderItemSelector('Motors (from Motor Master)', motors, motorQ, setMotorQ, state, setState, 'motors')}
       </div>
+
+      <div>
+        <Label className="text-xs font-semibold text-slate-600 mb-1 block">Plant Status</Label>
+        <select
+          className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white"
+          value={state.isDiscontinued ? 'Discontinue' : 'Continue'}
+          onChange={e => setState(f => ({ ...f, isDiscontinued: e.target.value === 'Discontinue' }))}
+        >
+          <option value="Continue">Continue</option>
+          <option value="Discontinue">Discontinue</option>
+        </select>
+      </div>
     </div>
   );
 
@@ -256,6 +288,16 @@ export default function PlantMaster() {
             <button onClick={() => setShowDiscontinued(v => !v)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${showDiscontinued ? 'bg-red-100 text-red-700 border-red-300' : 'bg-white text-slate-600 border-slate-200 hover:border-red-300'}`}>
               {showDiscontinued ? 'Show Active' : 'Show Discontinued'}
             </button>
+            <select
+              className="border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              value={limit}
+              onChange={e => setLimit(Number(e.target.value))}
+            >
+              <option value={20}>20 per page</option>
+              <option value={50}>50 per page</option>
+              <option value={100}>100 per page</option>
+              <option value={150}>150 per page</option>
+            </select>
           </div>
         </CardContent>
       </Card>
@@ -310,6 +352,13 @@ export default function PlantMaster() {
               </tbody>
             </table>
           </div>
+          {pagination.pages > 1 && (
+            <div className="flex items-center justify-center gap-2 py-4">
+              <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={pagination.page <= 1}>Previous</Button>
+              <span className="text-sm text-muted-foreground">Page {pagination.page} of {pagination.pages} ({pagination.total} plants)</span>
+              <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)} disabled={pagination.page >= pagination.pages}>Next</Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -350,6 +399,10 @@ export default function PlantMaster() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-slate-50 rounded-lg p-3"><p className="text-xs text-slate-500 mb-1">Category</p><p className="text-sm font-medium text-slate-800">{[selected.category, selected.subCategory].filter(Boolean).join(' / ') || 'N/A'}</p></div>
                 <div className="bg-slate-50 rounded-lg p-3"><p className="text-xs text-slate-500 mb-1">Production</p><p className="text-sm font-medium text-slate-800">{selected.productionRate || 'N/A'}</p></div>
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-xs text-slate-500 mb-1">Plant Status</p>
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${selected.isDiscontinued ? 'bg-red-100 text-red-700 border-red-200' : 'bg-emerald-100 text-emerald-700 border-emerald-200'}`}>{selected.isDiscontinued ? 'Discontinue' : 'Continue'}</span>
+                </div>
               </div>
               <div className="bg-slate-50 rounded-lg p-3">
                 <p className="text-xs text-slate-500 mb-2 font-semibold">Machines ({(selected.machines || []).length})</p>

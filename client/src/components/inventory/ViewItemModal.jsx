@@ -96,7 +96,6 @@ export default function ViewItemModal({ isOpen, onClose, item }) {
               <InfoRow icon={AlertTriangle} label="Importance" value={item.importance} variant="badge" />
               <InfoRow icon={BarChart3} label="Unit" value={item.unitType ? `${item.unit} (${item.unitType})` : item.unit} />
               <InfoRow icon={MapPin} label="Store Location" value={item.storeLocation || item.store || 'No location'} />
-              <InfoRow icon={Tag} label="Batch" value={item.batch} />
             </CardContent>
           </Card>
 
@@ -109,12 +108,9 @@ export default function ViewItemModal({ isOpen, onClose, item }) {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-1">
-              <InfoRow icon={Tag} label="Category" value={item.category} />
-              <InfoRow icon={Tag} label="Sub Category" value={item.subCategory} />
+              <InfoRow icon={Tag} label="Item Type" value={item.itemType} />
               <InfoRow icon={Tag} label="Source Type" value={item.sourceType} />
               <InfoRow icon={Tag} label="Item Source Type" value={item.itemSourceType} />
-              <InfoRow icon={FileText} label="HSN Code" value={item.hsn} />
-              <InfoRow icon={Calendar} label="Lead Time" value={`${item.leadTime || 0} days`} />
               {Array.isArray(item.itemCategories) && item.itemCategories.length > 0 && (
                 <div className="py-2">
                   <div className="text-sm text-muted-foreground mb-2">Item Category</div>
@@ -192,7 +188,6 @@ export default function ViewItemModal({ isOpen, onClose, item }) {
             <CardContent className="space-y-1">
               <InfoRow icon={BarChart3} label="Current Stock" value={`${item.qty || 0} ${item.unit}`} />
               <InfoRow icon={AlertTriangle} label="Minimum Stock" value={`${item.minStock || 0} ${item.unit}`} />
-              <InfoRow icon={BarChart3} label="Min Order Qty" value={item.minOrderQty} />
               {item.purchase && (
                 <InfoRow
                   icon={BarChart3}

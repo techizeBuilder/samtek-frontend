@@ -41,23 +41,14 @@ import {
   Package,
   Plus,
   Search,
-  Filter,
-  MoreHorizontal,
   Edit,
   Trash2,
   Eye,
   Tag,
   Package2,
-  AlertTriangle,
   BarChart3,
-  TrendingUp,
-  TrendingDown,
   RefreshCw,
-  FolderPlus,
-  Tags,
-  Users,
   GripVertical,
-  Scale,
   Ban
 } from 'lucide-react';
 
@@ -81,10 +72,8 @@ import { CSS } from '@dnd-kit/utilities';
 import SimpleInventoryForm from './SimpleInventoryForm';
 import ViewItemModal from './ViewItemModal';
 import DeleteConfirmDialog from './DeleteConfirmDialog';
-import CategoryManagement from './CategoryManagement';
 import GroupManagement from './GroupManagement';
 import UnitTypeManagement from './UnitTypeManagement';
-import ExcelImportExport from './ExcelImportExport';
 
 import { apiRequest } from '@/lib/queryClient';
 import { showSmartToast } from '@/lib/toast-utils';
@@ -129,6 +118,12 @@ function useInventoryPermissions() {
 }
 
 // Modern Stats Component
+// Total Value / Low Stock / Categories used to live here, but they're all
+// derived from fields the create form no longer collects (Available Stock,
+// Min Stock, Standard Cost, Category) — every new item would silently read
+// as "0 value" and "low stock" (0 <= 0), and Category would collapse every
+// new item into one blank bucket. Swapped for stats driven by fields the
+// form still actually sets: Item Type and Item Status (isDiscontinued).
 function ModernStats({ stats, isLoading }) {
   const statsCards = [
     {
@@ -137,36 +132,25 @@ function ModernStats({ stats, isLoading }) {
       icon: Package2,
       color: 'text-blue-600',
       bgColor: 'bg-blue-50',
-      change: '+12%'
     },
     {
-      title: 'Total Value',
-      value: `₹${stats?.stats?.totalValue?.toLocaleString() || 0}`,
-      icon: TrendingUp,
-      color: 'text-green-600',
-      bgColor: 'bg-green-50',
-      change: '+8%'
-    },
-    {
-      title: 'Low Stock',
-      value: stats?.stats?.lowStockCount || 0,
-      icon: AlertTriangle,
-      color: 'text-red-600',
-      bgColor: 'bg-red-50',
-      change: '-3%'
-    },
-    {
-      title: 'Categories',
-      value: stats?.stats?.totalCategories || 0,
+      title: 'Item Types',
+      value: stats?.stats?.totalItemTypes || 0,
       icon: BarChart3,
       color: 'text-purple-600',
       bgColor: 'bg-purple-50',
-      change: '+2%'
-    }
+    },
+    {
+      title: 'Discontinued',
+      value: stats?.stats?.discontinuedCount || 0,
+      icon: Ban,
+      color: 'text-red-600',
+      bgColor: 'bg-red-50',
+    },
   ];
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
       {statsCards.map((stat, index) => (
         <Card key={index} className="overflow-hidden">
           <CardContent className="p-6">
@@ -183,7 +167,6 @@ function ModernStats({ stats, isLoading }) {
                     stat.value
                   )}
                 </div>
-                <div className="text-xs text-green-600 font-medium">{stat.change}</div>
               </div>
             </div>
           </CardContent>
@@ -266,46 +249,27 @@ function SortableRow({
       <TableCell className="py-4">
         <div>
           <div className="font-medium text-gray-900">{item.name}</div>
-          <div className="text-sm text-gray-500">{item.type}</div>
-          {item.isDiscontinued && (
-            <span className="text-[10px] text-red-500 font-semibold">DISCONTINUED</span>
-          )}
+          <div className="text-sm text-gray-500 font-mono">{item.code}</div>
         </div>
       </TableCell>
-      <TableCell className="py-4 text-gray-600">{item.batch || '-'}</TableCell>
       <TableCell className="py-4">
-        <div>
+        {item.itemType ? (
           <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-            {item.category}
+            {item.itemType}
           </Badge>
-          {item.subCategory && (
-            <div className="text-xs text-gray-500 mt-1">
-              {item.subCategory}
-            </div>
-          )}
-        </div>
-      </TableCell>
-      <TableCell className="py-4">
-        <Badge variant="secondary" className="bg-purple-50 text-purple-700 border-purple-200">
-          {item.storeLocation || item.store || 'No location'}
-        </Badge>
-      </TableCell>
-      <TableCell className="py-4">
-        <div>
-          <div className="font-medium text-gray-900">{item.qty} {item.unit}</div>
-          <div className="text-xs text-gray-500">
-            Min: {item.minStock} {item.unit}
-          </div>
-        </div>
-      </TableCell>
-      <TableCell className="py-4">
-        <div className="font-medium text-gray-900">₹{item.salePrice?.toLocaleString()}</div>
-      </TableCell>
-      <TableCell className="py-4">
-        {item.qty <= item.minStock ? (
-          <Badge variant="destructive" className="bg-red-50 text-red-700 border-red-200">Low Stock</Badge>
         ) : (
-          <Badge variant="success" className="bg-green-50 text-green-700 border-green-200">In Stock</Badge>
+          <span className="text-gray-400 text-sm">—</span>
+        )}
+      </TableCell>
+      <TableCell className="py-4 text-gray-600">{item.brand || '-'}</TableCell>
+      <TableCell className="py-4">
+        <div className="font-medium text-gray-900">{item.qty ?? 0} {item.unit}</div>
+      </TableCell>
+      <TableCell className="py-4">
+        {item.isDiscontinued ? (
+          <Badge variant="destructive" className="bg-red-50 text-red-700 border-red-200">Discontinued</Badge>
+        ) : (
+          <Badge variant="success" className="bg-green-50 text-green-700 border-green-200">Active</Badge>
         )}
       </TableCell>
       <TableCell className="py-4">
@@ -378,19 +342,16 @@ export default function ModernInventoryUI() {
   const [selectedItems, setSelectedItems] = useState(new Set());
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('all');
-  const [selectedSubCategory, setSelectedSubCategory] = useState('all');
-  const [selectedType, setSelectedType] = useState('all');
+  const [selectedItemType, setSelectedItemType] = useState('all');
+  const [selectedSourceType, setSelectedSourceType] = useState('all');
+  const [selectedItemSourceType, setSelectedItemSourceType] = useState('all');
   const [selectedStore, setSelectedStore] = useState('all');
-  const [selectedGroup, setSelectedGroup] = useState('all');
   const [showDiscontinued, setShowDiscontinued] = useState(false);
   const [sortBy, setSortBy] = useState('newest');
   const [sortOrder, setSortOrder] = useState('asc'); // Added sortOrder state
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(10); // Dynamic items per page
+  const [itemsPerPage, setItemsPerPage] = useState(20); // Dynamic items per page — server-side
   const [localItems, setLocalItems] = useState([]); // For real-time drag-and-drop feedback
-  const [categoryManagementOpen, setCategoryManagementOpen] = useState(false);
-  const [showCustomerCategoryModal, setShowCustomerCategoryModal] = useState(false);
   const [groupManagementOpen, setGroupManagementOpen] = useState(false);
   const [unitTypeManagementOpen, setUnitTypeManagementOpen] = useState(false);
 
@@ -415,28 +376,28 @@ export default function ModernInventoryUI() {
     })
   );
 
-  // Data fetching with React Query - let API handle ALL filtering
+  // Data fetching with React Query - let API handle ALL filtering AND pagination
   const { data: itemsData, isLoading: itemsLoading } = useQuery({
-    queryKey: [`${apiBasePath}/items`, debouncedSearchTerm, selectedCategory, selectedSubCategory, selectedType, selectedStore, selectedGroup, showDiscontinued, sortBy, sortOrder],
+    queryKey: [`${apiBasePath}/items`, debouncedSearchTerm, selectedItemType, selectedSourceType, selectedItemSourceType, selectedStore, showDiscontinued, sortBy, sortOrder, currentPage, itemsPerPage],
     queryFn: () => {
       const params = new URLSearchParams({
-        page: 1,
-        limit: 100, // Fetch more items from API
+        page: currentPage,
+        limit: itemsPerPage,
         // Exclude Product Master machines / Motor Master motors — this list
         // is plain Inventory only, items created through this form.
         productKind: 'none',
         discontinued: showDiscontinued ? 'true' : 'false',
         ...(debouncedSearchTerm && { search: debouncedSearchTerm }),
-        ...(selectedCategory && selectedCategory !== 'all' && { category: selectedCategory }),
-        ...(selectedSubCategory && selectedSubCategory !== 'all' && { subCategory: selectedSubCategory }),
-        ...(selectedType && selectedType !== 'all' && { type: selectedType }),
+        ...(selectedItemType && selectedItemType !== 'all' && { itemType: selectedItemType }),
+        ...(selectedSourceType && selectedSourceType !== 'all' && { sourceType: selectedSourceType }),
+        ...(selectedItemSourceType && selectedItemSourceType !== 'all' && { itemSourceType: selectedItemSourceType }),
         ...(selectedStore && selectedStore !== 'all' && { store: selectedStore }),
-        ...(selectedGroup && selectedGroup !== 'all' && { group: selectedGroup }),
         sortBy,
         sortOrder
       });
       return apiRequest('GET', `${apiBasePath}/items?${params.toString()}`);
     },
+    keepPreviousData: true,
   });
 
   // Update local items when API data changes
@@ -467,6 +428,10 @@ export default function ModernInventoryUI() {
     queryKey: ['/api/inventory/unit-types'],
   });
 
+  const { data: masterOptionsData } = useQuery({
+    queryKey: ['/api/inventory/master-options'],
+  });
+
   // Extract data from API response including pagination
   const items = Array.isArray(itemsData?.items) ? itemsData.items : [];
   const apiPagination = itemsData?.pagination || {};
@@ -474,25 +439,19 @@ export default function ModernInventoryUI() {
   const customerCategories = Array.isArray(customerCategoriesData?.customerCategories) ? customerCategoriesData.customerCategories : [];
   const groups = Array.isArray(groupsData?.groups) ? groupsData.groups : [];
   const unitTypes = Array.isArray(unitTypesData?.unitTypes) ? unitTypesData.unitTypes : [];
+  const itemTypeOptions = Array.isArray(masterOptionsData?.data?.ItemType) ? masterOptionsData.data.ItemType : [];
+  const sourceTypeOptions = Array.isArray(masterOptionsData?.data?.SourceType) ? masterOptionsData.data.SourceType : [];
+  const itemSourceTypeOptions = Array.isArray(masterOptionsData?.data?.ItemSourceType) ? masterOptionsData.data.ItemSourceType : [];
 
-  // Sub Category filter is locked to a specific Category — no meaningful "all categories'
-  // subcategories" union, since sub-category names aren't unique across categories.
-  const availableFilterSubCategories = React.useMemo(() => {
-    if (selectedCategory === 'all') return [];
-    const cat = categories.find(c => c.name === selectedCategory);
-    return [...(cat?.subcategories || [])].sort();
-  }, [selectedCategory, categories]);
-
-  const hasActiveFilters = debouncedSearchTerm || searchTerm || selectedCategory !== 'all' || selectedSubCategory !== 'all' ||
-    selectedType !== 'all' || selectedGroup !== 'all';
+  const hasActiveFilters = debouncedSearchTerm || searchTerm || selectedItemType !== 'all' ||
+    selectedSourceType !== 'all' || selectedItemSourceType !== 'all';
 
   const handleResetFilters = () => {
     setSearchTerm('');
     setDebouncedSearchTerm('');
-    setSelectedCategory('all');
-    setSelectedSubCategory('all');
-    setSelectedType('all');
-    setSelectedGroup('all');
+    setSelectedItemType('all');
+    setSelectedSourceType('all');
+    setSelectedItemSourceType('all');
     setCurrentPage(1);
   };
 
@@ -722,24 +681,23 @@ export default function ModernInventoryUI() {
     });
   };
 
-  // No frontend filtering - API handles ALL filters
+  // No frontend filtering - API handles ALL filters and pagination now
   const filteredItems = items; // Use items directly from API
 
-  // Frontend pagination only - API does the filtering
+  // Server-side pagination — `items` is already exactly this page's rows.
   const totalItems = apiPagination.total || items.length;
-  const totalPages = Math.ceil(items.length / itemsPerPage);
+  const totalPages = apiPagination.pages || 1;
   const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const paginatedItems = items.slice(startIndex, endIndex);
+  const endIndex = startIndex + items.length;
+  const paginatedItems = items;
 
-  // Reset to first page when search or filter changes
+  // Reset to first page when search, filter, or page size changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [debouncedSearchTerm, selectedCategory, selectedSubCategory, selectedType, selectedStore, selectedGroup, sortBy, sortOrder]);
+  }, [debouncedSearchTerm, selectedItemType, selectedSourceType, selectedItemSourceType, selectedStore, sortBy, sortOrder, itemsPerPage]);
 
   const handlePageChange = (page) => {
     setCurrentPage(page);
-    // Frontend pagination - no API refetch needed
   };
 
   const handleDragEnd = (event) => {
@@ -767,9 +725,8 @@ export default function ModernInventoryUI() {
   const resolvedStats = {
     stats: {
       totalItems: stats?.stats?.totalItems ?? itemsData?.stats?.totalItems ?? 0,
-      totalValue: stats?.stats?.totalValue ?? itemsData?.stats?.totalValue ?? 0,
-      lowStockCount: stats?.stats?.lowStockCount ?? itemsData?.stats?.lowStockCount ?? 0,
-      totalCategories: stats?.stats?.totalCategories ?? categories.length ?? 0
+      totalItemTypes: stats?.stats?.totalItemTypes ?? itemTypeOptions.length ?? 0,
+      discontinuedCount: stats?.stats?.discontinuedCount ?? 0
     }
   };
 
@@ -778,59 +735,19 @@ export default function ModernInventoryUI() {
       <ModernStats stats={resolvedStats} isLoading={statsLoading || itemsLoading} />
 
       {/* Modern Action Bar */}
-      <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
-        <CardContent className="p-6">
-          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-            <div className="flex flex-col">
-              <h2 className="text-xl font-semibold text-blue-900">
-                {!inventoryPermissions.canAdd && !inventoryPermissions.canEdit && !inventoryPermissions.canDelete ? 'Inventory Monitoring' : 'Quick Actions'}
-              </h2>
-              <p className="text-sm text-blue-600">
-                {!inventoryPermissions.canAdd && !inventoryPermissions.canEdit && !inventoryPermissions.canDelete
-                  ? 'Monitor inventory levels, view item details and track stock status'
-                  : 'Manage your inventory efficiently with these actions'
-                }
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-3">
-              {inventoryPermissions.canAdd && (
-                <Button
-                  onClick={() => setShowForm(true)}
-                  className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg hover:shadow-xl transition-all duration-200"
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Item
-                </Button>
-              )}
-              {(inventoryPermissions.canAdd || inventoryPermissions.canEdit) && (
-                <>
-                  <Button
-                    onClick={() => setCategoryManagementOpen(true)}
-                    variant="outline"
-                    className="border-purple-300 text-purple-700 hover:bg-purple-50:bg-purple-950/30"
-                  >
-                    <Tag className="h-4 w-4 mr-2" />
-                    Categories
-                  </Button>
-                  <Button
-                    onClick={() => setShowCustomerCategoryModal(true)}
-                    variant="outline"
-                    className="border-green-300 text-green-700 hover:bg-green-50:bg-green-950/30"
-                  >
-                    <Users className="h-4 w-4 mr-2" />
-                    Customer Category
-                  </Button>
-                </>
-              )}
-
-              {/* Excel Import/Export - Available to all users with view permissions */}
-              {inventoryPermissions.canView && (
-                <ExcelImportExport type="items" />
-              )}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      {inventoryPermissions.canAdd && (
+        <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
+          <CardContent className="p-6">
+            <Button
+              onClick={() => setShowForm(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg hover:shadow-xl transition-all duration-200"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Add Item
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Main Content Area */}
       <Card className="shadow-sm border-gray-200">
@@ -853,107 +770,69 @@ export default function ModernInventoryUI() {
                 />
               </div>
               <div className="flex flex-wrap gap-2">
-                <Select value={selectedCategory} onValueChange={(v) => { setSelectedCategory(v); setSelectedSubCategory('all'); }}>
+                <Select value={selectedItemType} onValueChange={setSelectedItemType}>
                   <SelectTrigger className="w-[110px] sm:w-[130px] h-9 border-gray-300 focus:border-blue-500 text-xs px-2">
-                    <SelectValue placeholder="All Categories" />
+                    <SelectValue placeholder="All Item Types" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">
                       <div className="flex items-center gap-2">
                         <Package2 className="h-4 w-4" />
-                        All Categories
+                        All Item Types
                       </div>
                     </SelectItem>
-                    {categories.length > 0 && [...categories].sort((a, b) => a.name.localeCompare(b.name)).map((category) => (
-                      <SelectItem key={category._id || category.name} value={category.name}>
+                    {itemTypeOptions.map((o) => (
+                      <SelectItem key={o._id || o.value} value={o.value}>
                         <div className="flex items-center gap-2">
                           <Tag className="h-4 w-4" />
-                          {category.name}
+                          {o.value}
                         </div>
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                <Select value={selectedSubCategory} onValueChange={setSelectedSubCategory} disabled={selectedCategory === 'all'}>
+                <Select value={selectedSourceType} onValueChange={setSelectedSourceType}>
+                  <SelectTrigger className="w-[110px] sm:w-[130px] h-9 border-gray-300 focus:border-blue-500 text-xs px-2">
+                    <SelectValue placeholder="All Source Types" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">
+                      <div className="flex items-center gap-2">
+                        <Package2 className="h-4 w-4" />
+                        All Source Types
+                      </div>
+                    </SelectItem>
+                    {sourceTypeOptions.map((o) => (
+                      <SelectItem key={o._id || o.value} value={o.value}>
+                        <div className="flex items-center gap-2">
+                          <Tag className="h-4 w-4" />
+                          {o.value}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={selectedItemSourceType} onValueChange={setSelectedItemSourceType}>
                   <SelectTrigger className="w-[130px] sm:w-[150px] h-9 border-gray-300 focus:border-blue-500 text-xs px-2">
-                    <SelectValue placeholder={selectedCategory === 'all' ? 'Select Category first' : 'All Sub Categories'} />
+                    <SelectValue placeholder="All Item Source Types" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">
                       <div className="flex items-center gap-2">
-                        <Tag className="h-4 w-4" />
-                        All Sub Categories
+                        <Package2 className="h-4 w-4" />
+                        All Item Source Types
                       </div>
                     </SelectItem>
-                    {availableFilterSubCategories.map((sub) => (
-                      <SelectItem key={sub} value={sub}>
+                    {itemSourceTypeOptions.map((o) => (
+                      <SelectItem key={o._id || o.value} value={o.value}>
                         <div className="flex items-center gap-2">
                           <Tag className="h-4 w-4" />
-                          {sub}
+                          {o.value}
                         </div>
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                <Select value={selectedType} onValueChange={setSelectedType}>
-                  <SelectTrigger className="w-[100px] sm:w-[120px] h-9 border-gray-300 focus:border-blue-500 text-xs px-2">
-                    <SelectValue placeholder="All Types" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">
-                      <div className="flex items-center gap-2">
-                        <Package className="h-4 w-4" />
-                        All Types
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="Product">
-                      <div className="flex items-center gap-2">
-                        <Package className="h-4 w-4" />
-                        Products
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="Material">
-                      <div className="flex items-center gap-2">
-                        <Package2 className="h-4 w-4" />
-                        Materials
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="Spares">
-                      <div className="flex items-center gap-2">
-                        <Package className="h-4 w-4" />
-                        Spares
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="Assemblies">
-                      <div className="flex items-center gap-2">
-                        <Package2 className="h-4 w-4" />
-                        Assemblies
-                      </div>
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select value={selectedGroup} onValueChange={setSelectedGroup}>
-                  <SelectTrigger className="w-[120px] sm:w-[140px] h-9 border-gray-300 focus:border-blue-500 text-xs px-2">
-                    <SelectValue placeholder="All Groups" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">
-                      <div className="flex items-center gap-2">
-                        <Tags className="h-4 w-4" />
-                        All Groups
-                      </div>
-                    </SelectItem>
-                    {groups.length > 0 && [...groups].sort((a, b) => a.name.localeCompare(b.name)).map((group) => (
-                      <SelectItem key={group._id || group.name} value={group.name}>
-                        <div className="flex items-center gap-2">
-                          <Tags className="h-4 w-4" />
-                          {group.name}
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
                 <Button
                   variant="outline"
                   onClick={() => setShowDiscontinued(v => !v)}
@@ -969,8 +848,8 @@ export default function ModernInventoryUI() {
                   <SelectContent>
                     <SelectItem value="newest">Newest First</SelectItem>
                     <SelectItem value="name">Name A-Z</SelectItem>
-                    <SelectItem value="category">Category</SelectItem>
-                    <SelectItem value="qty">Stock Quantity</SelectItem>
+                    <SelectItem value="code">Item Code</SelectItem>
+                    <SelectItem value="itemType">Item Type</SelectItem>
                   </SelectContent>
                 </Select>
 
@@ -979,11 +858,10 @@ export default function ModernInventoryUI() {
                     <SelectValue placeholder="Items per page" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="10">10 per page</SelectItem>
                     <SelectItem value="20">20 per page</SelectItem>
-                    <SelectItem value="30">30 per page</SelectItem>
                     <SelectItem value="50">50 per page</SelectItem>
                     <SelectItem value="100">100 per page</SelectItem>
+                    <SelectItem value="150">150 per page</SelectItem>
                   </SelectContent>
                 </Select>
 
@@ -1048,12 +926,10 @@ export default function ModernInventoryUI() {
                     )}
                     <TableHead className="w-[40px] font-semibold text-gray-900"></TableHead>
                     <TableHead className="font-semibold text-gray-900">Image</TableHead>
-                    <TableHead className="font-semibold text-gray-900">Name</TableHead>
-                    <TableHead className="font-semibold text-gray-900">Quantity</TableHead>
-                    <TableHead className="font-semibold text-gray-900">Category</TableHead>
-                    <TableHead className="font-semibold text-gray-900">Store Location</TableHead>
+                    <TableHead className="font-semibold text-gray-900">Name / Code</TableHead>
+                    <TableHead className="font-semibold text-gray-900">Item Type</TableHead>
+                    <TableHead className="font-semibold text-gray-900">Brand</TableHead>
                     <TableHead className="font-semibold text-gray-900">Stock</TableHead>
-                    <TableHead className="font-semibold text-gray-900">Price</TableHead>
                     <TableHead className="font-semibold text-gray-900">Status</TableHead>
                     <TableHead className="w-[100px] font-semibold text-gray-900">Actions</TableHead>
                   </TableRow>
@@ -1081,7 +957,7 @@ export default function ModernInventoryUI() {
                           </TableCell>
                         </TableRow>
                       ) : (
-                        localItems.slice(startIndex, startIndex + itemsPerPage).map((item, index) => (
+                        localItems.map((item, index) => (
                           <SortableRow
                             key={item._id}
                             id={item._id}
@@ -1108,7 +984,7 @@ export default function ModernInventoryUI() {
             {totalPages > 1 && (
               <div className="flex items-center justify-between px-2 py-4">
                 <div className="text-sm text-gray-500">
-                  Showing {startIndex + 1} to {Math.min(endIndex, items.length)} of {totalItems} items
+                  Showing {startIndex + 1} to {Math.min(endIndex, totalItems)} of {totalItems} items
                 </div>
                 <div className="flex items-center space-x-2">
                   <Button
@@ -1176,7 +1052,6 @@ export default function ModernInventoryUI() {
           unitTypes={unitTypes}
           onSubmit={handleFormSubmit}
           isLoading={createItemMutation.isPending || updateItemMutation.isPending}
-          onOpenCategoryManagement={() => setCategoryManagementOpen(true)}
           onOpenGroupManagement={() => setGroupManagementOpen(true)}
           onOpenUnitTypeManagement={() => setUnitTypeManagementOpen(true)}
         />
@@ -1218,21 +1093,11 @@ export default function ModernInventoryUI() {
         </>
       )}
 
-      {/* Category Management Modals - Show based on permissions */}
+      {/* Category Management moved to Marketing > Categories — no longer
+          triggerable from here since the Action Bar was trimmed to just
+          Add Item and the create/edit form no longer has a Category field. */}
       {(inventoryPermissions.canAdd || inventoryPermissions.canEdit) && (
         <>
-          <CategoryManagement
-            isOpen={categoryManagementOpen}
-            onClose={() => setCategoryManagementOpen(false)}
-            initialTab="product"
-          />
-
-          <CategoryManagement
-            isOpen={showCustomerCategoryModal}
-            onClose={() => setShowCustomerCategoryModal(false)}
-            initialTab="customer"
-          />
-
           <GroupManagement
             isOpen={groupManagementOpen}
             onClose={() => setGroupManagementOpen(false)}

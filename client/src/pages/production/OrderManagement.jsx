@@ -112,7 +112,7 @@ export default function OrderManagement() {
   });
   const enabledBOMFields = bomFieldConfigResponse?.data?.enabledFields || [];
   const bomFieldCatalog = bomFieldConfigResponse?.data?.catalog || [];
-  const extraViewFields = bomFieldCatalog.filter(f => enabledBOMFields.includes(f.key) && !['code', 'name', 'unit', 'purchaseCost'].includes(f.key));
+  const extraViewFields = bomFieldCatalog.filter(f => enabledBOMFields.includes(f.key) && !['code', 'name', 'unit'].includes(f.key));
   const getUnitsForTypeDynamic = (unitTypeName, currentUnit) => {
     if (!unitTypeName) return [];
     if (unitTypesData?.unitTypes) {
@@ -1226,7 +1226,7 @@ export default function OrderManagement() {
                   <p className="text-xs text-slate-500 mb-2 font-semibold">Additional Details <span className="text-[10px] text-slate-400 font-normal">(from BOM Format & Modification)</span></p>
                   <div className="grid grid-cols-2 gap-2">
                     {extraViewFields.map(f => {
-                      if (f.key === 'specifications' || f.key === 'itemCategories' || f.key === 'applications') return null;
+                      if (f.key === 'itemCategories') return null;
                       const value = formatCatalogFieldValue(f.key, viewMat);
                       if (value === '—') return null;
                       return <div key={f.key}><p className="text-[11px] text-slate-400">{f.label}</p><p className="text-sm text-slate-800 break-words">{value}</p></div>;
@@ -1244,30 +1244,6 @@ export default function OrderManagement() {
                     </div>
                   )}
 
-                  {enabledBOMFields.includes('applications') && Array.isArray(viewMat.applications) && viewMat.applications.length > 0 && (
-                    <div className="mt-3">
-                      <p className="text-[11px] text-slate-400 mb-1">Applications</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {viewMat.applications.map((a, i) => (
-                          <span key={i} className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-purple-50 text-purple-700 border border-purple-200">{a}</span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {enabledBOMFields.includes('specifications') && Array.isArray(viewMat.specifications) && viewMat.specifications.filter(s => s.key).length > 0 && (
-                    <div className="mt-3">
-                      <p className="text-[11px] text-slate-400 mb-1">Specifications</p>
-                      <div className="divide-y divide-slate-100">
-                        {viewMat.specifications.filter(s => s.key).map((s, i) => (
-                          <div key={i} className="flex items-center justify-between py-1.5">
-                            <span className="text-xs font-semibold text-slate-500 w-2/5">{s.key}</span>
-                            <span className="text-sm text-slate-800 font-medium">{s.value || '—'}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                 </div>
               )}
             </div>
