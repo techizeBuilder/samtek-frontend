@@ -198,6 +198,7 @@ import { RDProvider } from "@/contexts/RDContext";
 import ProductMaster from "@/pages/ResearchDevelopment/ProductMaster";
 import MotorMaster from "@/pages/ResearchDevelopment/MotorMaster";
 import PlantMaster from "@/pages/ResearchDevelopment/PlantMaster";
+import FabricationMaster from "@/pages/ResearchDevelopment/FabricationMaster";
 import DesignApproval from "@/pages/ResearchDevelopment/DesignApproval";
 import BOMManagement from "@/pages/ResearchDevelopment/BOMManagement";
 import ToolProcess from "@/pages/ResearchDevelopment/ToolProcess";
@@ -688,6 +689,11 @@ function Router() {
           <PlantMaster />
         </ProtectedRoute>
       </Route>
+      <Route path="/r&d/fabrication-master">
+        <ProtectedRoute requiredRole={["Research & Development Head", "Research Development Employee"]}>
+          <FabricationMaster />
+        </ProtectedRoute>
+      </Route>
       <Route path="/r&d/design-approval">
         <ProtectedRoute requiredRole={["Research & Development Head", "Research Development Employee"]}>
           <DesignApproval />
@@ -1075,17 +1081,17 @@ function Router() {
         </ProtectedRoute>
       </Route>
       <Route path="/accounts/sales/order-tracking">
-        <RoleBasedProtectedRoute allowedRoles={['Superadmin', 'Accounts']}>
+        <RoleBasedProtectedRoute requiredRole={['Superadmin', 'Accounts']}>
           <SalesOrderTracking />
         </RoleBasedProtectedRoute>
       </Route>
       <Route path="/accounts/sales/noc-request">
-        <RoleBasedProtectedRoute allowedRoles={['Superadmin', 'Accounts']}>
+        <RoleBasedProtectedRoute requiredRole={['Superadmin', 'Accounts']}>
           <NocRequest />
         </RoleBasedProtectedRoute>
       </Route>
       <Route path="/accounts/sales/packed-orders">
-        <RoleBasedProtectedRoute allowedRoles={['Superadmin', 'Accounts']}>
+        <RoleBasedProtectedRoute requiredRole={['Superadmin', 'Accounts']}>
           <PackedOrders />
         </RoleBasedProtectedRoute>
       </Route>

@@ -8,6 +8,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useSettings } from '@/hooks/useSettings';
 import { generateDueBillPDF } from '@/utils/generateDueBillPDF';
 import { sendWhatsApp } from '@/lib/whatsapp';
+import SendEmailModal from '@/components/email/SendEmailModal';
 import {
   Search,
   Phone,
@@ -76,6 +77,9 @@ const PackedOrders = () => {
   useEffect(() => {
     setPage(1);
   }, [activeTab, debouncedSearch]);
+
+  // Send Email Modal State
+  const [emailModal, setEmailModal] = useState({ open: false, to: '', subject: '', message: '' });
 
   // Upload Proof Modal State
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
@@ -334,7 +338,7 @@ const PackedOrders = () => {
     }
     const subject = `Payment Request: Order ${item.orderCode} Packed & Ready | ${displayCompanyName}`;
     const body = `Dear ${item.customer.name},\n\nWe are pleased to inform you that your order ${item.orderCode} has been successfully packed and is ready for dispatch.\n\nSummary:\n- Order: ${item.orderCode}\n- Packed Items: ${item.machineName || 'Machinery'} (Serial: ${item.serialNumber || 'N/A'})\n- Total Amount: Rs. ${(item.displayTotal || 0).toLocaleString('en-IN')}\n- Paid Amount: Rs. ${(item.displayPaid || 0).toLocaleString('en-IN')}\n- Balance Amount: Rs. ${(item.displayDue || 0).toLocaleString('en-IN')}\n\nPlease transfer the balance amount and send us the transaction receipt.\n\nBest regards,\nAccounts Department\n${displayCompanyName}`;
-    window.open(`mailto:${item.customer.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`, '_self');
+    setEmailModal({ open: true, to: item.customer.email, subject, message: body });
   };
 
   // Search + tab filtering both happen on the backend now (see the query above)
@@ -672,6 +676,16 @@ const PackedOrders = () => {
           onPageChange={setPage}
         />
       </Card>
+
+      {/* Send Email Modal */}
+      <SendEmailModal
+        open={emailModal.open}
+        onOpenChange={(open) => setEmailModal((p) => ({ ...p, open }))}
+        to={emailModal.to}
+        department="ACCOUNTS"
+        defaultSubject={emailModal.subject}
+        defaultMessage={emailModal.message}
+      />
 
       {/* View Order Detail Modal */}
       <Dialog open={viewDetailOpen} onOpenChange={setViewDetailOpen}>

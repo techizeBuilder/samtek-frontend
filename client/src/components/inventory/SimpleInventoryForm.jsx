@@ -12,19 +12,24 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import {
-  Loader2, Package, Plus,
+  Loader2, Package, Plus, Layers,
   Image as ImageIcon
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { UNIT_TYPES, getUnitTypeForUnit, getUnitsForType } from '@/utils/unitTypes';
 import { apiRequest } from '@/lib/queryClient';
 import { config } from '@/config/environment';
+import FabricationItemPicker from './FabricationItemPicker';
 
 const DIMENSION_UNITS = ['Inch', 'MM', 'Feet', 'Meter'];
 const DIMENSION_FIELDS = [
   ['length', 'Length'], ['height', 'Height'], ['width', 'Width'],
   ['diaOD', 'Dia (OD)'], ['diaID', 'Dia (ID)'], ['thickness', 'Thickness'],
 ];
+// The one Item Process Type value with special behavior — opens the
+// Fabrication Master picker and switches field 15 (Size/Dimension) to show
+// the picked item's dimension variants instead of the fixed 6-field grid.
+const FABRICATION_PROCESS_TYPE = 'Fabrication Item';
 
 export default function SimpleInventoryForm({
   isOpen, onClose, item = null, categories = [], unitTypes = [], onSubmit, isLoading = false, onOpenCategoryManagement, onOpenUnitTypeManagement
@@ -45,6 +50,8 @@ export default function SimpleInventoryForm({
     // themselves elsewhere); defaults silently to 'Material', the common case
     // for plain Inventory items created here.
     itemType: '', type: 'Material',
+    // Item Process Type + Fabrication Master link — see FABRICATION_PROCESS_TYPE above.
+    itemProcessType: '', fabricationRef: null, dimensionVariants: [],
     importance: 'Normal', unitType: '', unit: '', isDiscontinued: false,
     qty: 0, minStock: 0, batch: '', leadTime: 0,
     stdCost: 0, purchaseCost: 0, salePrice: 0, mrp: 0, gst: 0, hsn: '',
@@ -116,7 +123,7 @@ export default function SimpleInventoryForm({
     onSuccess: () => qc.invalidateQueries({ queryKey: ['rd-master-options'] }),
   });
 
-  const INV_FIELD_KEY_MAP = { SourceType: 'sourceType', ItemSourceType: 'itemSourceType', ItemType: 'itemType' };
+  const INV_FIELD_KEY_MAP = { SourceType: 'sourceType', ItemSourceType: 'itemSourceType', ItemType: 'itemType', ItemProcessType: 'itemProcessType' };
   const RD_FIELD_KEY_MAP = { Metrology: 'metrology', MaterialGrade: 'materialGrade' };
 
   const handleAddOption = async () => {
@@ -151,6 +158,43 @@ export default function SimpleInventoryForm({
     if (suggestion) handleInputChange('code', suggestion);
   };
 
+  const [fabricationPickerOpen, setFabricationPickerOpen] = useState(false);
+
+  // Item Process Type change — "Fabrication Item" opens the picker; any
+  // other value (or clearing it) drops a previously-picked Fabrication link
+  // so field 15 reverts to the normal fixed dimension grid.
+  const handleItemProcessTypeChange = (value) => {
+    handleInputChange('itemProcessType', value);
+    if (value === FABRICATION_PROCESS_TYPE) {
+      setFabricationPickerOpen(true);
+    } else {
+      setFormData(prev => ({ ...prev, fabricationRef: null, dimensionVariants: [] }));
+    }
+  };
+
+  // Autofills Item Name/Code and the dimension variants (with weight, each
+  // starting at subStock: 0 — real stock only arrives later via Purchase)
+  // from the selected Fabrication Master catalog entry.
+  const handleFabricationSelect = (fabItem) => {
+    setFormData(prev => ({
+      ...prev,
+      name: fabItem.itemName || prev.name,
+      code: fabItem.itemCode || prev.code,
+      fabricationRef: fabItem._id,
+      dimensionVariants: (fabItem.dimensions || []).map(d => ({
+        category: fabItem.category,
+        values: d.values || {},
+        designation: d.designation || '',
+        densityValue: fabItem.density?.value ?? null,
+        densityUnit: fabItem.density?.unit || 'kg/m3',
+        weightPerMeterKg: d.weightPerMeterKg ?? null,
+        weightPerPieceKg: d.weightPerPieceKg ?? null,
+        subStock: 0,
+      })),
+    }));
+    setFabricationPickerOpen(false);
+  };
+
   const getUnitTypeForUnitDynamic = (unitName) => {
     if (!unitName) return '';
     const found = unitTypes.find(ut => ut.units?.includes(unitName));
@@ -181,6 +225,9 @@ export default function SimpleInventoryForm({
         specifications: Array.isArray(item.specifications) ? item.specifications : [],
         applications: Array.isArray(item.applications) ? item.applications : [],
         itemCategories: Array.isArray(item.itemCategories) ? item.itemCategories : [],
+        itemProcessType: item.itemProcessType || '',
+        fabricationRef: item.fabricationRef || null,
+        dimensionVariants: Array.isArray(item.dimensionVariants) ? item.dimensionVariants : [],
         dimensions: {
           length: { value: item.dimensions?.length?.value ?? '', unit: item.dimensions?.length?.unit || '' },
           height: { value: item.dimensions?.height?.value ?? '', unit: item.dimensions?.height?.unit || '' },
@@ -330,7 +377,7 @@ export default function SimpleInventoryForm({
 
         <div className="space-y-6">
 
-          {/* ── 1-5: Item Identification ─────────────────────────────────── */}
+          {/* ── 1-6: Item Identification ─────────────────────────────────── */}
           <div className="border border-gray-200 rounded-lg p-4 bg-slate-50">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="md:col-span-2">
@@ -343,13 +390,38 @@ export default function SimpleInventoryForm({
                   <Button type="button" variant="outline" size="icon" onClick={() => setNewOptionModal({ open: true, scope: 'inventory', field: 'ItemType', value: '' })}><Plus className="h-4 w-4" /></Button>
                 </div>
               </div>
+              <div className="md:col-span-2">
+                <Label className="text-sm font-medium text-gray-700">2. Item Process Type</Label>
+                <div className="flex gap-2 mt-1">
+                  <Select value={formData.itemProcessType} onValueChange={handleItemProcessTypeChange}>
+                    <SelectTrigger className="flex-1"><SelectValue placeholder="e.g. Fabrication Item" /></SelectTrigger>
+                    <SelectContent>
+                      {[FABRICATION_PROCESS_TYPE, ...(invMasterOptions.ItemProcessType || []).map(o => o.value).filter(v => v !== FABRICATION_PROCESS_TYPE)].map(v => (
+                        <SelectItem key={v} value={v}>{v}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button type="button" variant="outline" size="icon" onClick={() => setNewOptionModal({ open: true, scope: 'inventory', field: 'ItemProcessType', value: '' })}><Plus className="h-4 w-4" /></Button>
+                </div>
+                {formData.itemProcessType === FABRICATION_PROCESS_TYPE && (
+                  <div className="mt-2 flex items-center justify-between gap-2 bg-blue-50 border border-blue-100 rounded-md px-3 py-2">
+                    <span className="text-xs text-blue-700 flex items-center gap-1.5">
+                      <Layers className="h-3.5 w-3.5" />
+                      {formData.fabricationRef ? `Linked: ${formData.name || 'Fabrication item'}` : 'No fabrication item selected yet'}
+                    </span>
+                    <Button type="button" variant="outline" size="sm" className="h-7 text-xs bg-white" onClick={() => setFabricationPickerOpen(true)}>
+                      {formData.fabricationRef ? 'Change' : 'Select'}
+                    </Button>
+                  </div>
+                )}
+              </div>
               <div>
-                <Label className="text-sm font-medium text-gray-700">2. Item Name *</Label>
+                <Label className="text-sm font-medium text-gray-700">3. Item Name *</Label>
                 <Input value={formData.name} onChange={(e) => handleInputChange('name', e.target.value)} placeholder="Enter item name" className={`mt-1 bg-white ${errors.name ? 'border-red-500' : ''}`} />
                 {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name}</p>}
               </div>
               <div>
-                <Label className="text-sm font-medium text-gray-700">3. Item Code (ERP) * <span className="text-xs font-normal text-amber-600">(R&D must define)</span></Label>
+                <Label className="text-sm font-medium text-gray-700">4. Item Code (ERP) * <span className="text-xs font-normal text-amber-600">(R&D must define)</span></Label>
                 <div className="flex gap-2 mt-1">
                   <Input
                     value={formData.code}
@@ -362,11 +434,11 @@ export default function SimpleInventoryForm({
                 {errors.code && <p className="text-red-500 text-xs mt-1">{errors.code}</p>}
               </div>
               <div>
-                <Label className="text-sm font-medium text-gray-700">4. Model Number</Label>
+                <Label className="text-sm font-medium text-gray-700">5. Model Number</Label>
                 <Input value={formData.modelNumber} onChange={(e) => handleInputChange('modelNumber', e.target.value)} placeholder="e.g. 6600, 4320" className="mt-1 bg-white" />
               </div>
               <div>
-                <Label className="text-sm font-medium text-gray-700">5. Brand Name</Label>
+                <Label className="text-sm font-medium text-gray-700">6. Brand Name</Label>
                 <Input value={formData.brand} onChange={(e) => handleInputChange('brand', e.target.value)} placeholder="e.g. Bosch" className="mt-1 bg-white" />
               </div>
             </div>
@@ -376,7 +448,7 @@ export default function SimpleInventoryForm({
           <div className="p-4 border border-gray-200 rounded-lg">
             <div className="mb-4">
               <div className="flex items-center justify-between mb-2">
-                <Label className="text-sm font-medium text-gray-700">6. Item Category</Label>
+                <Label className="text-sm font-medium text-gray-700">7. Item Category</Label>
                 <Button type="button" variant="outline" size="sm" onClick={() => setNewOptionModal({ open: true, scope: 'inventory', field: 'ItemCategory', value: '' })} className="h-7 px-2 text-xs border-blue-300 text-blue-700 hover:bg-blue-50">
                   <Plus className="h-3 w-3 mr-1" /> Add New
                 </Button>
@@ -403,7 +475,7 @@ export default function SimpleInventoryForm({
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <Label className="text-sm font-medium text-gray-700">7. Source Type</Label>
+                <Label className="text-sm font-medium text-gray-700">8. Source Type</Label>
                 <div className="flex gap-2 mt-1">
                   <Select value={formData.sourceType} onValueChange={(v) => handleInputChange('sourceType', v)}>
                     <SelectTrigger className="flex-1"><SelectValue placeholder="Select" /></SelectTrigger>
@@ -413,7 +485,7 @@ export default function SimpleInventoryForm({
                 </div>
               </div>
               <div>
-                <Label className="text-sm font-medium text-gray-700">8. Item Source Type</Label>
+                <Label className="text-sm font-medium text-gray-700">9. Item Source Type</Label>
                 <div className="flex gap-2 mt-1">
                   <Select value={formData.itemSourceType} onValueChange={(v) => handleInputChange('itemSourceType', v)}>
                     <SelectTrigger className="flex-1"><SelectValue placeholder="Select" /></SelectTrigger>
@@ -429,7 +501,7 @@ export default function SimpleInventoryForm({
           <div className="border border-gray-200 rounded-lg p-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <Label className="text-sm font-medium text-gray-700">9. Metrology</Label>
+                <Label className="text-sm font-medium text-gray-700">10. Metrology</Label>
                 <div className="flex gap-2 mt-1">
                   <Select value={formData.metrology} onValueChange={(v) => handleInputChange('metrology', v)}>
                     <SelectTrigger className="flex-1"><SelectValue placeholder="Select" /></SelectTrigger>
@@ -439,7 +511,7 @@ export default function SimpleInventoryForm({
                 </div>
               </div>
               <div>
-                <Label className="text-sm font-medium text-gray-700">10. Material Grade</Label>
+                <Label className="text-sm font-medium text-gray-700">11. Material Grade</Label>
                 <div className="flex gap-2 mt-1">
                   <Select value={formData.materialGrade} onValueChange={(v) => handleInputChange('materialGrade', v)}>
                     <SelectTrigger className="flex-1"><SelectValue placeholder="Select" /></SelectTrigger>
@@ -451,7 +523,7 @@ export default function SimpleInventoryForm({
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
               <div>
-                <Label className="text-sm font-medium text-gray-700">11. Unit Weight</Label>
+                <Label className="text-sm font-medium text-gray-700">12. Unit Weight</Label>
                 <Input type="number" min="0" value={formData.unitWeightValue} onChange={(e) => handleInputChange('unitWeightValue', e.target.value)} placeholder="0" className="mt-1 bg-white" />
               </div>
               <div>
@@ -473,7 +545,7 @@ export default function SimpleInventoryForm({
 
           {/* ── 12: Purchase Unit (incl. the Purchasable/Internal Manufacturing choice) ── */}
           <div className="border border-gray-200 rounded-lg p-4">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">12. Purchase Unit</h3>
+            <h3 className="text-lg font-medium text-gray-900 mb-4">13. Purchase Unit</h3>
             <RadioGroup
               value={formData.purchase ? 'purchase' : formData.internalManufacturing ? 'internalManufacturing' : ''}
               onValueChange={(v) => {
@@ -517,7 +589,7 @@ export default function SimpleInventoryForm({
           {/* ── 13: Used Unit (Inventory's storage/entry unit — was labelled
               "Unit Type"/"Unit") ─────────────────────────────────────────── */}
           <div className="border border-gray-200 rounded-lg p-4">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">13. Used Unit</h3>
+            <h3 className="text-lg font-medium text-gray-900 mb-4">14. Used Unit</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <Label className="text-sm font-medium text-gray-700">Used Unit Type *</Label>
@@ -541,40 +613,65 @@ export default function SimpleInventoryForm({
             </div>
           </div>
 
-          {/* ── 14: Size / Dimension ─────────────────────────────────────────── */}
+          {/* ── 15: Size / Dimension ─────────────────────────────────────────── */}
           <div className="border border-gray-200 rounded-lg p-4">
-            <Label className="text-sm font-medium text-gray-700 mb-2 block">14. Size / Dimension</Label>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {DIMENSION_FIELDS.map(([key, label]) => (
-                <div key={key} className="flex gap-2">
-                  <div className="flex-1">
-                    <Label className="text-[10px] text-gray-500 uppercase">{label}</Label>
-                    <Input
-                      type="number" min="0" className="mt-1 bg-white" placeholder="0"
-                      value={formData.dimensions[key].value}
-                      onChange={(e) => handleInputChange('dimensions', { ...formData.dimensions, [key]: { ...formData.dimensions[key], value: e.target.value } })}
-                    />
-                  </div>
-                  <div className="w-24">
-                    <Label className="text-[10px] text-gray-500 uppercase">Unit</Label>
-                    <Select
-                      value={formData.dimensions[key].unit}
-                      onValueChange={(v) => handleInputChange('dimensions', { ...formData.dimensions, [key]: { ...formData.dimensions[key], unit: v } })}
-                    >
-                      <SelectTrigger className="mt-1"><SelectValue placeholder="—" /></SelectTrigger>
-                      <SelectContent>{DIMENSION_UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
-                    </Select>
-                  </div>
+            <Label className="text-sm font-medium text-gray-700 mb-2 block">15. Size / Dimension</Label>
+            {formData.dimensionVariants.length > 0 ? (
+              <div>
+                <p className="text-xs text-gray-500 mb-2">
+                  From Fabrication Master
+                  {(() => {
+                    const dv = formData.dimensionVariants[0];
+                    return dv?.densityValue != null ? ` · Density: ${dv.densityValue} ${dv.densityUnit === 'g/cm3' ? 'g/cm³' : 'kg/m³'}` : '';
+                  })()}
+                </p>
+                <div className="border border-gray-200 rounded-lg divide-y divide-gray-100 bg-white">
+                  {formData.dimensionVariants.map((dv, i) => (
+                    <div key={i} className="flex items-center justify-between px-3 py-2 text-xs">
+                      <span className="text-gray-700">
+                        {dv.designation || Object.entries(dv.values || {}).map(([k, v]) => `${k}: ${v}`).join(', ')}
+                      </span>
+                      <span className="flex items-center gap-3">
+                        <span className="font-semibold text-gray-800">{dv.weightPerPieceKg != null ? `${Number(dv.weightPerPieceKg).toFixed(2)} kg` : '—'}</span>
+                        <span className="text-gray-400">Sub Stock: {dv.subStock ?? 0}</span>
+                      </span>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {DIMENSION_FIELDS.map(([key, label]) => (
+                  <div key={key} className="flex gap-2">
+                    <div className="flex-1">
+                      <Label className="text-[10px] text-gray-500 uppercase">{label}</Label>
+                      <Input
+                        type="number" min="0" className="mt-1 bg-white" placeholder="0"
+                        value={formData.dimensions[key].value}
+                        onChange={(e) => handleInputChange('dimensions', { ...formData.dimensions, [key]: { ...formData.dimensions[key], value: e.target.value } })}
+                      />
+                    </div>
+                    <div className="w-24">
+                      <Label className="text-[10px] text-gray-500 uppercase">Unit</Label>
+                      <Select
+                        value={formData.dimensions[key].unit}
+                        onValueChange={(v) => handleInputChange('dimensions', { ...formData.dimensions, [key]: { ...formData.dimensions[key], unit: v } })}
+                      >
+                        <SelectTrigger className="mt-1"><SelectValue placeholder="—" /></SelectTrigger>
+                        <SelectContent>{DIMENSION_UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
-          {/* ── 15-16: Item Status & Description ──────────────────────────── */}
+          {/* ── 16-17: Item Status & Description ──────────────────────────── */}
           <div className="border border-gray-200 rounded-lg p-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <Label className="text-sm font-medium text-gray-700">15. Item Status</Label>
+                <Label className="text-sm font-medium text-gray-700">16. Item Status</Label>
                 <Select value={formData.isDiscontinued ? 'Discontinue' : 'Continue'} onValueChange={(v) => handleInputChange('isDiscontinued', v === 'Discontinue')}>
                   <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -585,14 +682,14 @@ export default function SimpleInventoryForm({
               </div>
             </div>
             <div className="mt-4">
-              <Label className="text-sm font-medium text-gray-700">16. Description</Label>
+              <Label className="text-sm font-medium text-gray-700">17. Description</Label>
               <Textarea value={formData.description} onChange={(e) => handleInputChange('description', e.target.value)} placeholder="Enter item description" rows={2} className="mt-1 bg-white" />
             </div>
           </div>
 
           {/* ── 17: Image Upload ─────────────────────────────────────────── */}
           <div className="border border-gray-200 rounded-lg p-4">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">17. Image Upload</h3>
+            <h3 className="text-lg font-medium text-gray-900 mb-4">18. Image Upload</h3>
             <div>
               <Label className="text-sm font-medium text-gray-700 flex items-center gap-1.5 mb-2">
                 <ImageIcon className="h-4 w-4 text-gray-500" /> Product Image
@@ -629,7 +726,7 @@ export default function SimpleInventoryForm({
       <DialogContent className="max-w-sm">
         <DialogHeader>
           <DialogTitle>
-            Add New {({ ItemCategory: 'Item Category', SourceType: 'Source Type', ItemSourceType: 'Item Source Type', ItemType: 'Item Type', Metrology: 'Metrology', MaterialGrade: 'Material Grade' })[newOptionModal.field] || newOptionModal.field}
+            Add New {({ ItemCategory: 'Item Category', SourceType: 'Source Type', ItemSourceType: 'Item Source Type', ItemType: 'Item Type', ItemProcessType: 'Item Process Type', Metrology: 'Metrology', MaterialGrade: 'Material Grade' })[newOptionModal.field] || newOptionModal.field}
           </DialogTitle>
         </DialogHeader>
         <div className="py-2">
@@ -642,6 +739,12 @@ export default function SimpleInventoryForm({
         </div>
       </DialogContent>
     </Dialog>
+
+    <FabricationItemPicker
+      open={fabricationPickerOpen}
+      onClose={() => setFabricationPickerOpen(false)}
+      onSelect={handleFabricationSelect}
+    />
     </>
   );
 }
