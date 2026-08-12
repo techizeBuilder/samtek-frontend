@@ -443,6 +443,7 @@ const rdMenuItems = [
       { label: 'Product Master', path: '/r&d/product-master', feature: 'productMaster' },
       { label: 'Motor Master', path: '/r&d/motor-master', feature: 'motorMaster' },
       { label: 'Plant Master', path: '/r&d/plant-master', feature: 'plantMaster' },
+      { label: 'Fabrication Master', path: '/r&d/fabrication-master', feature: 'fabricationMaster' },
     ]
   },
   { label: 'Design Approval', path: '/r&d/design-approval', icon: CheckCircle, module: 'rnd', feature: 'designApproval' },

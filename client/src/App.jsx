@@ -198,6 +198,7 @@ import { RDProvider } from "@/contexts/RDContext";
 import ProductMaster from "@/pages/ResearchDevelopment/ProductMaster";
 import MotorMaster from "@/pages/ResearchDevelopment/MotorMaster";
 import PlantMaster from "@/pages/ResearchDevelopment/PlantMaster";
+import FabricationMaster from "@/pages/ResearchDevelopment/FabricationMaster";
 import DesignApproval from "@/pages/ResearchDevelopment/DesignApproval";
 import BOMManagement from "@/pages/ResearchDevelopment/BOMManagement";
 import ToolProcess from "@/pages/ResearchDevelopment/ToolProcess";
@@ -686,6 +687,11 @@ function Router() {
       <Route path="/r&d/plant-master">
         <ProtectedRoute requiredRole={["Research & Development Head", "Research Development Employee"]}>
           <PlantMaster />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/r&d/fabrication-master">
+        <ProtectedRoute requiredRole={["Research & Development Head", "Research Development Employee"]}>
+          <FabricationMaster />
         </ProtectedRoute>
       </Route>
       <Route path="/r&d/design-approval">
