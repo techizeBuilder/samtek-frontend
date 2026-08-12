@@ -53,6 +53,14 @@ const TABS = [
 
 const money = (n) => `₹${Number(n || 0).toLocaleString('en-IN')}`;
 
+// Total kg currently in stock for a fabrication item, summed across every
+// dimensionVariant (different sizes each carry their own subStock and
+// weightPerPieceKg — see Inventory.js). Used instead of `qty` (a piece
+// count that means nothing on its own for these items) wherever a
+// fabrication item's stock value needs computing.
+const stockWeightKg = (item) =>
+  (item.dimensionVariants || []).reduce((sum, dv) => sum + (Number(dv.subStock) || 0) * (Number(dv.weightPerPieceKg) || 0), 0);
+
 function InventoryCostPanel({ tab }) {
   const { toast } = useToast();
   const [search, setSearch] = useState('');
@@ -66,10 +74,14 @@ function InventoryCostPanel({ tab }) {
 
   const items = data?.items || [];
 
+  // Fabrication items (Item.fabricationRef set) are priced per kg
+  // (weightUnitPrice), not per piece (purchaseCost) — see Inventory.js's
+  // weightUnitPrice field comment for why the two can't be the same field.
   useEffect(() => {
     const next = {};
     items.forEach((it) => {
-      next[it._id] = it.purchaseCost != null ? String(it.purchaseCost) : '';
+      const draftField = it.fabricationRef ? it.weightUnitPrice : it.purchaseCost;
+      next[it._id] = draftField != null ? String(draftField) : '';
     });
     setDrafts(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -84,7 +96,9 @@ function InventoryCostPanel({ tab }) {
   }, [items, search]);
 
   const totalValue = useMemo(
-    () => items.reduce((sum, it) => sum + (Number(it.purchaseCost) || 0) * (Number(it.qty) || 0), 0),
+    () => items.reduce((sum, it) => sum + (it.fabricationRef
+      ? (Number(it.weightUnitPrice) || 0) * stockWeightKg(it)
+      : (Number(it.purchaseCost) || 0) * (Number(it.qty) || 0)), 0),
     [items]
   );
 
@@ -92,19 +106,27 @@ function InventoryCostPanel({ tab }) {
 
   const saveItem = async (item) => {
     const draftValue = drafts[item._id];
+    const isFabrication = !!item.fabricationRef;
     if (draftValue === '' || draftValue === undefined || isNaN(Number(draftValue)) || Number(draftValue) < 0) {
-      toast({ title: 'Invalid Cost', description: 'Enter a valid, non-negative purchase cost.', variant: 'destructive' });
+      toast({ title: 'Invalid Cost', description: `Enter a valid, non-negative ${isFabrication ? 'price per kg' : 'purchase cost'}.`, variant: 'destructive' });
       return;
     }
     setSavingId(item._id);
     try {
-      await apiRequest('PUT', `/api/accounts/purchases/inventory/${item._id}/purchase-cost`, {
-        purchaseCost: Number(draftValue),
-      });
-      toast({ title: 'Saved', description: `Purchase cost updated for ${item.code}`, variant: 'default' });
+      if (isFabrication) {
+        await apiRequest('PUT', `/api/accounts/purchases/inventory/${item._id}/weight-unit-price`, {
+          weightUnitPrice: Number(draftValue),
+        });
+        toast({ title: 'Saved', description: `Price per kg updated for ${item.code}`, variant: 'default' });
+      } else {
+        await apiRequest('PUT', `/api/accounts/purchases/inventory/${item._id}/purchase-cost`, {
+          purchaseCost: Number(draftValue),
+        });
+        toast({ title: 'Saved', description: `Purchase cost updated for ${item.code}`, variant: 'default' });
+      }
       refetch();
     } catch (err) {
-      toast({ title: 'Save Failed', description: err.message || 'Could not update purchase cost', variant: 'destructive' });
+      toast({ title: 'Save Failed', description: err.message || 'Could not update cost', variant: 'destructive' });
     } finally {
       setSavingId(null);
     }
@@ -192,7 +214,11 @@ function InventoryCostPanel({ tab }) {
                     {item.subCategory && <div className="text-[11px] text-slate-400">{item.subCategory}</div>}
                   </td>
                   <td className="px-4 py-3 text-slate-600 text-xs">{item.category || '—'}</td>
-                  <td className="px-4 py-3 text-right text-slate-600 text-xs">{item.qty ?? 0} {item.unit || ''}</td>
+                  <td className="px-4 py-3 text-right text-slate-600 text-xs">
+                    {item.fabricationRef
+                      ? <>{stockWeightKg(item).toLocaleString('en-IN', { maximumFractionDigits: 2 })} kg</>
+                      : <>{item.qty ?? 0} {item.unit || ''}</>}
+                  </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1">
                       <span className="text-slate-400 text-xs">₹</span>
@@ -205,6 +231,7 @@ function InventoryCostPanel({ tab }) {
                         onChange={(e) => setDraft(item._id, e.target.value)}
                         className={`w-28 border border-slate-300 rounded-lg px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-2 ${tab.accent.ring}`}
                       />
+                      {item.fabricationRef && <span className="text-slate-400 text-xs">/kg</span>}
                     </div>
                   </td>
                   <td className="px-4 py-3 text-right text-slate-600 text-xs">{money(item.mrp)}</td>

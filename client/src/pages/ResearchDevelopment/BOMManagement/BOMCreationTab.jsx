@@ -14,13 +14,24 @@ import { config } from '@/config/environment';
 import BOMFieldConfigModal from './BOMFieldConfigModal';
 import { formatCatalogFieldValue } from '@/utils/bomFieldFormat';
 
+// Fabrication Master materials (fabricationRef set) price by weight, not a
+// flat purchaseCost — bomDimensions/fabricationCategory/fabricationDensity/
+// weightUnitPrice are how a row/editForm carries what it needs for the live
+// preview and the final save; see resolveFabricationWeight in rdController.js
+// for the server-side authoritative mirror of this same calc.
+const emptyFabricationFields = {
+  fabricationRef: null, fabricationCategory: '', fabricationDensity: null,
+  weightUnitPrice: 0, bomDimensions: {},
+};
+
 const emptyMaterial = {
   code: '', childPart: '', subChildPart: '', childPartCode: '', subChildPartCode: '',
   item: '', itemType: '', quantity: '', unitType: '', unit: '',
   unitPrice: 0, // display-only, always recomputed server-side on save
   // Product Master snapshot fields, silently captured on code match
   category: '', pType: '', pSourceType: '', brand: '', description: '', metrology: '', specifications: [], customFields: [],
-  size: '', unitWeightValue: '', unitWeightUnitType: '', unitWeightUnit: ''
+  size: '', unitWeightValue: '', unitWeightUnitType: '', unitWeightUnit: '',
+  ...emptyFabricationFields,
 };
 
 // A Sub Child Part is normally built from several raw materials, not just
@@ -30,6 +41,7 @@ const emptyMaterial = {
 const emptyMaterialRow = {
   code: '', item: '', itemType: '', quantity: '', unitType: '', unit: '', unitPrice: 0,
   category: '', brand: '', description: '', specifications: [],
+  ...emptyFabricationFields,
 };
 const emptyAddForm = {
   childPartCode: '', childPart: '', subChildPartCode: '', subChildPart: '',
@@ -94,6 +106,84 @@ function MaterialCodePicker({ value, displayName, items, onSelect }) {
   );
 }
 
+// Fabrication Master materials only (row/editForm.fabricationRef set) — the
+// dimension inputs for THIS material line (independent of the source Item's
+// own stock dimensions, see RDBOM.js's bomDimensions comment), with a
+// 400ms-debounced live weight+price preview via the same
+// POST /api/fabrication-master/calculate-weight FabricationMaster.jsx's own
+// Add-Item form already uses. Only writes `unitPrice` back onto the row —
+// the server recomputes it authoritatively again on save either way.
+function FabricationDimensionFields({ row, categories, onUpdate }) {
+  const [calculating, setCalculating] = useState(false);
+  const [calcError, setCalcError] = useState('');
+  const [previewWeightKg, setPreviewWeightKg] = useState(null);
+
+  const activeCategory = categories.find(c => c.key === row.fabricationCategory) || null;
+  const dimsReady = !!activeCategory && activeCategory.fields.every(f => {
+    const v = row.bomDimensions?.[f.key];
+    return v !== undefined && v !== '' && !isNaN(Number(v));
+  });
+
+  useEffect(() => {
+    if (!dimsReady || !row.fabricationDensity?.value) { setPreviewWeightKg(null); return; }
+    setCalculating(true);
+    const timer = setTimeout(async () => {
+      try {
+        const res = await apiRequest('POST', '/api/fabrication-master/calculate-weight', {
+          category: row.fabricationCategory,
+          values: row.bomDimensions,
+          densityValue: row.fabricationDensity.value,
+          densityUnit: row.fabricationDensity.unit,
+        });
+        setPreviewWeightKg(res.data.weightPerPieceKg);
+        onUpdate({ unitPrice: Math.round(res.data.weightPerPieceKg * (row.weightUnitPrice || 0) * 100) / 100 });
+        setCalcError('');
+      } catch (e) {
+        setPreviewWeightKg(null);
+        onUpdate({ unitPrice: 0 });
+        setCalcError(e?.response?.data?.message || 'Could not calculate weight');
+      } finally {
+        setCalculating(false);
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dimsReady, JSON.stringify(row.bomDimensions), row.fabricationCategory, row.fabricationDensity?.value, row.fabricationDensity?.unit, row.weightUnitPrice]);
+
+  if (!activeCategory) {
+    return <p className="text-xs text-slate-400 italic">Loading dimension fields…</p>;
+  }
+
+  return (
+    <div className="p-3 border border-blue-200 rounded-lg bg-blue-50/40 space-y-2">
+      <label className="text-xs font-semibold text-blue-700 block">Unit Dimensions ({activeCategory.label}) * <span className="text-[10px] text-slate-400 font-normal">— how much of this material this line actually uses</span></label>
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        {activeCategory.fields.map(f => (
+          <div key={f.key}>
+            <label className="text-[10px] text-slate-500 uppercase">{f.label} ({f.unit})</label>
+            <Input
+              type="number" min="0" className="mt-1 bg-white h-9" placeholder="0"
+              value={row.bomDimensions?.[f.key] ?? ''}
+              onChange={e => onUpdate({ bomDimensions: { ...row.bomDimensions, [f.key]: e.target.value } })}
+            />
+          </div>
+        ))}
+      </div>
+      {calcError && <p className="text-xs text-red-500">{calcError}</p>}
+      {calculating ? (
+        <p className="text-xs text-slate-500 flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Calculating weight…</p>
+      ) : previewWeightKg != null ? (
+        <p className="text-xs font-semibold text-slate-700">
+          Weight: {previewWeightKg.toFixed(2)} kg/piece
+          {row.weightUnitPrice > 0
+            ? <span className="text-slate-500 font-normal"> · ₹{row.weightUnitPrice}/kg → ₹{row.unitPrice}/piece</span>
+            : <span className="text-amber-600 font-normal"> · no price per kg set for this item yet (Accounts &gt; Purchase Inventory)</span>}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 export default function BOMCreationTab({ product }) {
   const { boms, getBOMForMachine, addBOM, addMaterials, updateMaterial, deleteMaterial, lockBOM, discontinueMaterial, reactivateMaterial, updateProductionCost } = useRD();
   const selectedMachineId = product?._id || '';
@@ -129,6 +219,16 @@ export default function BOMCreationTab({ product }) {
     queryFn: () => apiRequest('GET', '/api/items?productKind=none&limit=1000'),
   });
   const inventoryItems = inventoryResponse?.items || [];
+
+  // Fabrication Master's category field definitions (Length/Width/Thickness
+  // etc. per shape) — reused as-is for materials picked with a
+  // fabricationRef, so BOM dimension inputs stay identical to the fields
+  // that item's own Fabrication Master entry was created with.
+  const { data: fabricationCategoriesResponse } = useQuery({
+    queryKey: ['fabrication-categories'],
+    queryFn: () => apiRequest('GET', '/api/fabrication-master/categories'),
+  });
+  const fabricationCategories = fabricationCategoriesResponse?.data || [];
 
   // Child Parts created (via the Child Part Creation tab) for this product —
   // Child Part / Sub Child Part are picked from here, not typed.
@@ -179,6 +279,26 @@ export default function BOMCreationTab({ product }) {
     return inventoryItems.find(m => (m.code || '').trim().toLowerCase() === c) || null;
   };
 
+  // Fabrication Master materials (match.fabricationRef set) need their
+  // category + density carried onto the row/form so the dimension inputs
+  // know which fields to render and the live preview can call
+  // calculate-weight — see rdController.js's resolveFabricationWeight for
+  // the server-side mirror. Every dimensionVariant of one Item shares the
+  // same category/density (see Inventory.js), so [0] is always correct.
+  // unitPrice starts at 0 for fabrication items — there's nothing to show
+  // until dimensions are entered, unlike a flat purchaseCost item.
+  const matchFabricationFields = (match) => {
+    if (!match.fabricationRef) return { ...emptyFabricationFields };
+    const dv = match.dimensionVariants?.[0];
+    return {
+      fabricationRef: match.fabricationRef,
+      fabricationCategory: dv?.category || '',
+      fabricationDensity: dv ? { value: dv.densityValue, unit: dv.densityUnit } : null,
+      weightUnitPrice: match.weightUnitPrice || 0,
+      bomDimensions: {},
+    };
+  };
+
   // BOM materials can only be Inventory entries — picking one via MaterialCodePicker
   // snapshots everything Inventory knows about it (category, brand, description,
   // specs) into the material record as a point-in-time copy, even though most of
@@ -199,7 +319,8 @@ export default function BOMCreationTab({ product }) {
       unit: match.unit || f.unit,
       // Display-only preview — the server always recomputes this
       // authoritatively from the Inventory item on save.
-      unitPrice: match.purchaseCost || 0,
+      unitPrice: match.fabricationRef ? 0 : (match.purchaseCost || 0),
+      ...matchFabricationFields(match),
     }));
   };
 
@@ -219,7 +340,8 @@ export default function BOMCreationTab({ product }) {
         specifications: Array.isArray(match.specifications) ? match.specifications : [],
         unitType: match.unitType || getUnitTypeForUnit(match.unit) || row.unitType,
         unit: match.unit || row.unit,
-        unitPrice: match.purchaseCost || 0,
+        unitPrice: match.fabricationRef ? 0 : (match.purchaseCost || 0),
+        ...matchFabricationFields(match),
       };
       return { ...f, rows };
     });
@@ -310,7 +432,16 @@ export default function BOMCreationTab({ product }) {
     }
   };
 
-  const rowsValid = form.rows.length > 0 && form.rows.every(r => r.code && r.item && r.quantity && r.unitType && r.unit);
+  // Fabrication materials must have every dimension field their category
+  // needs filled in before they can be submitted — otherwise the weight (and
+  // so the price) is unresolved server-side too.
+  const fabricationDimsFilled = (row) => {
+    if (!row.fabricationRef) return true;
+    const cat = fabricationCategories.find(c => c.key === row.fabricationCategory);
+    if (!cat) return false;
+    return cat.fields.every(f => row.bomDimensions?.[f.key] !== undefined && row.bomDimensions?.[f.key] !== '' && !isNaN(Number(row.bomDimensions[f.key])));
+  };
+  const rowsValid = form.rows.length > 0 && form.rows.every(r => r.code && r.item && r.quantity && r.unitType && r.unit && fabricationDimsFilled(r));
   const addFormValid = !!form.childPartCode && !!form.subChildPartCode && rowsValid;
   const addFormTotal = form.rows.reduce((sum, r) => sum + (Number(r.quantity) || 0) * (r.unitPrice || 0), 0);
 
@@ -341,8 +472,17 @@ export default function BOMCreationTab({ product }) {
 
   const openEdit = (mat) => {
     setEditingMat(mat);
+    // fabricationCategory/bomDimensions are the material's own committed
+    // values; fabricationDensity/weightUnitPrice/fabricationRef aren't
+    // stored on the BOM material doc itself (they're current Inventory item
+    // data, not this line's own input) — pulled fresh from the matched
+    // Inventory item, same as a fresh code match would.
+    const currentItem = findProductByCode(mat.code);
     setEditForm({
       code: mat.code || '',
+      ...matchFabricationFields(currentItem?.fabricationRef ? currentItem : { fabricationRef: null }),
+      fabricationCategory: mat.fabricationCategory || '',
+      bomDimensions: mat.bomDimensions || {},
       childPart: mat.childPart || '',
       subChildPart: mat.subChildPart || '',
       childPartCode: mat.childPartCode || '',
@@ -705,6 +845,14 @@ export default function BOMCreationTab({ product }) {
                       </select>
                     </div>
                   </div>
+
+                  {row.fabricationRef && (
+                    <FabricationDimensionFields
+                      row={row}
+                      categories={fabricationCategories}
+                      onUpdate={(patch) => updateRow(idx, patch)}
+                    />
+                  )}
                 </div>
               ))}
 
@@ -775,7 +923,7 @@ export default function BOMCreationTab({ product }) {
                 <Input type="number" value={editForm.quantity} onChange={e => setEditForm(f => ({ ...f, quantity: e.target.value }))} />
               </div>
               <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Price <span className="text-[10px] text-slate-400 font-normal">(auto, from Purchase Cost)</span></label>
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">Price <span className="text-[10px] text-slate-400 font-normal">(auto, from {editForm.fabricationRef ? 'weight × price/kg' : 'Purchase Cost'})</span></label>
                 <div className="h-10 flex items-center px-3 rounded-lg border border-slate-200 bg-slate-50 text-sm text-slate-700">
                   ₹{((Number(editForm.quantity) || 0) * (editForm.unitPrice || 0)).toLocaleString()}
                   <span className="text-[10px] text-slate-400 ml-1.5">(₹{editForm.unitPrice || 0}/unit)</span>
@@ -799,10 +947,18 @@ export default function BOMCreationTab({ product }) {
                 </select>
               </div>
             </div>
+
+            {editForm.fabricationRef && (
+              <FabricationDimensionFields
+                row={editForm}
+                categories={fabricationCategories}
+                onUpdate={(patch) => setEditForm(f => ({ ...f, ...patch }))}
+              />
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
-            <Button onClick={handleEditMaterial} disabled={!editForm.childPartCode || !editForm.subChildPartCode || !editForm.code || !editForm.item || !editForm.quantity || !editForm.unit} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">Save Changes</Button>
+            <Button onClick={handleEditMaterial} disabled={!editForm.childPartCode || !editForm.subChildPartCode || !editForm.code || !editForm.item || !editForm.quantity || !editForm.unit || !fabricationDimsFilled(editForm)} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">Save Changes</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
