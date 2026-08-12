@@ -1,9 +1,15 @@
 import React from 'react';
+import { useLocation } from 'wouter';
 import { useAuth } from '@/hooks/useAuth';
+import { usePermissions } from '@/hooks/usePermissions';
+import { getRoutePermission } from '@/config/moduleRoutes';
+import { AccessDenied } from '@/components/auth/AccessDenied';
 import MainLayout from './MainLayout';
 
 const RoleBasedLayout = ({ children, requiredRole = null }) => {
   const { user, loading } = useAuth();
+  const [location] = useLocation();
+  const { hasModuleAccess, hasFeatureAccess } = usePermissions();
 
   if (loading) {
     return (
@@ -21,9 +27,12 @@ const RoleBasedLayout = ({ children, requiredRole = null }) => {
   const userRoleLower = (user.role || '').toLowerCase().trim();
   const reqRoleLower = typeof requiredRole === 'string' ? requiredRole.toLowerCase().trim() : '';
 
-  const isAuthorized = !requiredRole || 
-    userRoleLower === 'super user' || 
-    userRoleLower === reqRoleLower ||
+  const isAuthorized = !requiredRole ||
+    userRoleLower === 'super user' ||
+    userRoleLower === 'superadmin' ||
+    (Array.isArray(requiredRole)
+      ? requiredRole.map(r => r.toLowerCase().trim()).includes(userRoleLower)
+      : userRoleLower === reqRoleLower) ||
     (reqRoleLower === 'sales' && (userRoleLower === 'sales employee' || userRoleLower === 'sales head' || userRoleLower === 'sales person' || userRoleLower === 'salesman' || userRoleLower === 'sales')) ||
     (reqRoleLower === 'dispatch' && (userRoleLower === 'dispatch employee' || userRoleLower === 'dispatch head' || userRoleLower === 'dispatch')) ||
     (reqRoleLower === 'production' && (userRoleLower === 'production employee' || userRoleLower === 'production head' || userRoleLower === 'production')) ||
@@ -32,19 +41,18 @@ const RoleBasedLayout = ({ children, requiredRole = null }) => {
     (reqRoleLower === 'employee' && (userRoleLower.endsWith('employee') || userRoleLower === 'employee'));
 
   if (!isAuthorized) {
-    const Layout = MainLayout;
-    return (
-      <Layout>
-        <div className="flex items-center justify-center h-64">
-          <div className="text-center">
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">Access Denied</h2>
-            <p className="text-gray-600">
-              You don't have permission to access this page. Required role: {requiredRole}
-            </p>
-          </div>
-        </div>
-      </Layout>
-    );
+    return <AccessDenied reason="role" requiredRole={requiredRole} />;
+  }
+
+  // Module/feature permission check — same data the sidebar uses to decide
+  // what to show, now also enforced on the route itself so a direct URL hit
+  // can't reach a page the user's permissions don't grant.
+  const required = getRoutePermission(location);
+  const hasPermission = !required ||
+    (required.feature ? hasFeatureAccess(required.module, required.feature, 'view') : hasModuleAccess(required.module));
+
+  if (!hasPermission) {
+    return <AccessDenied reason="permission" />;
   }
 
   // Use MainLayout for all roles

@@ -1075,17 +1075,17 @@ function Router() {
         </ProtectedRoute>
       </Route>
       <Route path="/accounts/sales/order-tracking">
-        <RoleBasedProtectedRoute allowedRoles={['Superadmin', 'Accounts']}>
+        <RoleBasedProtectedRoute requiredRole={['Superadmin', 'Accounts']}>
           <SalesOrderTracking />
         </RoleBasedProtectedRoute>
       </Route>
       <Route path="/accounts/sales/noc-request">
-        <RoleBasedProtectedRoute allowedRoles={['Superadmin', 'Accounts']}>
+        <RoleBasedProtectedRoute requiredRole={['Superadmin', 'Accounts']}>
           <NocRequest />
         </RoleBasedProtectedRoute>
       </Route>
       <Route path="/accounts/sales/packed-orders">
-        <RoleBasedProtectedRoute allowedRoles={['Superadmin', 'Accounts']}>
+        <RoleBasedProtectedRoute requiredRole={['Superadmin', 'Accounts']}>
           <PackedOrders />
         </RoleBasedProtectedRoute>
       </Route>

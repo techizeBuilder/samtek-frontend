@@ -1,9 +1,15 @@
+import { useLocation } from 'wouter';
 import { useAuth } from '@/hooks/useAuth';
+import { usePermissions } from '@/hooks/usePermissions';
+import { getRoutePermission } from '@/config/moduleRoutes';
 import Login from '@/pages/Login';
 import MainLayout from '@/components/layout/MainLayout';
+import { AccessDenied } from '@/components/auth/AccessDenied';
 
 export function ProtectedRoute({ children, requiredRole = null }) {
   const { user, loading } = useAuth();
+  const [location] = useLocation();
+  const { hasModuleAccess, hasFeatureAccess } = usePermissions();
 
   if (loading) {
     return (
@@ -38,18 +44,18 @@ export function ProtectedRoute({ children, requiredRole = null }) {
     (reqRoleLower === 'packing' && (userRoleLower === 'packing employee' || userRoleLower === 'packing head' || userRoleLower === 'packing'));
 
   if (!isAuthorized) {
-    return (
-      <MainLayout>
-        <div className="flex items-center justify-center h-64">
-          <div className="text-center">
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">Access Denied</h2>
-            <p className="text-gray-600">
-              You don't have permission to access this page. Required role: {requiredRole}
-            </p>
-          </div>
-        </div>
-      </MainLayout>
-    );
+    return <AccessDenied reason="role" requiredRole={requiredRole} />;
+  }
+
+  // Module/feature permission check — same data the sidebar uses to decide
+  // what to show, now also enforced on the route itself so a direct URL hit
+  // can't reach a page the user's permissions don't grant.
+  const required = getRoutePermission(location);
+  const hasPermission = !required ||
+    (required.feature ? hasFeatureAccess(required.module, required.feature, 'view') : hasModuleAccess(required.module));
+
+  if (!hasPermission) {
+    return <AccessDenied reason="permission" />;
   }
 
   return <MainLayout>{children}</MainLayout>;
