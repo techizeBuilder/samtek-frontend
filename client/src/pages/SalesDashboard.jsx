@@ -15,7 +15,6 @@ import {
   Clock, 
   AlertTriangle,
   Eye,
-  Plus,
   ArrowRight
 } from 'lucide-react';
 import { useLocation } from 'wouter';
@@ -131,10 +130,6 @@ const SalesDashboard = () => {
     setIsViewModalOpen(true);
   };
 
-  const handleNewOrder = () => {
-    setLocation('/sales/orders');
-  };
-
   const handleViewAll = () => {
     setLocation('/sales/orders');
   };
@@ -160,13 +155,6 @@ const SalesDashboard = () => {
               </div>
             </div>
           </div>
-          <Button 
-            onClick={handleNewOrder}
-            className="bg-white text-blue-600 hover:bg-gray-100 flex items-center gap-2"
-          >
-            <Plus className="h-4 w-4" />
-            New Order
-          </Button>
         </div>
       </div>
 

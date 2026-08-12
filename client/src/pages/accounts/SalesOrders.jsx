@@ -257,7 +257,6 @@ const SalesOrders = () => {
                                 <TableRow>
                                     <TableHead className="px-6 font-semibold">Order ID</TableHead>
                                     <TableHead className="font-semibold">Customer</TableHead>
-                                    <TableHead className="font-semibold">Billing Status</TableHead>
                                     <TableHead className="text-right font-semibold">Amount</TableHead>
                                     <TableHead className="text-center font-semibold">Advanced Payment</TableHead>
                                     <TableHead className="text-left px-6 font-semibold">Actions</TableHead>
@@ -266,10 +265,10 @@ const SalesOrders = () => {
                             <TableBody>
                                 {isLoading ? (
                                     Array(5).fill(0).map((_, i) => (
-                                        <TableRow key={i}><TableCell colSpan={6} className="text-center h-24 text-slate-300 italic">Loading...</TableCell></TableRow>
+                                        <TableRow key={i}><TableCell colSpan={5} className="text-center h-24 text-slate-300 italic">Loading...</TableCell></TableRow>
                                     ))
                                 ) : filteredOrders.length === 0 ? (
-                                    <TableRow><TableCell colSpan={6} className="text-center h-48 text-slate-400 italic">No orders found.</TableCell></TableRow>
+                                    <TableRow><TableCell colSpan={5} className="text-center h-48 text-slate-400 italic">No orders found.</TableCell></TableRow>
                                 ) : (
                                     filteredOrders.map((order) => (
                                         <TableRow key={order._id} className="hover:bg-slate-50 border-none transition-colors">
@@ -283,13 +282,6 @@ const SalesOrders = () => {
                                                 <div className="flex flex-col">
                                                     <span className="font-bold text-slate-700">{order.customer?.name}</span>
                                                     <span className="text-[10px] text-slate-400 uppercase">{order.customer?.customerCode}</span>
-                                                </div>
-                                            </TableCell>
-                                            <TableCell>
-                                                <div className="flex flex-wrap gap-1">
-                                                    {order.generatedInvoices?.includes('Pakka') && <Badge className="bg-green-100 text-green-700 border-none text-[9px] px-2 py-0.5">Pakka ✅</Badge>}
-                                                    {order.generatedInvoices?.includes('Kachha') && <Badge className="bg-blue-100 text-blue-700 border-none text-[9px] px-2 py-0.5">Kachha ✅</Badge>}
-                                                    {(!order.generatedInvoices || order.generatedInvoices.length === 0) && <span className="text-[10px] text-slate-400 italic">Not Invoiced</span>}
                                                 </div>
                                             </TableCell>
                                             <TableCell className="text-right font-bold text-slate-900">

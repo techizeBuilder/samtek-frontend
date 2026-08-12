@@ -17,6 +17,7 @@ export default function TechnicianActionModal({ ticket, onClose }: { ticket: any
   const [inventorySpares, setInventorySpares] = useState<any[]>([]);
   const [selectedParts, setSelectedParts] = useState<{ item: string; name: string; code: string; quantity: number }[]>([]);
   const [currentPartId, setCurrentPartId] = useState('');
+  const [partSearch, setPartSearch] = useState('');
   
   // 🔥 FIX 1: Allow currentQty to be an empty string temporarily so you can backspace it!
   const [currentQty, setCurrentQty] = useState<number | ''>(1);
@@ -83,6 +84,15 @@ export default function TechnicianActionModal({ ticket, onClose }: { ticket: any
   const handleRemovePart = (itemId: string) => {
     setSelectedParts(selectedParts.filter(p => p.item !== itemId));
   };
+
+  // Client-side filter over the already-fetched batch (search by code, also
+  // matches name so technicians who don't know the code can still find it).
+  const filteredSpares = partSearch.trim()
+    ? inventorySpares.filter(s => {
+        const q = partSearch.trim().toLowerCase();
+        return (s.code || '').toLowerCase().includes(q) || (s.name || '').toLowerCase().includes(q);
+      })
+    : inventorySpares;
 
   const handleComplete = (e: React.FormEvent) => {
     e.preventDefault();
@@ -190,9 +200,17 @@ export default function TechnicianActionModal({ ticket, onClose }: { ticket: any
               <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
                 <label className="block text-sm font-bold text-gray-700 mb-3">Parts Replaced (Optional)</label>
                 
+                <input
+                  type="text"
+                  placeholder="Search by code or name..."
+                  className="w-full border-gray-300 rounded-lg shadow-sm text-sm p-2 border bg-white focus:ring-amber-500 mb-2"
+                  value={partSearch}
+                  onChange={(e) => setPartSearch(e.target.value)}
+                />
+
                 <div className="flex gap-2 mb-3">
                   <div className="flex-1">
-                    <select 
+                    <select
                       className="w-full border-gray-300 rounded-lg shadow-sm text-sm p-2 border bg-white focus:ring-amber-500"
                       value={currentPartId}
                       onChange={(e) => setCurrentPartId(e.target.value)}
@@ -200,8 +218,10 @@ export default function TechnicianActionModal({ ticket, onClose }: { ticket: any
                       <option value="">Select a part/item...</option>
                       {loadingSpares ? (
                         <option disabled>Loading inventory...</option>
+                      ) : filteredSpares.length === 0 ? (
+                        <option disabled>No matching items</option>
                       ) : (
-                        inventorySpares.map(spare => (
+                        filteredSpares.map(spare => (
                           <option key={spare._id} value={spare._id}>
                             {spare.name} ({spare.code}) [{spare.type}] - Stock: {spare.qty}
                           </option>

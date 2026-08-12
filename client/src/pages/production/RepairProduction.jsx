@@ -532,7 +532,7 @@ export default function RepairProduction() {
               <Input placeholder="e.g. MS Plate 12mm" value={demandForm.materialName} onChange={e => setDemandForm(f => ({ ...f, materialName: e.target.value }))} />
               {foundItem ? (
                 <p className="text-xs text-emerald-600 font-medium mt-1">
-                  ✓ Found: {foundItem.name} ({foundItem.category})
+                  ✓ Found: {foundItem.name} ({foundItem.itemType || '—'})
                 </p>
               ) : demandForm.materialCode.trim() ? (
                 <p className="text-xs text-amber-500 font-medium mt-1">
