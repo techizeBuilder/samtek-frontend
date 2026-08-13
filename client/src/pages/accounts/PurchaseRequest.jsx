@@ -24,6 +24,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { formatDims } from '@/lib/fabricationDims';
+import FabricationReceiveDialog from '@/components/accounts/FabricationReceiveDialog';
 
 export default function PurchaseRequest() {
   const { user } = useAuth();
@@ -67,6 +69,10 @@ export default function PurchaseRequest() {
   // ── Receive Modal state ─────────────────────────────────────────────────────
   const [isReceiveModalOpen, setIsReceiveModalOpen]   = useState(false);
   const [receiveRequest, setReceiveRequest]           = useState(null);
+  // Fabrication Master items only — same role as receiveRequest above, but
+  // handled by its own dialog (FabricationReceiveDialog) since the fields
+  // are completely different (dimension breakdown, not serial/warranty).
+  const [fabReceivePR, setFabReceivePR]               = useState(null);
   const [receiveSerialNo, setReceiveSerialNo]         = useState('');
   const [receiveWarrantyMonths, setReceiveWarrantyMonths] = useState('');
   const [receiveWarrantyCard, setReceiveWarrantyCard] = useState(null);   // File object
@@ -264,6 +270,13 @@ export default function PurchaseRequest() {
 
   // ── Open the Receive modal ───────────────────────────────────────────────
   const handleOpenReceiveModal = (request) => {
+    // Fabrication requests get their own dimension-breakdown receive form —
+    // no Serial Number/Warranty/conversion-factor fields, those don't apply
+    // to raw fabrication stock. See FabricationReceiveDialog.
+    if (request.fabricationDimensionLines?.length > 0) {
+      setFabReceivePR(request);
+      return;
+    }
     setReceiveRequest(request);
     setReceiveSerialNo('');
     setReceiveWarrantyMonths('');
@@ -563,7 +576,16 @@ export default function PurchaseRequest() {
                       return (
                         <TableRow key={request._id} className="hover:bg-slate-50/50 transition-colors border-b">
                           <TableCell className="font-bold text-slate-900 pl-6">{request.requestId}</TableCell>
-                          <TableCell className="font-semibold text-slate-800">{request.productName}</TableCell>
+                          <TableCell className="font-semibold text-slate-800">
+                            {request.productName}
+                            {request.fabricationDimensionLines?.length > 0 && (
+                              <div className="text-[10px] text-slate-400 mt-0.5 font-normal">
+                                {request.fabricationDimensionLines.map((l, i) => (
+                                  <span key={i}>{i > 0 && ' · '}{formatDims(l.values)} × {l.quantity}</span>
+                                ))}
+                              </div>
+                            )}
+                          </TableCell>
                           <TableCell className="font-extrabold text-slate-900 text-center">
                             {request.quantity}
                             {(request.item?.unit || request.unit) && (
@@ -1009,6 +1031,21 @@ export default function PurchaseRequest() {
                       <p className="font-medium text-slate-600 text-sm mt-1 italic">"{terms}"</p>
                     </div>
 
+                    {selectedRequest?.fabricationDimensionLines?.length > 0 && (
+                      <div>
+                        <label className="text-[10px] font-semibold text-slate-500 uppercase flex items-center gap-1">
+                          <Package className="w-3.5 h-3.5 text-slate-400" /> Dimension Breakdown
+                        </label>
+                        <div className="mt-1 space-y-0.5">
+                          {selectedRequest.fabricationDimensionLines.map((l, i) => (
+                            <p key={i} className="font-medium text-slate-600 text-sm">
+                              {formatDims(l.values)} × {l.quantity} {l.lineWeightKg != null && <span className="text-slate-400">({l.lineWeightKg} kg)</span>}
+                            </p>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     {notes && (
                       <div>
                         <label className="text-[10px] font-semibold text-slate-500 uppercase flex items-center gap-1">
@@ -1335,6 +1372,11 @@ export default function PurchaseRequest() {
         </DialogContent>
       </Dialog>
       {/* ─────────────────────────────────────────────────────────────────────── */}
+
+      {/* ── Fabrication receive: dimension breakdown, no serial/warranty ────── */}
+      {fabReceivePR && (
+        <FabricationReceiveDialog pr={fabReceivePR} onClose={() => setFabReceivePR(null)} />
+      )}
 
       {/* ── Reject Request Modal ─────────────────────────────────────────────── */}
       <Dialog open={isRejectModalOpen} onOpenChange={setIsRejectModalOpen}>

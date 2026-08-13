@@ -22,6 +22,20 @@ const statusIcons = {
     'Rejected': <XCircle className="h-3.5 w-3.5 mr-1" />,
 };
 
+// Fabrication Master materials only (mat.fabricationCategory set) — compact
+// "key:value" summary of this BOM line's own cut dimensions, so an approver
+// can sanity-check what they're about to push into Production. Read-only,
+// same underlying data BOMCreationTab.jsx's live preview already computed.
+const summarizeBomDimensions = (mat) => {
+    if (!mat.fabricationCategory) return null;
+    const dims = Object.entries(mat.bomDimensions || {})
+        .filter(([, v]) => v !== undefined && v !== null && v !== '')
+        .map(([k, v]) => `${k}:${v}`)
+        .join(', ');
+    const weight = mat.computedWeightPerPieceKg != null ? `${mat.computedWeightPerPieceKg.toFixed(2)} kg/pc` : null;
+    return [dims, weight].filter(Boolean).join(' · ') || null;
+};
+
 export default function RDProductionQueue() {
     const {
         productionRequests,
@@ -505,6 +519,7 @@ export default function RDProductionQueue() {
                                                     <tr>
                                                         <th className="px-3 py-2 font-semibold">Code</th>
                                                         <th className="px-3 py-2 font-semibold">Name</th>
+                                                        <th className="px-3 py-2 font-semibold">Dimensions</th>
                                                         <th className="px-3 py-2 font-semibold text-right">Qty</th>
                                                     </tr>
                                                 </thead>
@@ -513,6 +528,7 @@ export default function RDProductionQueue() {
                                                         <tr key={i} className="hover:bg-slate-50">
                                                             <td className="px-3 py-1 font-mono text-xs">{mat.code}</td>
                                                             <td className="px-3 py-1">{mat.item}</td>
+                                                            <td className="px-3 py-1 text-xs text-slate-500">{summarizeBomDimensions(mat) || '—'}</td>
                                                             <td className="px-3 py-1 text-right">{mat.quantity} {mat.unit}</td>
                                                         </tr>
                                                     ))}

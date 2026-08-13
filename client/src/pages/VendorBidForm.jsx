@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'wouter';
 import { CheckCircle, AlertCircle, Loader2, Package, Clock, Shield, DollarSign, Send, Building2 } from 'lucide-react';
+import { formatDims } from '@/lib/fabricationDims';
 
 export default function VendorBidForm() {
   const { token } = useParams();
@@ -190,6 +191,19 @@ export default function VendorBidForm() {
                 <p className="font-bold text-slate-800">{rfqData?.quantity} {rfqData?.quantityUnit || 'Unit(s)'}</p>
               </div>
             </div>
+            {rfqData?.fabricationDimensionLines?.length > 0 && (
+              <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 mt-1">
+                <p className="text-[11px] font-semibold text-slate-500 uppercase mb-1.5">This order covers</p>
+                <div className="space-y-1">
+                  {rfqData.fabricationDimensionLines.map((l, i) => (
+                    <div key={i} className="flex justify-between text-xs text-slate-600">
+                      <span className="font-mono">{formatDims(l.values)} × {l.quantity}</span>
+                      <span>{l.lineWeightKg != null ? `${l.lineWeightKg} kg` : ''}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             {rfqData?.requiredByDate && (
               <div className="flex items-start gap-3">
                 <Clock className="w-5 h-5 text-red-400 mt-0.5 shrink-0" />

@@ -133,7 +133,15 @@ export default function StoreTransferLogsTab() {
                         <tr key={log._id} className="hover:bg-slate-50/40 transition-colors">
                           <td className="px-6 py-4">
                             <div className="font-semibold text-slate-800">{log.materialName}</div>
-                            <div className="text-xs text-slate-400 font-mono mt-0.5">{log.materialCode}</div>
+                            <div className="text-xs text-slate-400 font-mono mt-0.5">{log.sourceItemCode || log.materialCode}</div>
+                            {log.toDimensions && Object.keys(log.toDimensions).length > 0 && (
+                              <div className="text-[10px] text-slate-400 mt-0.5">
+                                Cut: {Object.entries(log.toDimensions).filter(([, v]) => v !== undefined && v !== null && v !== '').map(([k, v]) => `${k}:${v}`).join(', ')}
+                                {log.leftoverDimensions && Object.keys(log.leftoverDimensions).length > 0 && (
+                                  <span className="text-amber-600"> · Leftover recorded</span>
+                                )}
+                              </div>
+                            )}
                           </td>
                           <td className="px-6 py-4">
                             <span className="font-mono font-bold text-slate-800 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded">

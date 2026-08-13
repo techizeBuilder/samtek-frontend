@@ -25,6 +25,21 @@ export const formatDimensions = (dims) => {
   return parts.length ? parts.join(', ') : '—';
 };
 
+// Fabrication Master materials only (mat.fabricationCategory set) — this
+// line's own cut dimensions (mat.bomDimensions, all entered in mm — see
+// fabricationCategories.js), not the generic Inventory dimensions snapshot
+// every other material uses. Includes the resolved weight when known, same
+// style used elsewhere for this data (RDProductionQueue.jsx,
+// OrderManagement.jsx's Material Demand table).
+export const formatBomDimensions = (mat) => {
+  const dims = Object.entries(mat.bomDimensions || {})
+    .filter(([, v]) => v !== undefined && v !== null && v !== '')
+    .map(([k, v]) => `${k}: ${v}mm`)
+    .join(', ');
+  const weight = mat.computedWeightPerPieceKg != null ? `${mat.computedWeightPerPieceKg.toFixed(2)} kg/pc` : null;
+  return [dims, weight].filter(Boolean).join(' · ') || '—';
+};
+
 // Formats one BOM_FIELD_CATALOG field's value for a given material row.
 export const formatCatalogFieldValue = (catalogKey, mat) => {
   const fieldKey = CATALOG_KEY_TO_MATERIAL_FIELD[catalogKey];
@@ -33,7 +48,13 @@ export const formatCatalogFieldValue = (catalogKey, mat) => {
     return Array.isArray(raw) && raw.length ? raw.join(', ') : '—';
   }
   if (catalogKey === 'dimensions') {
-    return formatDimensions(raw);
+    // "Dimensions" stays a shared column used by every material — for a
+    // Fabrication Master material specifically, it shows that line's own
+    // entered cut (bomDimensions) instead of the generic Inventory
+    // dimensions snapshot, which fabrication materials don't meaningfully
+    // have (their real size varies per BOM line, per RDBOM.js's
+    // bomDimensions comment).
+    return mat.fabricationCategory ? formatBomDimensions(mat) : formatDimensions(raw);
   }
   if (catalogKey === 'unitWeightValue') {
     return raw !== null && raw !== undefined && raw !== '' ? `${raw} ${mat.unitWeightUnit || ''}`.trim() : '—';

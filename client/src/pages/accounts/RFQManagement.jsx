@@ -17,6 +17,8 @@ import {
   ChevronRight, Users, Mail, BarChart3, Gavel, RefreshCw, Tag,
   Info, FlaskConical, Wrench, Shield // <-- Added missing icons for R&D
 } from 'lucide-react';
+import { formatDims } from '@/lib/fabricationDims';
+import FabricationRFQDialog from '@/components/accounts/FabricationRFQDialog';
 
 // ── Status badge helper ───────────────────────────────────────────────────────
 const prStatusColor = (status) => {
@@ -77,6 +79,11 @@ export default function RFQManagement() {
   const [pqModalOpen, setPqModalOpen] = useState(false);
   const [pqPR, setPqPR] = useState(null);
   const [pqQty, setPqQty] = useState('');
+
+  // Fabrication Master items only — the "same editable form" that finalizes
+  // the dimension breakdown/total AND sends the RFQ, replacing the plain
+  // pqModal above for these rows. See FabricationRFQDialog.
+  const [fabRFQPR, setFabRFQPR] = useState(null);
 
   // ── Data fetching ─────────────────────────────────────────────────────────
   // Only the still-actionable (Pending/Approved) purchase requests are
@@ -198,6 +205,12 @@ export default function RFQManagement() {
   };
 
   const handleSendRFQ = (pr) => {
+    // Fabrication requests get the combined dimension-review + order-quantity
+    // form (same form edits and sends) instead of the plain quantity-only modal.
+    if (pr.fabricationDimensionLines?.length > 0) {
+      setFabRFQPR(pr);
+      return;
+    }
     // Item has a defined Purchase Unit → ask Purchase dept for the order qty in that unit
     if (pr.item?.purchaseUnit) {
       setPqPR(pr);
@@ -357,6 +370,13 @@ export default function RFQManagement() {
                               </Button>
                             )}
                           </div>
+                          {pr.fabricationDimensionLines?.length > 0 && (
+                            <div className="text-[10px] text-slate-400 mt-0.5 font-normal">
+                              {pr.fabricationDimensionLines.map((l, i) => (
+                                <span key={i}>{i > 0 && ' · '}{formatDims(l.values)} × {l.quantity}</span>
+                              ))}
+                            </div>
+                          )}
                         </td>
                         <td className="py-3 px-5 text-center font-bold text-slate-700">
                           {pr.quantity}
@@ -634,6 +654,20 @@ export default function RFQManagement() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ── Fabrication requests: same form finalizes the dimension breakdown
+          AND sends the RFQ ─────────────────────────────────────────────── */}
+      {fabRFQPR && (
+        <FabricationRFQDialog
+          pr={fabRFQPR}
+          onClose={() => setFabRFQPR(null)}
+          onFinalized={(finalQuantity) => {
+            const pr = fabRFQPR;
+            setFabRFQPR(null);
+            sendRFQ(pr, finalQuantity);
+          }}
+        />
+      )}
 
       {/* ── NEW: View R&D PR Specs Modal ────────────────────────────────────── */}
       <Dialog open={viewPRModal} onOpenChange={setViewPRModal}>

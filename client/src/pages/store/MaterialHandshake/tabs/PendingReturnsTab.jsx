@@ -134,7 +134,12 @@ export default function ReturnedMaterialsTab() {
                                             <tr key={mat.logId} className="hover:bg-slate-50/50">
                                                 <td className="px-6 py-4">
                                                     <div className="font-medium text-slate-800">{mat.materialName}</div>
-                                                    <div className="text-xs text-slate-500 font-mono">{mat.materialCode}</div>
+                                                    <div className="text-xs text-slate-500 font-mono">{mat.sourceItemCode || mat.materialCode}</div>
+                                                    {mat.bomDimensions && Object.keys(mat.bomDimensions).length > 0 && (
+                                                        <div className="text-[10px] text-slate-400 mt-0.5">
+                                                            Cut: {Object.entries(mat.bomDimensions).filter(([, v]) => v !== undefined && v !== null && v !== '').map(([k, v]) => `${k}:${v}`).join(', ')}
+                                                        </div>
+                                                    )}
                                                 </td>
                                                 <td className="px-6 py-4">
                                                     {mat.returnType === 'Defect' ? (

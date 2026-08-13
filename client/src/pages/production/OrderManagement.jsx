@@ -8,13 +8,14 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import {
   ClipboardList, Plus, CheckCircle, AlertTriangle, Clock, Package,
-  ChevronRight, FileCheck, Wrench, Send, Search, Filter, FileText, ExternalLink, ShoppingCart, ArrowDownToLine, Eye, Layers
+  ChevronRight, FileCheck, Wrench, Send, Search, Filter, FileText, ExternalLink, ShoppingCart, ArrowDownToLine, Eye, Layers, Pencil
 } from 'lucide-react';
 import { useProduction as useProd } from '@/contexts/ProductionContext';
 import { apiRequest } from '@/lib/queryClient';
 import { showSuccessToast, showSmartToast } from '@/lib/toast-utils';
 import { config } from '@/config/environment';
 import { formatCatalogFieldValue } from '@/utils/bomFieldFormat';
+import FabricationDimensionFields from '@/components/inventory/FabricationDimensionFields';
 
 const statusColor = {
   'Pending': 'bg-slate-100 text-slate-700 border-slate-200',
@@ -37,7 +38,17 @@ const statusIcon = {
 };
 
 const emptyOrder = { machineCode: '', machineName: '', priority: 'Normal', deliveryDate: '', source: 'Stock' };
-const emptyDemand = { materialCode: '', materialName: '', quantity: '', unitType: '', unit: '' };
+// Fabrication Master materials only (fabricationRef set) — same shape as
+// BOMCreationTab.jsx's emptyFabricationFields, since FabricationDimensionFields
+// is shared between the two. targetDemandCode: when set, this dialog is
+// adjusting ONE EXACT existing demand line's quantity (opened via that row's
+// own "Adjust Qty" action) rather than creating/matching a new one — see
+// productionMfgController.js's addMaterialDemand.
+const emptyDemand = {
+  materialCode: '', materialName: '', quantity: '', unitType: '', unit: '',
+  fabricationRef: null, fabricationCategory: '', fabricationDensity: null, weightUnitPrice: 0, bomDimensions: {},
+  targetDemandCode: null,
+};
 
 export default function OrderManagement() {
   const {
@@ -101,6 +112,15 @@ export default function OrderManagement() {
     if (unitTypesData?.unitTypes) return unitTypesData.unitTypes.map(ut => ut.name);
     return UNIT_TYPES;
   }, [unitTypesData]);
+
+  // Fabrication Master's category field definitions — same source
+  // BOMCreationTab.jsx uses, reused as-is for out-of-BOM material demands
+  // of a fabrication-linked item (see FabricationDimensionFields).
+  const { data: fabricationCategoriesResponse } = useQuery({
+    queryKey: ['fabrication-categories'],
+    queryFn: () => apiRequest('GET', '/api/fabrication-master/categories'),
+  });
+  const fabricationCategories = fabricationCategoriesResponse?.data || [];
 
   // BOM Format & Modification (R&D-configured) — drives both the "Bill of
   // Materials by Part" section's extra columns and the View Material dialog,
@@ -252,11 +272,20 @@ export default function OrderManagement() {
         // Deliberately the item's stock/storage unit ("unit"/"unitType"), not its
         // Purchase Unit ("purchaseUnit"/"purchaseUnitType") — Production draws from
         // stock, so the demand quantity must be expressed in the stock unit.
+        // Fabrication Master materials (res.data.fabricationRef set) also need
+        // their category/density carried onto the form for the dimension
+        // inputs + live preview — see FabricationDimensionFields.
+        const dv = res.data.dimensionVariants?.[0];
         setDemandForm(prev => ({
           ...prev,
           materialName: res.data.name,
           unitType: res.data.unitType || getUnitTypeForUnitDynamic(res.data.unit) || prev.unitType,
-          unit: res.data.unit || prev.unit
+          unit: res.data.unit || prev.unit,
+          fabricationRef: res.data.fabricationRef || null,
+          fabricationCategory: dv?.category || '',
+          fabricationDensity: dv ? { value: dv.densityValue, unit: dv.densityUnit } : null,
+          weightUnitPrice: res.data.weightUnitPrice || 0,
+          bomDimensions: {},
         }));
       } else {
         setFoundItem(null);
@@ -266,8 +295,18 @@ export default function OrderManagement() {
     }
   };
 
+  // Fabrication materials must have every dimension field their category
+  // needs filled in before submitting — otherwise the weight (and price) is
+  // unresolved server-side too. No-op for non-fabrication/adjust-mode.
+  const fabricationDimsFilled = () => {
+    if (demandForm.targetDemandCode || !demandForm.fabricationRef) return true;
+    const cat = fabricationCategories.find(c => c.key === demandForm.fabricationCategory);
+    if (!cat) return false;
+    return cat.fields.every(f => demandForm.bomDimensions?.[f.key] !== undefined && demandForm.bomDimensions?.[f.key] !== '' && !isNaN(Number(demandForm.bomDimensions[f.key])));
+  };
+
   const handleAddDemand = async () => {
-    if (!demandForm.materialCode || !demandForm.materialName || !demandForm.quantity || !demandForm.unit) return;
+    if (!demandForm.materialCode || !demandForm.materialName || !demandForm.quantity || !demandForm.unit || !fabricationDimsFilled()) return;
     try {
       await addMaterialDemand(detailOrder._id || detailOrder.id, {
         ...demandForm,
@@ -283,23 +322,75 @@ export default function OrderManagement() {
     }
   };
 
+  // Opens the same Add Demand dialog, pre-filled and locked to ONE EXACT
+  // existing fabrication demand line — only Quantity is editable. Avoids
+  // asking Production to re-type dimensions to "match" an existing cut
+  // (a single typo there would silently create a duplicate line instead of
+  // adjusting the right one — see productionMfgController.js's
+  // addMaterialDemand comment on targetDemandCode).
+  const openAdjustDemand = (m) => {
+    setFoundItem(null);
+    setDemandForm({
+      materialCode: m.sourceItemCode || m.materialCode,
+      materialName: m.materialName,
+      quantity: String(m.quantity),
+      unitType: getUnitTypeForUnitDynamic(m.unit) || '',
+      unit: m.unit,
+      fabricationRef: 'existing', // truthy placeholder — real ref not needed in adjust mode, only used to show the dimensions block
+      fabricationCategory: m.fabricationCategory || '',
+      fabricationDensity: null,
+      weightUnitPrice: 0,
+      bomDimensions: m.bomDimensions || {},
+      targetDemandCode: m.materialCode,
+    });
+    setDemandOpen(true);
+  };
+
   // Keep detailOrder in sync with updated orders state
   const detailOrderLive = detailOrder ? orders.find(o => String(o._id || o.id) === String(detailOrder._id || detailOrder.id)) : null;
 
-  // Fetch the R&D BOM for this order's machine once per code, so the "View" eye button
-  // on each material row can show the full BOM entry without an extra request per click.
+  // Fetch the R&D BOM for this order's machine every time the detail dialog is
+  // opened, so the "View" eye button and the "Bill of Materials by Part" section
+  // reflect the machine's current BOM. Keyed on `detailOrder` (the object set by
+  // clicking a row) rather than just the machine code — using the code alone used
+  // to cache the result forever for that machine, so once you'd opened any order
+  // for a machine, reopening the SAME or a different order for that machine later
+  // (e.g. right after R&D approved a new/changed BOM) kept showing the old
+  // snapshot — including a permanent "No BOM found" if the BOM hadn't been
+  // created yet the first time it was fetched.
   useEffect(() => {
-    const code = detailOrderLive?.machineCode;
-    if (!code || bomView.forCode === code) return;
+    if (!detailOrder) { setBomView({ loading: false, bom: null, forCode: null }); return; }
+    const code = detailOrder.machineCode;
+    if (!code) return;
     setBomView({ loading: true, bom: null, forCode: code });
     apiRequest('GET', `/api/rd/boms/by-code/${encodeURIComponent(code)}`)
       .then(res => setBomView({ loading: false, bom: res?.data?.bom || null, forCode: code }))
       .catch(() => setBomView({ loading: false, bom: null, forCode: code }));
-  }, [detailOrderLive?.machineCode]);
+  }, [detailOrder]);
 
-  const openMaterialView = (materialCode) => {
-    const bomMat = bomView.bom?.materials?.find(mm => (mm.code || '').toLowerCase() === (materialCode || '').toLowerCase());
-    setViewMat(bomMat ? { found: true, ...bomMat } : { found: false, code: materialCode });
+  // Deterministic signature for a dimensions object, matching the backend's
+  // dimensionSignature() (services/fabricationDemandService.js) so cuts can
+  // be compared regardless of key order.
+  const dimensionSignature = (dims) => Object.entries(dims || {})
+    .filter(([, v]) => v !== undefined && v !== null && v !== '')
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([k, v]) => `${k}:${v}`)
+    .join(',');
+
+  // A fabrication BOM can reuse the same raw Item code across multiple
+  // distinct cuts (different bomDimensions) — matching by code alone would
+  // always resolve to the first cut in the array, showing the wrong entry
+  // for every other cut of that same material. Disambiguate by dimension
+  // signature whenever the demand row is a fabrication one.
+  const openMaterialView = (demand) => {
+    const code = demand.sourceItemCode || demand.materialCode;
+    const candidates = (bomView.bom?.materials || []).filter(mm => (mm.code || '').toLowerCase() === (code || '').toLowerCase());
+    let bomMat = candidates[0];
+    if (demand.fabricationCategory && candidates.length > 1) {
+      const wantedSig = dimensionSignature(demand.bomDimensions);
+      bomMat = candidates.find(mm => dimensionSignature(mm.bomDimensions) === wantedSig) || candidates[0];
+    }
+    setViewMat(bomMat ? { found: true, ...bomMat } : { found: false, code });
   };
 
   // Groups the BOM's materials by Child Part -> Sub Child Part, straight from
@@ -771,8 +862,16 @@ export default function OrderManagement() {
 
                           return (
                             <tr key={m._id || m.id} className="border-t border-slate-50">
-                              <td className="px-3 py-2 font-mono text-blue-700">{m.materialCode}</td>
-                              <td className="px-3 py-2 font-medium text-slate-800">{m.materialName}</td>
+                              <td className="px-3 py-2 font-mono text-blue-700">{m.sourceItemCode || m.materialCode}</td>
+                              <td className="px-3 py-2 font-medium text-slate-800">
+                                {m.materialName}
+                                {m.fabricationCategory && (
+                                  <div className="text-[10px] font-normal text-slate-400 mt-0.5">
+                                    Cut: {Object.entries(m.bomDimensions || {}).filter(([, v]) => v !== undefined && v !== null && v !== '').map(([k, v]) => `${k}:${v}`).join(', ') || '—'}
+                                    {m.computedWeightPerPieceKg != null && <> · {m.computedWeightPerPieceKg.toFixed(2)} kg/pc</>}
+                                  </div>
+                                )}
+                              </td>
 
                               <td className="px-3 py-2">
                                 {m.bomQuantity !== null && m.bomQuantity !== undefined ? (
@@ -809,17 +908,26 @@ export default function OrderManagement() {
                               <td className="px-3 py-2">
                                 <div className="flex gap-2">
                                   <button
-                                    onClick={() => openMaterialView(m.materialCode)}
+                                    onClick={() => openMaterialView(m)}
                                     className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 transition-colors"
                                     title="View full BOM entry from R&D"
                                   >
                                     <Eye className="h-3 w-3" /> View
                                   </button>
+                                  {m.fabricationCategory && m.status !== 'In Transit' && (
+                                    <button
+                                      onClick={() => openAdjustDemand(m)}
+                                      className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 transition-colors"
+                                      title="Request more or less of this exact cut"
+                                    >
+                                      <Pencil className="h-3 w-3" /> Adjust Qty
+                                    </button>
+                                  )}
                                   {(m.status === 'Requested' || m.status === 'In Transit') && remaining > 0 && (
                                     <button
                                       onClick={() => {
                                         const inTransitQty = (m.transferredQuantity || 0) - (m.issuedQuantity || 0);
-                                        setIssueRow({ materialCode: m.materialCode, materialName: m.materialName, remainingQty: inTransitQty > 0 ? inTransitQty : remaining, unit: m.unit });
+                                        setIssueRow({ materialCode: m.materialCode, sourceItemCode: m.sourceItemCode, bomDimensions: m.bomDimensions, materialName: m.materialName, remainingQty: inTransitQty > 0 ? inTransitQty : remaining, unit: m.unit });
                                         setIssueQty(inTransitQty > 0 ? inTransitQty : remaining); // Default to exactly what they need
                                         setIssueModalOpen(true);
                                       }}
@@ -832,7 +940,7 @@ export default function OrderManagement() {
                                   {m.status === 'Issued' && (
                                     <button
                                       onClick={() => {
-                                        setReturnRow({ materialCode: m.materialCode, materialName: m.materialName, issuedQuantity: m.issuedQuantity, unit: m.unit });
+                                        setReturnRow({ materialCode: m.materialCode, sourceItemCode: m.sourceItemCode, bomDimensions: m.bomDimensions, materialName: m.materialName, issuedQuantity: m.issuedQuantity, unit: m.unit });
                                         setReturnQty('');
                                         setReturnModalOpen(true);
                                       }}
@@ -985,26 +1093,27 @@ export default function OrderManagement() {
         </DialogContent>
       </Dialog>
 
-      {/* Add Material Demand Dialog */}
+      {/* Add Material Demand Dialog — also reused, locked to one existing
+          line, for the per-row "Adjust Qty" action (demandForm.targetDemandCode set). */}
       <Dialog open={demandOpen} onOpenChange={setDemandOpen}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Add Material Demand</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{demandForm.targetDemandCode ? 'Adjust Demand Quantity' : 'Add Material Demand'}</DialogTitle></DialogHeader>
           <div className="space-y-3 py-2">
             <div>
               <label className="text-xs font-semibold text-slate-600 mb-1 block">Material Code *</label>
-              <Input placeholder="e.g. STL-010" value={demandForm.materialCode} onChange={e => handleCodeChange(e.target.value)} />
+              <Input placeholder="e.g. STL-010" value={demandForm.materialCode} disabled={!!demandForm.targetDemandCode} onChange={e => handleCodeChange(e.target.value)} />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-xs font-semibold text-slate-600 mb-1 block">Unit Type</label>
-                <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={demandForm.unitType} onChange={e => setDemandForm(f => ({ ...f, unitType: e.target.value, unit: '' }))}>
+                <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-400" value={demandForm.unitType} disabled={!!demandForm.targetDemandCode} onChange={e => setDemandForm(f => ({ ...f, unitType: e.target.value, unit: '' }))}>
                   <option value="">Select</option>
                   {unitTypesList.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
               <div>
                 <label className="text-xs font-semibold text-slate-600 mb-1 block">Unit *</label>
-                <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-400" value={demandForm.unit} disabled={!demandForm.unitType} onChange={e => setDemandForm(f => ({ ...f, unit: e.target.value }))}>
+                <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-400" value={demandForm.unit} disabled={!demandForm.unitType || !!demandForm.targetDemandCode} onChange={e => setDemandForm(f => ({ ...f, unit: e.target.value }))}>
                   <option value="">{demandForm.unitType ? 'Select' : 'Select Unit Type first'}</option>
                   {getUnitsForTypeDynamic(demandForm.unitType, demandForm.unit).map(u => <option key={u} value={u}>{u}</option>)}
                 </select>
@@ -1012,8 +1121,8 @@ export default function OrderManagement() {
             </div>
             <div>
               <label className="text-xs font-semibold text-slate-600 mb-1 block">Material Name *</label>
-              <Input placeholder="e.g. MS Plate 12mm" value={demandForm.materialName} onChange={e => setDemandForm(f => ({ ...f, materialName: e.target.value }))} />
-              {foundItem ? (
+              <Input placeholder="e.g. MS Plate 12mm" value={demandForm.materialName} disabled={!!demandForm.targetDemandCode} onChange={e => setDemandForm(f => ({ ...f, materialName: e.target.value }))} />
+              {demandForm.targetDemandCode ? null : foundItem ? (
                 <p className="text-xs text-emerald-600 font-medium mt-1">
                   ✓ Found: {foundItem.name} ({foundItem.itemType || '—'})
                 </p>
@@ -1023,6 +1132,24 @@ export default function OrderManagement() {
                 </p>
               ) : null}
             </div>
+
+            {demandForm.fabricationRef && (
+              demandForm.targetDemandCode ? (
+                <div className="p-3 border border-blue-200 rounded-lg bg-blue-50/40">
+                  <p className="text-xs font-semibold text-blue-700 mb-1">Cut Dimensions <span className="text-[10px] text-slate-400 font-normal">(fixed — this is adjusting quantity for this exact cut only)</span></p>
+                  <p className="text-xs text-slate-600">
+                    {Object.entries(demandForm.bomDimensions || {}).filter(([, v]) => v !== undefined && v !== null && v !== '').map(([k, v]) => `${k}:${v}`).join(', ') || '—'}
+                  </p>
+                </div>
+              ) : (
+                <FabricationDimensionFields
+                  row={demandForm}
+                  categories={fabricationCategories}
+                  onUpdate={(patch) => setDemandForm(f => ({ ...f, ...patch }))}
+                />
+              )
+            )}
+
             <div>
               <label className="text-xs font-semibold text-slate-600 mb-1 block">Quantity *</label>
               <Input type="number" min="0" placeholder="0" value={demandForm.quantity} onChange={e => setDemandForm(f => ({ ...f, quantity: e.target.value }))} />
@@ -1039,7 +1166,7 @@ export default function OrderManagement() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDemandOpen(false)}>Cancel</Button>
-            <Button onClick={handleAddDemand} disabled={!demandForm.materialCode || !demandForm.materialName || !demandForm.quantity || !demandForm.unit} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">Add Demand</Button>
+            <Button onClick={handleAddDemand} disabled={!demandForm.materialCode || !demandForm.materialName || !demandForm.quantity || !demandForm.unit || !fabricationDimsFilled()} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">{demandForm.targetDemandCode ? 'Save Quantity Change' : 'Add Demand'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1058,8 +1185,11 @@ export default function OrderManagement() {
                 Return excess or defective materials back to the store.
               </p>
               <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-1 text-sm">
-                <div className="flex justify-between"><span className="text-xs text-slate-500 font-semibold">Code</span><span className="font-mono text-blue-700 text-xs font-semibold">{returnRow.materialCode}</span></div>
+                <div className="flex justify-between"><span className="text-xs text-slate-500 font-semibold">Code</span><span className="font-mono text-blue-700 text-xs font-semibold">{returnRow.sourceItemCode || returnRow.materialCode}</span></div>
                 <div className="flex justify-between"><span className="text-xs text-slate-500 font-semibold">Material</span><span className="text-slate-800 text-xs font-medium truncate ml-2">{returnRow.materialName}</span></div>
+                {returnRow.bomDimensions && Object.keys(returnRow.bomDimensions).length > 0 && (
+                  <div className="flex justify-between"><span className="text-xs text-slate-500 font-semibold">Cut Size</span><span className="text-slate-600 text-[11px] font-medium truncate ml-2">{Object.entries(returnRow.bomDimensions).filter(([, v]) => v !== undefined && v !== null && v !== '').map(([k, v]) => `${k}:${v}`).join(', ')}</span></div>
+                )}
                 <div className="flex justify-between border-t border-slate-200 pt-1 mt-1"><span className="text-xs text-slate-500 font-semibold">Max Returnable</span><span className="text-amber-700 text-xs font-bold">{returnRow.issuedQuantity} {returnRow.unit}</span></div>
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -1135,8 +1265,11 @@ export default function OrderManagement() {
                 Confirm exactly how much material you are taking from the store shelf. This will automatically deduct from master inventory.
               </p>
               <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-1 text-sm">
-                <div className="flex justify-between"><span className="text-xs text-slate-500 font-semibold">Code</span><span className="font-mono text-blue-700 text-xs font-semibold">{issueRow.materialCode}</span></div>
+                <div className="flex justify-between"><span className="text-xs text-slate-500 font-semibold">Code</span><span className="font-mono text-blue-700 text-xs font-semibold">{issueRow.sourceItemCode || issueRow.materialCode}</span></div>
                 <div className="flex justify-between"><span className="text-xs text-slate-500 font-semibold">Material</span><span className="text-slate-800 text-xs font-medium truncate ml-2">{issueRow.materialName}</span></div>
+                {issueRow.bomDimensions && Object.keys(issueRow.bomDimensions).length > 0 && (
+                  <div className="flex justify-between"><span className="text-xs text-slate-500 font-semibold">Cut Size</span><span className="text-slate-600 text-[11px] font-medium truncate ml-2">{Object.entries(issueRow.bomDimensions).filter(([, v]) => v !== undefined && v !== null && v !== '').map(([k, v]) => `${k}:${v}`).join(', ')}</span></div>
+                )}
                 <div className="flex justify-between border-t border-slate-200 pt-1 mt-1"><span className="text-xs text-slate-500 font-semibold">Remaining Required</span><span className="text-emerald-700 text-xs font-bold">{issueRow.remainingQty} {issueRow.unit}</span></div>
               </div>
               <div className="grid grid-cols-2 gap-3">

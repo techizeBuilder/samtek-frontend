@@ -169,7 +169,12 @@ export default function ReturnedMaterialsLogsTab() {
                                                 {/* Material Specs */}
                                                 <td className="px-6 py-4 whitespace-nowrap">
                                                     <div className="font-semibold text-slate-800">{log.materialName}</div>
-                                                    <div className="text-xs font-mono text-slate-400 mt-0.5">{log.materialCode}</div>
+                                                    <div className="text-xs font-mono text-slate-400 mt-0.5">{log.sourceItemCode || log.materialCode}</div>
+                                                    {log.bomDimensions && Object.keys(log.bomDimensions).length > 0 && (
+                                                        <div className="text-[10px] text-slate-400 mt-0.5">
+                                                            Cut: {Object.entries(log.bomDimensions).filter(([, v]) => v !== undefined && v !== null && v !== '').map(([k, v]) => `${k}:${v}`).join(', ')}
+                                                        </div>
+                                                    )}
                                                 </td>
 
                                                 {/* Return Condition Flag Classification */}

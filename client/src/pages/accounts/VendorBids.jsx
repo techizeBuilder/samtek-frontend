@@ -13,6 +13,7 @@ import {
   Loader2, Trophy, Eye, Star, Clock, Shield, DollarSign, Package, CheckCircle2,
   XCircle, Users, BarChart3, Gavel, ChevronDown, ChevronUp, TrendingDown, RefreshCw
 } from 'lucide-react';
+import { formatDims } from '@/lib/fabricationDims';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const rfqStatusColor = (status) => {
@@ -195,7 +196,16 @@ export default function VendorBids() {
                   {rfqs.map(rfq => (
                     <tr key={rfq._id} className="border-b hover:bg-slate-50 transition-colors">
                       <td className="py-3 px-5 font-bold text-slate-800">{rfq.rfqNo}</td>
-                      <td className="py-3 px-5 font-medium text-slate-700">{rfq.productName}</td>
+                      <td className="py-3 px-5 font-medium text-slate-700">
+                        {rfq.productName}
+                        {rfq.fabricationDimensionLines?.length > 0 && (
+                          <div className="text-[10px] text-slate-400 mt-0.5 font-normal">
+                            {rfq.fabricationDimensionLines.map((l, i) => (
+                              <span key={i}>{i > 0 && ' · '}{formatDims(l.values)} × {l.quantity}</span>
+                            ))}
+                          </div>
+                        )}
+                      </td>
                       <td className="py-3 px-5 text-center font-bold text-slate-700">{rfq.quantity}</td>
                       <td className="py-3 px-5 text-slate-500 text-xs">
                         {rfq.purchaseRequest?.requestId || '—'}
@@ -258,6 +268,13 @@ export default function VendorBids() {
             <DialogDescription>
               {currentRFQ?.rfq?.productName || currentRFQ?.productName} · Qty: {currentRFQ?.quantity} · Compare vendor quotes and select the best offer.
             </DialogDescription>
+            {currentRFQ?.fabricationDimensionLines?.length > 0 && (
+              <p className="text-xs text-slate-500 mt-1">
+                Covers: {currentRFQ.fabricationDimensionLines.map((l, i) => (
+                  <span key={i}>{i > 0 && ' · '}{formatDims(l.values)} × {l.quantity}</span>
+                ))}
+              </p>
+            )}
           </DialogHeader>
 
           {bidsLoading ? (

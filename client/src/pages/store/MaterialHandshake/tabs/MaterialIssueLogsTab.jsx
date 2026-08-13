@@ -131,7 +131,12 @@ const MaterialIssueLogsTab = () => {
                         <tr key={log._id} className="hover:bg-slate-50/50 transition-colors">
                           <td className="px-6 py-4">
                             <div className="font-medium text-slate-800">{log.materialName}</div>
-                            <div className="text-xs text-slate-500 font-mono mt-0.5">{log.materialCode}</div>
+                            <div className="text-xs text-slate-500 font-mono mt-0.5">{log.sourceItemCode || log.materialCode}</div>
+                            {log.bomDimensions && Object.keys(log.bomDimensions).length > 0 && (
+                              <div className="text-[10px] text-slate-400 mt-0.5">
+                                Cut: {Object.entries(log.bomDimensions).filter(([, v]) => v !== undefined && v !== null && v !== '').map(([k, v]) => `${k}:${v}`).join(', ')}
+                              </div>
+                            )}
                           </td>
                           <td className="px-6 py-4">
                             <span className="inline-flex items-center font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-md">
