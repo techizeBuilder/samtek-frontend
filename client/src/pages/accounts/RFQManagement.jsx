@@ -17,7 +17,7 @@ import {
   ChevronRight, Users, Mail, BarChart3, Gavel, RefreshCw, Tag,
   Info, FlaskConical, Wrench, Shield // <-- Added missing icons for R&D
 } from 'lucide-react';
-import { formatDims } from '@/lib/fabricationDims';
+import { formatDims, fabricationPieceCount } from '@/lib/fabricationDims';
 import FabricationRFQDialog from '@/components/accounts/FabricationRFQDialog';
 
 // ── Status badge helper ───────────────────────────────────────────────────────
@@ -379,7 +379,7 @@ export default function RFQManagement() {
                           )}
                         </td>
                         <td className="py-3 px-5 text-center font-bold text-slate-700">
-                          {pr.quantity}
+                          {pr.fabricationDimensionLines?.length > 0 ? fabricationPieceCount(pr.fabricationDimensionLines) : pr.quantity}
                           {(pr.item?.unit || pr.unit) && (
                             <span className="ml-1 font-medium text-slate-500 text-xs">{pr.item?.unit || pr.unit}</span>
                           )}

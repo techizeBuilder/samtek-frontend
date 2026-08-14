@@ -187,7 +187,7 @@ function InventoryCostPanel({ tab }) {
               <tr>
                 <th className="px-4 py-3 text-left">Item Code</th>
                 <th className="px-4 py-3 text-left">Item Name</th>
-                <th className="px-4 py-3 text-left">Category</th>
+                <th className="px-4 py-3 text-left">Item Type</th>
                 <th className="px-4 py-3 text-right">Current Stock</th>
                 <th className="px-4 py-3 text-right">Purchase Cost</th>
                 <th className="px-4 py-3 text-right">MRP</th>
@@ -213,7 +213,7 @@ function InventoryCostPanel({ tab }) {
                     <div className="font-medium text-slate-900">{item.name}</div>
                     {item.subCategory && <div className="text-[11px] text-slate-400">{item.subCategory}</div>}
                   </td>
-                  <td className="px-4 py-3 text-slate-600 text-xs">{item.category || '—'}</td>
+                  <td className="px-4 py-3 text-slate-600 text-xs">{item.itemType || '—'}</td>
                   <td className="px-4 py-3 text-right text-slate-600 text-xs">
                     {item.fabricationRef
                       ? <>{stockWeightKg(item).toLocaleString('en-IN', { maximumFractionDigits: 2 })} kg</>

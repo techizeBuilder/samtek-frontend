@@ -24,7 +24,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { formatDims } from '@/lib/fabricationDims';
+import { formatDims, fabricationPieceCount } from '@/lib/fabricationDims';
 import FabricationReceiveDialog from '@/components/accounts/FabricationReceiveDialog';
 
 export default function PurchaseRequest() {
@@ -587,7 +587,7 @@ export default function PurchaseRequest() {
                             )}
                           </TableCell>
                           <TableCell className="font-extrabold text-slate-900 text-center">
-                            {request.quantity}
+                            {request.fabricationDimensionLines?.length > 0 ? fabricationPieceCount(request.fabricationDimensionLines) : request.quantity}
                             {(request.item?.unit || request.unit) && (
                               <span className="ml-1 font-medium text-slate-500 text-xs">{request.item?.unit || request.unit}</span>
                             )}

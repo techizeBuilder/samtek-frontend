@@ -24,6 +24,7 @@ import {
   Ruler
 } from 'lucide-react';
 import { config } from '@/config/environment';
+import { itemDisplayQty } from '@/lib/fabricationDims';
 
 const resolveMediaUrl = (url) => (!url ? '' : (url.startsWith('http') || url.startsWith('data:')) ? url : `${config.baseURL}${url}`);
 
@@ -186,7 +187,7 @@ export default function ViewItemModal({ isOpen, onClose, item }) {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-1">
-              <InfoRow icon={BarChart3} label="Current Stock" value={`${item.qty || 0} ${item.unit}`} />
+              <InfoRow icon={BarChart3} label="Current Stock" value={`${itemDisplayQty(item)} ${item.unit}`} />
               <InfoRow icon={AlertTriangle} label="Minimum Stock" value={`${item.minStock || 0} ${item.unit}`} />
               {item.purchase && (
                 <InfoRow
@@ -197,8 +198,8 @@ export default function ViewItemModal({ isOpen, onClose, item }) {
               )}
               <div className="py-2">
                 <div className="text-sm text-muted-foreground mb-1">Stock Status</div>
-                <Badge variant={(item.qty || 0) <= (item.minStock || 0) ? 'destructive' : 'default'}>
-                  {(item.qty || 0) <= (item.minStock || 0) ? 'Low Stock' : 'In Stock'}
+                <Badge variant={itemDisplayQty(item) <= (item.minStock || 0) ? 'destructive' : 'default'}>
+                  {itemDisplayQty(item) <= (item.minStock || 0) ? 'Low Stock' : 'In Stock'}
                 </Badge>
               </div>
             </CardContent>

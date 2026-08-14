@@ -77,6 +77,7 @@ import UnitTypeManagement from './UnitTypeManagement';
 
 import { apiRequest } from '@/lib/queryClient';
 import { showSmartToast } from '@/lib/toast-utils';
+import { itemDisplayQty } from '@/lib/fabricationDims';
 
 // Helper function to get role-based API path
 function getInventoryApiPath(user) {
@@ -263,7 +264,7 @@ function SortableRow({
       </TableCell>
       <TableCell className="py-4 text-gray-600">{item.brand || '-'}</TableCell>
       <TableCell className="py-4">
-        <div className="font-medium text-gray-900">{item.qty ?? 0} {item.unit}</div>
+        <div className="font-medium text-gray-900">{itemDisplayQty(item)} {item.unit}</div>
       </TableCell>
       <TableCell className="py-4">
         {item.isDiscontinued ? (
