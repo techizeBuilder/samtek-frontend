@@ -204,30 +204,6 @@ export default function ViewItemModal({ isOpen, onClose, item }) {
             </CardContent>
           </Card>
 
-          {/* Pricing Information */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <BarChart3 className="h-5 w-5 text-orange-600" />
-                Pricing Information
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-1">
-              <InfoRow icon={BarChart3} label="Standard Cost" value={item.stdCost} variant="currency" />
-              <InfoRow icon={BarChart3} label="Purchase Cost" value={item.purchaseCost} variant="currency" />
-              <InfoRow icon={BarChart3} label="Sale Price" value={item.salePrice} variant="currency" />
-              <InfoRow icon={BarChart3} label="Dealer Price" value={item.dealerPrice} variant="currency" />
-              <InfoRow icon={BarChart3} label="MRP" value={item.mrp} variant="currency" />
-              <InfoRow icon={BarChart3} label="GST %" value={`${item.gst || 0}%`} />
-              <InfoRow icon={Tag} label="Cost Source" value={item.costSource || 'Manual'} variant="badge" />
-              {item.costResolutionIssue && (
-                <div className="py-2">
-                  <div className="text-sm text-muted-foreground mb-1 flex items-center gap-1"><AlertTriangle className="h-4 w-4" /> Cost Resolution Issue</div>
-                  <p className="text-sm bg-amber-50 text-amber-800 p-2 rounded-lg">{item.costResolutionIssue}</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
         </div>
 
         {/* Manufacturing Information */}

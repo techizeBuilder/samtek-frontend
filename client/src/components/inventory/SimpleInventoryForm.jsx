@@ -521,26 +521,28 @@ export default function SimpleInventoryForm({
                 </div>
               </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-              <div>
-                <Label className="text-sm font-medium text-gray-700">12. Unit Weight</Label>
-                <Input type="number" min="0" value={formData.unitWeightValue} onChange={(e) => handleInputChange('unitWeightValue', e.target.value)} placeholder="0" className="mt-1 bg-white" />
+            {formData.itemProcessType !== FABRICATION_PROCESS_TYPE && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                <div>
+                  <Label className="text-sm font-medium text-gray-700">12. Unit Weight</Label>
+                  <Input type="number" min="0" value={formData.unitWeightValue} onChange={(e) => handleInputChange('unitWeightValue', e.target.value)} placeholder="0" className="mt-1 bg-white" />
+                </div>
+                <div>
+                  <Label className="text-sm font-medium text-gray-700">Weight Unit Type</Label>
+                  <Select value={formData.unitWeightUnitType} onValueChange={(v) => { handleInputChange('unitWeightUnitType', v); handleInputChange('unitWeightUnit', ''); }}>
+                    <SelectTrigger className="mt-1"><SelectValue placeholder="Select" /></SelectTrigger>
+                    <SelectContent>{unitTypes.map(ut => <SelectItem key={ut._id} value={ut.name}>{ut.name}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium text-gray-700">Weight Unit</Label>
+                  <Select value={formData.unitWeightUnit} onValueChange={(v) => handleInputChange('unitWeightUnit', v)} disabled={!formData.unitWeightUnitType}>
+                    <SelectTrigger className="mt-1"><SelectValue placeholder="Select" /></SelectTrigger>
+                    <SelectContent>{availableWeightUnits.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
               </div>
-              <div>
-                <Label className="text-sm font-medium text-gray-700">Weight Unit Type</Label>
-                <Select value={formData.unitWeightUnitType} onValueChange={(v) => { handleInputChange('unitWeightUnitType', v); handleInputChange('unitWeightUnit', ''); }}>
-                  <SelectTrigger className="mt-1"><SelectValue placeholder="Select" /></SelectTrigger>
-                  <SelectContent>{unitTypes.map(ut => <SelectItem key={ut._id} value={ut.name}>{ut.name}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-sm font-medium text-gray-700">Weight Unit</Label>
-                <Select value={formData.unitWeightUnit} onValueChange={(v) => handleInputChange('unitWeightUnit', v)} disabled={!formData.unitWeightUnitType}>
-                  <SelectTrigger className="mt-1"><SelectValue placeholder="Select" /></SelectTrigger>
-                  <SelectContent>{availableWeightUnits.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
-            </div>
+            )}
           </div>
 
           {/* ── 12: Purchase Unit (incl. the Purchasable/Internal Manufacturing choice) ── */}
