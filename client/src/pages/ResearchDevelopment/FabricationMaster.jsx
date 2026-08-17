@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useLocation } from 'wouter';
 import { apiRequest } from '@/lib/queryClient';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Layers, Plus, Search, Eye, Edit2, Ban, RefreshCw, XCircle, Loader2 } from 'lucide-react';
+import { Layers, Plus, Search, Eye, Edit2, Ban, RefreshCw, XCircle, Loader2, ArrowLeft } from 'lucide-react';
 import { showSuccessToast, showSmartToast } from '@/lib/toast-utils';
 
 const emptyForm = { itemName: '', itemCode: '', category: '', density: { value: '', unit: 'kg/m3' }, isDiscontinued: false, dimensions: [] };
@@ -21,6 +22,7 @@ const summarizeDimension = (categoryFields, dim) => {
 
 export default function FabricationMaster() {
   const qc = useQueryClient();
+  const [, setLocation] = useLocation();
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [showDiscontinued, setShowDiscontinued] = useState(false);
@@ -275,6 +277,14 @@ export default function FabricationMaster() {
     <div className="p-6 space-y-6 bg-slate-50 min-h-screen">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
+          <Button
+            onClick={() => setLocation('/r&d/inventory')}
+            variant="ghost"
+            size="sm"
+            className="text-slate-500 hover:text-slate-800 -ml-2 mb-1"
+          >
+            <ArrowLeft className="h-4 w-4 mr-1.5" /> Back to Inventory
+          </Button>
           <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
             <Layers className="h-6 w-6 text-blue-600" /> Fabrication Master
           </h1>

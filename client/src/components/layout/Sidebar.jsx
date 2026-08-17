@@ -292,7 +292,11 @@ export default function Sidebar({ isOpen, onClose }) {
                   (item.module === 'dashboard' && location === '/') ||
                   (item.module === 'dashboard' && location === '/super-admin-dashboard') ||
                   (item.module === 'rnd' && location === '/r&d-dashboard') ||
-                  (item.module === 'complaints' && location === '/complaints');
+                  (item.module === 'complaints' && location === '/complaints') ||
+                  // Fabrication Master lives at its own route but isn't a sidebar
+                  // item anymore — it's opened from Inventory, so Inventory stays
+                  // highlighted while viewing it.
+                  (item.path === '/r&d/inventory' && location === '/r&d/fabrication-master');
                 const hasSubmodules = item.submodules && item.submodules.length > 0;
                 const isExpanded = expandedModules[item.path];
 

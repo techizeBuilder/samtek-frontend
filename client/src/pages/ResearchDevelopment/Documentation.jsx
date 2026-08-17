@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useRD } from '@/contexts/RDContext';
+import { apiRequest } from '@/lib/queryClient';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { FileText, Plus, Trash2, Download, Eye, ChevronDown, Package, Upload, FolderOpen } from 'lucide-react';
+import { FileText, Plus, Trash2, Download, Eye, ChevronDown, Package, Upload, FolderOpen, Puzzle } from 'lucide-react';
 
 const DOC_TYPES = ['Design Files', 'BOM', 'Process Sheet', 'QC Checklist', 'User Manual', 'Test Report', 'Other'];
 
@@ -33,7 +35,35 @@ export default function Documentation() {
 
   const activeMachines = machines.filter(m => !m.isDiscontinued);
   const selectedMachine = activeMachines.find(m => String(m._id) === selectedMachineId);
-  const allDocs = selectedMachineId ? getDocumentsForMachine(selectedMachineId) : [];
+
+  // Child Part documents/images (uploaded from BOM Management → Child Part
+  // Creation) aren't stored as RDDocument rows — they're pulled in live here
+  // and shown under Design Files, tagged with the child part's name, so
+  // there's no duplicate copy to keep in sync.
+  const { data: childPartsResp } = useQuery({
+    queryKey: ['rd-child-parts-for-docs', selectedMachineId],
+    queryFn: () => apiRequest('GET', `/api/rd/child-parts?productId=${selectedMachineId}`),
+    enabled: !!selectedMachineId,
+    retry: false,
+  });
+  const childPartDocs = (childPartsResp?.data || [])
+    .filter(cp => cp.image)
+    .map(cp => {
+      const ext = (cp.image.split('.').pop() || '').toUpperCase();
+      return {
+        _id: `child-part-${cp._id}`,
+        name: `${cp.name} (${cp.code})`,
+        type: 'Design Files',
+        size: '',
+        uploadedAt: (cp.updatedAt || cp.createdAt || '').split('T')[0],
+        uploadedBy: 'Child Part Creation',
+        fileUrl: cp.image,
+        originalName: `${cp.name}.${ext.toLowerCase() || 'file'}`,
+        isChildPartFile: true,
+      };
+    });
+
+  const allDocs = selectedMachineId ? [...getDocumentsForMachine(selectedMachineId), ...childPartDocs] : [];
   const docs = filterType === 'All' ? allDocs : allDocs.filter(d => d.type === filterType);
 
   const typeCounts = DOC_TYPES.reduce((acc, t) => ({ ...acc, [t]: allDocs.filter(d => d.type === t).length }), {});
@@ -157,13 +187,19 @@ export default function Documentation() {
                     <tbody>
                       {docs.map(doc => {
                         const cfg = typeConfig[doc.type] || typeConfig.Other;
-                        const ext = doc.name.split('.').pop().toUpperCase();
+                        const extSource = doc.fileUrl || doc.name;
+                        const ext = (extSource.split('.').pop() || '').toUpperCase();
                         return (
                           <tr key={doc._id} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
                             <td className="px-5 py-3.5">
                               <div className="flex items-center gap-2">
                                 <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${cfg.color}`}>{ext}</span>
                                 <span className="font-medium text-slate-900">{doc.name}</span>
+                                {doc.isChildPartFile && (
+                                  <span title="From BOM Management → Child Part Creation" className="inline-flex items-center gap-1 text-[10px] text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded-full font-semibold">
+                                    <Puzzle className="h-3 w-3" /> Child Part
+                                  </span>
+                                )}
                               </div>
                             </td>
                             <td className="px-5 py-3.5">
@@ -190,9 +226,11 @@ export default function Documentation() {
                                 ) : (
                                   <span className="text-[10px] text-slate-300 px-2">No file</span>
                                 )}
-                                <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-red-600" onClick={() => setDeleteDoc(doc)}>
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </Button>
+                                {!doc.isChildPartFile && (
+                                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-red-600" onClick={() => setDeleteDoc(doc)}>
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                )}
                               </div>
                             </td>
                           </tr>

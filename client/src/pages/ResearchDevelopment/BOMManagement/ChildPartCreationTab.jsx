@@ -5,11 +5,12 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Boxes, Plus, Wand2, ImageIcon, Ban, RefreshCw, Loader2 } from 'lucide-react';
+import { Boxes, Plus, Wand2, ImageIcon, FileText, Ban, RefreshCw, Loader2 } from 'lucide-react';
 import { showSuccessToast, showSmartToast } from '@/lib/toast-utils';
 import { config } from '@/config/environment';
 
 const resolveMediaUrl = (url) => (!url ? '' : (url.startsWith('http') || url.startsWith('data:')) ? url : `${config.baseURL}${url}`);
+const isPdfUrl = (url) => !!url && /\.pdf(\?|$)/i.test(url);
 
 export default function ChildPartCreationTab({ product }) {
   const qc = useQueryClient();
@@ -77,18 +78,18 @@ export default function ChildPartCreationTab({ product }) {
   const handleImageUpload = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
-    if (file.size > 5 * 1024 * 1024) {
-      showSmartToast(new Error('Please select an image under 5MB'), 'File too large');
+    if (file.size > 10 * 1024 * 1024) {
+      showSmartToast(new Error('Please select a file under 10MB'), 'File too large');
       return;
     }
     setImageUploading(true);
     try {
       const fd = new FormData();
-      fd.append('image', file);
-      const res = await apiRequest('POST', '/api/items/upload-image', fd);
+      fd.append('file', file);
+      const res = await apiRequest('POST', '/api/rd/child-parts/upload-file', fd);
       if (res.success && res.url) setCpImage(res.url);
     } catch (e) {
-      showSmartToast(e, 'Image upload failed');
+      showSmartToast(e, 'File upload failed');
     } finally {
       setImageUploading(false);
     }
@@ -124,18 +125,23 @@ export default function ChildPartCreationTab({ product }) {
               </div>
             </div>
             <div>
-              <Label className="text-xs font-semibold text-slate-600 mb-1 block">Image</Label>
+              <Label className="text-xs font-semibold text-slate-600 mb-1 block">Document</Label>
               <div className="flex items-center gap-2">
                 {cpImage ? (
-                  <img src={resolveMediaUrl(cpImage)} alt="" className="h-9 w-9 rounded object-cover border" />
+                  isPdfUrl(cpImage) ? (
+                    <div className="h-9 w-9 rounded border bg-red-50 flex items-center justify-center"><FileText className="h-4 w-4 text-red-500" /></div>
+                  ) : (
+                    <img src={resolveMediaUrl(cpImage)} alt="" className="h-9 w-9 rounded object-cover border" />
+                  )
                 ) : (
                   <div className="h-9 w-9 rounded border bg-slate-50 flex items-center justify-center"><ImageIcon className="h-4 w-4 text-slate-300" /></div>
                 )}
                 <label className="cursor-pointer">
                   <span className="text-xs text-blue-600 hover:underline">{imageUploading ? 'Uploading...' : 'Upload'}</span>
-                  <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} disabled={imageUploading} />
+                  <input type="file" accept="image/*,application/pdf" className="hidden" onChange={handleImageUpload} disabled={imageUploading} />
                 </label>
               </div>
+              <p className="text-[11px] text-slate-400 mt-1">Image or PDF, up to 10MB</p>
             </div>
           </div>
           <Button size="sm" onClick={handleAddChildPart} disabled={!cpName || !cpCode || createChildPartMutation.isPending} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">
@@ -159,7 +165,13 @@ export default function ChildPartCreationTab({ product }) {
                   <div className="flex items-center justify-between gap-3 mb-3">
                     <div className="flex items-center gap-3">
                       {cp.image ? (
-                        <img src={resolveMediaUrl(cp.image)} alt="" className="h-10 w-10 rounded object-cover border" />
+                        isPdfUrl(cp.image) ? (
+                          <a href={resolveMediaUrl(cp.image)} target="_blank" rel="noreferrer" title="View PDF" className="h-10 w-10 rounded border bg-red-50 flex items-center justify-center hover:bg-red-100">
+                            <FileText className="h-4 w-4 text-red-500" />
+                          </a>
+                        ) : (
+                          <img src={resolveMediaUrl(cp.image)} alt="" className="h-10 w-10 rounded object-cover border" />
+                        )
                       ) : (
                         <div className="h-10 w-10 rounded border bg-slate-50 flex items-center justify-center"><ImageIcon className="h-4 w-4 text-slate-300" /></div>
                       )}

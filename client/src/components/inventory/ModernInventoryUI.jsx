@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useLocation } from 'wouter';
 import { useAuth } from '@/hooks/useAuth';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useActionPermissions } from '@/components/permissions/ActionButton';
@@ -49,7 +50,8 @@ import {
   BarChart3,
   RefreshCw,
   GripVertical,
-  Ban
+  Ban,
+  Layers
 } from 'lucide-react';
 
 import {
@@ -310,6 +312,7 @@ export default function ModernInventoryUI() {
   const { canPerformAction } = usePermissions();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [, setLocation] = useLocation();
 
   // Get role-based API path
   const apiBasePath = getInventoryApiPath(user);
@@ -736,16 +739,28 @@ export default function ModernInventoryUI() {
       <ModernStats stats={resolvedStats} isLoading={statsLoading || itemsLoading} />
 
       {/* Modern Action Bar */}
-      {inventoryPermissions.canAdd && (
+      {(inventoryPermissions.canAdd || isRDUser) && (
         <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
-          <CardContent className="p-6">
-            <Button
-              onClick={() => setShowForm(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg hover:shadow-xl transition-all duration-200"
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Add Item
-            </Button>
+          <CardContent className="p-6 flex flex-wrap gap-3">
+            {inventoryPermissions.canAdd && (
+              <Button
+                onClick={() => setShowForm(true)}
+                className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg hover:shadow-xl transition-all duration-200"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Add Item
+              </Button>
+            )}
+            {isRDUser && (
+              <Button
+                onClick={() => setLocation('/r&d/fabrication-master')}
+                variant="outline"
+                className="border-blue-300 text-blue-700 hover:bg-blue-100 shadow-sm transition-all duration-200"
+              >
+                <Layers className="h-4 w-4 mr-2" />
+                Fabrication Master
+              </Button>
+            )}
           </CardContent>
         </Card>
       )}
