@@ -359,7 +359,7 @@ export default function RFQManagement() {
                           <div className="flex items-center gap-2">
                             {pr.productName}
                             {/* NEW: R&D Specs Info Button */}
-                            {pr.item && (pr.item.specifications?.length > 0 || pr.item.warranty?.type) && (
+                            {pr.item && (pr.item.specifications?.length > 0 || (!pr.item.fabricationRef && pr.item.warranty?.type)) && (
                               <Button
                                 variant="ghost"
                                 size="icon"
@@ -699,7 +699,10 @@ export default function RFQManagement() {
                   </div>
                 </div>
               )}
-              {selectedPR.item.warranty && selectedPR.item.warranty.type && (
+              {/* Fabrication Master raw materials (sheets/pipes/angles...) don't
+                  carry a real warranty — the Item's warranty field is only
+                  meaningful for actual purchased parts/machines/motors. */}
+              {!selectedPR.item.fabricationRef && selectedPR.item.warranty && selectedPR.item.warranty.type && (
                 <div>
                   <h4 className="text-sm font-semibold text-slate-700 flex items-center gap-2 mb-2">
                     <Shield className="w-4 h-4 text-slate-400" /> Warranty Requirements

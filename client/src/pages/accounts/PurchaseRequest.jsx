@@ -1375,7 +1375,7 @@ export default function PurchaseRequest() {
 
       {/* ── Fabrication receive: dimension breakdown, no serial/warranty ────── */}
       {fabReceivePR && (
-        <FabricationReceiveDialog pr={fabReceivePR} onClose={() => setFabReceivePR(null)} />
+        <FabricationReceiveDialog pr={fabReceivePR} onClose={() => setFabReceivePR(null)} onReceived={fetchPurchaseRequests} />
       )}
 
       {/* ── Reject Request Modal ─────────────────────────────────────────────── */}

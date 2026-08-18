@@ -146,7 +146,7 @@ export default function VendorBidForm() {
               <span className="text-slate-500">Delivery Time</span>
               <span className="font-semibold text-slate-800">{deliveryDays} Days</span>
             </div>
-            {warrantyMonths && (
+            {warrantyMonths && !rfqData?.fabricationDimensionLines?.length && (
               <div className="flex justify-between text-sm">
                 <span className="text-slate-500">Warranty</span>
                 <span className="font-semibold text-slate-800">{warrantyMonths} Months</span>
@@ -273,22 +273,26 @@ export default function VendorBidForm() {
               />
             </div>
 
-            {/* Warranty */}
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-                <Shield className="w-4 h-4 inline mr-1 text-purple-500" />
-                Warranty Period (Months)
-              </label>
-              <input
-                type="number"
-                min="0"
-                max="120"
-                value={warrantyMonths}
-                onChange={(e) => setWarrantyMonths(e.target.value)}
-                placeholder="e.g. 12 (0 if no warranty)"
-                className="w-full border border-slate-300 rounded-lg px-4 py-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-base"
-              />
-            </div>
+            {/* Warranty — raw fabrication material (sheets/pipes/angles...)
+                doesn't carry a warranty, so this field is skipped entirely
+                for those RFQs; warrantyMonths just stays 0 on submit. */}
+            {!rfqData?.fabricationDimensionLines?.length && (
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                  <Shield className="w-4 h-4 inline mr-1 text-purple-500" />
+                  Warranty Period (Months)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  max="120"
+                  value={warrantyMonths}
+                  onChange={(e) => setWarrantyMonths(e.target.value)}
+                  placeholder="e.g. 12 (0 if no warranty)"
+                  className="w-full border border-slate-300 rounded-lg px-4 py-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-base"
+                />
+              </div>
+            )}
 
             {/* Remarks */}
             <div>
@@ -321,10 +325,12 @@ export default function VendorBidForm() {
                     <span className="text-slate-500">Delivery In</span>
                     <p className="font-bold text-slate-800">{deliveryDays} Days</p>
                   </div>
-                  <div>
-                    <span className="text-slate-500">Warranty</span>
-                    <p className="font-bold text-slate-800">{warrantyMonths || 0} Months</p>
-                  </div>
+                  {!rfqData?.fabricationDimensionLines?.length && (
+                    <div>
+                      <span className="text-slate-500">Warranty</span>
+                      <p className="font-bold text-slate-800">{warrantyMonths || 0} Months</p>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

@@ -22,7 +22,16 @@ export default function BOMFieldConfigModal({ open, onOpenChange }) {
   const catalog = response?.data?.catalog || [];
 
   useEffect(() => {
-    if (response?.data?.enabledFields) setSelected(response.data.enabledFields);
+    // A previously-saved selection can reference a field that's since been
+    // removed from BOM_FIELD_CATALOG (e.g. it was dropped from Inventory's
+    // own form) — the checkbox list below only ever renders `catalog`, so a
+    // stale key never shows as checked, but it silently rode along in
+    // `selected` and got resubmitted on every Save, which the server now
+    // rejects outright. Drop anything not in the current catalog on load.
+    if (response?.data?.enabledFields) {
+      const validKeys = new Set((response.data.catalog || []).map(f => f.key));
+      setSelected(response.data.enabledFields.filter(k => validKeys.has(k)));
+    }
   }, [response]);
 
   const saveMutation = useMutation({

@@ -18,7 +18,7 @@ import FabricationDimensionFields from '@/components/inventory/FabricationDimens
 // becomes stock flagged isLeftover once QC passes, never offered back as a
 // reorderable catalog size). No Serial Number/Warranty/conversion-factor
 // fields at all — those don't apply to raw fabrication stock.
-export default function FabricationReceiveDialog({ pr, onClose }) {
+export default function FabricationReceiveDialog({ pr, onClose, onReceived }) {
   const { toast } = useToast();
   const [lines, setLines] = useState([]); // [{ values, quantity }]
   const [addingVariantId, setAddingVariantId] = useState('');
@@ -31,16 +31,20 @@ export default function FabricationReceiveDialog({ pr, onClose }) {
     queryFn: () => apiRequest('GET', `/api/items/by-code?code=${encodeURIComponent(sourceItemCode)}`),
     enabled: !!pr,
   });
-  const { data: categoriesRes } = useQuery({
+  const { data: categoriesRes, isError: categoriesErrored } = useQuery({
     queryKey: ['fabrication-categories'],
     queryFn: () => apiRequest('GET', '/api/fabrication-master/categories'),
   });
   const fabricationCategories = categoriesRes?.data || [];
 
   const item = itemRes?.data;
-  const catalogVariants = (item?.dimensionVariants || []).filter(v => !v.isLeftover);
-  const itemCategory = item?.dimensionVariants?.[0]?.category || '';
-  const itemDensity = { value: item?.dimensionVariants?.[0]?.densityValue ?? null, unit: item?.dimensionVariants?.[0]?.densityUnit || 'kg/m3' };
+  // Fall back to the item snapshot already attached to `pr` (getPurchaseRequests'
+  // enrichment) if the live /api/items/by-code fetch hasn't resolved yet —
+  // same fallback FabricationRFQDialog.jsx already relies on.
+  const itemDimensionVariants = item?.dimensionVariants?.length > 0 ? item.dimensionVariants : (pr?.item?.dimensionVariants || []);
+  const catalogVariants = itemDimensionVariants.filter(v => !v.isLeftover);
+  const itemCategory = itemDimensionVariants?.[0]?.category || '';
+  const itemDensity = { value: itemDimensionVariants?.[0]?.densityValue ?? null, unit: itemDimensionVariants?.[0]?.densityUnit || 'kg/m3' };
 
   useEffect(() => {
     if (pr?.fabricationDimensionLines?.length) {
@@ -57,8 +61,14 @@ export default function FabricationReceiveDialog({ pr, onClose }) {
     setLines(prev => [...prev, { values: variant.values, quantity: '1' }]);
     setAddingVariantId('');
   };
+  const activeNewDimCategory = fabricationCategories.find(c => c.key === itemCategory) || null;
+  const newDimComplete = !!activeNewDimCategory?.fields?.every(f => {
+    const v = newDimDraft.bomDimensions?.[f.key];
+    return v !== undefined && v !== '' && !isNaN(Number(v));
+  });
+
   const addNewDimLine = () => {
-    if (!newDimDraft.bomDimensions || Object.keys(newDimDraft.bomDimensions).length === 0) return;
+    if (!newDimComplete) return;
     setLines(prev => [...prev, { values: newDimDraft.bomDimensions, quantity: '1' }]);
     setNewDimDraft({ bomDimensions: {} });
     setShowNewDimForm(false);
@@ -87,6 +97,13 @@ export default function FabricationReceiveDialog({ pr, onClose }) {
     onSuccess: () => {
       toast({ title: 'Purchase Received', description: 'Recorded — a QC job has been created; stock updates once QC passes it.' });
       queryClient.invalidateQueries({ queryKey: ['/api/purchase-requests'] });
+      // PurchaseRequest.jsx keeps its own list in plain useState (not
+      // react-query) — the invalidation above is a no-op there, so the row's
+      // stale "Ordered" status/button would otherwise stick around and let
+      // Store reopen this same dialog and hit the now-stale "Ordered" gate
+      // a second time. onReceived is PurchaseRequest.jsx's own
+      // fetchPurchaseRequests, passed in so the list actually refreshes.
+      onReceived?.();
       onClose();
     },
     onError: (error) => toast({ title: 'Receive Failed', description: error.message || 'Something went wrong.', variant: 'destructive' }),
@@ -140,7 +157,7 @@ export default function FabricationReceiveDialog({ pr, onClose }) {
             </Button>
           ) : (
             <div className="space-y-2">
-              {fabricationCategories.length > 0 && itemCategory && (
+              {fabricationCategories.length > 0 && itemCategory ? (
                 <FabricationDimensionFields
                   row={{
                     fabricationCategory: itemCategory,
@@ -152,9 +169,18 @@ export default function FabricationReceiveDialog({ pr, onClose }) {
                   categories={fabricationCategories}
                   onUpdate={(patch) => setNewDimDraft(prev => ({ ...prev, ...patch }))}
                 />
+              ) : categoriesErrored ? (
+                <p className="text-xs text-red-500">Could not load dimension fields — try closing and reopening this dialog.</p>
+              ) : (
+                <p className="text-xs text-slate-400 italic">Loading dimension fields…</p>
               )}
               <div className="flex gap-2">
-                <Button size="sm" className="h-8 text-xs bg-slate-800 hover:bg-slate-900 text-white" onClick={addNewDimLine}>
+                <Button
+                  size="sm"
+                  className="h-8 text-xs bg-slate-800 hover:bg-slate-900 text-white"
+                  onClick={addNewDimLine}
+                  disabled={!newDimComplete}
+                >
                   <Plus className="h-3.5 w-3.5 mr-1" /> Add This Size
                 </Button>
                 <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => { setShowNewDimForm(false); setNewDimDraft({ bomDimensions: {} }); }}>
