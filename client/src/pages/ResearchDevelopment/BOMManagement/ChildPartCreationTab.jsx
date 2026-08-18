@@ -355,7 +355,7 @@ export default function ChildPartCreationTab({ product }) {
               </div>
             </div>
             <div>
-              <Label className="text-xs font-semibold text-slate-600 mb-1 block">Document</Label>
+              <Label className="text-xs font-semibold text-slate-600 mb-1 block">Design</Label>
               <div className="flex items-center gap-2">
                 {editForm.image ? (
                   isPdfUrl(editForm.image) ? (
