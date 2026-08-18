@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Package, Plus, Search, Filter, Eye, Edit2, Ban, RefreshCw, Trash2,
   CheckCircle2, Clock, XCircle, FileText, Layers, Settings2
@@ -420,6 +421,65 @@ export default function ProductMaster() {
               <Plus className="h-4 w-4" />
             </Button>
           )}
+        </div>
+      </div>
+    );
+  };
+
+  // Metrology/Material Grade: same "+"-addable options as renderDropdownWithAdd,
+  // but also deletable right from the dropdown (Radix Select instead of a plain
+  // <select> so a trash icon can sit inside each option row — native <option>
+  // elements can't hold nested interactive controls).
+  const renderDeletableDropdown = (label, field, fieldKey, options, state, setState, opts = {}) => {
+    const { required = true } = opts;
+    const handleDeleteOption = async (option) => {
+      if (!window.confirm(`Delete "${option.value}"? This removes it from the list for everyone.`)) return;
+      try {
+        await deleteMasterOption(option._id);
+        if (state[fieldKey] === option.value) setState(f => ({ ...f, [fieldKey]: '' }));
+        showSuccessToast('Option Deleted', `"${option.value}" removed`);
+      } catch (e) {
+        showSmartToast(e, 'Failed to delete option');
+      }
+    };
+    return (
+      <div className="min-w-0">
+        <label className="text-xs font-semibold text-slate-600 mb-1 block">{label}{required && ' *'}</label>
+        <div className="flex gap-2 min-w-0">
+          <Select value={state[fieldKey]} onValueChange={(v) => setState(f => ({ ...f, [fieldKey]: v }))}>
+            <SelectTrigger className="flex-1 min-w-0 h-9 text-sm bg-white">
+              {/* Explicit children so Radix shows plain text in the closed trigger
+                  instead of portaling the option row's delete icon into it. */}
+              <SelectValue placeholder="Select...">{state[fieldKey]}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {options?.map(o => (
+                <SelectItem key={o.value} value={o.value}>
+                  <span className="flex items-center justify-between w-full gap-2">
+                    <span className="truncate">{o.value}</span>
+                    <span
+                      role="button"
+                      tabIndex={-1}
+                      title={`Delete "${o.value}"`}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onPointerUp={(e) => e.stopPropagation()}
+                      onClick={(e) => { e.stopPropagation(); e.preventDefault(); handleDeleteOption(o); }}
+                      className="flex-shrink-0 p-0.5 rounded text-slate-300 hover:text-red-600 hover:bg-red-50 transition-colors"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </span>
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            type="button" size="icon" variant="outline"
+            onClick={() => setNewOptionModal({ open: true, field, value: '', parentValue: '' })}
+            className="flex-shrink-0 h-9 w-9 bg-white hover:bg-slate-50 text-slate-600"
+          >
+            <Plus className="h-4 w-4" />
+          </Button>
         </div>
       </div>
     );
@@ -952,8 +1012,8 @@ export default function ProductMaster() {
                 <label className="text-xs font-semibold text-slate-600 mb-1 block">Product Size</label>
                 <Input className="bg-white" placeholder="e.g. 500x300x200mm" value={form.size} onChange={e => setForm(f => ({ ...f, size: e.target.value }))} />
               </div>
-              {renderDropdownWithAdd('Metrology', 'Metrology', 'metrology', masterOptions.Metrology, form, setForm, { required: false })}
-              {renderDropdownWithAdd('Material Grade', 'MaterialGrade', 'materialGrade', masterOptions.MaterialGrade, form, setForm, { required: false })}
+              {renderDeletableDropdown('Metrology', 'Metrology', 'metrology', masterOptions.Metrology, form, setForm, { required: false })}
+              {renderDeletableDropdown('Material Grade', 'MaterialGrade', 'materialGrade', masterOptions.MaterialGrade, form, setForm, { required: false })}
             </div>
 
             <div className="p-4 bg-slate-50 rounded-lg border border-slate-100 space-y-4">
@@ -981,7 +1041,7 @@ export default function ProductMaster() {
             <div className="p-4 bg-slate-50 rounded-lg border border-slate-100 space-y-4">
               <p className="text-xs font-semibold text-slate-700">Power</p>
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                {renderDropdownWithAdd('Power Source', 'PowerSource', 'powerSource', masterOptions.PowerSource, form, setForm, { required: false })}
+                {renderDeletableDropdown('Power Source', 'PowerSource', 'powerSource', masterOptions.PowerSource, form, setForm, { required: false })}
                 <div>
                   <label className="text-xs font-semibold text-slate-600 mb-1 block">Power Required (HP)</label>
                   <Input
@@ -1101,8 +1161,8 @@ export default function ProductMaster() {
                 <label className="text-xs font-semibold text-slate-600 mb-1 block">Product Size</label>
                 <Input className="bg-white" placeholder="e.g. 500x300x200mm" value={editForm.size} onChange={e => setEditForm(f => ({ ...f, size: e.target.value }))} />
               </div>
-              {renderDropdownWithAdd('Metrology', 'Metrology', 'metrology', masterOptions.Metrology, editForm, setEditForm, { required: false })}
-              {renderDropdownWithAdd('Material Grade', 'MaterialGrade', 'materialGrade', masterOptions.MaterialGrade, editForm, setEditForm, { required: false })}
+              {renderDeletableDropdown('Metrology', 'Metrology', 'metrology', masterOptions.Metrology, editForm, setEditForm, { required: false })}
+              {renderDeletableDropdown('Material Grade', 'MaterialGrade', 'materialGrade', masterOptions.MaterialGrade, editForm, setEditForm, { required: false })}
             </div>
 
             <div className="p-4 bg-slate-50 rounded-lg border border-slate-100 space-y-4">
@@ -1130,7 +1190,7 @@ export default function ProductMaster() {
             <div className="p-4 bg-slate-50 rounded-lg border border-slate-100 space-y-4">
               <p className="text-xs font-semibold text-slate-700">Power</p>
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                {renderDropdownWithAdd('Power Source', 'PowerSource', 'powerSource', masterOptions.PowerSource, editForm, setEditForm, { required: false })}
+                {renderDeletableDropdown('Power Source', 'PowerSource', 'powerSource', masterOptions.PowerSource, editForm, setEditForm, { required: false })}
                 <div>
                   <label className="text-xs font-semibold text-slate-600 mb-1 block">Power Required (HP)</label>
                   <Input

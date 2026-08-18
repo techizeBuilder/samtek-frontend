@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import {
-  Loader2, Package, Plus, Layers,
+  Loader2, Package, Plus, Layers, Trash2,
   Image as ImageIcon
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
@@ -122,9 +122,58 @@ export default function SimpleInventoryForm({
     mutationFn: (data) => apiRequest('POST', '/api/rd/master-options', data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['rd-master-options'] }),
   });
+  const deleteInvOptionMutation = useMutation({
+    mutationFn: (id) => apiRequest('DELETE', `/api/inventory/master-options/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['inventory-master-options'] }),
+  });
+  const deleteRdOptionMutation = useMutation({
+    mutationFn: (id) => apiRequest('DELETE', `/api/rd/master-options/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['rd-master-options'] }),
+  });
 
   const INV_FIELD_KEY_MAP = { SourceType: 'sourceType', ItemSourceType: 'itemSourceType', ItemType: 'itemType', ItemProcessType: 'itemProcessType' };
   const RD_FIELD_KEY_MAP = { Metrology: 'metrology', MaterialGrade: 'materialGrade' };
+
+  // Deletes a dynamic ("+"-addable) dropdown option. Server-side rejects the
+  // delete (400) if any item still uses it, so this is safe to fire straight
+  // from the dropdown without a separate confirmation screen.
+  const deleteOption = async (scope, option, formKey) => {
+    if (!window.confirm(`Delete "${option.value}"? This removes it from the list for everyone.`)) return;
+    try {
+      if (scope === 'inventory') await deleteInvOptionMutation.mutateAsync(option._id);
+      else await deleteRdOptionMutation.mutateAsync(option._id);
+      if (formKey === 'itemCategories') {
+        if (formData.itemCategories.includes(option.value)) {
+          handleInputChange('itemCategories', formData.itemCategories.filter(c => c !== option.value));
+        }
+      } else if (formKey && formData[formKey] === option.value) {
+        handleInputChange(formKey, '');
+      }
+      toast({ title: 'Option Deleted', description: `"${option.value}" removed` });
+    } catch (e) {
+      toast({ title: 'Failed to delete option', description: e?.message || 'It may still be in use.', variant: 'destructive' });
+    }
+  };
+
+  // Renders a dropdown option's label with a delete icon that doesn't trigger
+  // selection — Radix Select fires its own select on the Item's onClick AND
+  // onPointerUp, so both need stopPropagation on this nested control.
+  const optionRow = (value, onDelete) => (
+    <span className="flex items-center justify-between w-full gap-2">
+      <span className="truncate">{value}</span>
+      <span
+        role="button"
+        tabIndex={-1}
+        title={`Delete "${value}"`}
+        onPointerDown={(e) => e.stopPropagation()}
+        onPointerUp={(e) => e.stopPropagation()}
+        onClick={(e) => { e.stopPropagation(); e.preventDefault(); onDelete(); }}
+        className="flex-shrink-0 p-0.5 rounded text-slate-300 hover:text-red-600 hover:bg-red-50 transition-colors"
+      >
+        <Trash2 className="h-3 w-3" />
+      </span>
+    </span>
+  );
 
   const handleAddOption = async () => {
     if (!newOptionModal.value.trim()) return;
@@ -384,8 +433,10 @@ export default function SimpleInventoryForm({
                 <Label className="text-sm font-medium text-gray-700">1. Item Type</Label>
                 <div className="flex gap-2 mt-1">
                   <Select value={formData.itemType} onValueChange={(v) => handleInputChange('itemType', v)}>
-                    <SelectTrigger className="flex-1"><SelectValue placeholder="e.g. Raw Material, Tool, Readymade Material, Assets" /></SelectTrigger>
-                    <SelectContent>{(invMasterOptions.ItemType || []).map(o => <SelectItem key={o.value} value={o.value}>{o.value}</SelectItem>)}</SelectContent>
+                    {/* Explicit children (not the default portaled-from-ItemText display) so the
+                        delete icon inside each option's row doesn't get cloned into the trigger. */}
+                    <SelectTrigger className="flex-1"><SelectValue placeholder="e.g. Raw Material, Tool, Readymade Material, Assets">{formData.itemType}</SelectValue></SelectTrigger>
+                    <SelectContent>{(invMasterOptions.ItemType || []).map(o => <SelectItem key={o.value} value={o.value}>{optionRow(o.value, () => deleteOption('inventory', o, 'itemType'))}</SelectItem>)}</SelectContent>
                   </Select>
                   <Button type="button" variant="outline" size="icon" onClick={() => setNewOptionModal({ open: true, scope: 'inventory', field: 'ItemType', value: '' })}><Plus className="h-4 w-4" /></Button>
                 </div>
@@ -394,10 +445,12 @@ export default function SimpleInventoryForm({
                 <Label className="text-sm font-medium text-gray-700">2. Item Process Type</Label>
                 <div className="flex gap-2 mt-1">
                   <Select value={formData.itemProcessType} onValueChange={handleItemProcessTypeChange}>
-                    <SelectTrigger className="flex-1"><SelectValue placeholder="e.g. Fabrication Item" /></SelectTrigger>
+                    <SelectTrigger className="flex-1"><SelectValue placeholder="e.g. Fabrication Item">{formData.itemProcessType}</SelectValue></SelectTrigger>
                     <SelectContent>
-                      {[FABRICATION_PROCESS_TYPE, ...(invMasterOptions.ItemProcessType || []).map(o => o.value).filter(v => v !== FABRICATION_PROCESS_TYPE)].map(v => (
-                        <SelectItem key={v} value={v}>{v}</SelectItem>
+                      {/* Fabrication Item is a fixed sentinel, not a master option — not deletable */}
+                      <SelectItem key={FABRICATION_PROCESS_TYPE} value={FABRICATION_PROCESS_TYPE}>{FABRICATION_PROCESS_TYPE}</SelectItem>
+                      {(invMasterOptions.ItemProcessType || []).filter(o => o.value !== FABRICATION_PROCESS_TYPE).map(o => (
+                        <SelectItem key={o.value} value={o.value}>{optionRow(o.value, () => deleteOption('inventory', o, 'itemProcessType'))}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -459,16 +512,27 @@ export default function SimpleInventoryForm({
                 ) : invMasterOptions.ItemCategory.map(o => {
                   const selected = formData.itemCategories.includes(o.value);
                   return (
-                    <button
+                    <span
                       key={o.value}
-                      type="button"
-                      onClick={() => handleInputChange('itemCategories', selected
-                        ? formData.itemCategories.filter(c => c !== o.value)
-                        : [...formData.itemCategories, o.value])}
-                      className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${selected ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300'}`}
+                      className={`inline-flex items-center gap-1 pl-3 pr-1.5 py-1.5 rounded-full text-xs font-semibold border transition-colors ${selected ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300'}`}
                     >
-                      {o.value}
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => handleInputChange('itemCategories', selected
+                          ? formData.itemCategories.filter(c => c !== o.value)
+                          : [...formData.itemCategories, o.value])}
+                      >
+                        {o.value}
+                      </button>
+                      <button
+                        type="button"
+                        title={`Delete "${o.value}"`}
+                        onClick={() => deleteOption('inventory', o, 'itemCategories')}
+                        className={`flex-shrink-0 p-0.5 rounded transition-colors ${selected ? 'text-blue-100 hover:text-white' : 'text-slate-300 hover:text-red-600'}`}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    </span>
                   );
                 })}
               </div>
@@ -478,8 +542,8 @@ export default function SimpleInventoryForm({
                 <Label className="text-sm font-medium text-gray-700">8. Source Type</Label>
                 <div className="flex gap-2 mt-1">
                   <Select value={formData.sourceType} onValueChange={(v) => handleInputChange('sourceType', v)}>
-                    <SelectTrigger className="flex-1"><SelectValue placeholder="Select" /></SelectTrigger>
-                    <SelectContent>{(invMasterOptions.SourceType || []).map(o => <SelectItem key={o.value} value={o.value}>{o.value}</SelectItem>)}</SelectContent>
+                    <SelectTrigger className="flex-1"><SelectValue placeholder="Select">{formData.sourceType}</SelectValue></SelectTrigger>
+                    <SelectContent>{(invMasterOptions.SourceType || []).map(o => <SelectItem key={o.value} value={o.value}>{optionRow(o.value, () => deleteOption('inventory', o, 'sourceType'))}</SelectItem>)}</SelectContent>
                   </Select>
                   <Button type="button" variant="outline" size="icon" onClick={() => setNewOptionModal({ open: true, scope: 'inventory', field: 'SourceType', value: '' })}><Plus className="h-4 w-4" /></Button>
                 </div>
@@ -488,8 +552,8 @@ export default function SimpleInventoryForm({
                 <Label className="text-sm font-medium text-gray-700">9. Item Source Type</Label>
                 <div className="flex gap-2 mt-1">
                   <Select value={formData.itemSourceType} onValueChange={(v) => handleInputChange('itemSourceType', v)}>
-                    <SelectTrigger className="flex-1"><SelectValue placeholder="Select" /></SelectTrigger>
-                    <SelectContent>{(invMasterOptions.ItemSourceType || []).map(o => <SelectItem key={o.value} value={o.value}>{o.value}</SelectItem>)}</SelectContent>
+                    <SelectTrigger className="flex-1"><SelectValue placeholder="Select">{formData.itemSourceType}</SelectValue></SelectTrigger>
+                    <SelectContent>{(invMasterOptions.ItemSourceType || []).map(o => <SelectItem key={o.value} value={o.value}>{optionRow(o.value, () => deleteOption('inventory', o, 'itemSourceType'))}</SelectItem>)}</SelectContent>
                   </Select>
                   <Button type="button" variant="outline" size="icon" onClick={() => setNewOptionModal({ open: true, scope: 'inventory', field: 'ItemSourceType', value: '' })}><Plus className="h-4 w-4" /></Button>
                 </div>
@@ -504,8 +568,8 @@ export default function SimpleInventoryForm({
                 <Label className="text-sm font-medium text-gray-700">10. Metrology</Label>
                 <div className="flex gap-2 mt-1">
                   <Select value={formData.metrology} onValueChange={(v) => handleInputChange('metrology', v)}>
-                    <SelectTrigger className="flex-1"><SelectValue placeholder="Select" /></SelectTrigger>
-                    <SelectContent>{(rdMasterOptions.Metrology || []).map(o => <SelectItem key={o.value} value={o.value}>{o.value}</SelectItem>)}</SelectContent>
+                    <SelectTrigger className="flex-1"><SelectValue placeholder="Select">{formData.metrology}</SelectValue></SelectTrigger>
+                    <SelectContent>{(rdMasterOptions.Metrology || []).map(o => <SelectItem key={o.value} value={o.value}>{optionRow(o.value, () => deleteOption('rd', o, 'metrology'))}</SelectItem>)}</SelectContent>
                   </Select>
                   <Button type="button" variant="outline" size="icon" onClick={() => setNewOptionModal({ open: true, scope: 'rd', field: 'Metrology', value: '' })}><Plus className="h-4 w-4" /></Button>
                 </div>
@@ -514,8 +578,8 @@ export default function SimpleInventoryForm({
                 <Label className="text-sm font-medium text-gray-700">11. Material Grade</Label>
                 <div className="flex gap-2 mt-1">
                   <Select value={formData.materialGrade} onValueChange={(v) => handleInputChange('materialGrade', v)}>
-                    <SelectTrigger className="flex-1"><SelectValue placeholder="Select" /></SelectTrigger>
-                    <SelectContent>{(rdMasterOptions.MaterialGrade || []).map(o => <SelectItem key={o.value} value={o.value}>{o.value}</SelectItem>)}</SelectContent>
+                    <SelectTrigger className="flex-1"><SelectValue placeholder="Select">{formData.materialGrade}</SelectValue></SelectTrigger>
+                    <SelectContent>{(rdMasterOptions.MaterialGrade || []).map(o => <SelectItem key={o.value} value={o.value}>{optionRow(o.value, () => deleteOption('rd', o, 'materialGrade'))}</SelectItem>)}</SelectContent>
                   </Select>
                   <Button type="button" variant="outline" size="icon" onClick={() => setNewOptionModal({ open: true, scope: 'rd', field: 'MaterialGrade', value: '' })}><Plus className="h-4 w-4" /></Button>
                 </div>

@@ -8,7 +8,8 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Cog, Plus, Search, Eye, Edit2, Ban, RefreshCw, Loader2, ImageIcon } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Cog, Plus, Search, Eye, Edit2, Ban, RefreshCw, Loader2, ImageIcon, Trash2 } from 'lucide-react';
 import { showSuccessToast, showSmartToast } from '@/lib/toast-utils';
 import { config } from '@/config/environment';
 
@@ -60,6 +61,10 @@ export default function MotorMaster() {
 
   const addOptionMutation = useMutation({
     mutationFn: (data) => apiRequest('POST', '/api/rd/master-options', data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['rd-master-options'] }),
+  });
+  const deleteOptionMutation = useMutation({
+    mutationFn: (id) => apiRequest('DELETE', `/api/rd/master-options/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['rd-master-options'] }),
   });
 
@@ -237,23 +242,57 @@ export default function MotorMaster() {
     }
   };
 
+  const handleDeleteOption = async (option, fieldKey, state, setState) => {
+    if (!window.confirm(`Delete "${option.value}"? This removes it from the list for everyone.`)) return;
+    try {
+      await deleteOptionMutation.mutateAsync(option._id);
+      if (state[fieldKey] === option.value) setState(f => ({ ...f, [fieldKey]: '' }));
+      showSuccessToast('Option Deleted', `"${option.value}" removed`);
+    } catch (e) {
+      showSmartToast(e, 'Failed to delete option');
+    }
+  };
+
+  // Radix Select instead of a plain <select> so a trash icon can sit inside
+  // each option row — native <option> elements can't hold nested controls.
   const renderCascadeSelect = (label, field, fieldKey, options, state, setState, opts = {}) => {
     const { disabled = false, disabledHint = 'Select', parentValueForAdd = '', resetKeys = [] } = opts;
     return (
       <div>
         <Label className="text-xs font-semibold text-slate-600 mb-1 block">{label}</Label>
         <div className="flex gap-2">
-          <select
-            className="flex-1 min-w-0 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white disabled:bg-slate-100 disabled:text-slate-400"
+          <Select
             value={state[fieldKey]} disabled={disabled}
-            onChange={e => {
-              const val = e.target.value;
+            onValueChange={(val) => {
               setState(f => { const next = { ...f, [fieldKey]: val }; resetKeys.forEach(k => { next[k] = ''; }); return next; });
             }}
           >
-            <option value="">{disabled ? disabledHint : 'Select...'}</option>
-            {options.map(o => <option key={o.value} value={o.value}>{o.value}</option>)}
-          </select>
+            <SelectTrigger className="flex-1 min-w-0 h-9 text-sm bg-white">
+              {/* Explicit children so Radix shows plain text in the closed trigger
+                  instead of portaling the option row's delete icon into it. */}
+              <SelectValue placeholder={disabled ? disabledHint : 'Select...'}>{state[fieldKey]}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {options.map(o => (
+                <SelectItem key={o.value} value={o.value}>
+                  <span className="flex items-center justify-between w-full gap-2">
+                    <span className="truncate">{o.value}</span>
+                    <span
+                      role="button"
+                      tabIndex={-1}
+                      title={`Delete "${o.value}"`}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onPointerUp={(e) => e.stopPropagation()}
+                      onClick={(e) => { e.stopPropagation(); e.preventDefault(); handleDeleteOption(o, fieldKey, state, setState); }}
+                      className="flex-shrink-0 p-0.5 rounded text-slate-300 hover:text-red-600 hover:bg-red-50 transition-colors"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </span>
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Button type="button" size="icon" variant="outline" disabled={disabled}
             onClick={() => setNewOptionModal({ open: true, field, value: '', parentValue: parentValueForAdd })}
             className="flex-shrink-0 h-9 w-9 bg-white">

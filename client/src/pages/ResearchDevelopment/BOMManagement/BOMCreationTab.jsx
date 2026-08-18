@@ -576,11 +576,9 @@ export default function BOMCreationTab({ product }) {
                   <p className="text-sm font-bold text-blue-800">₹{totalBOMCost.toLocaleString()}</p>
                 </div>
               </div>
-              {!selectedMachine?.firstBuiltAt && (
-                <p className="text-[11px] text-slate-400 mt-3">
-                  This product hasn't completed a production run yet — Standard Cost / MRP / Sale Price will start using this total once it's first built.
-                </p>
-              )}
+              <p className="text-[11px] text-slate-400 mt-3">
+                This product's Standard Cost / MRP / Sale Price stay in sync with this Total BOM Cost automatically — recalculated every time the BOM changes (materials, production cost/expense, etc.), not just after a production build.
+              </p>
             </CardContent>
           </Card>
 
