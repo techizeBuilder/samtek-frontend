@@ -1,25 +1,29 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Plus } from 'lucide-react';
 import { ShapeDiagram } from './FabricationShapeIcons';
 
 const LENGTH_UNIT_FACTORS = { mm: 1, cm: 10, inch: 25.4, m: 1000 };
 const LENGTH_UNITS = Object.keys(LENGTH_UNIT_FACTORS);
 
-// Short display labels for categories that share a tile group (e.g. Channel
-// -> GOST/UPN) — used for the sub-type dropdown shown inside this modal.
-const SUB_TYPE_GROUP_LABEL = { square_tubing: 'Tube Shape', beam: 'Beam Type', channel: 'Channel Type', angle: 'Angle Type' };
-const SUB_TYPE_OPTION_LABEL = {
-  hss_square: 'Square', hss_rectangular: 'Rectangular',
-  beam_ipn: 'IPN', beam_ipe: 'IPE', beam_hea: 'HEA (IPBL)', beam_heb: 'HEB (IPB)',
-  channel_gost: 'GOST', channel_upn: 'UPN',
-  equal_angle: 'Equal', unequal_angle: 'Unequal',
+// Categories whose `wallThickness` field can alternatively be derived from
+// an outer + inner measurement (t = (outer - inner) / 2) instead of typed
+// directly — an optional toggle, off by default (default behavior is
+// unchanged: a plain Wall Thickness input).
+const THICKNESS_DERIVATION = {
+  pipe_circular: { outerKey: 'od', innerLabel: 'Inside Diameter (ID)', toggleLabel: 'Calculate thickness from OD & ID', formula: 't = (OD − ID) / 2' },
+  hss_rectangular: { outerKey: 'width', innerLabel: 'Inner Width (A₁)', toggleLabel: 'Calculate thickness from outer & inner width', formula: 't = (A − A₁) / 2' },
 };
+
+// GOST channel designations are bare numbers ('5', '6.5'...) with no family
+// prefix (unlike UPN/IPN/IPE/HEA/HEB, which already embed one) — prefixed
+// here purely for a readable label when merged into one Designation list.
+const displayDesignation = (categoryKey, designation) => (categoryKey === 'channel_gost' ? `GOST ${designation}` : designation);
 
 const emptyDraft = () => ({ values: {}, fieldUnits: {}, designation: '' });
 
@@ -28,55 +32,107 @@ const emptyDraft = () => ({ values: {}, fieldUnits: {}, designation: '' });
 // once the item's category is already locked in). Shows the shape diagram,
 // Material/Density, the shape's dimension fields (each with its own length
 // unit), Pieces, Price Per kg and a live weight preview, "By Length" only
-// (no By Weight toggle, per requirement). Saving appends one dimension row
-// and hands the resolved category key + density back up to the caller.
+// (no By Weight toggle). No shape ever shows a separate "type" picker —
+// formula-based shapes (Pipe/Square Tubing/Angle) always use their more
+// general field set (see FABRICATION_CATEGORY_GROUPS's comment for why
+// that's lossless), and lookup shapes (Beam/Channel) merge every family's
+// designation table into one flat Designation dropdown instead. Saving
+// appends one dimension row and hands the resolved category key + density
+// back up to the caller.
 export default function DimensionCalculatorModal({
-  open, onClose, group, categories = [], materials = [], defaultDensityKgM3 = 7850,
+  open, onClose, group, categories = [], defaultDensityKgM3 = 7850,
   lockedCategoryKey = null, initialDensity = null, onSave,
 }) {
-  const groupKeys = group?.keys || [];
-  const [subKey, setSubKey] = useState(lockedCategoryKey || groupKeys[0] || '');
-  const [material, setMaterial] = useState('MS');
+  const qc = useQueryClient();
+  // If the item's category is already locked (adding another size to an
+  // existing item), only that one family/key is selectable — a catalog
+  // item's category is a single value, so a second Beam dimension can't
+  // switch from IPE to HEA.
+  const effectiveKeys = lockedCategoryKey ? [lockedCategoryKey] : (group?.keys || []);
+
+  const [subKey, setSubKey] = useState(effectiveKeys[0] || '');
+  const [material, setMaterial] = useState('');
   const [densityKgM3, setDensityKgM3] = useState(defaultDensityKgM3);
   const [densityUnit, setDensityUnit] = useState('kg/m3');
   const [draft, setDraft] = useState(emptyDraft());
+  const [deriveThickness, setDeriveThickness] = useState(false);
+  const [innerValue, setInnerValue] = useState('');
   const [pieces, setPieces] = useState(1);
   const [pricePerKg, setPricePerKg] = useState('');
   const [weight, setWeight] = useState(null);
   const [error, setError] = useState('');
   const [calculating, setCalculating] = useState(false);
 
-  const resetAll = () => {
-    const initKey = lockedCategoryKey || groupKeys[0] || '';
-    setSubKey(initKey);
+  const [addMaterialOpen, setAddMaterialOpen] = useState(false);
+  const [newMatName, setNewMatName] = useState('');
+  const [newMatDensity, setNewMatDensity] = useState('');
+  const [newMatUnit, setNewMatUnit] = useState('kg/m3');
+  const [addMatError, setAddMatError] = useState('');
+  const [addingMat, setAddingMat] = useState(false);
+
+  const { data: materialsResponse } = useQuery({
+    queryKey: ['fabrication-materials'],
+    queryFn: () => apiRequest('GET', '/api/fabrication-master/materials'),
+    enabled: open,
+  });
+  const materials = materialsResponse?.data || [];
+
+  const applyDensityDefaults = (materialsList) => {
     if (initialDensity?.value) {
+      const canonical = initialDensity.unit === 'g/cm3' ? Number(initialDensity.value) * 1000 : Number(initialDensity.value);
       setDensityUnit(initialDensity.unit || 'kg/m3');
-      setDensityKgM3(initialDensity.unit === 'g/cm3' ? Number(initialDensity.value) * 1000 : Number(initialDensity.value));
-      const fromTable = materials.find((m) => Math.abs(m.densityKgM3 - (initialDensity.unit === 'g/cm3' ? Number(initialDensity.value) * 1000 : Number(initialDensity.value))) < 0.5);
-      setMaterial(fromTable?.key || 'Custom');
+      setDensityKgM3(canonical);
+      const found = materialsList.find((m) => Math.abs(m.densityKgM3 - canonical) < 0.5);
+      setMaterial(found?.key || '');
     } else {
-      setMaterial('MS');
-      setDensityKgM3(defaultDensityKgM3);
+      const ms = materialsList.find((m) => m.key === 'MS');
+      setMaterial(ms?.key || '');
+      setDensityKgM3(ms?.densityKgM3 || defaultDensityKgM3);
       setDensityUnit('kg/m3');
     }
+  };
+
+  const resetAll = () => {
+    setSubKey(effectiveKeys[0] || '');
+    applyDensityDefaults(materials);
     setDraft(emptyDraft());
+    setDeriveThickness(false);
+    setInnerValue('');
     setPieces(1);
     setPricePerKg('');
     setWeight(null);
     setError('');
+    setAddMaterialOpen(false);
+    setAddMatError('');
   };
 
   // Re-seed every time the modal is opened for a (possibly different) group.
   useEffect(() => { if (open) resetAll(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [open, group?.key]);
+  // Self-heal the Material/Density default once the materials list finishes
+  // its first load (it's [] for an instant on open) — only while nothing's
+  // been picked yet, so it never clobbers an in-progress edit.
+  useEffect(() => {
+    if (open && !material && materials.length > 0) applyDensityDefaults(materials);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [materials.length, open]);
 
   const activeCategory = useMemo(() => categories.find((c) => c.key === subKey) || null, [categories, subKey]);
+  const isLookupGroup = activeCategory?.calcType === 'lookup';
 
-  const { data: sectionResponse } = useQuery({
-    queryKey: ['fabrication-sections', activeCategory?.lookupFamily],
-    queryFn: () => apiRequest('GET', `/api/fabrication-master/sections/${activeCategory.lookupFamily}`),
-    enabled: !!activeCategory?.lookupFamily && open,
+  const { data: combinedSectionsResponse } = useQuery({
+    queryKey: ['fabrication-sections-combined', effectiveKeys.join(',')],
+    queryFn: async () => {
+      const perFamily = await Promise.all(effectiveKeys.map(async (key) => {
+        const cat = categories.find((c) => c.key === key);
+        if (!cat?.lookupFamily) return [];
+        const res = await apiRequest('GET', `/api/fabrication-master/sections/${cat.lookupFamily}`);
+        return (res.data || []).map((o) => ({ ...o, categoryKey: key }));
+      }));
+      return perFamily.flat();
+    },
+    enabled: open && isLookupGroup && effectiveKeys.length > 0,
   });
-  const sectionOptions = sectionResponse?.data || [];
+  const combinedSections = combinedSectionsResponse || [];
 
   const handleMaterialChange = (key) => {
     setMaterial(key);
@@ -89,12 +145,43 @@ export default function DimensionCalculatorModal({
     const num = Number(raw);
     if (raw === '' || isNaN(num)) return;
     setDensityKgM3(densityUnit === 'g/cm3' ? num * 1000 : num);
-    setMaterial('Custom');
+  };
+
+  const handleAddMaterial = async () => {
+    if (!newMatName.trim() || newMatDensity === '') return;
+    setAddingMat(true);
+    setAddMatError('');
+    try {
+      const densityKgM3Val = newMatUnit === 'g/cm3' ? Number(newMatDensity) * 1000 : Number(newMatDensity);
+      const res = await apiRequest('POST', '/api/fabrication-master/materials', { name: newMatName.trim(), densityKgM3: densityKgM3Val });
+      await qc.invalidateQueries({ queryKey: ['fabrication-materials'] });
+      setMaterial(res.data.key);
+      setDensityKgM3(res.data.densityKgM3);
+      setDensityUnit('kg/m3');
+      setAddMaterialOpen(false);
+      setNewMatName(''); setNewMatDensity(''); setNewMatUnit('kg/m3');
+    } catch (e) {
+      setAddMatError(e?.response?.data?.message || 'Could not add material');
+    } finally {
+      setAddingMat(false);
+    }
   };
 
   const setFieldValue = (key, value) => setDraft((d) => ({ ...d, values: { ...d.values, [key]: value } }));
   const setFieldUnit = (key, unit) => setDraft((d) => ({ ...d, fieldUnits: { ...d.fieldUnits, [key]: unit } }));
   const fieldUnit = (key) => draft.fieldUnits[key] || 'mm';
+
+  // Auto-compute Wall Thickness from outer/inner measurement while deriving.
+  const derivCfg = THICKNESS_DERIVATION[subKey];
+  useEffect(() => {
+    if (!deriveThickness || !derivCfg) return;
+    const outer = Number(draft.values[derivCfg.outerKey]);
+    const inner = Number(innerValue);
+    if (!outer || !inner || inner >= outer) { setFieldValue('wallThickness', ''); return; }
+    setFieldUnit('wallThickness', fieldUnit(derivCfg.outerKey));
+    setFieldValue('wallThickness', String(+(((outer - inner) / 2).toFixed(3))));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deriveThickness, subKey, derivCfg, draft.values[derivCfg?.outerKey], innerValue, draft.fieldUnits[derivCfg?.outerKey]]);
 
   // Convert every entered field to millimetres (what the weight formulas expect).
   const valuesInMm = useMemo(() => {
@@ -160,6 +247,37 @@ export default function DimensionCalculatorModal({
     });
   };
 
+  const renderNumberField = (f) => (
+    <div key={f.key}>
+      <Label className="text-[10px] text-slate-500 uppercase">{f.label}</Label>
+      <div className="flex gap-1.5 mt-1">
+        <Input type="number" min="0" className="bg-white" placeholder="0"
+          value={draft.values[f.key] ?? ''} onChange={(e) => setFieldValue(f.key, e.target.value)} />
+        <select className="w-20 border border-slate-200 rounded-lg text-sm bg-white" value={fieldUnit(f.key)} onChange={(e) => setFieldUnit(f.key, e.target.value)}>
+          {LENGTH_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
+        </select>
+      </div>
+    </div>
+  );
+
+  const renderThicknessField = (f) => (
+    <div key={f.key} className="col-span-2 space-y-1.5 border-t border-slate-200 pt-2 mt-0.5">
+      <label className="flex items-center gap-1.5 text-[10px] text-slate-500">
+        <input type="checkbox" checked={deriveThickness} onChange={(e) => { setDeriveThickness(e.target.checked); setInnerValue(''); }} />
+        {derivCfg.toggleLabel} — <span className="font-mono">{derivCfg.formula}</span>
+      </label>
+      {deriveThickness ? (
+        <div className="max-w-[calc(50%-0.375rem)]">
+          <Label className="text-[10px] text-slate-500 uppercase">{derivCfg.innerLabel}</Label>
+          <Input type="number" min="0" className="mt-1 bg-white" placeholder="0" value={innerValue} onChange={(e) => setInnerValue(e.target.value)} />
+          {draft.values.wallThickness && <p className="text-[10px] text-slate-500 mt-1">Thickness = {draft.values.wallThickness} {fieldUnit('wallThickness')}</p>}
+        </div>
+      ) : (
+        <div className="max-w-[calc(50%-0.375rem)]">{renderNumberField(f)}</div>
+      )}
+    </div>
+  );
+
   const renderFields = () => {
     if (!activeCategory) return null;
     if (activeCategory.calcType === 'lookup') {
@@ -168,9 +286,18 @@ export default function DimensionCalculatorModal({
           <div>
             <Label className="text-[10px] text-slate-500 uppercase">Designation</Label>
             <select className="w-full mt-1 border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white"
-              value={draft.designation} onChange={(e) => setDraft((d) => ({ ...d, designation: e.target.value }))}>
+              value={draft.designation ? `${subKey}::${draft.designation}` : ''}
+              onChange={(e) => {
+                const [key, designation] = e.target.value.split('::');
+                setSubKey(key);
+                setDraft((d) => ({ ...d, designation }));
+              }}>
               <option value="">Select size...</option>
-              {sectionOptions.map((o) => <option key={o.designation} value={o.designation}>{o.designation} ({o.weightPerMeterKg} kg/m)</option>)}
+              {combinedSections.map((o) => (
+                <option key={`${o.categoryKey}::${o.designation}`} value={`${o.categoryKey}::${o.designation}`}>
+                  {displayDesignation(o.categoryKey, o.designation)} ({o.weightPerMeterKg} kg/m)
+                </option>
+              ))}
             </select>
           </div>
           <div>
@@ -188,18 +315,7 @@ export default function DimensionCalculatorModal({
     }
     return (
       <div className="grid grid-cols-2 gap-3">
-        {activeCategory.fields.map((f) => (
-          <div key={f.key}>
-            <Label className="text-[10px] text-slate-500 uppercase">{f.label}</Label>
-            <div className="flex gap-1.5 mt-1">
-              <Input type="number" min="0" className="bg-white" placeholder="0"
-                value={draft.values[f.key] ?? ''} onChange={(e) => setFieldValue(f.key, e.target.value)} />
-              <select className="w-20 border border-slate-200 rounded-lg text-sm bg-white" value={fieldUnit(f.key)} onChange={(e) => setFieldUnit(f.key, e.target.value)}>
-                {LENGTH_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
-              </select>
-            </div>
-          </div>
-        ))}
+        {activeCategory.fields.map((f) => (f.key === 'wallThickness' && derivCfg ? renderThicknessField(f) : renderNumberField(f)))}
       </div>
     );
   };
@@ -218,10 +334,34 @@ export default function DimensionCalculatorModal({
           <div className="space-y-3">
             <div>
               <Label className="text-xs font-semibold text-slate-600 mb-1 block">Material</Label>
-              <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white" value={material} onChange={(e) => handleMaterialChange(e.target.value)}>
-                {materials.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
-                <option value="Custom">Custom</option>
-              </select>
+              <div className="flex gap-2">
+                <select className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white" value={material} onChange={(e) => handleMaterialChange(e.target.value)}>
+                  <option value="">Select...</option>
+                  {materials.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
+                </select>
+                <Button type="button" size="icon" variant="outline" onClick={() => setAddMaterialOpen((v) => !v)} title="Add material">
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+              {addMaterialOpen && (
+                <div className="border border-blue-200 bg-blue-50/50 rounded-lg p-2.5 space-y-2 mt-1.5">
+                  <Input placeholder="Material name (e.g. SS 316L)" className="bg-white" value={newMatName} onChange={(e) => setNewMatName(e.target.value)} />
+                  <div className="flex gap-1.5">
+                    <Input type="number" min="0" placeholder="Density" className="bg-white" value={newMatDensity} onChange={(e) => setNewMatDensity(e.target.value)} />
+                    <select className="w-24 border border-slate-200 rounded-lg text-sm bg-white" value={newMatUnit} onChange={(e) => setNewMatUnit(e.target.value)}>
+                      <option value="kg/m3">kg/m³</option>
+                      <option value="g/cm3">g/cm³</option>
+                    </select>
+                  </div>
+                  {addMatError && <p className="text-[10px] text-red-500">{addMatError}</p>}
+                  <div className="flex justify-end gap-1.5">
+                    <Button type="button" size="sm" variant="outline" onClick={() => { setAddMaterialOpen(false); setAddMatError(''); }}>Cancel</Button>
+                    <Button type="button" size="sm" onClick={handleAddMaterial} disabled={addingMat || !newMatName.trim() || newMatDensity === ''}>
+                      {addingMat ? 'Adding...' : 'Add'}
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
@@ -244,20 +384,6 @@ export default function DimensionCalculatorModal({
 
         <div className="p-3 border border-slate-200 rounded-lg bg-slate-50/50 space-y-3">
           <Label className="text-xs font-semibold text-slate-600 block">Dimension</Label>
-
-          {groupKeys.length > 1 && (
-            <div>
-              <Label className="text-[10px] text-slate-500 uppercase">{SUB_TYPE_GROUP_LABEL[group.key] || 'Type'}</Label>
-              <select
-                className="w-full mt-1 border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400"
-                value={subKey}
-                disabled={!!lockedCategoryKey}
-                onChange={(e) => { setSubKey(e.target.value); setDraft(emptyDraft()); setWeight(null); }}
-              >
-                {groupKeys.map((k) => <option key={k} value={k}>{SUB_TYPE_OPTION_LABEL[k] || k}</option>)}
-              </select>
-            </div>
-          )}
 
           {renderFields()}
 
