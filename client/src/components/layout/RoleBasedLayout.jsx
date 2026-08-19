@@ -23,22 +23,33 @@ const RoleBasedLayout = ({ children, requiredRole = null }) => {
     return <MainLayout>{children}</MainLayout>;
   }
 
-  // Check role restriction if specified - Case-insensitive role checking
+  // Check role restriction if specified - Case-insensitive role checking.
+  // requiredRole may be a single role string or an array of role strings
+  // (e.g. ['Superadmin', 'Accounts']) — normalize to an array up front so the
+  // department expansion below (treating 'accounts' as also covering
+  // 'accounts head'/'accounts employee' etc.) applies the same way regardless
+  // of which form the route declared. Previously this expansion only ran for
+  // the string form, so any route using the array form silently excluded every
+  // department sub-role (e.g. an 'Accounts Head' user got locked out of a page
+  // declared as requiredRole={['Superadmin', 'Accounts']}).
   const userRoleLower = (user.role || '').toLowerCase().trim();
-  const reqRoleLower = typeof requiredRole === 'string' ? requiredRole.toLowerCase().trim() : '';
+  const requiredRolesLower = (requiredRole == null ? [] : Array.isArray(requiredRole) ? requiredRole : [requiredRole])
+    .map(r => r.toLowerCase().trim());
+
+  const DEPARTMENT_SUB_ROLES = {
+    sales: ['sales', 'sales employee', 'sales head', 'sales person', 'salesman'],
+    dispatch: ['dispatch', 'dispatch employee', 'dispatch head'],
+    production: ['production', 'production employee', 'production head'],
+    packing: ['packing', 'packing employee', 'packing head'],
+    accounts: ['accounts', 'account employee', 'accounts employee', 'accounts head'],
+  };
 
   const isAuthorized = !requiredRole ||
     userRoleLower === 'super user' ||
     userRoleLower === 'superadmin' ||
-    (Array.isArray(requiredRole)
-      ? requiredRole.map(r => r.toLowerCase().trim()).includes(userRoleLower)
-      : userRoleLower === reqRoleLower) ||
-    (reqRoleLower === 'sales' && (userRoleLower === 'sales employee' || userRoleLower === 'sales head' || userRoleLower === 'sales person' || userRoleLower === 'salesman' || userRoleLower === 'sales')) ||
-    (reqRoleLower === 'dispatch' && (userRoleLower === 'dispatch employee' || userRoleLower === 'dispatch head' || userRoleLower === 'dispatch')) ||
-    (reqRoleLower === 'production' && (userRoleLower === 'production employee' || userRoleLower === 'production head' || userRoleLower === 'production')) ||
-    (reqRoleLower === 'packing' && (userRoleLower === 'packing employee' || userRoleLower === 'packing head' || userRoleLower === 'packing')) ||
-    (reqRoleLower === 'accounts' && (userRoleLower === 'account employee' || userRoleLower === 'accounts employee' || userRoleLower === 'accounts head' || userRoleLower === 'accounts')) ||
-    (reqRoleLower === 'employee' && (userRoleLower.endsWith('employee') || userRoleLower === 'employee'));
+    requiredRolesLower.includes(userRoleLower) ||
+    requiredRolesLower.some(r => DEPARTMENT_SUB_ROLES[r]?.includes(userRoleLower)) ||
+    (requiredRolesLower.includes('employee') && userRoleLower.endsWith('employee'));
 
   if (!isAuthorized) {
     return <AccessDenied reason="role" requiredRole={requiredRole} />;

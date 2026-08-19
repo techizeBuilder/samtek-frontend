@@ -15,7 +15,7 @@ export function AccessDenied({ reason = 'role', requiredRole = null }) {
           <p className="text-gray-600">
             {reason === 'permission'
               ? "You don't have permission to access this page. Contact your admin if you need access."
-              : <>You don't have permission to access this page. Required role: {requiredRole}</>}
+              : <>You don't have permission to access this page. Required role: {Array.isArray(requiredRole) ? requiredRole.join(' or ') : requiredRole}</>}
           </p>
         </div>
       </div>
