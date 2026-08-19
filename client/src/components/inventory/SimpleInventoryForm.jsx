@@ -58,7 +58,8 @@ export default function SimpleInventoryForm({
     // Auto-pricing bookkeeping (see itemPricingService.js) — 'Manual' until a
     // real BOM build or purchase invoice resolves a cost for this item
     costSource: 'Manual', costResolvedAt: null, costResolutionIssue: null,
-    internalManufacturing: false, purchase: true, purchaseUnitType: '', purchaseUnit: '', internalNotes: '', image: '',
+    internalManufacturing: false, purchase: true, purchaseUnitType: '', purchaseUnit: '',
+    receiveUnitType: '', receiveUnit: '', internalNotes: '', image: '',
     // Optional Product Master attributes — auto-filled when Item Code matches, editable after
     brand: '', metrology: '', materialGrade: '', modelNumber: '', size: '', unitWeightValue: '', unitWeightUnitType: '', unitWeightUnit: '',
     specifications: [], applications: [],
@@ -86,6 +87,13 @@ export default function SimpleInventoryForm({
     const units = selectedUnitType?.units || [];
     return formData.purchaseUnit && !units.includes(formData.purchaseUnit) ? [formData.purchaseUnit, ...units] : units;
   }, [formData.purchaseUnitType, formData.purchaseUnit, unitTypes]);
+
+  const availableReceiveUnits = React.useMemo(() => {
+    if (!formData.receiveUnitType) return [];
+    const selectedUnitType = unitTypes.find(ut => ut.name === formData.receiveUnitType);
+    const units = selectedUnitType?.units || [];
+    return formData.receiveUnit && !units.includes(formData.receiveUnit) ? [formData.receiveUnit, ...units] : units;
+  }, [formData.receiveUnitType, formData.receiveUnit, unitTypes]);
 
   const availableWeightUnits = React.useMemo(() => {
     if (!formData.unitWeightUnitType) return [];
@@ -221,9 +229,12 @@ export default function SimpleInventoryForm({
     }
   };
 
-  // Autofills Item Name/Code and the dimension variants (with weight, each
-  // starting at subStock: 0 — real stock only arrives later via Purchase)
-  // from the selected Fabrication Master catalog entry.
+  // Autofills Item Name/Code, the dimension variants (with weight, each
+  // starting at subStock: 0 — real stock only arrives later via Purchase),
+  // and Purchase/Used/Receive Unit from the selected Fabrication Master
+  // catalog entry — same auto-fill-but-still-editable behavior as the
+  // dimensions. Falls back to whatever was already in the form when the
+  // catalog entry doesn't have a given unit set.
   const handleFabricationSelect = (fabItem) => {
     setFormData(prev => ({
       ...prev,
@@ -240,6 +251,12 @@ export default function SimpleInventoryForm({
         weightPerPieceKg: d.weightPerPieceKg ?? null,
         subStock: 0,
       })),
+      purchaseUnitType: fabItem.purchaseUnitType || prev.purchaseUnitType,
+      purchaseUnit: fabItem.purchaseUnit || prev.purchaseUnit,
+      unitType: fabItem.usedUnitType || prev.unitType,
+      unit: fabItem.usedUnit || prev.unit,
+      receiveUnitType: fabItem.receiveUnitType || prev.receiveUnitType,
+      receiveUnit: fabItem.receiveUnit || prev.receiveUnit,
     }));
     setFabricationPickerOpen(false);
   };
@@ -256,6 +273,8 @@ export default function SimpleInventoryForm({
         ...emptyForm, ...item,
         unitType: item.unitType || getUnitTypeForUnitDynamic(item.unit),
         purchaseUnitType: item.purchaseUnitType || getUnitTypeForUnitDynamic(item.purchaseUnit),
+        receiveUnitType: item.receiveUnitType || getUnitTypeForUnitDynamic(item.receiveUnit),
+        receiveUnit: item.receiveUnit || '',
         qty: Number(item.qty) || 0,
         minStock: Number(item.minStock) || 0,
         stdCost: Number(item.stdCost) || 0,
@@ -679,9 +698,34 @@ export default function SimpleInventoryForm({
             </div>
           </div>
 
-          {/* ── 15: Size / Dimension ─────────────────────────────────────────── */}
+          {/* ── 15: Receive Unit — unit Store actually receives/counts stock in;
+              can differ from Purchase Unit (e.g. bought by weight, received by
+              piece). Auto-filled from Fabrication Master's own Receive Unit when
+              a Fabrication Item is picked (handleFabricationSelect), editable
+              afterward like every other unit field. ─────────────────────────── */}
           <div className="border border-gray-200 rounded-lg p-4">
-            <Label className="text-sm font-medium text-gray-700 mb-2 block">15. Size / Dimension</Label>
+            <h3 className="text-lg font-medium text-gray-900 mb-4">15. Receive Unit</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label className="text-sm font-medium text-gray-700">Receive Unit Type</Label>
+                <Select value={formData.receiveUnitType} onValueChange={(v) => { handleInputChange('receiveUnitType', v); handleInputChange('receiveUnit', ''); }}>
+                  <SelectTrigger className="mt-1"><SelectValue placeholder="Select" /></SelectTrigger>
+                  <SelectContent>{unitTypes.map((ut) => <SelectItem key={ut._id} value={ut.name}>{ut.name}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-sm font-medium text-gray-700">Receive Unit</Label>
+                <Select value={formData.receiveUnit} onValueChange={(v) => handleInputChange('receiveUnit', v)} disabled={!formData.receiveUnitType}>
+                  <SelectTrigger className="mt-1"><SelectValue placeholder={formData.receiveUnitType ? 'Select' : 'Select Receive Unit Type first'} /></SelectTrigger>
+                  <SelectContent>{availableReceiveUnits.map((u) => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+
+          {/* ── 16: Size / Dimension ─────────────────────────────────────────── */}
+          <div className="border border-gray-200 rounded-lg p-4">
+            <Label className="text-sm font-medium text-gray-700 mb-2 block">16. Size / Dimension</Label>
             {formData.dimensionVariants.length > 0 ? (
               <div>
                 <p className="text-xs text-gray-500 mb-2">
@@ -733,11 +777,11 @@ export default function SimpleInventoryForm({
             )}
           </div>
 
-          {/* ── 16-17: Item Status & Description ──────────────────────────── */}
+          {/* ── 17-18: Item Status & Description ──────────────────────────── */}
           <div className="border border-gray-200 rounded-lg p-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <Label className="text-sm font-medium text-gray-700">16. Item Status</Label>
+                <Label className="text-sm font-medium text-gray-700">17. Item Status</Label>
                 <Select value={formData.isDiscontinued ? 'Discontinue' : 'Continue'} onValueChange={(v) => handleInputChange('isDiscontinued', v === 'Discontinue')}>
                   <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -748,14 +792,14 @@ export default function SimpleInventoryForm({
               </div>
             </div>
             <div className="mt-4">
-              <Label className="text-sm font-medium text-gray-700">17. Description</Label>
+              <Label className="text-sm font-medium text-gray-700">18. Description</Label>
               <Textarea value={formData.description} onChange={(e) => handleInputChange('description', e.target.value)} placeholder="Enter item description" rows={2} className="mt-1 bg-white" />
             </div>
           </div>
 
-          {/* ── 17: Image Upload ─────────────────────────────────────────── */}
+          {/* ── 19: Image Upload ─────────────────────────────────────────── */}
           <div className="border border-gray-200 rounded-lg p-4">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">18. Image Upload</h3>
+            <h3 className="text-lg font-medium text-gray-900 mb-4">19. Image Upload</h3>
             <div>
               <Label className="text-sm font-medium text-gray-700 flex items-center gap-1.5 mb-2">
                 <ImageIcon className="h-4 w-4 text-gray-500" /> Product Image

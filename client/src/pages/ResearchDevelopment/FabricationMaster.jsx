@@ -7,17 +7,53 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Layers, Plus, Search, Eye, Edit2, Ban, RefreshCw, XCircle, Loader2, ArrowLeft } from 'lucide-react';
+import { Layers, Plus, Search, Eye, Edit2, Ban, RefreshCw, XCircle, ArrowLeft } from 'lucide-react';
 import { showSuccessToast, showSmartToast } from '@/lib/toast-utils';
+import CategoryPickerModal from '@/components/fabrication/CategoryPickerModal';
+import DimensionCalculatorModal from '@/components/fabrication/DimensionCalculatorModal';
+import { ShapeTileIcon } from '@/components/fabrication/FabricationShapeIcons';
 
-const emptyForm = { itemName: '', itemCode: '', category: '', density: { value: '', unit: 'kg/m3' }, isDiscontinued: false, dimensions: [] };
-const emptyDraft = { values: {}, designation: '' };
+const emptyForm = {
+  itemName: '', itemCode: '', category: '', density: { value: '', unit: 'kg/m3' }, isDiscontinued: false, dimensions: [],
+  purchaseUnitType: '', purchaseUnit: '', usedUnitType: '', usedUnit: '', receiveUnitType: '', receiveUnit: '',
+};
 
 // Human-readable summary of one dimension row's values, e.g. "T5 x W1000 x L2000"
 // or, for a lookup category, its designation ("IPE 200").
 const summarizeDimension = (categoryFields, dim) => {
   if (dim.designation) return dim.designation;
   return categoryFields.map(f => `${f.label.split(' ')[0]}${dim.values?.[f.key] ?? '—'}`).join(' x ');
+};
+
+// Cascading Type -> Unit select pair, reused for Purchase Unit / Used Unit /
+// Receive Unit — same UnitType-backed pattern SimpleInventoryForm.jsx uses
+// for Inventory's Add Item Purchase/Used Unit fields (unitTypes prop is the
+// same `/api/inventory/unit-types` data).
+const UnitFieldGroup = ({ title, unitTypes, typeValue, unitValue, onTypeChange, onUnitChange }) => {
+  const units = unitTypes.find(ut => ut.name === typeValue)?.units || [];
+  return (
+    <div className="border border-slate-200 rounded-lg p-3">
+      <Label className="text-xs font-semibold text-slate-600 mb-2 block">{title}</Label>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <Label className="text-[10px] text-slate-500 uppercase">Unit Type</Label>
+          <select className="w-full mt-1 border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white"
+            value={typeValue} onChange={e => { onTypeChange(e.target.value); onUnitChange(''); }}>
+            <option value="">Select...</option>
+            {unitTypes.map(ut => <option key={ut._id} value={ut.name}>{ut.name}</option>)}
+          </select>
+        </div>
+        <div>
+          <Label className="text-[10px] text-slate-500 uppercase">Unit</Label>
+          <select className="w-full mt-1 border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white disabled:bg-slate-100"
+            value={unitValue} onChange={e => onUnitChange(e.target.value)} disabled={!typeValue}>
+            <option value="">Select...</option>
+            {units.map(u => <option key={u} value={u}>{u}</option>)}
+          </select>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 export default function FabricationMaster() {
@@ -31,11 +67,12 @@ export default function FabricationMaster() {
   const [viewOpen, setViewOpen] = useState(false);
   const [selected, setSelected] = useState(null);
   const [form, setForm] = useState(emptyForm);
-  const [draft, setDraft] = useState(emptyDraft);
-  const [draftWeight, setDraftWeight] = useState(null);
-  const [draftError, setDraftError] = useState('');
-  const [calculating, setCalculating] = useState(false);
   const [codeTouched, setCodeTouched] = useState(false);
+
+  // Category picker (Modal 1) -> Dimension calculator (Modal 2) flow state.
+  const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
+  const [calculatorOpen, setCalculatorOpen] = useState(false);
+  const [calculatorGroup, setCalculatorGroup] = useState(null);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), 500);
@@ -47,15 +84,16 @@ export default function FabricationMaster() {
     queryFn: () => apiRequest('GET', '/api/fabrication-master/categories'),
   });
   const categories = categoriesResponse?.data || [];
+  const groups = categoriesResponse?.groups || [];
+  const materials = categoriesResponse?.materials || [];
   const defaultDensity = categoriesResponse?.defaultDensityKgM3 || 7850;
   const activeCategory = useMemo(() => categories.find(c => c.key === form.category) || null, [categories, form.category]);
 
-  const { data: sectionResponse } = useQuery({
-    queryKey: ['fabrication-sections', activeCategory?.lookupFamily],
-    queryFn: () => apiRequest('GET', `/api/fabrication-master/sections/${activeCategory.lookupFamily}`),
-    enabled: !!activeCategory?.lookupFamily,
+  const { data: unitTypesResponse } = useQuery({
+    queryKey: ['/api/inventory/unit-types'],
+    queryFn: () => apiRequest('GET', '/api/inventory/unit-types'),
   });
-  const sectionOptions = sectionResponse?.data || [];
+  const unitTypes = unitTypesResponse?.unitTypes || [];
 
   const { data: itemsResponse, isLoading } = useQuery({
     queryKey: ['fabrication-items', { search: debouncedSearch, showDiscontinued }],
@@ -85,7 +123,7 @@ export default function FabricationMaster() {
     onError: (e) => showSmartToast(e, 'Failed to update status'),
   });
 
-  const resetDialogState = () => { setForm(emptyForm); setDraft(emptyDraft); setDraftWeight(null); setDraftError(''); setCodeTouched(false); };
+  const resetDialogState = () => { setForm(emptyForm); setCodeTouched(false); setCategoryPickerOpen(false); setCalculatorOpen(false); setCalculatorGroup(null); };
 
   const openAdd = () => { resetDialogState(); setAddOpen(true); };
   const openEdit = (item) => {
@@ -94,8 +132,11 @@ export default function FabricationMaster() {
       density: { value: item.density?.value ?? '', unit: item.density?.unit || 'kg/m3' },
       isDiscontinued: !!item.isDiscontinued,
       dimensions: (item.dimensions || []).map(d => ({ ...d, values: d.values || {} })),
+      purchaseUnitType: item.purchaseUnitType || '', purchaseUnit: item.purchaseUnit || '',
+      usedUnitType: item.usedUnitType || '', usedUnit: item.usedUnit || '',
+      receiveUnitType: item.receiveUnitType || '', receiveUnit: item.receiveUnit || '',
     });
-    setDraft(emptyDraft); setDraftWeight(null); setDraftError(''); setCodeTouched(true);
+    setCodeTouched(true);
     setSelected(item);
     setEditOpen(true);
   };
@@ -110,46 +151,31 @@ export default function FabricationMaster() {
     } catch { /* best-effort suggestion only */ }
   };
 
-  // Category change: reset dimension draft (fields differ per category) and
-  // auto-fill Density to the standard steel value for whichever unit is
-  // currently selected — still fully editable afterward.
-  const handleCategoryChange = (key) => {
-    const cat = categories.find(c => c.key === key);
-    const suggestedValue = form.density.unit === 'g/cm3' ? +(defaultDensity / 1000).toFixed(3) : defaultDensity;
-    setForm(f => ({ ...f, category: key, density: { ...f.density, value: suggestedValue } }));
-    setDraft(emptyDraft); setDraftWeight(null); setDraftError('');
+  // "Select Category" -> opens the 11-tile grid (Modal 1).
+  const openCategoryPicker = () => setCategoryPickerOpen(true);
+  // "Change" (category already chosen) — dimensions are category-specific, so
+  // switching category clears whatever was already added.
+  const changeCategory = () => {
+    setForm(f => ({ ...f, category: '', density: { value: '', unit: f.density.unit || 'kg/m3' }, dimensions: [] }));
+    setCategoryPickerOpen(true);
   };
-
-  // Switching the density unit deliberately does NOT rescale the entered value.
-  const handleDensityUnitChange = (unit) => setForm(f => ({ ...f, density: { ...f.density, unit } }));
-
-  const draftReady = activeCategory && (
-    activeCategory.calcType === 'lookup'
-      ? !!draft.designation && Number(draft.values.length) > 0
-      : activeCategory.fields.every(f => draft.values[f.key] !== undefined && draft.values[f.key] !== '' && !isNaN(Number(draft.values[f.key])))
-  );
-
-  // Live weight preview, debounced — recomputed authoritatively server-side again on Save.
-  useEffect(() => {
-    if (!draftReady || !form.density.value) { setDraftWeight(null); return; }
-    setCalculating(true);
-    const timer = setTimeout(async () => {
-      try {
-        const res = await apiRequest('POST', '/api/fabrication-master/calculate-weight', {
-          category: form.category, values: draft.values, densityValue: form.density.value, densityUnit: form.density.unit, designation: draft.designation,
-        });
-        setDraftWeight(res.data); setDraftError('');
-      } catch (e) {
-        setDraftWeight(null); setDraftError(e?.response?.data?.message || 'Could not calculate weight');
-      } finally { setCalculating(false); }
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [draftReady, draft, form.category, form.density.value, form.density.unit]);
-
-  const addDimension = () => {
-    if (!draftReady || !draftWeight) return;
-    setForm(f => ({ ...f, dimensions: [...f.dimensions, { values: draft.values, designation: draft.designation, ...draftWeight }] }));
-    setDraft(emptyDraft); setDraftWeight(null); setDraftError('');
+  // Tile picked in Modal 1 -> open Modal 2 (fresh draft, category not locked yet).
+  const handleTileSelect = (group) => {
+    setCategoryPickerOpen(false);
+    setCalculatorGroup(group);
+    setCalculatorOpen(true);
+  };
+  // "Add Another Dimension" — category already locked, reopen Modal 2 directly.
+  const openAddDimension = () => {
+    if (!activeCategory) return;
+    const group = groups.find(g => g.key === activeCategory.group);
+    setCalculatorGroup(group || null);
+    setCalculatorOpen(true);
+  };
+  // Modal 2 Save — locks in the resolved category + item-level density, appends the row.
+  const handleCalculatorSave = ({ categoryKey, dimensionRow, density }) => {
+    setForm(f => ({ ...f, category: categoryKey, density, dimensions: [...f.dimensions, dimensionRow] }));
+    setCalculatorOpen(false);
   };
   const removeDimension = (idx) => setForm(f => ({ ...f, dimensions: f.dimensions.filter((_, i) => i !== idx) }));
 
@@ -157,40 +183,6 @@ export default function FabricationMaster() {
 
   const handleAdd = () => { if (canSave) createMutation.mutate(form); };
   const handleEditSave = () => { if (canSave) updateMutation.mutate({ id: selected._id, data: form }); };
-
-  const renderDraftFields = () => {
-    if (!activeCategory) return <p className="text-xs text-slate-400 italic">Select a Category above first.</p>;
-    if (activeCategory.calcType === 'lookup') {
-      return (
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <Label className="text-[10px] text-slate-500 uppercase">Designation</Label>
-            <select className="w-full mt-1 border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white"
-              value={draft.designation} onChange={e => setDraft(d => ({ ...d, designation: e.target.value }))}>
-              <option value="">Select size...</option>
-              {sectionOptions.map(o => <option key={o.designation} value={o.designation}>{o.designation} ({o.weightPerMeterKg} kg/m)</option>)}
-            </select>
-          </div>
-          <div>
-            <Label className="text-[10px] text-slate-500 uppercase">Length (mm)</Label>
-            <Input type="number" min="0" className="mt-1 bg-white" placeholder="0"
-              value={draft.values.length ?? ''} onChange={e => setDraft(d => ({ ...d, values: { ...d.values, length: e.target.value } }))} />
-          </div>
-        </div>
-      );
-    }
-    return (
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {activeCategory.fields.map(f => (
-          <div key={f.key}>
-            <Label className="text-[10px] text-slate-500 uppercase">{f.label} (mm)</Label>
-            <Input type="number" min="0" className="mt-1 bg-white" placeholder="0"
-              value={draft.values[f.key] ?? ''} onChange={e => setDraft(d => ({ ...d, values: { ...d.values, [f.key]: e.target.value } }))} />
-          </div>
-        ))}
-      </div>
-    );
-  };
 
   const renderForm = () => (
     <div className="space-y-4">
@@ -211,11 +203,19 @@ export default function FabricationMaster() {
 
       <div>
         <Label className="text-xs font-semibold text-slate-600 mb-1 block">Category *</Label>
-        <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white"
-          value={form.category} onChange={e => handleCategoryChange(e.target.value)}>
-          <option value="">Select category...</option>
-          {categories.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
-        </select>
+        {form.category ? (
+          <div className="flex items-center justify-between border border-slate-200 rounded-lg px-3 py-2 bg-white">
+            <span className="flex items-center gap-2">
+              <ShapeTileIcon group={activeCategory?.group} className="h-8 w-8" />
+              <span className="text-sm font-medium text-slate-800">{activeCategory?.label || form.category}</span>
+            </span>
+            <Button type="button" variant="outline" size="sm" onClick={changeCategory}>Change</Button>
+          </div>
+        ) : (
+          <Button type="button" variant="outline" onClick={openCategoryPicker} className="w-full justify-start text-slate-500">
+            <Layers className="h-4 w-4 mr-2" /> Select Category...
+          </Button>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-3">
@@ -225,7 +225,8 @@ export default function FabricationMaster() {
         </div>
         <div>
           <Label className="text-xs font-semibold text-slate-600 mb-1 block">Unit</Label>
-          <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white" value={form.density.unit} onChange={e => handleDensityUnitChange(e.target.value)}>
+          <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white" value={form.density.unit}
+            onChange={e => setForm(f => ({ ...f, density: { ...f.density, unit: e.target.value } }))}>
             <option value="kg/m3">kg/m³</option>
             <option value="g/cm3">g/cm³</option>
           </select>
@@ -233,25 +234,19 @@ export default function FabricationMaster() {
       </div>
 
       <div className="p-3 border border-slate-200 rounded-lg bg-slate-50/50 space-y-3">
-        <Label className="text-xs font-semibold text-slate-600 block">Dimensions * (add one or more)</Label>
-        {renderDraftFields()}
-        {draftError && <p className="text-xs text-red-500">{draftError}</p>}
         <div className="flex items-center justify-between">
-          <span className="text-xs text-slate-500">
-            {calculating ? <span className="flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Calculating...</span>
-              : draftWeight ? <span className="font-semibold text-slate-700">Weight: {draftWeight.weightPerPieceKg.toFixed(2)} kg{draftWeight.weightPerMeterKg != null ? ` (${draftWeight.weightPerMeterKg.toFixed(3)} kg/m)` : ''}</span>
-              : null}
-          </span>
-          <Button type="button" size="sm" onClick={addDimension} disabled={!draftReady || !draftWeight} className="bg-blue-600 hover:bg-blue-700 text-white">
+          <Label className="text-xs font-semibold text-slate-600 block">Dimensions * (add one or more)</Label>
+          <Button type="button" size="sm" onClick={form.category ? openAddDimension : openCategoryPicker} className="bg-blue-600 hover:bg-blue-700 text-white">
             <Plus className="h-3.5 w-3.5 mr-1" /> Add Dimension
           </Button>
         </div>
+        {!form.category && <p className="text-xs text-slate-400 italic">Select a Category above first.</p>}
 
         {form.dimensions.length > 0 && (
           <div className="border border-slate-200 rounded-lg divide-y divide-slate-100 bg-white">
             {form.dimensions.map((d, i) => (
               <div key={i} className="flex items-center justify-between px-3 py-2 text-xs">
-                <span className="text-slate-700">{summarizeDimension(activeCategory?.fields || [], d)}</span>
+                <span className="text-slate-700">{summarizeDimension(activeCategory?.fields || [], d)}{d.pieces > 1 ? ` × ${d.pieces} pcs` : ''}</span>
                 <div className="flex items-center gap-3">
                   <span className="font-semibold text-slate-800">{d.weightPerPieceKg.toFixed(2)} kg</span>
                   <button type="button" onClick={() => removeDimension(i)} className="text-slate-400 hover:text-red-500"><XCircle className="h-3.5 w-3.5" /></button>
@@ -261,6 +256,13 @@ export default function FabricationMaster() {
           </div>
         )}
       </div>
+
+      <UnitFieldGroup title="Purchase Unit" unitTypes={unitTypes} typeValue={form.purchaseUnitType} unitValue={form.purchaseUnit}
+        onTypeChange={v => setForm(f => ({ ...f, purchaseUnitType: v }))} onUnitChange={v => setForm(f => ({ ...f, purchaseUnit: v }))} />
+      <UnitFieldGroup title="Used Unit" unitTypes={unitTypes} typeValue={form.usedUnitType} unitValue={form.usedUnit}
+        onTypeChange={v => setForm(f => ({ ...f, usedUnitType: v }))} onUnitChange={v => setForm(f => ({ ...f, usedUnit: v }))} />
+      <UnitFieldGroup title="Receive Unit" unitTypes={unitTypes} typeValue={form.receiveUnitType} unitValue={form.receiveUnit}
+        onTypeChange={v => setForm(f => ({ ...f, receiveUnitType: v }))} onUnitChange={v => setForm(f => ({ ...f, receiveUnit: v }))} />
 
       <div>
         <Label className="text-xs font-semibold text-slate-600 mb-1 block">Status</Label>
@@ -404,6 +406,9 @@ export default function FabricationMaster() {
                   <p className="text-xs text-slate-500 mb-1">Status</p>
                   <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${selected.isDiscontinued ? 'bg-red-100 text-red-700 border-red-200' : 'bg-emerald-100 text-emerald-700 border-emerald-200'}`}>{selected.isDiscontinued ? 'Discontinue' : 'Continue'}</span>
                 </div>
+                <div className="bg-slate-50 rounded-lg p-3"><p className="text-xs text-slate-500 mb-1">Purchase Unit</p><p className="text-sm font-medium text-slate-800">{selected.purchaseUnit || '—'}</p></div>
+                <div className="bg-slate-50 rounded-lg p-3"><p className="text-xs text-slate-500 mb-1">Used Unit</p><p className="text-sm font-medium text-slate-800">{selected.usedUnit || '—'}</p></div>
+                <div className="bg-slate-50 rounded-lg p-3"><p className="text-xs text-slate-500 mb-1">Receive Unit</p><p className="text-sm font-medium text-slate-800">{selected.receiveUnit || '—'}</p></div>
               </div>
               <div className="bg-slate-50 rounded-lg p-3">
                 <p className="text-xs text-slate-500 mb-2 font-semibold">Dimensions ({(selected.dimensions || []).length})</p>
@@ -426,6 +431,24 @@ export default function FabricationMaster() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <CategoryPickerModal
+        open={categoryPickerOpen}
+        onClose={() => setCategoryPickerOpen(false)}
+        groups={groups}
+        onSelect={handleTileSelect}
+      />
+      <DimensionCalculatorModal
+        open={calculatorOpen}
+        onClose={() => setCalculatorOpen(false)}
+        group={calculatorGroup}
+        categories={categories}
+        materials={materials}
+        defaultDensityKgM3={defaultDensity}
+        lockedCategoryKey={form.category || null}
+        initialDensity={form.density.value ? form.density : null}
+        onSave={handleCalculatorSave}
+      />
     </div>
   );
 }
