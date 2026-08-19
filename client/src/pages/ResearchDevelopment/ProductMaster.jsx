@@ -1016,16 +1016,33 @@ export default function ProductMaster() {
               {renderDeletableDropdown('Material Grade', 'MaterialGrade', 'materialGrade', masterOptions.MaterialGrade, form, setForm, { required: false })}
             </div>
 
-            <div className="p-4 bg-slate-50 rounded-lg border border-slate-100 space-y-4">
-              <p className="text-xs font-semibold text-slate-700">Product Weight</p>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label className="text-xs font-semibold text-slate-600 mb-1 block">Product Weight</label>
-                  <Input type="number" min="0" className="bg-white" placeholder="0" value={form.unitWeightValue} onChange={e => setForm(f => ({ ...f, unitWeightValue: e.target.value }))} />
-                </div>
-                {renderUnitTypeUnitPair('Product Weight Unit', 'unitWeightUnitType', 'unitWeightUnit', form, setForm)}
+            <RadioGroup
+              value={form.purchase ? 'purchase' : form.internalManufacturing ? 'internalManufacturing' : ''}
+              onValueChange={(v) => setForm(f => ({ ...f, purchase: v === 'purchase', internalManufacturing: v === 'internalManufacturing' }))}
+              className="flex gap-4 p-3 bg-slate-50 border border-slate-100 rounded-md"
+            >
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="purchase" id="add-purchase" />
+                <Label htmlFor="add-purchase" className="text-sm font-medium text-slate-700">Purchasable (Vendor)</Label>
               </div>
-            </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="internalManufacturing" id="add-mfg" />
+                <Label htmlFor="add-mfg" className="text-sm font-medium text-slate-700">Internal Manufacturing</Label>
+              </div>
+            </RadioGroup>
+
+            {!form.internalManufacturing && (
+              <div className="p-4 bg-slate-50 rounded-lg border border-slate-100 space-y-4">
+                <p className="text-xs font-semibold text-slate-700">Product Weight</p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="text-xs font-semibold text-slate-600 mb-1 block">Product Weight</label>
+                    <Input type="number" min="0" className="bg-white" placeholder="0" value={form.unitWeightValue} onChange={e => setForm(f => ({ ...f, unitWeightValue: e.target.value }))} />
+                  </div>
+                  {renderUnitTypeUnitPair('Product Weight Unit', 'unitWeightUnitType', 'unitWeightUnit', form, setForm)}
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
@@ -1076,21 +1093,6 @@ export default function ProductMaster() {
             </div>
 
             {renderStatusDropdown(form, setForm)}
-
-            <RadioGroup
-              value={form.purchase ? 'purchase' : form.internalManufacturing ? 'internalManufacturing' : ''}
-              onValueChange={(v) => setForm(f => ({ ...f, purchase: v === 'purchase', internalManufacturing: v === 'internalManufacturing' }))}
-              className="flex gap-4 p-3 bg-slate-50 border border-slate-100 rounded-md"
-            >
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="purchase" id="add-purchase" />
-                <Label htmlFor="add-purchase" className="text-sm font-medium text-slate-700">Purchasable (Vendor)</Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="internalManufacturing" id="add-mfg" />
-                <Label htmlFor="add-mfg" className="text-sm font-medium text-slate-700">Internal Manufacturing</Label>
-              </div>
-            </RadioGroup>
 
             {renderCustomFieldsBlock(form, setForm)}
 
@@ -1165,16 +1167,33 @@ export default function ProductMaster() {
               {renderDeletableDropdown('Material Grade', 'MaterialGrade', 'materialGrade', masterOptions.MaterialGrade, editForm, setEditForm, { required: false })}
             </div>
 
-            <div className="p-4 bg-slate-50 rounded-lg border border-slate-100 space-y-4">
-              <p className="text-xs font-semibold text-slate-700">Product Weight</p>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label className="text-xs font-semibold text-slate-600 mb-1 block">Product Weight</label>
-                  <Input type="number" min="0" className="bg-white" placeholder="0" value={editForm.unitWeightValue} onChange={e => setEditForm(f => ({ ...f, unitWeightValue: e.target.value }))} />
-                </div>
-                {renderUnitTypeUnitPair('Product Weight Unit', 'unitWeightUnitType', 'unitWeightUnit', editForm, setEditForm)}
+            <RadioGroup
+              value={editForm.purchase ? 'purchase' : editForm.internalManufacturing ? 'internalManufacturing' : ''}
+              onValueChange={(v) => setEditForm(f => ({ ...f, purchase: v === 'purchase', internalManufacturing: v === 'internalManufacturing' }))}
+              className="flex gap-4 p-3 bg-slate-50 border border-slate-100 rounded-md"
+            >
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="purchase" id="edit-purchase" />
+                <Label htmlFor="edit-purchase" className="text-sm font-medium text-slate-700">Purchasable (Vendor)</Label>
               </div>
-            </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="internalManufacturing" id="edit-mfg" />
+                <Label htmlFor="edit-mfg" className="text-sm font-medium text-slate-700">Internal Manufacturing</Label>
+              </div>
+            </RadioGroup>
+
+            {!editForm.internalManufacturing && (
+              <div className="p-4 bg-slate-50 rounded-lg border border-slate-100 space-y-4">
+                <p className="text-xs font-semibold text-slate-700">Product Weight</p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="text-xs font-semibold text-slate-600 mb-1 block">Product Weight</label>
+                    <Input type="number" min="0" className="bg-white" placeholder="0" value={editForm.unitWeightValue} onChange={e => setEditForm(f => ({ ...f, unitWeightValue: e.target.value }))} />
+                  </div>
+                  {renderUnitTypeUnitPair('Product Weight Unit', 'unitWeightUnitType', 'unitWeightUnit', editForm, setEditForm)}
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
@@ -1225,21 +1244,6 @@ export default function ProductMaster() {
             </div>
 
             {renderStatusDropdown(editForm, setEditForm)}
-
-            <RadioGroup
-              value={editForm.purchase ? 'purchase' : editForm.internalManufacturing ? 'internalManufacturing' : ''}
-              onValueChange={(v) => setEditForm(f => ({ ...f, purchase: v === 'purchase', internalManufacturing: v === 'internalManufacturing' }))}
-              className="flex gap-4 p-3 bg-slate-50 border border-slate-100 rounded-md"
-            >
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="purchase" id="edit-purchase" />
-                <Label htmlFor="edit-purchase" className="text-sm font-medium text-slate-700">Purchasable (Vendor)</Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="internalManufacturing" id="edit-mfg" />
-                <Label htmlFor="edit-mfg" className="text-sm font-medium text-slate-700">Internal Manufacturing</Label>
-              </div>
-            </RadioGroup>
 
             {renderCustomFieldsBlock(editForm, setEditForm)}
 
