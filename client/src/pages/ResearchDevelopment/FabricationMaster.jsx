@@ -85,7 +85,6 @@ export default function FabricationMaster() {
   });
   const categories = categoriesResponse?.data || [];
   const groups = categoriesResponse?.groups || [];
-  const materials = categoriesResponse?.materials || [];
   const defaultDensity = categoriesResponse?.defaultDensityKgM3 || 7850;
   const activeCategory = useMemo(() => categories.find(c => c.key === form.category) || null, [categories, form.category]);
 
@@ -443,7 +442,6 @@ export default function FabricationMaster() {
         onClose={() => setCalculatorOpen(false)}
         group={calculatorGroup}
         categories={categories}
-        materials={materials}
         defaultDensityKgM3={defaultDensity}
         lockedCategoryKey={form.category || null}
         initialDensity={form.density.value ? form.density : null}
