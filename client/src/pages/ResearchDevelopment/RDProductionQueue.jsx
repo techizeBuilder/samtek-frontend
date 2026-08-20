@@ -23,15 +23,19 @@ const statusIcons = {
 };
 
 // Fabrication Master materials only (mat.fabricationCategory set) — compact
-// "key:value" summary of this BOM line's own cut dimensions, so an approver
-// can sanity-check what they're about to push into Production. Read-only,
-// same underlying data BOMCreationTab.jsx's live preview already computed.
+// "amount x quantity" summary of this BOM line's own consumption, so an
+// approver can sanity-check what they're about to push into Production.
+// Read-only, same underlying data BOMCreationTab.jsx's live preview already
+// computed. Falls back to the raw dimension set for older BOM data saved
+// before the amount+quantity redesign (no amountValue/amountUnit yet).
 const summarizeBomDimensions = (mat) => {
     if (!mat.fabricationCategory) return null;
-    const dims = Object.entries(mat.bomDimensions || {})
-        .filter(([, v]) => v !== undefined && v !== null && v !== '')
-        .map(([k, v]) => `${k}:${v}`)
-        .join(', ');
+    const dims = mat.amountValue != null && mat.amountUnit
+        ? `${mat.amountValue} ${mat.amountUnit}`
+        : Object.entries(mat.bomDimensions || {})
+            .filter(([, v]) => v !== undefined && v !== null && v !== '')
+            .map(([k, v]) => `${k}:${v}`)
+            .join(', ');
     const weight = mat.computedWeightPerPieceKg != null ? `${mat.computedWeightPerPieceKg.toFixed(2)} kg/pc` : null;
     return [dims, weight].filter(Boolean).join(' · ') || null;
 };

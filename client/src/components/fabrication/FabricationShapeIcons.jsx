@@ -189,7 +189,15 @@ function renderDiagram(group, hasField, v) {
       );
     }
     case 'beam':
-      return <path d="M46 26 H114 V42 H88 V78 H114 V94 H46 V78 H72 V42 H46 Z" {...line} />;
+      return (
+        <>
+          <path d="M46 26 H114 V42 H88 V78 H114 V94 H46 V78 H72 V42 H46 Z" {...line} />
+          <VDim y1={26} y2={94} x={36} k="A" val={v('sideA')} />
+          <HDim x1={46} x2={114} y={106} k="B" val={v('sideB')} />
+          <text x="92" y="36" {...label}>S{v('thicknessS') ? ` = ${v('thicknessS')}` : ''}</text>
+          <text x="92" y="62" {...label}>T{v('thicknessT') ? ` = ${v('thicknessT')}` : ''}</text>
+        </>
+      );
     case 't_bar':
       return (
         <>
@@ -200,7 +208,15 @@ function renderDiagram(group, hasField, v) {
         </>
       );
     case 'channel':
-      return <path d="M56 24 H108 V40 H72 V80 H108 V96 H56 Z" {...line} />;
+      return (
+        <>
+          <path d="M56 24 H108 V40 H72 V80 H108 V96 H56 Z" {...line} />
+          <VDim y1={24} y2={96} x={46} k="A" val={v('sideA')} />
+          <HDim x1={56} x2={108} y={108} k="B" val={v('sideB')} />
+          <text x="78" y="34" {...label}>S{v('thicknessS') ? ` = ${v('thicknessS')}` : ''}</text>
+          <text x="62" y="64" {...label}>T{v('thicknessT') ? ` = ${v('thicknessT')}` : ''}</text>
+        </>
+      );
     case 'angle': {
       const equal = hasField('legLength');
       return (

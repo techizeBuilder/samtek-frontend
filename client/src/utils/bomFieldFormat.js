@@ -26,16 +26,19 @@ export const formatDimensions = (dims) => {
 };
 
 // Fabrication Master materials only (mat.fabricationCategory set) — this
-// line's own cut dimensions (mat.bomDimensions, all entered in mm — see
-// fabricationCategories.js), not the generic Inventory dimensions snapshot
-// every other material uses. Includes the resolved weight when known, same
-// style used elsewhere for this data (RDProductionQueue.jsx,
-// OrderManagement.jsx's Material Demand table).
+// line's own consumed amount (mat.amountValue/amountUnit — a length, or an
+// area for sheets), not the generic Inventory dimensions snapshot every
+// other material uses. Falls back to the raw dimension set (mat.bomDimensions)
+// for older BOM lines saved before the amount+quantity redesign. Includes
+// the resolved weight when known, same style used elsewhere for this data
+// (RDProductionQueue.jsx, OrderManagement.jsx's Material Demand table).
 export const formatBomDimensions = (mat) => {
-  const dims = Object.entries(mat.bomDimensions || {})
-    .filter(([, v]) => v !== undefined && v !== null && v !== '')
-    .map(([k, v]) => `${k}: ${v}mm`)
-    .join(', ');
+  const dims = mat.amountValue != null && mat.amountUnit
+    ? `${mat.amountValue} ${mat.amountUnit}`
+    : Object.entries(mat.bomDimensions || {})
+      .filter(([, v]) => v !== undefined && v !== null && v !== '')
+      .map(([k, v]) => `${k}: ${v}mm`)
+      .join(', ');
   const weight = mat.computedWeightPerPieceKg != null ? `${mat.computedWeightPerPieceKg.toFixed(2)} kg/pc` : null;
   return [dims, weight].filter(Boolean).join(' · ') || '—';
 };

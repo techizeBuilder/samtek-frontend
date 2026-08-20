@@ -24,7 +24,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { formatDims, fabricationPieceCount } from '@/lib/fabricationDims';
+import { formatDims, fabricationPieceCount, itemDisplayUnit } from '@/lib/fabricationDims';
 import FabricationReceiveDialog from '@/components/accounts/FabricationReceiveDialog';
 
 export default function PurchaseRequest() {
@@ -588,7 +588,12 @@ export default function PurchaseRequest() {
                           </TableCell>
                           <TableCell className="font-extrabold text-slate-900 text-center">
                             {request.fabricationDimensionLines?.length > 0 ? fabricationPieceCount(request.fabricationDimensionLines) : request.quantity}
-                            {(request.item?.unit || request.unit) && (
+                            {request.fabricationDimensionLines?.length > 0 ? (
+                              // A piece count (fabricationPieceCount above) needs the
+                              // item's Receive Unit label ("Pieces"), never its Used
+                              // Unit (a Length/Area unit meant for BOM consumption).
+                              <span className="ml-1 font-medium text-slate-500 text-xs">{itemDisplayUnit(request.item)}</span>
+                            ) : (request.item?.unit || request.unit) && (
                               <span className="ml-1 font-medium text-slate-500 text-xs">{request.item?.unit || request.unit}</span>
                             )}
                             {request.purchaseQuantity && request.purchaseUnit && (

@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Loader2, Plus } from 'lucide-react';
 import { ShapeDiagram } from './FabricationShapeIcons';
 
-const LENGTH_UNIT_FACTORS = { mm: 1, cm: 10, inch: 25.4, m: 1000 };
+const LENGTH_UNIT_FACTORS = { mm: 1, inch: 25.4, foot: 304.8 };
 const LENGTH_UNITS = Object.keys(LENGTH_UNIT_FACTORS);
 
 // Categories whose `wallThickness` field can alternatively be derived from
@@ -31,14 +31,19 @@ const emptyDraft = () => ({ values: {}, fieldUnits: {}, designation: '' });
 // picked in CategoryPickerModal (or directly, for "Add Another Dimension",
 // once the item's category is already locked in). Shows the shape diagram,
 // Material/Density, the shape's dimension fields (each with its own length
-// unit), Pieces, Price Per kg and a live weight preview, "By Length" only
-// (no By Weight toggle). No shape ever shows a separate "type" picker —
-// formula-based shapes (Pipe/Square Tubing/Angle) always use their more
-// general field set (see FABRICATION_CATEGORY_GROUPS's comment for why
-// that's lossless), and lookup shapes (Beam/Channel) merge every family's
-// designation table into one flat Designation dropdown instead. Saving
-// appends one dimension row and hands the resolved category key + density
-// back up to the caller.
+// unit), Pieces, and a live weight preview, "By Length" only (no By Weight
+// toggle). No manual price field — Accounts sets the real price
+// (Item.weightUnitPrice) elsewhere; this form never collects one. No
+// shape ever shows a separate "type" picker — formula-based shapes always
+// use their more general field set (see FABRICATION_CATEGORY_GROUPS's
+// comment for why that's lossless; this now includes Beam/Channel, computed
+// from Side A/Side B/Thickness T/Thickness S/Length instead of a
+// standardized-designation lookup). `isLookupGroup`/the Designation dropdown
+// branch below still exist purely so a pre-existing item saved under one of
+// the old per-standard lookup keys (`beam_ipn` etc., see
+// fabricationCategories.js) can still be viewed/edited. Saving appends one
+// dimension row and hands the resolved category key + density back up to
+// the caller.
 export default function DimensionCalculatorModal({
   open, onClose, group, categories = [], defaultDensityKgM3 = 7850,
   lockedCategoryKey = null, initialDensity = null, onSave,
@@ -58,7 +63,6 @@ export default function DimensionCalculatorModal({
   const [deriveThickness, setDeriveThickness] = useState(false);
   const [innerValue, setInnerValue] = useState('');
   const [pieces, setPieces] = useState(1);
-  const [pricePerKg, setPricePerKg] = useState('');
   const [weight, setWeight] = useState(null);
   const [error, setError] = useState('');
   const [calculating, setCalculating] = useState(false);
@@ -99,7 +103,6 @@ export default function DimensionCalculatorModal({
     setDeriveThickness(false);
     setInnerValue('');
     setPieces(1);
-    setPricePerKg('');
     setWeight(null);
     setError('');
     setAddMaterialOpen(false);
@@ -229,7 +232,6 @@ export default function DimensionCalculatorModal({
 
   const piecesNum = Number(pieces) || 1;
   const totalWeightKg = weight?.weightPerPieceKg != null ? weight.weightPerPieceKg * piecesNum : null;
-  const totalPrice = totalWeightKg != null && pricePerKg !== '' ? totalWeightKg * Number(pricePerKg) : null;
 
   const handleSave = () => {
     if (!draftReady || !weight) return;
@@ -241,7 +243,11 @@ export default function DimensionCalculatorModal({
         weightPerMeterKg: weight.weightPerMeterKg,
         weightPerPieceKg: weight.weightPerPieceKg,
         pieces: piecesNum,
-        pricePerKg: pricePerKg !== '' ? Number(pricePerKg) : null,
+        // Accounts sets the real price (Item.weightUnitPrice) elsewhere —
+        // this form never collects one. Kept as null, not omitted, so it
+        // still overwrites a pre-existing value on the (unlikely) edit of an
+        // older row that had one manually entered before this field existed.
+        pricePerKg: null,
       },
       density: { value: displayedDensity, unit: densityUnit },
     });
@@ -392,10 +398,6 @@ export default function DimensionCalculatorModal({
               <Label className="text-[10px] text-slate-500 uppercase">Pieces</Label>
               <Input type="number" min="1" className="mt-1 bg-white" value={pieces} onChange={(e) => setPieces(e.target.value)} />
             </div>
-            <div>
-              <Label className="text-[10px] text-slate-500 uppercase">Price Per kg</Label>
-              <Input type="number" min="0" className="mt-1 bg-white" placeholder="₹" value={pricePerKg} onChange={(e) => setPricePerKg(e.target.value)} />
-            </div>
           </div>
 
           {error && <p className="text-xs text-red-500">{error}</p>}
@@ -408,7 +410,6 @@ export default function DimensionCalculatorModal({
                   Weight: {weight.weightPerPieceKg.toFixed(2)} kg / piece{weight.weightPerMeterKg != null ? ` (${weight.weightPerMeterKg.toFixed(3)} kg/m)` : ''}
                 </p>
                 {piecesNum > 1 && <p>Total Weight ({piecesNum} pcs): <span className="font-semibold text-slate-800">{totalWeightKg.toFixed(2)} kg</span></p>}
-                {totalPrice != null && <p>Total Price: <span className="font-semibold text-slate-800">₹{totalPrice.toFixed(2)}</span></p>}
               </div>
             ) : null}
           </div>

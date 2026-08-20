@@ -1,7 +1,7 @@
 // Unit types and their allowed units (per ISA reference tables — blue-ticked units only).
 // To change which units appear under a type, edit the arrays below.
 export const UNIT_TYPE_OPTIONS = {
-  'Length Unit': ['Millimeter', 'Centimeter', 'Meter', 'Kilometer', 'Inch', 'Feet'],
+  'Length Unit': ['Millimeter', 'Centimeter', 'Meter', 'Kilometer', 'Inch', 'Foot'],
   'Area Unit': ['Millimeter Square', 'Centimeter Square', 'Meter Square', 'Inch Square', 'Foot Square'],
   'Volume Unit': ['Centimeter Cube', 'Meter Cube', 'Liter', 'Inch Cube', 'Foot Cube'],
   'Mass Unit': ['Gram', 'Kilogram', 'Tonne'],

@@ -13,16 +13,18 @@ import { showSmartToast } from '@/lib/toast-utils';
 import { config } from '@/config/environment';
 import BOMFieldConfigModal from './BOMFieldConfigModal';
 import { formatCatalogFieldValue } from '@/utils/bomFieldFormat';
-import FabricationDimensionFields from '@/components/inventory/FabricationDimensionFields';
+import FabricationVariantAmountFields from '@/components/inventory/FabricationVariantAmountFields';
 
 // Fabrication Master materials (fabricationRef set) price by weight, not a
-// flat purchaseCost — bomDimensions/fabricationCategory/fabricationDensity/
-// weightUnitPrice are how a row/editForm carries what it needs for the live
-// preview and the final save; see resolveFabricationWeight in rdController.js
-// for the server-side authoritative mirror of this same calc.
+// flat purchaseCost — the user picks which catalog dimensionVariant this
+// line draws from and enters one consumed amount (length, or area for
+// sheets); dimensionVariants/fabricationCategory/weightUnitPrice are how a
+// row/editForm carries what it needs for the live preview and the final
+// save. See buildFabricationBomDimensions/resolveFabricationWeight in
+// fabricationDemandService.js for the server-side authoritative mirror.
 const emptyFabricationFields = {
   fabricationRef: null, fabricationCategory: '', fabricationDensity: null,
-  weightUnitPrice: 0, bomDimensions: {},
+  weightUnitPrice: 0, dimensionVariants: [], dimensionVariantId: '', amountValue: '', amountUnit: '',
 };
 
 const emptyMaterial = {
@@ -212,13 +214,17 @@ export default function BOMCreationTab({ product }) {
   // until dimensions are entered, unlike a flat purchaseCost item.
   const matchFabricationFields = (match) => {
     if (!match.fabricationRef) return { ...emptyFabricationFields };
-    const dv = match.dimensionVariants?.[0];
+    const variants = (match.dimensionVariants || []).filter(v => !v.isLeftover);
+    const dv = variants[0];
     return {
       fabricationRef: match.fabricationRef,
       fabricationCategory: dv?.category || '',
       fabricationDensity: dv ? { value: dv.densityValue, unit: dv.densityUnit } : null,
       weightUnitPrice: match.weightUnitPrice || 0,
-      bomDimensions: {},
+      dimensionVariants: variants,
+      dimensionVariantId: variants.length === 1 ? variants[0]._id : '',
+      amountValue: '',
+      amountUnit: '',
     };
   };
 
@@ -355,14 +361,12 @@ export default function BOMCreationTab({ product }) {
     }
   };
 
-  // Fabrication materials must have every dimension field their category
-  // needs filled in before they can be submitted — otherwise the weight (and
-  // so the price) is unresolved server-side too.
+  // Fabrication materials must have a chosen dimension size and a valid
+  // consumed amount+unit before they can be submitted — otherwise the weight
+  // (and so the price) is unresolved server-side too.
   const fabricationDimsFilled = (row) => {
     if (!row.fabricationRef) return true;
-    const cat = fabricationCategories.find(c => c.key === row.fabricationCategory);
-    if (!cat) return false;
-    return cat.fields.every(f => row.bomDimensions?.[f.key] !== undefined && row.bomDimensions?.[f.key] !== '' && !isNaN(Number(row.bomDimensions[f.key])));
+    return !!row.dimensionVariantId && !!row.amountUnit && Number(row.amountValue) > 0;
   };
   const rowsValid = form.rows.length > 0 && form.rows.every(r => r.code && r.item && r.quantity && r.unitType && r.unit && fabricationDimsFilled(r));
   const addFormValid = !!form.childPartCode && !!form.subChildPartCode && rowsValid;
@@ -395,17 +399,20 @@ export default function BOMCreationTab({ product }) {
 
   const openEdit = (mat) => {
     setEditingMat(mat);
-    // fabricationCategory/bomDimensions are the material's own committed
-    // values; fabricationDensity/weightUnitPrice/fabricationRef aren't
-    // stored on the BOM material doc itself (they're current Inventory item
-    // data, not this line's own input) — pulled fresh from the matched
-    // Inventory item, same as a fresh code match would.
+    // fabricationCategory/dimensionVariantId/amountValue/amountUnit are the
+    // material's own committed values; fabricationDensity/weightUnitPrice/
+    // fabricationRef/dimensionVariants aren't stored on the BOM material doc
+    // itself (they're current Inventory item data, not this line's own
+    // input) — pulled fresh from the matched Inventory item, same as a fresh
+    // code match would.
     const currentItem = findProductByCode(mat.code);
     setEditForm({
       code: mat.code || '',
       ...matchFabricationFields(currentItem?.fabricationRef ? currentItem : { fabricationRef: null }),
       fabricationCategory: mat.fabricationCategory || '',
-      bomDimensions: mat.bomDimensions || {},
+      dimensionVariantId: mat.dimensionVariantId || '',
+      amountValue: mat.amountValue ?? '',
+      amountUnit: mat.amountUnit || '',
       childPart: mat.childPart || '',
       subChildPart: mat.subChildPart || '',
       childPartCode: mat.childPartCode || '',
@@ -753,22 +760,34 @@ export default function BOMCreationTab({ product }) {
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="text-xs font-semibold text-slate-600 mb-1 block">Unit Type *</label>
-                      <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" value={row.unitType} onChange={e => updateRow(idx, { unitType: e.target.value, unit: '' })}>
-                        <option value="">Select</option>
-                        {unitTypesList.map(t => <option key={t} value={t}>{t}</option>)}
-                      </select>
+                      {/* Fabrication Master items: auto-fetched from the item,
+                          locked — the use unit is a fixed property of the
+                          item's shape (Length Unit vs Area Unit), not
+                          something a BOM line should override. */}
+                      {row.fabricationRef ? (
+                        <Input value={row.unitType} disabled className="bg-slate-50 text-slate-500" />
+                      ) : (
+                        <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" value={row.unitType} onChange={e => updateRow(idx, { unitType: e.target.value, unit: '' })}>
+                          <option value="">Select</option>
+                          {unitTypesList.map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                      )}
                     </div>
                     <div>
                       <label className="text-xs font-semibold text-slate-600 mb-1 block">Unit *</label>
-                      <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-400 bg-white" value={row.unit} disabled={!row.unitType} onChange={e => updateRow(idx, { unit: e.target.value })}>
-                        <option value="">{row.unitType ? 'Select' : 'Select Unit Type first'}</option>
-                        {getUnitsForTypeDynamic(row.unitType, row.unit).map(u => <option key={u} value={u}>{u}</option>)}
-                      </select>
+                      {row.fabricationRef ? (
+                        <Input value={row.unit} disabled className="bg-slate-50 text-slate-500" />
+                      ) : (
+                        <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-400 bg-white" value={row.unit} disabled={!row.unitType} onChange={e => updateRow(idx, { unit: e.target.value })}>
+                          <option value="">{row.unitType ? 'Select' : 'Select Unit Type first'}</option>
+                          {getUnitsForTypeDynamic(row.unitType, row.unit).map(u => <option key={u} value={u}>{u}</option>)}
+                        </select>
+                      )}
                     </div>
                   </div>
 
                   {row.fabricationRef && (
-                    <FabricationDimensionFields
+                    <FabricationVariantAmountFields
                       row={row}
                       categories={fabricationCategories}
                       onUpdate={(patch) => updateRow(idx, patch)}
@@ -855,22 +874,30 @@ export default function BOMCreationTab({ product }) {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-xs font-semibold text-slate-600 mb-1 block">Unit Type *</label>
-                <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={editForm.unitType} onChange={e => setEditForm(f => ({ ...f, unitType: e.target.value, unit: '' }))}>
-                  <option value="">Select</option>
-                  {unitTypesList.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
+                {editForm.fabricationRef ? (
+                  <Input value={editForm.unitType} disabled className="bg-slate-50 text-slate-500" />
+                ) : (
+                  <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={editForm.unitType} onChange={e => setEditForm(f => ({ ...f, unitType: e.target.value, unit: '' }))}>
+                    <option value="">Select</option>
+                    {unitTypesList.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                )}
               </div>
               <div>
                 <label className="text-xs font-semibold text-slate-600 mb-1 block">Unit *</label>
-                <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-400" value={editForm.unit} disabled={!editForm.unitType && !editForm.unit} onChange={e => setEditForm(f => ({ ...f, unit: e.target.value }))}>
-                  <option value="">{editForm.unitType ? 'Select' : 'Select Unit Type first'}</option>
-                  {getUnitsForTypeDynamic(editForm.unitType, editForm.unit).map(u => <option key={u} value={u}>{u}</option>)}
-                </select>
+                {editForm.fabricationRef ? (
+                  <Input value={editForm.unit} disabled className="bg-slate-50 text-slate-500" />
+                ) : (
+                  <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-400" value={editForm.unit} disabled={!editForm.unitType && !editForm.unit} onChange={e => setEditForm(f => ({ ...f, unit: e.target.value }))}>
+                    <option value="">{editForm.unitType ? 'Select' : 'Select Unit Type first'}</option>
+                    {getUnitsForTypeDynamic(editForm.unitType, editForm.unit).map(u => <option key={u} value={u}>{u}</option>)}
+                  </select>
+                )}
               </div>
             </div>
 
             {editForm.fabricationRef && (
-              <FabricationDimensionFields
+              <FabricationVariantAmountFields
                 row={editForm}
                 categories={fabricationCategories}
                 onUpdate={(patch) => setEditForm(f => ({ ...f, ...patch }))}

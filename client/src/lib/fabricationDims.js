@@ -28,3 +28,27 @@ export const itemDisplayQty = (item) =>
   item?.fabricationRef && item.dimensionVariants?.length > 0
     ? item.dimensionVariants.reduce((sum, dv) => sum + (Number(dv.subStock) || 0), 0)
     : (item?.qty ?? 0);
+
+// Pairs with itemDisplayQty above — a fabrication item's stock figure is
+// always a piece count (dimensionVariants[].subStock, same unit Store
+// actually received/counted in — Receive Unit), never `item.unit` (the Used
+// Unit, a Length/Area unit meant for BOM consumption, e.g. "Centimeter").
+// Labeling a piece count with the Used Unit reads as nonsense ("18
+// Centimeter" when it's really 18 pieces) — this is the correct pairing
+// wherever itemDisplayQty is shown. Non-fabrication items read receiveUnit
+// too (enforced equal to unit server-side — see sanitizeItemData — since
+// there's no conversion between two arbitrary unit types without
+// fabrication's geometry × density bridge); `item.unit` is only a fallback
+// for data saved before that enforcement existed.
+export const itemDisplayUnit = (item) =>
+  item?.fabricationRef ? (item.receiveUnit || 'Pieces') : (item?.receiveUnit || item?.unit);
+
+// Mirrors server/utils/unitConversion.js exactly — the only units the
+// server can actually convert (Length Unit/Area Unit are seeded defaults
+// with a fixed conversion table, not arbitrary company-added units).
+export const LENGTH_UNITS = ['Millimeter', 'Centimeter', 'Meter', 'Kilometer', 'Inch', 'Foot'];
+export const LENGTH_UNIT_TO_MM = { Millimeter: 1, Centimeter: 10, Meter: 1000, Kilometer: 1e6, Inch: 25.4, Foot: 304.8 };
+export const AREA_UNITS = ['Millimeter Square', 'Centimeter Square', 'Meter Square', 'Inch Square', 'Foot Square'];
+export const AREA_UNIT_TO_MM2 = { 'Millimeter Square': 1, 'Centimeter Square': 100, 'Meter Square': 1e6, 'Inch Square': 645.16, 'Foot Square': 92903.04 };
+export const toMm = (value, unit) => (LENGTH_UNIT_TO_MM[unit] && Number(value) > 0) ? Number(value) * LENGTH_UNIT_TO_MM[unit] : null;
+export const toMm2 = (value, unit) => (AREA_UNIT_TO_MM2[unit] && Number(value) > 0) ? Number(value) * AREA_UNIT_TO_MM2[unit] : null;

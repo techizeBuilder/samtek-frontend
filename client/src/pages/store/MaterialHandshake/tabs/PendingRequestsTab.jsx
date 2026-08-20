@@ -15,20 +15,31 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { dimensionSignature, formatDims } from '@/lib/fabricationDims';
+import { formatDims, LENGTH_UNITS, AREA_UNITS, toMm, toMm2 } from '@/lib/fabricationDims';
 
-// Fabrication Master materials only — Store picks which stock cut to
-// transfer from (Item.dimensionVariants[]), and may optionally record what's
-// left after cutting. Only `length` (+ `width` for sheet_plate) is ever
-// editable on the leftover — everything else is a fixed property of the
-// stock, shown locked and pre-filled from the picked variant (see
+const variantCapacityMm = (variant, isSheet) => variant
+  ? (isSheet ? (Number(variant.values?.width) || 0) * (Number(variant.values?.length) || 0) : (Number(variant.values?.length) || 0))
+  : 0;
+
+// Fabrication Master materials only — Store picks which stock piece(s) to
+// cut from (Item.dimensionVariants[]). stockPiecesConsumed (how many
+// physical stock pieces) is kept separate from quantityFulfilled (how many
+// of the demand's needed pieces this transfer covers) — one stock piece can
+// cover several demanded pieces, or several stock pieces might be needed for
+// one, and the two counts must never be conflated (see
 // inventoryController.js's transferFabricationMaterialToProduction, which
-// enforces this same rule server-side regardless of what's submitted here).
+// now validates the chosen pieces are actually big enough and rejects the
+// transfer otherwise). Leftover is an explicit batch Store enters
+// themselves (amount + unit + how many identical leftover pieces resulted)
+// rather than assumed equal to the transfer quantity.
 function FabricationTransferDialog({ request, onClose, categories }) {
   const { toast } = useToast();
   const [sourceVariantId, setSourceVariantId] = useState('');
-  const [qty, setQty] = useState('');
-  const [leftoverValues, setLeftoverValues] = useState({});
+  const [piecesConsumed, setPiecesConsumed] = useState('');
+  const [qtyFulfilled, setQtyFulfilled] = useState('');
+  const [leftoverAmount, setLeftoverAmount] = useState('');
+  const [leftoverUnit, setLeftoverUnit] = useState('');
+  const [leftoverPieces, setLeftoverPieces] = useState('');
 
   const sourceItemCode = request?.material?.sourceItemCode || request?.material?.materialCode;
   const { data: itemRes, isLoading } = useQuery({
@@ -39,17 +50,45 @@ function FabricationTransferDialog({ request, onClose, categories }) {
   const variants = itemRes?.data?.dimensionVariants || [];
   const chosenVariant = variants.find(v => v._id === sourceVariantId);
   const category = categories.find(c => c.key === request?.material?.fabricationCategory);
-  const isExactMatch = chosenVariant && dimensionSignature(chosenVariant.values) === dimensionSignature(request?.material?.bomDimensions);
-  const editableKeys = category
-    ? category.fields.filter(f => f.key === 'length' || (category.calcType === 'sheet' && f.key === 'width')).map(f => f.key)
-    : [];
+  const isSheet = category?.calcType === 'sheet';
+  const unitOptions = isSheet ? AREA_UNITS : LENGTH_UNITS;
+
+  const remaining = (request?.material?.quantity || 0) - (request?.material?.transferredQuantity || 0);
+  const demandAmountValue = request?.material?.amountValue;
+  const demandAmountUnit = request?.material?.amountUnit;
+  const demandAmountMm = demandAmountValue != null && demandAmountUnit
+    ? (isSheet ? toMm2(demandAmountValue, demandAmountUnit) : toMm(demandAmountValue, demandAmountUnit))
+    : null;
+
+  // Auto-suggest how many stock pieces are needed to cover the full
+  // remaining demand, so Store isn't starting from a blank field — still
+  // fully editable, same "suggest a sensible default, override if needed"
+  // pattern used elsewhere in this app.
+  useEffect(() => {
+    if (!chosenVariant) { setPiecesConsumed(''); return; }
+    setQtyFulfilled(String(remaining));
+    const capacity = variantCapacityMm(chosenVariant, isSheet);
+    if (demandAmountMm != null && capacity > 0) {
+      setPiecesConsumed(String(Math.ceil((demandAmountMm * remaining) / capacity)));
+    } else {
+      setPiecesConsumed('1');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourceVariantId]);
+
+  const totalNeededMm = demandAmountMm != null ? demandAmountMm * (Number(qtyFulfilled) || 0) : null;
+  const totalCapacityMm = chosenVariant ? variantCapacityMm(chosenVariant, isSheet) * (Number(piecesConsumed) || 0) : 0;
+  const insufficient = totalNeededMm != null && totalCapacityMm < totalNeededMm;
 
   const transferMutation = useMutation({
     mutationFn: () => apiRequest('POST', `/api/inventory/transfer-fabrication-material/${request.order._id}`, {
       materialCode: request.material.materialCode,
       sourceVariantId,
-      quantity: Number(qty),
-      leftoverDimensions: Object.values(leftoverValues).some(v => v !== undefined && v !== '') ? leftoverValues : undefined,
+      stockPiecesConsumed: Number(piecesConsumed),
+      quantityFulfilled: Number(qtyFulfilled),
+      leftover: (Number(leftoverAmount) > 0 && leftoverUnit && Number(leftoverPieces) > 0)
+        ? { amountValue: Number(leftoverAmount), amountUnit: leftoverUnit, pieceCount: Number(leftoverPieces) }
+        : undefined,
     }),
     onSuccess: () => {
       toast({ title: 'Success', description: 'Material transferred to production successfully.' });
@@ -66,7 +105,10 @@ function FabricationTransferDialog({ request, onClose, categories }) {
         <DialogHeader>
           <DialogTitle>Transfer Fabrication Material</DialogTitle>
           <DialogDescription>
-            <span className="font-semibold text-slate-800">{request.material.materialName}</span> — needed size: <span className="font-mono">{formatDims(request.material.bomDimensions)}</span>
+            <span className="font-semibold text-slate-800">{request.material.materialName}</span>
+            {demandAmountValue != null && demandAmountUnit
+              ? <> — needs {demandAmountValue} {demandAmountUnit} × {remaining} piece(s) remaining</>
+              : <> — needed size: <span className="font-mono">{formatDims(request.material.bomDimensions)}</span></>}
           </DialogDescription>
         </DialogHeader>
         <div className="py-2 space-y-3">
@@ -81,12 +123,9 @@ function FabricationTransferDialog({ request, onClose, categories }) {
                 {variants.map(v => (
                   <label key={v._id} className={`flex items-center justify-between gap-2 p-2 rounded-md border text-xs cursor-pointer ${sourceVariantId === v._id ? 'border-blue-400 bg-blue-50' : 'border-slate-200'}`}>
                     <span className="flex items-center gap-2">
-                      <input type="radio" name="sourceVariant" checked={sourceVariantId === v._id} onChange={() => { setSourceVariantId(v._id); setLeftoverValues({}); }} />
+                      <input type="radio" name="sourceVariant" checked={sourceVariantId === v._id} onChange={() => { setSourceVariantId(v._id); setLeftoverAmount(''); setLeftoverUnit(''); setLeftoverPieces(''); }} />
                       <span className="font-mono">{formatDims(v.values)}</span>
                       {v.isLeftover && <span className="px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-semibold">Leftover</span>}
-                      {dimensionSignature(v.values) === dimensionSignature(request.material.bomDimensions) && (
-                        <span className="px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-semibold">Exact Match</span>
-                      )}
                     </span>
                     <span className="text-slate-500">Stock: {v.subStock || 0}</span>
                   </label>
@@ -94,30 +133,50 @@ function FabricationTransferDialog({ request, onClose, categories }) {
               </div>
             )}
           </div>
-          <div>
-            <label className="text-sm font-medium text-slate-700 mb-1 block">Quantity to Transfer</label>
-            <Input type="number" min="1" max={chosenVariant?.subStock || undefined} value={qty} onChange={(e) => setQty(e.target.value)} placeholder="Enter quantity" />
-            {chosenVariant && Number(qty) > (chosenVariant.subStock || 0) && (
-              <p className="text-red-500 text-xs mt-1">Cannot exceed available stock ({chosenVariant.subStock || 0}).</p>
-            )}
-          </div>
 
-          {chosenVariant && !isExactMatch && category && (
+          {chosenVariant && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium text-slate-700 mb-1 block">Stock Pieces Consumed</label>
+                <Input type="number" min="1" max={chosenVariant?.subStock || undefined} value={piecesConsumed} onChange={(e) => setPiecesConsumed(e.target.value)} placeholder="e.g. 1" />
+                {Number(piecesConsumed) > (chosenVariant.subStock || 0) && (
+                  <p className="text-red-500 text-xs mt-1">Cannot exceed available stock ({chosenVariant.subStock || 0}).</p>
+                )}
+              </div>
+              <div>
+                <label className="text-sm font-medium text-slate-700 mb-1 block">Quantity Fulfilled</label>
+                <Input type="number" min="1" max={remaining || undefined} value={qtyFulfilled} onChange={(e) => setQtyFulfilled(e.target.value)} placeholder="e.g. 2" />
+                {Number(qtyFulfilled) > remaining && (
+                  <p className="text-red-500 text-xs mt-1">Only {remaining} piece(s) still needed.</p>
+                )}
+              </div>
+            </div>
+          )}
+          {insufficient && (
+            <p className="text-red-500 text-xs">
+              Not enough material — {piecesConsumed} stock piece(s) only cover {Math.round(totalCapacityMm)}{isSheet ? 'mm²' : 'mm'}, but {qtyFulfilled} piece(s) need {Math.round(totalNeededMm)}{isSheet ? 'mm²' : 'mm'}.
+            </p>
+          )}
+
+          {chosenVariant && category && (
             <div className="p-3 border border-amber-200 rounded-lg bg-amber-50/50 space-y-2">
               <label className="text-xs font-semibold text-amber-800 block">Leftover After Cutting <span className="text-[10px] text-slate-500 font-normal">(optional — leave blank if nothing usable remains)</span></label>
-              <div className="grid grid-cols-2 gap-3">
-                {category.fields.map(f => (
-                  <div key={f.key}>
-                    <label className="text-[10px] text-slate-500 uppercase">{f.label} ({f.unit})</label>
-                    <Input
-                      type="number" min="0" className="mt-1 bg-white h-9"
-                      disabled={!editableKeys.includes(f.key)}
-                      placeholder={editableKeys.includes(f.key) ? '0' : undefined}
-                      value={editableKeys.includes(f.key) ? (leftoverValues[f.key] ?? '') : (chosenVariant.values?.[f.key] ?? '')}
-                      onChange={(e) => setLeftoverValues(v => ({ ...v, [f.key]: e.target.value }))}
-                    />
-                  </div>
-                ))}
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="text-[10px] text-slate-500 uppercase">{isSheet ? 'Area' : 'Length'}</label>
+                  <Input type="number" min="0" className="mt-1 bg-white h-9" placeholder="0" value={leftoverAmount} onChange={(e) => setLeftoverAmount(e.target.value)} />
+                </div>
+                <div>
+                  <label className="text-[10px] text-slate-500 uppercase">Unit</label>
+                  <select className="mt-1 w-full h-9 border border-slate-200 rounded-md bg-white text-sm px-2" value={leftoverUnit} onChange={(e) => setLeftoverUnit(e.target.value)}>
+                    <option value="">Select…</option>
+                    {unitOptions.map(u => <option key={u} value={u}>{u}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] text-slate-500 uppercase">Pieces</label>
+                  <Input type="number" min="0" className="mt-1 bg-white h-9" placeholder="0" value={leftoverPieces} onChange={(e) => setLeftoverPieces(e.target.value)} />
+                </div>
               </div>
             </div>
           )}
@@ -127,7 +186,7 @@ function FabricationTransferDialog({ request, onClose, categories }) {
           <Button
             className="bg-blue-600 hover:bg-blue-700 text-white"
             onClick={() => transferMutation.mutate()}
-            disabled={transferMutation.isPending || !sourceVariantId || !qty || Number(qty) <= 0 || (chosenVariant && Number(qty) > (chosenVariant.subStock || 0))}
+            disabled={transferMutation.isPending || !sourceVariantId || !piecesConsumed || !qtyFulfilled || Number(piecesConsumed) <= 0 || Number(qtyFulfilled) <= 0 || Number(piecesConsumed) > (chosenVariant?.subStock || 0) || Number(qtyFulfilled) > remaining || insufficient}
           >
             {transferMutation.isPending ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
             Confirm Transfer

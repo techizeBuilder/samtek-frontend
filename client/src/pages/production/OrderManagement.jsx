@@ -15,7 +15,7 @@ import { apiRequest } from '@/lib/queryClient';
 import { showSuccessToast, showSmartToast } from '@/lib/toast-utils';
 import { config } from '@/config/environment';
 import { formatCatalogFieldValue } from '@/utils/bomFieldFormat';
-import FabricationDimensionFields from '@/components/inventory/FabricationDimensionFields';
+import FabricationVariantAmountFields from '@/components/inventory/FabricationVariantAmountFields';
 
 const statusColor = {
   'Pending': 'bg-slate-100 text-slate-700 border-slate-200',
@@ -39,14 +39,15 @@ const statusIcon = {
 
 const emptyOrder = { machineCode: '', machineName: '', priority: 'Normal', deliveryDate: '', source: 'Stock' };
 // Fabrication Master materials only (fabricationRef set) — same shape as
-// BOMCreationTab.jsx's emptyFabricationFields, since FabricationDimensionFields
+// BOMCreationTab.jsx's emptyFabricationFields, since FabricationVariantAmountFields
 // is shared between the two. targetDemandCode: when set, this dialog is
 // adjusting ONE EXACT existing demand line's quantity (opened via that row's
 // own "Adjust Qty" action) rather than creating/matching a new one — see
 // productionMfgController.js's addMaterialDemand.
 const emptyDemand = {
   materialCode: '', materialName: '', quantity: '', unitType: '', unit: '',
-  fabricationRef: null, fabricationCategory: '', fabricationDensity: null, weightUnitPrice: 0, bomDimensions: {},
+  fabricationRef: null, fabricationCategory: '', fabricationDensity: null, weightUnitPrice: 0,
+  dimensionVariants: [], dimensionVariantId: '', amountValue: '', amountUnit: '',
   targetDemandCode: null,
 };
 
@@ -115,7 +116,7 @@ export default function OrderManagement() {
 
   // Fabrication Master's category field definitions — same source
   // BOMCreationTab.jsx uses, reused as-is for out-of-BOM material demands
-  // of a fabrication-linked item (see FabricationDimensionFields).
+  // of a fabrication-linked item (see FabricationVariantAmountFields).
   const { data: fabricationCategoriesResponse } = useQuery({
     queryKey: ['fabrication-categories'],
     queryFn: () => apiRequest('GET', '/api/fabrication-master/categories'),
@@ -273,9 +274,11 @@ export default function OrderManagement() {
         // Purchase Unit ("purchaseUnit"/"purchaseUnitType") — Production draws from
         // stock, so the demand quantity must be expressed in the stock unit.
         // Fabrication Master materials (res.data.fabricationRef set) also need
-        // their category/density carried onto the form for the dimension
-        // inputs + live preview — see FabricationDimensionFields.
-        const dv = res.data.dimensionVariants?.[0];
+        // their category/density/variants carried onto the form for the
+        // variant picker + amount inputs + live preview — see
+        // FabricationVariantAmountFields.
+        const variants = (res.data.dimensionVariants || []).filter(v => !v.isLeftover);
+        const dv = variants[0];
         setDemandForm(prev => ({
           ...prev,
           materialName: res.data.name,
@@ -285,7 +288,10 @@ export default function OrderManagement() {
           fabricationCategory: dv?.category || '',
           fabricationDensity: dv ? { value: dv.densityValue, unit: dv.densityUnit } : null,
           weightUnitPrice: res.data.weightUnitPrice || 0,
-          bomDimensions: {},
+          dimensionVariants: variants,
+          dimensionVariantId: variants.length === 1 ? variants[0]._id : '',
+          amountValue: '',
+          amountUnit: '',
         }));
       } else {
         setFoundItem(null);
@@ -295,14 +301,12 @@ export default function OrderManagement() {
     }
   };
 
-  // Fabrication materials must have every dimension field their category
-  // needs filled in before submitting — otherwise the weight (and price) is
-  // unresolved server-side too. No-op for non-fabrication/adjust-mode.
+  // Fabrication materials must have a chosen dimension size and a valid
+  // consumed amount+unit before submitting — otherwise the weight (and
+  // price) is unresolved server-side too. No-op for non-fabrication/adjust-mode.
   const fabricationDimsFilled = () => {
     if (demandForm.targetDemandCode || !demandForm.fabricationRef) return true;
-    const cat = fabricationCategories.find(c => c.key === demandForm.fabricationCategory);
-    if (!cat) return false;
-    return cat.fields.every(f => demandForm.bomDimensions?.[f.key] !== undefined && demandForm.bomDimensions?.[f.key] !== '' && !isNaN(Number(demandForm.bomDimensions[f.key])));
+    return !!demandForm.dimensionVariantId && !!demandForm.amountUnit && Number(demandForm.amountValue) > 0;
   };
 
   const handleAddDemand = async () => {
@@ -867,7 +871,9 @@ export default function OrderManagement() {
                                 {m.materialName}
                                 {m.fabricationCategory && (
                                   <div className="text-[10px] font-normal text-slate-400 mt-0.5">
-                                    Cut: {Object.entries(m.bomDimensions || {}).filter(([, v]) => v !== undefined && v !== null && v !== '').map(([k, v]) => `${k}:${v}`).join(', ') || '—'}
+                                    {m.amountValue != null && m.amountUnit
+                                      ? <>{m.amountValue} {m.amountUnit} × {m.quantity}</>
+                                      : <>Cut: {Object.entries(m.bomDimensions || {}).filter(([, v]) => v !== undefined && v !== null && v !== '').map(([k, v]) => `${k}:${v}`).join(', ') || '—'}</>}
                                     {m.computedWeightPerPieceKg != null && <> · {m.computedWeightPerPieceKg.toFixed(2)} kg/pc</>}
                                   </div>
                                 )}
@@ -1142,7 +1148,7 @@ export default function OrderManagement() {
                   </p>
                 </div>
               ) : (
-                <FabricationDimensionFields
+                <FabricationVariantAmountFields
                   row={demandForm}
                   categories={fabricationCategories}
                   onUpdate={(patch) => setDemandForm(f => ({ ...f, ...patch }))}

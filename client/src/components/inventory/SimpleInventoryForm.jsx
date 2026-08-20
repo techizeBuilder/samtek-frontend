@@ -95,13 +95,6 @@ export default function SimpleInventoryForm({
     return formData.receiveUnit && !units.includes(formData.receiveUnit) ? [formData.receiveUnit, ...units] : units;
   }, [formData.receiveUnitType, formData.receiveUnit, unitTypes]);
 
-  const availableWeightUnits = React.useMemo(() => {
-    if (!formData.unitWeightUnitType) return [];
-    const ut = unitTypes.find(u => u.name === formData.unitWeightUnitType);
-    const units = ut?.units || [];
-    return formData.unitWeightUnit && !units.includes(formData.unitWeightUnit) ? [formData.unitWeightUnit, ...units] : units;
-  }, [formData.unitWeightUnitType, formData.unitWeightUnit, unitTypes]);
-
   // ── Dynamic dropdown values ──────────────────────────────────────────────
   // ItemCategory/SourceType/ItemSourceType are Inventory's own
   // ("+"-addable) lists — see InventoryMasterOption.js. Metrology/Material
@@ -410,6 +403,16 @@ export default function SimpleInventoryForm({
         leadTime: Number(formData.leadTime) || 0,
         unitWeightValue: (formData.unitWeightValue !== '' && formData.unitWeightValue !== null && formData.unitWeightValue !== undefined)
           ? Number(formData.unitWeightValue) : null,
+        // Locked to kg — the Weight Unit Type/Unit selectors were removed
+        // from the form (see the Unit Weight field above).
+        unitWeightUnitType: 'Mass Unit',
+        unitWeightUnit: 'Kilogram',
+        // Receive Unit always mirrors Used Unit outside fabrication items —
+        // see the Receive Unit field above (also enforced server-side).
+        ...(formData.itemProcessType !== FABRICATION_PROCESS_TYPE ? {
+          receiveUnitType: formData.unitType,
+          receiveUnit: formData.unit,
+        } : {}),
         specifications: formData.specifications.filter(s => s.key?.trim() !== ''),
         applications: formData.applications.filter(s => s?.trim() !== ''),
         itemCategories: formData.itemCategories.filter(c => c?.trim() !== ''),
@@ -607,22 +610,11 @@ export default function SimpleInventoryForm({
             {formData.itemProcessType !== FABRICATION_PROCESS_TYPE && (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
                 <div>
-                  <Label className="text-sm font-medium text-gray-700">12. Unit Weight</Label>
+                  {/* Always kilograms — the Weight Unit Type/Unit selectors
+                      were removed since a mixed-unit unitWeightValue can't
+                      be compared/summed anywhere it's read. */}
+                  <Label className="text-sm font-medium text-gray-700">12. Unit Weight (kg)</Label>
                   <Input type="number" min="0" value={formData.unitWeightValue} onChange={(e) => handleInputChange('unitWeightValue', e.target.value)} placeholder="0" className="mt-1 bg-white" />
-                </div>
-                <div>
-                  <Label className="text-sm font-medium text-gray-700">Weight Unit Type</Label>
-                  <Select value={formData.unitWeightUnitType} onValueChange={(v) => { handleInputChange('unitWeightUnitType', v); handleInputChange('unitWeightUnit', ''); }}>
-                    <SelectTrigger className="mt-1"><SelectValue placeholder="Select" /></SelectTrigger>
-                    <SelectContent>{unitTypes.map(ut => <SelectItem key={ut._id} value={ut.name}>{ut.name}</SelectItem>)}</SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label className="text-sm font-medium text-gray-700">Weight Unit</Label>
-                  <Select value={formData.unitWeightUnit} onValueChange={(v) => handleInputChange('unitWeightUnit', v)} disabled={!formData.unitWeightUnitType}>
-                    <SelectTrigger className="mt-1"><SelectValue placeholder="Select" /></SelectTrigger>
-                    <SelectContent>{availableWeightUnits.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
-                  </Select>
                 </div>
               </div>
             )}
@@ -698,29 +690,48 @@ export default function SimpleInventoryForm({
             </div>
           </div>
 
-          {/* ── 15: Receive Unit — unit Store actually receives/counts stock in;
-              can differ from Purchase Unit (e.g. bought by weight, received by
-              piece). Auto-filled from Fabrication Master's own Receive Unit when
-              a Fabrication Item is picked (handleFabricationSelect), editable
-              afterward like every other unit field. ─────────────────────────── */}
+          {/* ── 15: Receive Unit — unit Store actually receives/counts stock in.
+              Only meaningfully independent of Used Unit for fabrication items
+              (Pieces received vs. a Length/Area unit used, bridged by geometry
+              × density) — auto-filled from Fabrication Master's own Receive
+              Unit when a Fabrication Item is picked (handleFabricationSelect),
+              editable afterward. For every other item there's no conversion
+              between two arbitrary unit types, so Receive Unit always mirrors
+              Used Unit (enforced server-side too — see sanitizeItemData). ── */}
           <div className="border border-gray-200 rounded-lg p-4">
             <h3 className="text-lg font-medium text-gray-900 mb-4">15. Receive Unit</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <Label className="text-sm font-medium text-gray-700">Receive Unit Type</Label>
-                <Select value={formData.receiveUnitType} onValueChange={(v) => { handleInputChange('receiveUnitType', v); handleInputChange('receiveUnit', ''); }}>
-                  <SelectTrigger className="mt-1"><SelectValue placeholder="Select" /></SelectTrigger>
-                  <SelectContent>{unitTypes.map((ut) => <SelectItem key={ut._id} value={ut.name}>{ut.name}</SelectItem>)}</SelectContent>
-                </Select>
+            {formData.itemProcessType === FABRICATION_PROCESS_TYPE ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-sm font-medium text-gray-700">Receive Unit Type</Label>
+                  <Select value={formData.receiveUnitType} onValueChange={(v) => { handleInputChange('receiveUnitType', v); handleInputChange('receiveUnit', ''); }}>
+                    <SelectTrigger className="mt-1"><SelectValue placeholder="Select" /></SelectTrigger>
+                    <SelectContent>{unitTypes.map((ut) => <SelectItem key={ut._id} value={ut.name}>{ut.name}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium text-gray-700">Receive Unit</Label>
+                  <Select value={formData.receiveUnit} onValueChange={(v) => handleInputChange('receiveUnit', v)} disabled={!formData.receiveUnitType}>
+                    <SelectTrigger className="mt-1"><SelectValue placeholder={formData.receiveUnitType ? 'Select' : 'Select Receive Unit Type first'} /></SelectTrigger>
+                    <SelectContent>{availableReceiveUnits.map((u) => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
               </div>
+            ) : (
               <div>
-                <Label className="text-sm font-medium text-gray-700">Receive Unit</Label>
-                <Select value={formData.receiveUnit} onValueChange={(v) => handleInputChange('receiveUnit', v)} disabled={!formData.receiveUnitType}>
-                  <SelectTrigger className="mt-1"><SelectValue placeholder={formData.receiveUnitType ? 'Select' : 'Select Receive Unit Type first'} /></SelectTrigger>
-                  <SelectContent>{availableReceiveUnits.map((u) => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
-                </Select>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 opacity-70">
+                  <div>
+                    <Label className="text-sm font-medium text-gray-700">Receive Unit Type</Label>
+                    <Input value={formData.unitType} disabled className="mt-1 bg-gray-50" />
+                  </div>
+                  <div>
+                    <Label className="text-sm font-medium text-gray-700">Receive Unit</Label>
+                    <Input value={formData.unit} disabled className="mt-1 bg-gray-50" />
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500 mt-2">Same as Used Unit — there's no conversion between unrelated units, so stock is always counted in the Used Unit for this item type.</p>
               </div>
-            </div>
+            )}
           </div>
 
           {/* ── 16: Size / Dimension ─────────────────────────────────────────── */}
