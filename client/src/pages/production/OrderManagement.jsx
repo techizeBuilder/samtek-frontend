@@ -14,8 +14,9 @@ import { useProduction as useProd } from '@/contexts/ProductionContext';
 import { apiRequest } from '@/lib/queryClient';
 import { showSuccessToast, showSmartToast } from '@/lib/toast-utils';
 import { config } from '@/config/environment';
-import { formatCatalogFieldValue } from '@/utils/bomFieldFormat';
+import { formatCatalogFieldValue, formatBomDimensions } from '@/utils/bomFieldFormat';
 import FabricationVariantAmountFields from '@/components/inventory/FabricationVariantAmountFields';
+import UnitAmountField, { rowNeedsAmount as sharedRowNeedsAmount } from '@/components/inventory/UnitAmountField';
 
 const statusColor = {
   'Pending': 'bg-slate-100 text-slate-700 border-slate-200',
@@ -301,12 +302,37 @@ export default function OrderManagement() {
     }
   };
 
+  // A non-fabrication material whose matched Item's Used Unit is Length/
+  // Area/Volume needs the same amountValue split as fabrication (see
+  // UnitAmountField) — a flat quantity can't say "2 pieces of 1m each".
+  const rowNeedsAmount = (row) => sharedRowNeedsAmount(row, getUnitTypeForUnitDynamic);
+
+  // The "Quantity" the user types for one of these rows is a PIECE count
+  // ("2 pieces of 1m each"), but the demand's saved `quantity` must be the
+  // TOTAL amount in the item's own stocking unit — Store/Production only
+  // ever transact in that total (see UnitAmountField.jsx and
+  // inventoryController.js's transferMaterialToProduction). No-op in adjust
+  // mode (demandForm.fabricationRef is the 'existing' placeholder there, so
+  // rowNeedsAmount is already false) — an adjustment's quantity is entered
+  // directly as the new total, not re-split into pieces.
+  const resolveSubmitQuantity = (row) => rowNeedsAmount(row)
+    ? Number(row.quantity) * Number(row.amountValue)
+    : Number(row.quantity);
+
   // Fabrication materials must have a chosen dimension size and a valid
   // consumed amount+unit before submitting — otherwise the weight (and
-  // price) is unresolved server-side too. No-op for non-fabrication/adjust-mode.
+  // price) is unresolved server-side too. Non-fabrication Length/Area/Volume
+  // materials need just the amount (no dimension size to pick). No-op for
+  // adjust-mode or a plain Count/Mass material.
   const fabricationDimsFilled = () => {
-    if (demandForm.targetDemandCode || !demandForm.fabricationRef) return true;
-    return !!demandForm.dimensionVariantId && !!demandForm.amountUnit && Number(demandForm.amountValue) > 0;
+    if (demandForm.targetDemandCode) return true;
+    if (demandForm.fabricationRef) {
+      return !!demandForm.dimensionVariantId && !!demandForm.amountUnit && Number(demandForm.amountValue) > 0;
+    }
+    if (rowNeedsAmount(demandForm)) {
+      return !!demandForm.amountUnit && Number(demandForm.amountValue) > 0;
+    }
+    return true;
   };
 
   const handleAddDemand = async () => {
@@ -314,7 +340,7 @@ export default function OrderManagement() {
     try {
       await addMaterialDemand(detailOrder._id || detailOrder.id, {
         ...demandForm,
-        quantity: Number(demandForm.quantity)
+        quantity: resolveSubmitQuantity(demandForm)
       });
       showSuccessToast('Sent to R&D', `Extra material demand for "${demandForm.materialName}" is pending R&D approval.`);
       setDemandForm(emptyDemand);
@@ -869,10 +895,15 @@ export default function OrderManagement() {
                               <td className="px-3 py-2 font-mono text-blue-700">{m.sourceItemCode || m.materialCode}</td>
                               <td className="px-3 py-2 font-medium text-slate-800">
                                 {m.materialName}
-                                {m.fabricationCategory && (
+                                {(m.fabricationCategory || m.amountValue != null) && (
                                   <div className="text-[10px] font-normal text-slate-400 mt-0.5">
                                     {m.amountValue != null && m.amountUnit
-                                      ? <>{m.amountValue} {m.amountUnit} × {m.quantity}</>
+                                      ? m.fabricationCategory
+                                        ? <>{m.amountValue} {m.amountUnit} × {m.quantity}</>
+                                        // Non-fabrication: m.quantity is already the resolved
+                                        // TOTAL (see UnitAmountField.jsx), not a piece count —
+                                        // the piece count only exists as this derived display.
+                                        : <>{m.amountValue} {m.amountUnit} × {Math.round((m.quantity / m.amountValue) * 1000) / 1000} pcs</>
                                       : <>Cut: {Object.entries(m.bomDimensions || {}).filter(([, v]) => v !== undefined && v !== null && v !== '').map(([k, v]) => `${k}:${v}`).join(', ') || '—'}</>}
                                     {m.computedWeightPerPieceKg != null && <> · {m.computedWeightPerPieceKg.toFixed(2)} kg/pc</>}
                                   </div>
@@ -883,7 +914,7 @@ export default function OrderManagement() {
                                 {m.bomQuantity !== null && m.bomQuantity !== undefined ? (
                                   <div className="flex flex-col">
                                     <span className="text-slate-800 font-semibold flex items-center gap-1.5">
-                                      Req: {m.quantity} {m.unit}
+                                      Req: {m.quantity} {m.fabricationCategory ? 'pcs' : m.unit}
                                       <span className="text-[9px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded uppercase font-bold border border-slate-200">BOM</span>
                                     </span>
                                     <span className={`text-[10px] font-bold mt-0.5 ${issued === m.quantity ? 'text-emerald-600' : 'text-blue-600'}`}>
@@ -893,7 +924,7 @@ export default function OrderManagement() {
                                 ) : (
                                   <div className="flex flex-col">
                                     <span className="text-purple-700 font-bold flex items-center gap-1.5">
-                                      Req: {m.quantity} {m.unit}
+                                      Req: {m.quantity} {m.fabricationCategory ? 'pcs' : m.unit}
                                       <span className="text-[9px] bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded uppercase font-bold border border-purple-200">Out of BOM</span>
                                     </span>
                                     <span className={`text-[10px] font-bold mt-0.5 ${issued === m.quantity ? 'text-emerald-600' : 'text-blue-600'}`}>
@@ -997,9 +1028,22 @@ export default function OrderManagement() {
                                     {sc.materials.map(mat => (
                                       <tr key={mat._id} className="border-t border-slate-50">
                                         <td className="py-1.5 pr-2 font-mono text-blue-700 w-20">{mat.code}</td>
-                                        <td className="py-1.5 pr-2 text-slate-800">{mat.item}</td>
+                                        <td className="py-1.5 pr-2 text-slate-800">
+                                          {mat.item}
+                                          {(mat.fabricationCategory || mat.amountValue != null) && (
+                                            <div className="text-[10px] font-normal text-slate-400 mt-0.5">
+                                              {formatBomDimensions(mat)}
+                                            </div>
+                                          )}
+                                        </td>
                                         <td className="py-1.5 pr-2 text-slate-500 whitespace-nowrap">
-                                          {mat.quantity * (detailOrderLive.orderQuantity || 1)} {mat.unit}
+                                          {/* mat.quantity is a piece count for fabrication
+                                              (matches its piece-based stock), or already the
+                                              resolved TOTAL amount for a non-fabrication
+                                              Amount x Pieces material (see UnitAmountField.jsx)
+                                              — mat.unit is only the correct label for the
+                                              latter and every flat Mass/Count material. */}
+                                          {mat.quantity * (detailOrderLive.orderQuantity || 1)} {mat.fabricationCategory ? 'pcs' : mat.unit}
                                           {(detailOrderLive.orderQuantity || 1) > 1 && <span className="text-slate-400"> ({mat.quantity}/unit)</span>}
                                         </td>
                                         <td className="py-1.5 text-right">
@@ -1112,14 +1156,19 @@ export default function OrderManagement() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-xs font-semibold text-slate-600 mb-1 block">Unit Type</label>
-                <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-400" value={demandForm.unitType} disabled={!!demandForm.targetDemandCode} onChange={e => setDemandForm(f => ({ ...f, unitType: e.target.value, unit: '' }))}>
+                {/* Locked once matched to a real Inventory item — its Used
+                    Unit is a fixed property of it, not something a demand
+                    should override (see UnitAmountField, which depends on
+                    this being reliable). Stays editable only for a plain
+                    unmatched/manually-named material. */}
+                <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-400" value={demandForm.unitType} disabled={!!demandForm.targetDemandCode || !!foundItem} onChange={e => setDemandForm(f => ({ ...f, unitType: e.target.value, unit: '' }))}>
                   <option value="">Select</option>
                   {unitTypesList.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
               <div>
                 <label className="text-xs font-semibold text-slate-600 mb-1 block">Unit *</label>
-                <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-400" value={demandForm.unit} disabled={!demandForm.unitType || !!demandForm.targetDemandCode} onChange={e => setDemandForm(f => ({ ...f, unit: e.target.value }))}>
+                <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-400" value={demandForm.unit} disabled={!demandForm.unitType || !!demandForm.targetDemandCode || !!foundItem} onChange={e => setDemandForm(f => ({ ...f, unit: e.target.value }))}>
                   <option value="">{demandForm.unitType ? 'Select' : 'Select Unit Type first'}</option>
                   {getUnitsForTypeDynamic(demandForm.unitType, demandForm.unit).map(u => <option key={u} value={u}>{u}</option>)}
                 </select>
@@ -1154,6 +1203,9 @@ export default function OrderManagement() {
                   onUpdate={(patch) => setDemandForm(f => ({ ...f, ...patch }))}
                 />
               )
+            )}
+            {!demandForm.targetDemandCode && rowNeedsAmount(demandForm) && (
+              <UnitAmountField row={demandForm} onUpdate={(patch) => setDemandForm(f => ({ ...f, ...patch }))} />
             )}
 
             <div>
@@ -1339,7 +1391,7 @@ export default function OrderManagement() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-slate-50 rounded-lg p-3">
                   <p className="text-xs text-slate-500 mb-1">BOM Quantity</p>
-                  <p className="text-sm font-medium text-slate-800">{viewMat.quantity} {viewMat.unit}</p>
+                  <p className="text-sm font-medium text-slate-800">{viewMat.quantity} {viewMat.fabricationCategory ? 'pcs' : viewMat.unit}</p>
                 </div>
                 <div className="bg-slate-50 rounded-lg p-3">
                   <p className="text-xs text-slate-500 mb-1">Hierarchy</p>

@@ -9,6 +9,7 @@ import {
     Search, Clock, ChevronRight, Eye, ChevronLeft, Package
 } from 'lucide-react';
 import { showSuccessToast, showSmartToast } from '@/lib/toast-utils';
+import { formatBomDimensions } from '@/utils/bomFieldFormat';
 
 const statusStyles = {
     'Pending': 'bg-amber-100 text-amber-800 border-amber-200',
@@ -22,23 +23,13 @@ const statusIcons = {
     'Rejected': <XCircle className="h-3.5 w-3.5 mr-1" />,
 };
 
-// Fabrication Master materials only (mat.fabricationCategory set) — compact
-// "amount x quantity" summary of this BOM line's own consumption, so an
-// approver can sanity-check what they're about to push into Production.
-// Read-only, same underlying data BOMCreationTab.jsx's live preview already
-// computed. Falls back to the raw dimension set for older BOM data saved
-// before the amount+quantity redesign (no amountValue/amountUnit yet).
-const summarizeBomDimensions = (mat) => {
-    if (!mat.fabricationCategory) return null;
-    const dims = mat.amountValue != null && mat.amountUnit
-        ? `${mat.amountValue} ${mat.amountUnit}`
-        : Object.entries(mat.bomDimensions || {})
-            .filter(([, v]) => v !== undefined && v !== null && v !== '')
-            .map(([k, v]) => `${k}:${v}`)
-            .join(', ');
-    const weight = mat.computedWeightPerPieceKg != null ? `${mat.computedWeightPerPieceKg.toFixed(2)} kg/pc` : null;
-    return [dims, weight].filter(Boolean).join(' · ') || null;
-};
+// Fabrication Master materials (mat.fabricationCategory set), or any
+// non-fabrication material entered as Amount x Pieces (mat.amountValue set —
+// see UnitAmountField.jsx) — compact consumption summary so an approver can
+// sanity-check what they're about to push into Production, reusing the same
+// formatter BOMCreationTab.jsx's own material listing already uses.
+const summarizeBomDimensions = (mat) =>
+    (mat.fabricationCategory || mat.amountValue != null) ? formatBomDimensions(mat) : null;
 
 export default function RDProductionQueue() {
     const {
@@ -533,7 +524,12 @@ export default function RDProductionQueue() {
                                                             <td className="px-3 py-1 font-mono text-xs">{mat.code}</td>
                                                             <td className="px-3 py-1">{mat.item}</td>
                                                             <td className="px-3 py-1 text-xs text-slate-500">{summarizeBomDimensions(mat) || '—'}</td>
-                                                            <td className="px-3 py-1 text-right">{mat.quantity} {mat.unit}</td>
+                                                            {/* Fabrication rows: Dimensions already shows the per-piece
+                                                                amount (e.g. "15 Centimeter") — Qty here is a piece count,
+                                                                not another length/area, so mat.unit (the Used Unit) would
+                                                                mislabel it (e.g. "2 Centimeter"). Non-fabrication rows are
+                                                                unaffected — mat.unit is genuinely their counting unit. */}
+                                                            <td className="px-3 py-1 text-right">{mat.quantity} {mat.fabricationCategory ? 'pcs' : mat.unit}</td>
                                                         </tr>
                                                     ))}
                                                 </tbody>

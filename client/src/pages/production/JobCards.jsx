@@ -321,7 +321,7 @@ export default function JobCards() {
                         <tr key={m.id} className="border-t border-slate-100">
                           <td className="px-3 py-2 font-mono text-blue-700">{m.materialCode}</td>
                           <td className="px-3 py-2 font-medium">{m.materialName}</td>
-                          <td className="px-3 py-2">{m.quantity} {m.unit}</td>
+                          <td className="px-3 py-2">{m.quantity} {m.fabricationCategory ? 'pcs' : m.unit}</td>
                           <td className="px-3 py-2">{m.status}</td>
                         </tr>
                       ))}

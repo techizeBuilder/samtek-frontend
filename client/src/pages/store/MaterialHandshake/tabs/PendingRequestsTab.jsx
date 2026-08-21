@@ -711,10 +711,10 @@ export default function PendingRequestsTab() {
                           )}
                         </td>
                         <td className="px-6 py-4">
-                          <span className="font-semibold text-slate-700">{mat.quantity} {mat.unit}</span>
+                          <span className="font-semibold text-slate-700">{mat.quantity} {mat.fabricationCategory ? 'pcs' : mat.unit}</span>
                         </td>
                         <td className="px-6 py-4 text-slate-500">
-                          {mat.transferredQuantity || 0} {mat.unit}
+                          {mat.transferredQuantity || 0} {mat.fabricationCategory ? 'pcs' : mat.unit}
                         </td>
                         <td className="px-6 py-4 text-right">
                           <div className="flex items-center justify-end gap-2">

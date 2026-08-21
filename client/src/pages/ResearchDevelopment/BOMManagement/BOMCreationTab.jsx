@@ -12,8 +12,9 @@ import { apiRequest } from '@/lib/queryClient';
 import { showSmartToast } from '@/lib/toast-utils';
 import { config } from '@/config/environment';
 import BOMFieldConfigModal from './BOMFieldConfigModal';
-import { formatCatalogFieldValue } from '@/utils/bomFieldFormat';
+import { formatCatalogFieldValue, formatUnitWeight } from '@/utils/bomFieldFormat';
 import FabricationVariantAmountFields from '@/components/inventory/FabricationVariantAmountFields';
+import UnitAmountField, { AMOUNT_UNIT_TYPES, rowNeedsAmount as sharedRowNeedsAmount } from '@/components/inventory/UnitAmountField';
 
 // Fabrication Master materials (fabricationRef set) price by weight, not a
 // flat purchaseCost — the user picks which catalog dimensionVariant this
@@ -27,10 +28,31 @@ const emptyFabricationFields = {
   weightUnitPrice: 0, dimensionVariants: [], dimensionVariantId: '', amountValue: '', amountUnit: '',
 };
 
+// A non-fabrication material whose matched Item's Used Unit is Length/Area/
+// Volume needs the same amountValue/amountUnit split as fabrication (see
+// UnitAmountField) — purchaseCostPerUnit is that item's own purchaseCost
+// (₹ per Used Unit) snapshotted at match time, mirroring weightUnitPrice
+// above. Count/Mass materials never touch these — a flat quantity already
+// says "5 kg"/"3 pieces" with nothing to split.
+const rowNeedsAmount = (row) => sharedRowNeedsAmount(row, getUnitTypeForUnit);
+
+// The "Quantity" field the user types for one of these rows is a PIECE count
+// (matching the label "2 pieces of 1m length each"), but the material's
+// saved `quantity` must be the TOTAL amount in the item's own stocking unit
+// — R&D/Store/Production only ever transact in that total (see
+// UnitAmountField.jsx and inventoryController.js's transferMaterialToProduction);
+// Amount x Pieces is display-only. Fabrication rows are the opposite — their
+// quantity really is a piece count (dimensionVariants[].subStock really is
+// piece-based), so they're passed through unchanged.
+const resolveSubmitQuantity = (row) => rowNeedsAmount(row)
+  ? Number(row.quantity) * Number(row.amountValue)
+  : Number(row.quantity);
+
 const emptyMaterial = {
   code: '', childPart: '', subChildPart: '', childPartCode: '', subChildPartCode: '',
   item: '', itemType: '', quantity: '', unitType: '', unit: '',
   unitPrice: 0, // display-only, always recomputed server-side on save
+  purchaseCostPerUnit: 0,
   // Product Master snapshot fields, silently captured on code match
   category: '', pType: '', pSourceType: '', brand: '', description: '', metrology: '', specifications: [], customFields: [],
   size: '', unitWeightValue: '', unitWeightUnitType: '', unitWeightUnit: '',
@@ -43,6 +65,7 @@ const emptyMaterial = {
 // separate material lines sharing that same Child Part/Sub Child Part.
 const emptyMaterialRow = {
   code: '', item: '', itemType: '', quantity: '', unitType: '', unit: '', unitPrice: 0,
+  purchaseCostPerUnit: 0,
   category: '', brand: '', description: '', specifications: [],
   ...emptyFabricationFields,
 };
@@ -241,14 +264,20 @@ export default function BOMCreationTab({ product }) {
       brand: match.brand || '',
       description: match.description || '',
       specifications: Array.isArray(match.specifications) ? match.specifications : [],
-      // Base unit auto-filled from the Inventory item's own stocking unit —
-      // still just a starting point, editable afterward if this BOM line
-      // genuinely needs a different unit.
+      // Base unit auto-fetched from the Inventory item's own stocking unit
+      // and locked (see the Unit Type/Unit JSX below) — a real matched
+      // item's Used Unit is a fixed property of it, not something a BOM
+      // line should override.
       unitType: match.unitType || getUnitTypeForUnit(match.unit) || f.unitType,
       unit: match.unit || f.unit,
+      purchaseCostPerUnit: match.purchaseCost || 0,
       // Display-only preview — the server always recomputes this
-      // authoritatively from the Inventory item on save.
-      unitPrice: match.fabricationRef ? 0 : (match.purchaseCost || 0),
+      // authoritatively from the Inventory item on save. 0 for a
+      // Length/Area/Volume material until an amount is entered (see
+      // UnitAmountField), same as fabrication's "nothing to show yet".
+      unitPrice: (match.fabricationRef || AMOUNT_UNIT_TYPES.includes(match.unitType || getUnitTypeForUnit(match.unit)))
+        ? 0
+        : (match.purchaseCost || 0),
       ...matchFabricationFields(match),
     }));
   };
@@ -269,7 +298,10 @@ export default function BOMCreationTab({ product }) {
         specifications: Array.isArray(match.specifications) ? match.specifications : [],
         unitType: match.unitType || getUnitTypeForUnit(match.unit) || row.unitType,
         unit: match.unit || row.unit,
-        unitPrice: match.fabricationRef ? 0 : (match.purchaseCost || 0),
+        purchaseCostPerUnit: match.purchaseCost || 0,
+        unitPrice: (match.fabricationRef || AMOUNT_UNIT_TYPES.includes(match.unitType || getUnitTypeForUnit(match.unit)))
+          ? 0
+          : (match.purchaseCost || 0),
         ...matchFabricationFields(match),
       };
       return { ...f, rows };
@@ -365,8 +397,13 @@ export default function BOMCreationTab({ product }) {
   // consumed amount+unit before they can be submitted — otherwise the weight
   // (and so the price) is unresolved server-side too.
   const fabricationDimsFilled = (row) => {
-    if (!row.fabricationRef) return true;
-    return !!row.dimensionVariantId && !!row.amountUnit && Number(row.amountValue) > 0;
+    if (row.fabricationRef) {
+      return !!row.dimensionVariantId && !!row.amountUnit && Number(row.amountValue) > 0;
+    }
+    if (rowNeedsAmount(row)) {
+      return !!row.amountUnit && Number(row.amountValue) > 0;
+    }
+    return true;
   };
   const rowsValid = form.rows.length > 0 && form.rows.every(r => r.code && r.item && r.quantity && r.unitType && r.unit && fabricationDimsFilled(r));
   const addFormValid = !!form.childPartCode && !!form.subChildPartCode && rowsValid;
@@ -378,7 +415,7 @@ export default function BOMCreationTab({ product }) {
     try {
       await addMaterials(bom._id, form.rows.map(row => ({
         ...row,
-        quantity: Number(row.quantity),
+        quantity: resolveSubmitQuantity(row),
         childPart: form.childPart,
         subChildPart: form.subChildPart,
         childPartCode: form.childPartCode,
@@ -393,7 +430,7 @@ export default function BOMCreationTab({ product }) {
 
   const handleEditMaterial = () => {
     if (!editForm.childPartCode || !editForm.subChildPartCode || !editForm.code || !editForm.item || !editForm.quantity || !editForm.unit) return;
-    updateMaterial(bom._id, editingMat._id, { ...editForm, quantity: Number(editForm.quantity) });
+    updateMaterial(bom._id, editingMat._id, { ...editForm, quantity: resolveSubmitQuantity(editForm) });
     setEditOpen(false);
   };
 
@@ -419,10 +456,19 @@ export default function BOMCreationTab({ product }) {
       subChildPartCode: mat.subChildPartCode || '',
       item: mat.item || '',
       itemType: mat.itemType || '',
-      quantity: String(mat.quantity),
+      // mat.quantity is the saved TOTAL for a non-fabrication Length/Area/
+      // Volume material (see resolveSubmitQuantity) — the Quantity input
+      // shows PIECES (total / per-piece amount) so editing feels like typing
+      // "2 pieces" again, not a total that only looks like a piece count
+      // when amountValue happens to be 1. Fabrication rows are unaffected —
+      // their quantity already is a piece count.
+      quantity: (mat.amountValue != null && !mat.fabricationCategory)
+        ? String(mat.quantity / mat.amountValue)
+        : String(mat.quantity),
       unitType: mat.unitType || getUnitTypeForUnit(mat.unit),
       unit: mat.unit || '',
       unitPrice: mat.unitPrice || 0,
+      purchaseCostPerUnit: currentItem?.purchaseCost || 0,
       category: mat.category || '',
       pType: mat.pType || '',
       pSourceType: mat.pSourceType || '',
@@ -601,11 +647,13 @@ export default function BOMCreationTab({ product }) {
                     <tr className="bg-slate-50 border-b border-slate-100">
                       <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">#</th>
                       <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Material Code</th>
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Hierarchy (Child &gt; Sub-Child)</th>
+                      <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Child Part</th>
+                      <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Sub Child Part</th>
                       <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Material Name</th>
                       <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Qty</th>
                       <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Used Unit</th>
                       <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Price</th>
+                      <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Unit Weight</th>
                       {extraColumns.map(f => (
                         <th key={f.key} className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">{f.label}</th>
                       ))}
@@ -615,18 +663,26 @@ export default function BOMCreationTab({ product }) {
                   </thead>
                   <tbody>
                     {bom.materials.length === 0 ? (
-                      <tr><td colSpan={9 + extraColumns.length} className="text-center py-10 text-slate-400">No materials added. Click "Add Material" to start building the BOM.</td></tr>
+                      <tr><td colSpan={11 + extraColumns.length} className="text-center py-10 text-slate-400">No materials added. Click "Add Material" to start building the BOM.</td></tr>
                     ) : bom.materials.map((mat, i) => (
                       <tr key={mat._id} className={`border-b border-slate-50 transition-colors ${mat.isDiscontinued ? 'bg-red-50/40 opacity-70' : 'hover:bg-slate-50'}`}>
                         <td className="px-5 py-3.5 text-slate-400 text-xs font-semibold">{i + 1}</td>
                         <td className="px-5 py-3.5"><span className="font-mono text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded">{mat.code || '—'}</span></td>
-                        <td className="px-5 py-3.5 text-xs text-slate-600">
-                          {[mat.childPart, mat.subChildPart].filter(Boolean).join(' > ') || '—'}
-                        </td>
+                        <td className="px-5 py-3.5 text-xs text-slate-600">{mat.childPart || '—'}</td>
+                        <td className="px-5 py-3.5 text-xs text-slate-600">{mat.subChildPart || '—'}</td>
                         <td className={`px-5 py-3.5 font-medium ${mat.isDiscontinued ? 'text-slate-400 line-through' : 'text-slate-900'}`}>{mat.item}</td>
-                        <td className="px-5 py-3.5 font-bold text-slate-800">{mat.quantity}</td>
+                        <td className="px-5 py-3.5 font-bold text-slate-800">
+                          {/* A fabrication material's quantity is a piece
+                              count, unrelated to the Used Unit shown in the
+                              very next column (that's a Length/Area unit for
+                              BOM weight calc, e.g. Centimeter) — self-label
+                              it "pcs" so the two adjacent columns can't be
+                              misread together as "2 Centimeter". */}
+                          {mat.quantity}{mat.fabricationCategory && <span className="ml-1 text-xs font-normal text-slate-400">pcs</span>}
+                        </td>
                         <td className="px-5 py-3.5 text-slate-600">{mat.unit}</td>
                         <td className="px-5 py-3.5 text-slate-700">₹{(mat.totalPrice || 0).toLocaleString()} <span className="text-[10px] text-slate-400">(₹{mat.unitPrice || 0}/unit)</span></td>
+                        <td className="px-5 py-3.5 text-slate-600">{formatUnitWeight(mat)}</td>
                         {extraColumns.map(f => {
                           const display = formatCatalogFieldValue(f.key, mat);
                           return (
@@ -745,26 +801,13 @@ export default function BOMCreationTab({ product }) {
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-xs font-semibold text-slate-600 mb-1 block">Quantity *</label>
-                      <Input type="number" placeholder="0" min="0" value={row.quantity} onChange={e => updateRow(idx, { quantity: e.target.value })} className="bg-white" />
-                    </div>
-                    <div>
-                      <label className="text-xs font-semibold text-slate-600 mb-1 block">Price <span className="text-[10px] text-slate-400 font-normal">(auto)</span></label>
-                      <div className="h-10 flex items-center px-3 rounded-lg border border-slate-200 bg-white text-sm text-slate-700">
-                        ₹{((Number(row.quantity) || 0) * (row.unitPrice || 0)).toLocaleString()}
-                        <span className="text-[10px] text-slate-400 ml-1.5">(₹{row.unitPrice || 0}/unit)</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
                       <label className="text-xs font-semibold text-slate-600 mb-1 block">Unit Type *</label>
-                      {/* Fabrication Master items: auto-fetched from the item,
-                          locked — the use unit is a fixed property of the
-                          item's shape (Length Unit vs Area Unit), not
-                          something a BOM line should override. */}
-                      {row.fabricationRef ? (
+                      {/* Auto-fetched from the matched Inventory item and
+                          locked once a real item is matched — the Used Unit
+                          is a fixed property of the item, not something a
+                          BOM line should override. Only stays editable for
+                          rows with no matched item at all. */}
+                      {(row.fabricationRef || findProductByCode(row.code)) ? (
                         <Input value={row.unitType} disabled className="bg-slate-50 text-slate-500" />
                       ) : (
                         <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" value={row.unitType} onChange={e => updateRow(idx, { unitType: e.target.value, unit: '' })}>
@@ -775,7 +818,7 @@ export default function BOMCreationTab({ product }) {
                     </div>
                     <div>
                       <label className="text-xs font-semibold text-slate-600 mb-1 block">Unit *</label>
-                      {row.fabricationRef ? (
+                      {(row.fabricationRef || findProductByCode(row.code)) ? (
                         <Input value={row.unit} disabled className="bg-slate-50 text-slate-500" />
                       ) : (
                         <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-400 bg-white" value={row.unit} disabled={!row.unitType} onChange={e => updateRow(idx, { unit: e.target.value })}>
@@ -793,6 +836,23 @@ export default function BOMCreationTab({ product }) {
                       onUpdate={(patch) => updateRow(idx, patch)}
                     />
                   )}
+                  {rowNeedsAmount(row) && (
+                    <UnitAmountField row={row} onUpdate={(patch) => updateRow(idx, patch)} />
+                  )}
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-semibold text-slate-600 mb-1 block">Quantity *</label>
+                      <Input type="number" placeholder="0" min="0" value={row.quantity} onChange={e => updateRow(idx, { quantity: e.target.value })} className="bg-white" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-slate-600 mb-1 block">Price <span className="text-[10px] text-slate-400 font-normal">(auto)</span></label>
+                      <div className="h-10 flex items-center px-3 rounded-lg border border-slate-200 bg-white text-sm text-slate-700">
+                        ₹{((Number(row.quantity) || 0) * (row.unitPrice || 0)).toLocaleString()}
+                        <span className="text-[10px] text-slate-400 ml-1.5">(₹{row.unitPrice || 0}/unit)</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               ))}
 
@@ -815,7 +875,7 @@ export default function BOMCreationTab({ product }) {
 
       {/* Edit Material Dialog */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Edit Material</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
             <div className="grid grid-cols-2 gap-3">
@@ -859,22 +919,8 @@ export default function BOMCreationTab({ product }) {
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Quantity *</label>
-                <Input type="number" value={editForm.quantity} onChange={e => setEditForm(f => ({ ...f, quantity: e.target.value }))} />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Price <span className="text-[10px] text-slate-400 font-normal">(auto, from {editForm.fabricationRef ? 'weight × price/kg' : 'Purchase Cost'})</span></label>
-                <div className="h-10 flex items-center px-3 rounded-lg border border-slate-200 bg-slate-50 text-sm text-slate-700">
-                  ₹{((Number(editForm.quantity) || 0) * (editForm.unitPrice || 0)).toLocaleString()}
-                  <span className="text-[10px] text-slate-400 ml-1.5">(₹{editForm.unitPrice || 0}/unit)</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
                 <label className="text-xs font-semibold text-slate-600 mb-1 block">Unit Type *</label>
-                {editForm.fabricationRef ? (
+                {(editForm.fabricationRef || findProductByCode(editForm.code)) ? (
                   <Input value={editForm.unitType} disabled className="bg-slate-50 text-slate-500" />
                 ) : (
                   <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={editForm.unitType} onChange={e => setEditForm(f => ({ ...f, unitType: e.target.value, unit: '' }))}>
@@ -885,7 +931,7 @@ export default function BOMCreationTab({ product }) {
               </div>
               <div>
                 <label className="text-xs font-semibold text-slate-600 mb-1 block">Unit *</label>
-                {editForm.fabricationRef ? (
+                {(editForm.fabricationRef || findProductByCode(editForm.code)) ? (
                   <Input value={editForm.unit} disabled className="bg-slate-50 text-slate-500" />
                 ) : (
                   <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-400" value={editForm.unit} disabled={!editForm.unitType && !editForm.unit} onChange={e => setEditForm(f => ({ ...f, unit: e.target.value }))}>
@@ -903,6 +949,23 @@ export default function BOMCreationTab({ product }) {
                 onUpdate={(patch) => setEditForm(f => ({ ...f, ...patch }))}
               />
             )}
+            {rowNeedsAmount(editForm) && (
+              <UnitAmountField row={editForm} onUpdate={(patch) => setEditForm(f => ({ ...f, ...patch }))} />
+            )}
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">Quantity *</label>
+                <Input type="number" value={editForm.quantity} onChange={e => setEditForm(f => ({ ...f, quantity: e.target.value }))} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">Price <span className="text-[10px] text-slate-400 font-normal">(auto, from {editForm.fabricationRef ? 'weight × price/kg' : 'Purchase Cost'})</span></label>
+                <div className="h-10 flex items-center px-3 rounded-lg border border-slate-200 bg-slate-50 text-sm text-slate-700">
+                  ₹{((Number(editForm.quantity) || 0) * (editForm.unitPrice || 0)).toLocaleString()}
+                  <span className="text-[10px] text-slate-400 ml-1.5">(₹{editForm.unitPrice || 0}/unit)</span>
+                </div>
+              </div>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
@@ -972,15 +1035,23 @@ export default function BOMCreationTab({ product }) {
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-slate-50 rounded-lg p-3">
                   <p className="text-xs text-slate-500 mb-1">Quantity</p>
-                  <p className="text-sm font-medium text-slate-800">{viewMat.quantity} {viewMat.unit}</p>
-                </div>
-                <div className="bg-slate-50 rounded-lg p-3">
-                  <p className="text-xs text-slate-500 mb-1">Hierarchy</p>
-                  <p className="text-sm font-medium text-slate-800">{[viewMat.childPart, viewMat.subChildPart].filter(Boolean).join(' > ') || '—'}</p>
+                  <p className="text-sm font-medium text-slate-800">{viewMat.quantity} {viewMat.fabricationCategory ? 'pcs' : viewMat.unit}</p>
                 </div>
                 <div className="bg-slate-50 rounded-lg p-3">
                   <p className="text-xs text-slate-500 mb-1">Price</p>
                   <p className="text-sm font-medium text-slate-800">₹{(viewMat.totalPrice || 0).toLocaleString()} <span className="text-xs text-slate-400">(₹{viewMat.unitPrice || 0}/unit)</span></p>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-xs text-slate-500 mb-1">Child Part</p>
+                  <p className="text-sm font-medium text-slate-800">{viewMat.childPart || '—'}</p>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-xs text-slate-500 mb-1">Sub Child Part</p>
+                  <p className="text-sm font-medium text-slate-800">{viewMat.subChildPart || '—'}</p>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-xs text-slate-500 mb-1">Unit Weight</p>
+                  <p className="text-sm font-medium text-slate-800">{formatUnitWeight(viewMat)}</p>
                 </div>
                 <div className="bg-slate-50 rounded-lg p-3">
                   <p className="text-xs text-slate-500 mb-1">Status</p>
