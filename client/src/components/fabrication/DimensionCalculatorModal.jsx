@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { Loader2, Plus } from 'lucide-react';
+import { Loader2, Plus, Pencil, Trash2 } from 'lucide-react';
 import { ShapeDiagram } from './FabricationShapeIcons';
 
 const LENGTH_UNIT_FACTORS = { mm: 1, inch: 25.4, foot: 304.8 };
@@ -73,6 +73,11 @@ export default function DimensionCalculatorModal({
   const [newMatUnit, setNewMatUnit] = useState('kg/m3');
   const [addMatError, setAddMatError] = useState('');
   const [addingMat, setAddingMat] = useState(false);
+  // Set while the Add-Material panel is being reused to edit an existing
+  // company-added material instead (built-in materials never reach this —
+  // see the Edit/Delete buttons' own `custom` guard below).
+  const [editingMaterialId, setEditingMaterialId] = useState(null);
+  const [deletingMat, setDeletingMat] = useState(false);
 
   const { data: materialsResponse } = useQuery({
     queryKey: ['fabrication-materials'],
@@ -107,6 +112,7 @@ export default function DimensionCalculatorModal({
     setError('');
     setAddMaterialOpen(false);
     setAddMatError('');
+    setEditingMaterialId(null);
   };
 
   // Re-seed every time the modal is opened for a (possibly different) group.
@@ -143,6 +149,22 @@ export default function DimensionCalculatorModal({
     if (found) setDensityKgM3(found.densityKgM3);
   };
 
+  const selectedMaterial = materials.find((m) => m.key === material);
+
+  const toggleAddMaterial = () => {
+    if (addMaterialOpen) {
+      setAddMaterialOpen(false);
+      setEditingMaterialId(null);
+      setAddMatError('');
+      return;
+    }
+    setEditingMaterialId(null);
+    setNewMatName('');
+    setNewMatDensity('');
+    setNewMatUnit('kg/m3');
+    setAddMaterialOpen(true);
+  };
+
   const displayedDensity = densityUnit === 'g/cm3' ? +(densityKgM3 / 1000).toFixed(4) : Math.round(densityKgM3 * 100) / 100;
   const handleDensityValueChange = (raw) => {
     const num = Number(raw);
@@ -150,23 +172,63 @@ export default function DimensionCalculatorModal({
     setDensityKgM3(densityUnit === 'g/cm3' ? num * 1000 : num);
   };
 
+  // Same panel handles both Add and Edit — editingMaterialId set means this
+  // save should PUT the material it was opened for instead of POSTing a new
+  // one. Only ever opened for a custom (company-added) material — see
+  // openEditMaterial's own guard.
   const handleAddMaterial = async () => {
     if (!newMatName.trim() || newMatDensity === '') return;
     setAddingMat(true);
     setAddMatError('');
     try {
       const densityKgM3Val = newMatUnit === 'g/cm3' ? Number(newMatDensity) * 1000 : Number(newMatDensity);
-      const res = await apiRequest('POST', '/api/fabrication-master/materials', { name: newMatName.trim(), densityKgM3: densityKgM3Val });
+      const res = editingMaterialId
+        ? await apiRequest('PUT', `/api/fabrication-master/materials/${editingMaterialId}`, { name: newMatName.trim(), densityKgM3: densityKgM3Val })
+        : await apiRequest('POST', '/api/fabrication-master/materials', { name: newMatName.trim(), densityKgM3: densityKgM3Val });
       await qc.invalidateQueries({ queryKey: ['fabrication-materials'] });
       setMaterial(res.data.key);
       setDensityKgM3(res.data.densityKgM3);
       setDensityUnit('kg/m3');
       setAddMaterialOpen(false);
+      setEditingMaterialId(null);
       setNewMatName(''); setNewMatDensity(''); setNewMatUnit('kg/m3');
     } catch (e) {
-      setAddMatError(e?.response?.data?.message || 'Could not add material');
+      setAddMatError(e?.response?.data?.message || `Could not ${editingMaterialId ? 'update' : 'add'} material`);
     } finally {
       setAddingMat(false);
+    }
+  };
+
+  // Pre-fills the Add-Material panel with the currently-selected custom
+  // material's own values and switches it into edit mode.
+  const openEditMaterial = () => {
+    const found = materials.find((m) => m.key === material);
+    if (!found || !found.custom) return;
+    setEditingMaterialId(found.key);
+    setNewMatName(found.label);
+    setNewMatDensity(String(found.densityKgM3));
+    setNewMatUnit('kg/m3');
+    setAddMatError('');
+    setAddMaterialOpen(true);
+  };
+
+  const handleDeleteMaterial = async () => {
+    const found = materials.find((m) => m.key === material);
+    if (!found || !found.custom) return;
+    if (!window.confirm(`Delete "${found.label}"? This removes it from the Material list for everyone — items already using it keep their saved values.`)) return;
+    setDeletingMat(true);
+    try {
+      await apiRequest('DELETE', `/api/fabrication-master/materials/${found.key}`);
+      await qc.invalidateQueries({ queryKey: ['fabrication-materials'] });
+      const remaining = materials.filter((m) => m.key !== found.key);
+      const ms = remaining.find((m) => m.key === 'MS');
+      setMaterial(ms?.key || '');
+      setDensityKgM3(ms?.densityKgM3 || defaultDensityKgM3);
+      setDensityUnit('kg/m3');
+    } catch (e) {
+      setError(e?.response?.data?.message || 'Could not delete material');
+    } finally {
+      setDeletingMat(false);
     }
   };
 
@@ -250,6 +312,11 @@ export default function DimensionCalculatorModal({
         pricePerKg: null,
       },
       density: { value: displayedDensity, unit: densityUnit },
+      // Human-readable label of the picked Material (e.g. "SS 304") — density
+      // above only keeps the resulting number, this is the only place the
+      // actual material designation survives (see FabricationMaster.js's
+      // matching comment on the `material` field).
+      materialLabel: materials.find((m) => m.key === material)?.label || material,
     });
   };
 
@@ -345,12 +412,23 @@ export default function DimensionCalculatorModal({
                   <option value="">Select...</option>
                   {materials.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
                 </select>
-                <Button type="button" size="icon" variant="outline" onClick={() => setAddMaterialOpen((v) => !v)} title="Add material">
+                {selectedMaterial?.custom && (
+                  <>
+                    <Button type="button" size="icon" variant="outline" onClick={openEditMaterial} title="Edit material">
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button type="button" size="icon" variant="outline" onClick={handleDeleteMaterial} disabled={deletingMat} title="Delete material">
+                      <Trash2 className="h-4 w-4 text-red-500" />
+                    </Button>
+                  </>
+                )}
+                <Button type="button" size="icon" variant="outline" onClick={toggleAddMaterial} title="Add material">
                   <Plus className="h-4 w-4" />
                 </Button>
               </div>
               {addMaterialOpen && (
                 <div className="border border-blue-200 bg-blue-50/50 rounded-lg p-2.5 space-y-2 mt-1.5">
+                  <p className="text-[10px] font-medium text-blue-700">{editingMaterialId ? 'Edit material' : 'Add material'}</p>
                   <Input placeholder="Material name (e.g. SS 316L)" className="bg-white" value={newMatName} onChange={(e) => setNewMatName(e.target.value)} />
                   <div className="flex gap-1.5">
                     <Input type="number" min="0" placeholder="Density" className="bg-white" value={newMatDensity} onChange={(e) => setNewMatDensity(e.target.value)} />
@@ -361,9 +439,9 @@ export default function DimensionCalculatorModal({
                   </div>
                   {addMatError && <p className="text-[10px] text-red-500">{addMatError}</p>}
                   <div className="flex justify-end gap-1.5">
-                    <Button type="button" size="sm" variant="outline" onClick={() => { setAddMaterialOpen(false); setAddMatError(''); }}>Cancel</Button>
+                    <Button type="button" size="sm" variant="outline" onClick={() => { setAddMaterialOpen(false); setEditingMaterialId(null); setAddMatError(''); }}>Cancel</Button>
                     <Button type="button" size="sm" onClick={handleAddMaterial} disabled={addingMat || !newMatName.trim() || newMatDensity === ''}>
-                      {addingMat ? 'Adding...' : 'Add'}
+                      {addingMat ? (editingMaterialId ? 'Saving...' : 'Adding...') : (editingMaterialId ? 'Save' : 'Add')}
                     </Button>
                   </div>
                 </div>

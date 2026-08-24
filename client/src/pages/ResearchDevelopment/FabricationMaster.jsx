@@ -14,7 +14,7 @@ import DimensionCalculatorModal from '@/components/fabrication/DimensionCalculat
 import { ShapeTileIcon } from '@/components/fabrication/FabricationShapeIcons';
 
 const emptyForm = {
-  itemName: '', itemCode: '', category: '', density: { value: '', unit: 'kg/m3' }, isDiscontinued: false, dimensions: [],
+  itemName: '', itemCode: '', category: '', density: { value: '', unit: 'kg/m3' }, material: '', isDiscontinued: false, dimensions: [],
   purchaseUnitType: '', purchaseUnit: '', usedUnitType: '', usedUnit: '', receiveUnitType: '', receiveUnit: '',
 };
 
@@ -129,6 +129,7 @@ export default function FabricationMaster() {
     setForm({
       itemName: item.itemName || '', itemCode: item.itemCode || '', category: item.category || '',
       density: { value: item.density?.value ?? '', unit: item.density?.unit || 'kg/m3' },
+      material: item.material || '',
       isDiscontinued: !!item.isDiscontinued,
       dimensions: (item.dimensions || []).map(d => ({ ...d, values: d.values || {} })),
       purchaseUnitType: item.purchaseUnitType || '', purchaseUnit: item.purchaseUnit || '',
@@ -172,8 +173,8 @@ export default function FabricationMaster() {
     setCalculatorOpen(true);
   };
   // Modal 2 Save — locks in the resolved category + item-level density, appends the row.
-  const handleCalculatorSave = ({ categoryKey, dimensionRow, density }) => {
-    setForm(f => ({ ...f, category: categoryKey, density, dimensions: [...f.dimensions, dimensionRow] }));
+  const handleCalculatorSave = ({ categoryKey, dimensionRow, density, materialLabel }) => {
+    setForm(f => ({ ...f, category: categoryKey, density, material: materialLabel || f.material, dimensions: [...f.dimensions, dimensionRow] }));
     setCalculatorOpen(false);
   };
   const removeDimension = (idx) => setForm(f => ({ ...f, dimensions: f.dimensions.filter((_, i) => i !== idx) }));

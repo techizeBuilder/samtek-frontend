@@ -23,10 +23,12 @@ export default function ChildPartCreationTab({ product }) {
   const [cpCode, setCpCode] = useState('');
   const [cpImage, setCpImage] = useState('');
   const [imageUploading, setImageUploading] = useState(false);
-  const [subForms, setSubForms] = useState({}); // childPartId -> { name, code }
+  const [subForms, setSubForms] = useState({}); // childPartId -> { name, code, image }
+  const [subImageUploading, setSubImageUploading] = useState({}); // childPartId -> bool
   const [editTarget, setEditTarget] = useState(null); // child part being edited
   const [editForm, setEditForm] = useState({ name: '', image: '', subChildParts: [] });
   const [editImageUploading, setEditImageUploading] = useState(false);
+  const [editSubImageUploading, setEditSubImageUploading] = useState({}); // subId -> bool
   const [deleteChildPartTarget, setDeleteChildPartTarget] = useState(null);
   const [deleteSubTarget, setDeleteSubTarget] = useState(null); // { childPartId, subId, name }
 
@@ -87,7 +89,7 @@ export default function ChildPartCreationTab({ product }) {
     onSuccess: (_res, { childPartId }) => {
       invalidate();
       showSuccessToast('Sub Child Part Created', 'New sub child part added successfully');
-      setSubForms(f => ({ ...f, [childPartId]: { name: '', code: '' } }));
+      setSubForms(f => ({ ...f, [childPartId]: { name: '', code: '', image: '' } }));
     },
     onError: (e) => showSmartToast(e, 'Failed to add sub child part'),
   });
@@ -136,20 +138,62 @@ export default function ChildPartCreationTab({ product }) {
     createChildPartMutation.mutate({ productId, name: cpName, code: cpCode, image: cpImage });
   };
 
-  const getSubForm = (childPartId) => subForms[childPartId] || { name: '', code: '' };
+  const getSubForm = (childPartId) => subForms[childPartId] || { name: '', code: '', image: '' };
   const setSubForm = (childPartId, patch) => setSubForms(f => ({ ...f, [childPartId]: { ...getSubForm(childPartId), ...patch } }));
+
+  const handleSubImageUpload = async (childPartId, event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      showSmartToast(new Error('Please select a file under 10MB'), 'File too large');
+      return;
+    }
+    setSubImageUploading(u => ({ ...u, [childPartId]: true }));
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await apiRequest('POST', '/api/rd/child-parts/upload-file', fd);
+      if (res.success && res.url) setSubForm(childPartId, { image: res.url });
+    } catch (e) {
+      showSmartToast(e, 'File upload failed');
+    } finally {
+      setSubImageUploading(u => ({ ...u, [childPartId]: false }));
+    }
+  };
 
   const openEditModal = (cp) => {
     setEditTarget(cp);
     setEditForm({
       name: cp.name || '',
       image: cp.image || '',
-      subChildParts: (cp.subChildParts || []).map(s => ({ _id: s._id, name: s.name, code: s.code, isDiscontinued: s.isDiscontinued })),
+      subChildParts: (cp.subChildParts || []).map(s => ({ _id: s._id, name: s.name, code: s.code, image: s.image || '', isDiscontinued: s.isDiscontinued })),
     });
   };
 
   const setEditSubName = (subId, name) => {
     setEditForm(f => ({ ...f, subChildParts: f.subChildParts.map(s => s._id === subId ? { ...s, name } : s) }));
+  };
+
+  const handleEditSubImageUpload = async (subId, event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      showSmartToast(new Error('Please select a file under 10MB'), 'File too large');
+      return;
+    }
+    setEditSubImageUploading(u => ({ ...u, [subId]: true }));
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await apiRequest('POST', '/api/rd/child-parts/upload-file', fd);
+      if (res.success && res.url) {
+        setEditForm(f => ({ ...f, subChildParts: f.subChildParts.map(s => s._id === subId ? { ...s, image: res.url } : s) }));
+      }
+    } catch (e) {
+      showSmartToast(e, 'File upload failed');
+    } finally {
+      setEditSubImageUploading(u => ({ ...u, [subId]: false }));
+    }
   };
 
   const handleEditImageUpload = async (event) => {
@@ -181,8 +225,8 @@ export default function ChildPartCreationTab({ product }) {
       }
       editForm.subChildParts.forEach(sub => {
         const original = (editTarget.subChildParts || []).find(s => s._id === sub._id);
-        if (original && sub.name !== original.name) {
-          promises.push(updateSubChildPartMutation.mutateAsync({ childPartId: editTarget._id, subId: sub._id, data: { name: sub.name } }));
+        if (original && (sub.name !== original.name || sub.image !== (original.image || ''))) {
+          promises.push(updateSubChildPartMutation.mutateAsync({ childPartId: editTarget._id, subId: sub._id, data: { name: sub.name, image: sub.image } }));
         }
       });
       await Promise.all(promises);
@@ -216,7 +260,7 @@ export default function ChildPartCreationTab({ product }) {
               </div>
             </div>
             <div>
-              <Label className="text-xs font-semibold text-slate-600 mb-1 block">Document</Label>
+              <Label className="text-xs font-semibold text-slate-600 mb-1 block">Design File</Label>
               <div className="flex items-center gap-2">
                 {cpImage ? (
                   isPdfUrl(cpImage) ? (
@@ -289,7 +333,18 @@ export default function ChildPartCreationTab({ product }) {
                   <div className="pl-4 border-l-2 border-slate-100 space-y-2">
                     {(cp.subChildParts || []).map(sub => (
                       <div key={sub._id} className="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2">
-                        <div>
+                        <div className="flex items-center gap-2">
+                          {sub.image ? (
+                            isPdfUrl(sub.image) ? (
+                              <a href={resolveMediaUrl(sub.image)} target="_blank" rel="noreferrer" title="View PDF" className="h-7 w-7 rounded border bg-red-50 flex items-center justify-center hover:bg-red-100 flex-shrink-0">
+                                <FileText className="h-3.5 w-3.5 text-red-500" />
+                              </a>
+                            ) : (
+                              <img src={resolveMediaUrl(sub.image)} alt="" className="h-7 w-7 rounded object-cover border flex-shrink-0" />
+                            )
+                          ) : (
+                            <div className="h-7 w-7 rounded border bg-white flex items-center justify-center flex-shrink-0"><ImageIcon className="h-3.5 w-3.5 text-slate-300" /></div>
+                          )}
                           <span className="text-sm text-slate-800">{sub.name}</span>
                           <span className="ml-2 font-mono text-xs text-purple-600 bg-purple-50 px-2 py-0.5 rounded">{sub.code}</span>
                           {sub.isDiscontinued && <span className="ml-2 text-[10px] text-red-500 font-semibold">DISCONTINUED</span>}
@@ -324,6 +379,24 @@ export default function ChildPartCreationTab({ product }) {
                             </Button>
                           </div>
                         </div>
+                        <div className="flex-shrink-0">
+                          <Label className="text-[11px] text-slate-500 mb-1 block">Design File</Label>
+                          <div className="flex items-center gap-1.5 h-8">
+                            {subForm.image ? (
+                              isPdfUrl(subForm.image) ? (
+                                <div className="h-7 w-7 rounded border bg-red-50 flex items-center justify-center flex-shrink-0"><FileText className="h-3.5 w-3.5 text-red-500" /></div>
+                              ) : (
+                                <img src={resolveMediaUrl(subForm.image)} alt="" className="h-7 w-7 rounded object-cover border flex-shrink-0" />
+                              )
+                            ) : (
+                              <div className="h-7 w-7 rounded border bg-slate-50 flex items-center justify-center flex-shrink-0"><ImageIcon className="h-3.5 w-3.5 text-slate-300" /></div>
+                            )}
+                            <label className="cursor-pointer">
+                              <span className="text-xs text-blue-600 hover:underline">{subImageUploading[cp._id] ? '...' : 'Upload'}</span>
+                              <input type="file" accept="image/*,application/pdf" className="hidden" onChange={e => handleSubImageUpload(cp._id, e)} disabled={subImageUploading[cp._id]} />
+                            </label>
+                          </div>
+                        </div>
                         <Button size="sm" className="h-8 bg-gradient-to-r from-blue-600 to-purple-600 text-white"
                           disabled={!subForm.name || !subForm.code || addSubChildPartMutation.isPending}
                           onClick={() => addSubChildPartMutation.mutate({ childPartId: cp._id, data: subForm })}>
@@ -355,7 +428,7 @@ export default function ChildPartCreationTab({ product }) {
               </div>
             </div>
             <div>
-              <Label className="text-xs font-semibold text-slate-600 mb-1 block">Design</Label>
+              <Label className="text-xs font-semibold text-slate-600 mb-1 block">Design File</Label>
               <div className="flex items-center gap-2">
                 {editForm.image ? (
                   isPdfUrl(editForm.image) ? (
@@ -379,8 +452,21 @@ export default function ChildPartCreationTab({ product }) {
                 <div className="space-y-2">
                   {editForm.subChildParts.map(sub => (
                     <div key={sub._id} className="flex items-center gap-2 bg-slate-50 rounded-lg px-3 py-2">
+                      {sub.image ? (
+                        isPdfUrl(sub.image) ? (
+                          <div className="h-8 w-8 rounded border bg-red-50 flex items-center justify-center flex-shrink-0"><FileText className="h-4 w-4 text-red-500" /></div>
+                        ) : (
+                          <img src={resolveMediaUrl(sub.image)} alt="" className="h-8 w-8 rounded object-cover border flex-shrink-0" />
+                        )
+                      ) : (
+                        <div className="h-8 w-8 rounded border bg-white flex items-center justify-center flex-shrink-0"><ImageIcon className="h-4 w-4 text-slate-300" /></div>
+                      )}
                       <Input className="h-8 text-sm flex-1" value={sub.name} onChange={e => setEditSubName(sub._id, e.target.value)} />
                       <span className="font-mono text-xs text-purple-600 bg-purple-50 px-2 py-0.5 rounded flex-shrink-0">{sub.code}</span>
+                      <label className="cursor-pointer flex-shrink-0">
+                        <span className="text-xs text-blue-600 hover:underline">{editSubImageUploading[sub._id] ? '...' : 'Change'}</span>
+                        <input type="file" accept="image/*,application/pdf" className="hidden" onChange={e => handleEditSubImageUpload(sub._id, e)} disabled={editSubImageUploading[sub._id]} />
+                      </label>
                       {sub.isDiscontinued && <span className="text-[10px] text-red-500 font-semibold flex-shrink-0">DISCONTINUED</span>}
                     </div>
                   ))}

@@ -250,6 +250,9 @@ export default function SimpleInventoryForm({
       unit: fabItem.usedUnit || prev.unit,
       receiveUnitType: fabItem.receiveUnitType || prev.receiveUnitType,
       receiveUnit: fabItem.receiveUnit || prev.receiveUnit,
+      // Material Grade carries the catalog entry's own Material label (e.g.
+      // "SS 304") as one combined value — see the field's own comment below.
+      materialGrade: fabItem.material || prev.materialGrade,
     }));
     setFabricationPickerOpen(false);
   };
@@ -598,13 +601,24 @@ export default function SimpleInventoryForm({
               </div>
               <div>
                 <Label className="text-sm font-medium text-gray-700">11. Material Grade</Label>
-                <div className="flex gap-2 mt-1">
-                  <Select value={formData.materialGrade} onValueChange={(v) => handleInputChange('materialGrade', v)}>
-                    <SelectTrigger className="flex-1"><SelectValue placeholder="Select">{formData.materialGrade}</SelectValue></SelectTrigger>
-                    <SelectContent>{(rdMasterOptions.MaterialGrade || []).map(o => <SelectItem key={o.value} value={o.value}>{optionRow(o.value, () => deleteOption('rd', o, 'materialGrade'))}</SelectItem>)}</SelectContent>
-                  </Select>
-                  <Button type="button" variant="outline" size="icon" onClick={() => setNewOptionModal({ open: true, scope: 'rd', field: 'MaterialGrade', value: '' })}><Plus className="h-4 w-4" /></Button>
-                </div>
+                {/* Auto-fetched from the picked Fabrication Master item's own
+                    Material (e.g. "SS 304") and locked. Metrology stays
+                    independently editable — a material label like this isn't
+                    reliably splittable into Metrology + Material Grade (not
+                    every material has a numeric grade part, e.g. "MS"), so
+                    it's combined into this one field instead, per Metrology
+                    being left free for whatever else it's used for. */}
+                {formData.fabricationRef ? (
+                  <Input value={formData.materialGrade} disabled className="mt-1 bg-gray-50 text-gray-500" />
+                ) : (
+                  <div className="flex gap-2 mt-1">
+                    <Select value={formData.materialGrade} onValueChange={(v) => handleInputChange('materialGrade', v)}>
+                      <SelectTrigger className="flex-1"><SelectValue placeholder="Select">{formData.materialGrade}</SelectValue></SelectTrigger>
+                      <SelectContent>{(rdMasterOptions.MaterialGrade || []).map(o => <SelectItem key={o.value} value={o.value}>{optionRow(o.value, () => deleteOption('rd', o, 'materialGrade'))}</SelectItem>)}</SelectContent>
+                    </Select>
+                    <Button type="button" variant="outline" size="icon" onClick={() => setNewOptionModal({ open: true, scope: 'rd', field: 'MaterialGrade', value: '' })}><Plus className="h-4 w-4" /></Button>
+                  </div>
+                )}
               </div>
             </div>
             {formData.itemProcessType !== FABRICATION_PROCESS_TYPE && (
@@ -645,18 +659,29 @@ export default function SimpleInventoryForm({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-3 bg-blue-50/20 border border-blue-100 rounded-md">
                 <div>
                   <Label className="text-sm font-medium text-gray-700">Purchase Unit Type *</Label>
-                  <Select value={formData.purchaseUnitType} onValueChange={(v) => { handleInputChange('purchaseUnitType', v); handleInputChange('purchaseUnit', ''); }}>
-                    <SelectTrigger className={`mt-1 bg-white ${errors.purchaseUnitType ? 'border-red-500' : ''}`}><SelectValue placeholder="Select" /></SelectTrigger>
-                    <SelectContent>{unitTypes.map((ut) => <SelectItem key={ut._id} value={ut.name}>{ut.name}</SelectItem>)}</SelectContent>
-                  </Select>
+                  {/* Auto-fetched from the picked Fabrication Master item and
+                      locked — a fixed property of that catalog entry, not
+                      something an individual Inventory item should override. */}
+                  {formData.fabricationRef ? (
+                    <Input value={formData.purchaseUnitType} disabled className="mt-1 bg-gray-50 text-gray-500" />
+                  ) : (
+                    <Select value={formData.purchaseUnitType} onValueChange={(v) => { handleInputChange('purchaseUnitType', v); handleInputChange('purchaseUnit', ''); }}>
+                      <SelectTrigger className={`mt-1 bg-white ${errors.purchaseUnitType ? 'border-red-500' : ''}`}><SelectValue placeholder="Select" /></SelectTrigger>
+                      <SelectContent>{unitTypes.map((ut) => <SelectItem key={ut._id} value={ut.name}>{ut.name}</SelectItem>)}</SelectContent>
+                    </Select>
+                  )}
                   {errors.purchaseUnitType && <p className="text-red-500 text-xs mt-1">{errors.purchaseUnitType}</p>}
                 </div>
                 <div>
                   <Label className="text-sm font-medium text-gray-700">Purchase Unit *</Label>
-                  <Select value={formData.purchaseUnit} onValueChange={(v) => handleInputChange('purchaseUnit', v)} disabled={!formData.purchaseUnitType}>
-                    <SelectTrigger className={`mt-1 bg-white ${errors.purchaseUnit ? 'border-red-500' : ''}`}><SelectValue placeholder="Select" /></SelectTrigger>
-                    <SelectContent>{availablePurchaseUnits.map((u) => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
-                  </Select>
+                  {formData.fabricationRef ? (
+                    <Input value={formData.purchaseUnit} disabled className="mt-1 bg-gray-50 text-gray-500" />
+                  ) : (
+                    <Select value={formData.purchaseUnit} onValueChange={(v) => handleInputChange('purchaseUnit', v)} disabled={!formData.purchaseUnitType}>
+                      <SelectTrigger className={`mt-1 bg-white ${errors.purchaseUnit ? 'border-red-500' : ''}`}><SelectValue placeholder="Select" /></SelectTrigger>
+                      <SelectContent>{availablePurchaseUnits.map((u) => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
+                    </Select>
+                  )}
                   {errors.purchaseUnit && <p className="text-red-500 text-xs mt-1">{errors.purchaseUnit}</p>}
                 </div>
               </div>
@@ -670,22 +695,34 @@ export default function SimpleInventoryForm({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <Label className="text-sm font-medium text-gray-700">Used Unit Type *</Label>
-                <div className="flex gap-2 mt-1">
-                  <Select value={formData.unitType} onValueChange={(v) => { handleInputChange('unitType', v); handleInputChange('unit', ''); }}>
-                    <SelectTrigger className={`flex-1 ${errors.unitType ? 'border-red-500' : ''}`}><SelectValue placeholder="Select" /></SelectTrigger>
-                    <SelectContent>{unitTypes.map((ut) => <SelectItem key={ut._id} value={ut.name}>{ut.name}</SelectItem>)}</SelectContent>
-                  </Select>
-                  {onOpenUnitTypeManagement && (
-                    <Button type="button" variant="outline" size="icon" onClick={onOpenUnitTypeManagement}><Plus className="h-4 w-4" /></Button>
-                  )}
-                </div>
+                {/* Auto-fetched from the picked Fabrication Master item and
+                    locked — a fixed property of that catalog entry's shape
+                    (Length Unit vs Area Unit), not something an individual
+                    Inventory item should override. */}
+                {formData.fabricationRef ? (
+                  <Input value={formData.unitType} disabled className="mt-1 bg-gray-50 text-gray-500" />
+                ) : (
+                  <div className="flex gap-2 mt-1">
+                    <Select value={formData.unitType} onValueChange={(v) => { handleInputChange('unitType', v); handleInputChange('unit', ''); }}>
+                      <SelectTrigger className={`flex-1 ${errors.unitType ? 'border-red-500' : ''}`}><SelectValue placeholder="Select" /></SelectTrigger>
+                      <SelectContent>{unitTypes.map((ut) => <SelectItem key={ut._id} value={ut.name}>{ut.name}</SelectItem>)}</SelectContent>
+                    </Select>
+                    {onOpenUnitTypeManagement && (
+                      <Button type="button" variant="outline" size="icon" onClick={onOpenUnitTypeManagement}><Plus className="h-4 w-4" /></Button>
+                    )}
+                  </div>
+                )}
               </div>
               <div>
                 <Label className="text-sm font-medium text-gray-700">Used Unit *</Label>
-                <Select value={formData.unit} onValueChange={(v) => handleInputChange('unit', v)} disabled={!formData.unitType && !formData.unit}>
-                  <SelectTrigger className={`mt-1 ${errors.unit ? 'border-red-500' : ''}`}><SelectValue placeholder={formData.unitType ? 'Select' : 'Select Used Unit Type first'} /></SelectTrigger>
-                  <SelectContent>{availableUnits.map((u) => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
-                </Select>
+                {formData.fabricationRef ? (
+                  <Input value={formData.unit} disabled className="mt-1 bg-gray-50 text-gray-500" />
+                ) : (
+                  <Select value={formData.unit} onValueChange={(v) => handleInputChange('unit', v)} disabled={!formData.unitType && !formData.unit}>
+                    <SelectTrigger className={`mt-1 ${errors.unit ? 'border-red-500' : ''}`}><SelectValue placeholder={formData.unitType ? 'Select' : 'Select Used Unit Type first'} /></SelectTrigger>
+                    <SelectContent>{availableUnits.map((u) => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
+                  </Select>
+                )}
               </div>
             </div>
           </div>
@@ -694,27 +731,37 @@ export default function SimpleInventoryForm({
               Only meaningfully independent of Used Unit for fabrication items
               (Pieces received vs. a Length/Area unit used, bridged by geometry
               × density) — auto-filled from Fabrication Master's own Receive
-              Unit when a Fabrication Item is picked (handleFabricationSelect),
-              editable afterward. For every other item there's no conversion
-              between two arbitrary unit types, so Receive Unit always mirrors
-              Used Unit (enforced server-side too — see sanitizeItemData). ── */}
+              Unit when a Fabrication Item is picked (handleFabricationSelect)
+              and locked, a fixed property of that catalog entry, same as
+              Purchase/Used Unit above. For every other item there's no
+              conversion between two arbitrary unit types, so Receive Unit
+              always mirrors Used Unit (enforced server-side too — see
+              sanitizeItemData). ── */}
           <div className="border border-gray-200 rounded-lg p-4">
             <h3 className="text-lg font-medium text-gray-900 mb-4">15. Receive Unit</h3>
             {formData.itemProcessType === FABRICATION_PROCESS_TYPE ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <Label className="text-sm font-medium text-gray-700">Receive Unit Type</Label>
-                  <Select value={formData.receiveUnitType} onValueChange={(v) => { handleInputChange('receiveUnitType', v); handleInputChange('receiveUnit', ''); }}>
-                    <SelectTrigger className="mt-1"><SelectValue placeholder="Select" /></SelectTrigger>
-                    <SelectContent>{unitTypes.map((ut) => <SelectItem key={ut._id} value={ut.name}>{ut.name}</SelectItem>)}</SelectContent>
-                  </Select>
+                  {formData.fabricationRef ? (
+                    <Input value={formData.receiveUnitType} disabled className="mt-1 bg-gray-50 text-gray-500" />
+                  ) : (
+                    <Select value={formData.receiveUnitType} onValueChange={(v) => { handleInputChange('receiveUnitType', v); handleInputChange('receiveUnit', ''); }}>
+                      <SelectTrigger className="mt-1"><SelectValue placeholder="Select" /></SelectTrigger>
+                      <SelectContent>{unitTypes.map((ut) => <SelectItem key={ut._id} value={ut.name}>{ut.name}</SelectItem>)}</SelectContent>
+                    </Select>
+                  )}
                 </div>
                 <div>
                   <Label className="text-sm font-medium text-gray-700">Receive Unit</Label>
-                  <Select value={formData.receiveUnit} onValueChange={(v) => handleInputChange('receiveUnit', v)} disabled={!formData.receiveUnitType}>
-                    <SelectTrigger className="mt-1"><SelectValue placeholder={formData.receiveUnitType ? 'Select' : 'Select Receive Unit Type first'} /></SelectTrigger>
-                    <SelectContent>{availableReceiveUnits.map((u) => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
-                  </Select>
+                  {formData.fabricationRef ? (
+                    <Input value={formData.receiveUnit} disabled className="mt-1 bg-gray-50 text-gray-500" />
+                  ) : (
+                    <Select value={formData.receiveUnit} onValueChange={(v) => handleInputChange('receiveUnit', v)} disabled={!formData.receiveUnitType}>
+                      <SelectTrigger className="mt-1"><SelectValue placeholder={formData.receiveUnitType ? 'Select' : 'Select Receive Unit Type first'} /></SelectTrigger>
+                      <SelectContent>{availableReceiveUnits.map((u) => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
+                    </Select>
+                  )}
                 </div>
               </div>
             ) : (
