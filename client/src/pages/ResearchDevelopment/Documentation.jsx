@@ -40,10 +40,10 @@ export default function Documentation() {
   const activeMachines = machines.filter(m => !m.isDiscontinued);
   const selectedMachine = activeMachines.find(m => String(m._id) === selectedMachineId);
 
-  // Child Part documents/images (uploaded from BOM Management → Child Part
-  // Creation) aren't stored as RDDocument rows — they're pulled in live here
-  // and shown under Design Files, tagged with the child part's name, so
-  // there's no duplicate copy to keep in sync.
+  // Child Part / Sub Child Part design files (uploaded from BOM Management →
+  // Child Part Creation) aren't stored as RDDocument rows — they're pulled
+  // in live here and shown under Design Files, tagged with the (sub) child
+  // part's name, so there's no duplicate copy to keep in sync.
   const { data: childPartsResp } = useQuery({
     queryKey: ['rd-child-parts-for-docs', selectedMachineId],
     queryFn: () => apiRequest('GET', `/api/rd/child-parts?productId=${selectedMachineId}`),
@@ -66,11 +66,64 @@ export default function Documentation() {
         isChildPartFile: true,
       };
     });
+  const subChildPartDocs = (childPartsResp?.data || [])
+    .flatMap(cp => (cp.subChildParts || []).map(sub => ({ ...sub, parentName: cp.name })))
+    .filter(sub => sub.image)
+    .map(sub => {
+      const ext = (sub.image.split('.').pop() || '').toUpperCase();
+      return {
+        _id: `sub-child-part-${sub._id}`,
+        name: `${sub.parentName} > ${sub.name} (${sub.code})`,
+        type: 'Design Files',
+        size: '',
+        uploadedAt: (sub.updatedAt || sub.createdAt || '').split('T')[0],
+        uploadedBy: 'Child Part Creation',
+        fileUrl: sub.image,
+        originalName: `${sub.name}.${ext.toLowerCase() || 'file'}`,
+        isChildPartFile: true,
+      };
+    });
 
-  const allDocs = selectedMachineId ? [...getDocumentsForMachine(selectedMachineId), ...childPartDocs] : [];
-  const docs = filterType === 'All' ? allDocs : allDocs.filter(d => d.type === filterType);
+  const allDocs = selectedMachineId ? [...getDocumentsForMachine(selectedMachineId), ...childPartDocs, ...subChildPartDocs] : [];
 
   const typeCounts = DOC_TYPES.reduce((acc, t) => ({ ...acc, [t]: allDocs.filter(d => d.type === t).length }), {});
+
+  // Grouped by the product's BOM structure (Child Part > Sub Child Part) —
+  // same layout OrderManagement.jsx's "Bill of Materials by Part" already
+  // uses, so a machine's documents read the same way its BOM does. A
+  // machine-level document (BOM PDF, a manually uploaded one) has no Child
+  // Part to nest under, so those sit in a "General" group at the top.
+  // Built as one flat row list (group headers + doc rows interleaved) so
+  // the table below can stay a single <table> with one shared column
+  // layout, rather than a separate table per group.
+  const buildDisplayRows = () => {
+    const rows = [];
+    const generalDocs = getDocumentsForMachine(selectedMachineId)
+      .filter(d => filterType === 'All' || d.type === filterType);
+    if (generalDocs.length > 0) {
+      rows.push({ kind: 'header', label: 'General', level: 0 });
+      generalDocs.forEach(doc => rows.push({ kind: 'doc', doc }));
+    }
+    // childPartDocs/subChildPartDocs are already Design Files only, so a
+    // non-matching filterType just hides every Child Part group at once.
+    if (filterType !== 'All' && filterType !== 'Design Files') return rows;
+    (childPartsResp?.data || []).forEach(cp => {
+      const cpDoc = childPartDocs.find(d => d._id === `child-part-${cp._id}`) || null;
+      const subEntries = (cp.subChildParts || [])
+        .map(sub => ({ sub, doc: subChildPartDocs.find(d => d._id === `sub-child-part-${sub._id}`) || null }))
+        .filter(e => e.doc);
+      if (!cpDoc && subEntries.length === 0) return;
+      rows.push({ kind: 'header', label: `${cp.name} (${cp.code})`, level: 0 });
+      if (cpDoc) rows.push({ kind: 'doc', doc: cpDoc });
+      subEntries.forEach(({ sub, doc }) => {
+        rows.push({ kind: 'header', label: `${sub.name} (${sub.code})`, level: 1 });
+        rows.push({ kind: 'doc', doc });
+      });
+    });
+    return rows;
+  };
+  const displayRows = selectedMachineId ? buildDisplayRows() : [];
+  const visibleDocCount = displayRows.filter(r => r.kind === 'doc').length;
 
   const handleFileSelect = (e) => {
     const file = e.target.files?.[0];
@@ -157,21 +210,24 @@ export default function Documentation() {
             })}
           </div>
 
-          {/* Documents Table */}
+          {/* Documents Table — grouped by the product's BOM structure (Child
+              Part > Sub Child Part), same layout OrderManagement.jsx's "Bill
+              of Materials by Part" uses. A machine-level document with no
+              Child Part sits in the "General" group. */}
           <Card className="border-none shadow-sm">
             <CardHeader className="border-b border-slate-50 pb-3 flex flex-row items-center justify-between">
               <div>
                 <CardTitle className="text-base font-semibold text-slate-800">
-                  {filterType === 'All' ? 'All Documents' : filterType}
+                  {filterType === 'All' ? 'All Documents' : filterType} <span className="text-slate-400 font-normal">— by BOM</span>
                 </CardTitle>
-                <p className="text-xs text-slate-400 mt-0.5">{docs.length} document{docs.length !== 1 ? 's' : ''}</p>
+                <p className="text-xs text-slate-400 mt-0.5">{visibleDocCount} document{visibleDocCount !== 1 ? 's' : ''}</p>
               </div>
               {filterType !== 'All' && (
                 <Button size="sm" variant="outline" onClick={() => setFilterType('All')} className="text-xs">Show All</Button>
               )}
             </CardHeader>
             <CardContent className="p-0">
-              {docs.length === 0 ? (
+              {visibleDocCount === 0 ? (
                 <div className="text-center py-12 text-slate-400">
                   <FileText className="h-8 w-8 mx-auto mb-2 opacity-30" />
                   <p>No {filterType !== 'All' ? filterType : ''} documents uploaded yet.</p>
@@ -191,21 +247,29 @@ export default function Documentation() {
                       </tr>
                     </thead>
                     <tbody>
-                      {docs.map(doc => {
+                      {displayRows.map((row, i) => {
+                        if (row.kind === 'header') {
+                          return (
+                            <tr key={`h-${i}`} className={row.level === 0 ? 'bg-slate-50' : 'bg-white'}>
+                              <td colSpan={6} className={`px-5 ${row.level === 0 ? 'py-2 pl-5' : 'py-1.5 pl-10'}`}>
+                                <span className={`inline-flex items-center gap-1.5 text-xs font-bold ${row.level === 0 ? 'text-slate-700' : 'text-purple-700'}`}>
+                                  {row.level === 0 && <Puzzle className="h-3.5 w-3.5 text-blue-500" />}
+                                  {row.label}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        }
+                        const doc = row.doc;
                         const cfg = typeConfig[doc.type] || typeConfig.Other;
                         const extSource = doc.fileUrl || doc.name;
                         const ext = (extSource.split('.').pop() || '').toUpperCase();
                         return (
                           <tr key={doc._id} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
                             <td className="px-5 py-3.5">
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-2 pl-2">
                                 <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${cfg.color}`}>{ext}</span>
-                                <span className="font-medium text-slate-900">{doc.name}</span>
-                                {doc.isChildPartFile && (
-                                  <span title="From BOM Management → Child Part Creation" className="inline-flex items-center gap-1 text-[10px] text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded-full font-semibold">
-                                    <Puzzle className="h-3 w-3" /> Child Part
-                                  </span>
-                                )}
+                                <span className="font-medium text-slate-900">{doc.isChildPartFile ? 'Design File' : doc.name}</span>
                               </div>
                             </td>
                             <td className="px-5 py-3.5">

@@ -41,6 +41,7 @@ function FabricationTransferDialog({ request, onClose, categories }) {
   const [leftoverAmount, setLeftoverAmount] = useState('');
   const [leftoverUnit, setLeftoverUnit] = useState('');
   const [leftoverPieces, setLeftoverPieces] = useState('');
+  const [issuedTo, setIssuedTo] = useState('');
 
   const sourceItemCode = request?.material?.sourceItemCode || request?.material?.materialCode;
   const { data: itemRes, isLoading } = useQuery({
@@ -90,6 +91,7 @@ function FabricationTransferDialog({ request, onClose, categories }) {
       leftover: (Number(leftoverAmount) > 0 && leftoverUnit && Number(leftoverPieces) > 0)
         ? { amountValue: Number(leftoverAmount), amountUnit: leftoverUnit, pieceCount: Number(leftoverPieces) }
         : undefined,
+      issuedTo: issuedTo || undefined,
     }),
     onSuccess: () => {
       toast({ title: 'Success', description: 'Material transferred to production successfully.' });
@@ -181,6 +183,11 @@ function FabricationTransferDialog({ request, onClose, categories }) {
               </div>
             </div>
           )}
+
+          <div>
+            <label className="text-sm font-medium text-slate-700 mb-1 block">Issued To <span className="text-[10px] text-slate-400 font-normal">(who you're physically handing this to)</span></label>
+            <Input placeholder="e.g. Ramesh Kumar" value={issuedTo} onChange={(e) => setIssuedTo(e.target.value)} />
+          </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
@@ -366,6 +373,7 @@ export default function PendingRequestsTab() {
   const { toast } = useToast();
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [transferQty, setTransferQty] = useState('');
+  const [transferIssuedTo, setTransferIssuedTo] = useState('');
   const [purchaseRequest, setPurchaseRequest] = useState(null); // { order, material }
   const [purchaseQty, setPurchaseQty] = useState('');
   const [isCartOpen, setIsCartOpen] = useState(false);
@@ -434,12 +442,27 @@ export default function PendingRequestsTab() {
     }
   });
 
-  // Individual item transfer mutation
+  // Individual item transfer mutation — plain non-fabrication AND Sheet
+  // Metal plan-driven demands share this one dialog/mutation (both are a
+  // flat "how many" transfer with no stock-cutting decision), just hitting
+  // different endpoints since the stock they deduct lives in different
+  // places on the Item (flat qty vs dimensionVariants[].subStock).
   const transferMutation = useMutation({
-    mutationFn: async ({ orderId, materialCode, quantityToTransfer }) => {
-      return await apiRequest('POST', `/api/inventory/transfer-material/${orderId}`, {
+    mutationFn: async ({ orderId, materialCode, quantityToTransfer, fabricationCategory, issuedTo }) => {
+      // Any flat (no-specific-cut) fabrication demand — Sheet Metal
+      // plan-driven OR a length-fabrication group from Production's "Issue
+      // Material" — goes through the same flat-pieces endpoint (broadened
+      // this session to cover both, see inventoryController.js's
+      // transferSheetMetalPlanToProduction). A per-cut fabrication demand
+      // never reaches this modal at all (handleTransferClick routes those
+      // to FabricationTransferDialog instead).
+      const endpoint = fabricationCategory
+        ? `/api/inventory/transfer-sheet-metal/${orderId}`
+        : `/api/inventory/transfer-material/${orderId}`;
+      return await apiRequest('POST', endpoint, {
         materialCode,
-        quantityToTransfer: Number(quantityToTransfer)
+        quantityToTransfer: Number(quantityToTransfer),
+        issuedTo: issuedTo || undefined,
       });
     },
     onSuccess: () => {
@@ -449,6 +472,7 @@ export default function PendingRequestsTab() {
       });
       setSelectedRequest(null);
       setTransferQty('');
+      setTransferIssuedTo('');
       queryClient.invalidateQueries({ queryKey: ['/api/inventory/pending-requests'] });
     },
     onError: (error) => {
@@ -557,7 +581,18 @@ export default function PendingRequestsTab() {
   });
 
   const handleTransferClick = (order, material) => {
-    if (material.fabricationCategory) {
+    // Two fabrication demand shapes skip the per-cut dimension-variant
+    // dialog entirely and use the flat "how many" dialog instead (same as a
+    // plain non-fabrication transfer, just a different endpoint — see
+    // handleConfirmTransfer): Sheet Metal plan-driven demands
+    // (material.sheetMetalPlanId set — R&D's plan already decided
+    // everything), and length-fabrication group demands from Production's
+    // "Issue Material" (bomMaterialGroupsService.js — already combined into
+    // a flat whole-pieces count, bomDimensions left empty since there's no
+    // specific per-cut size left to track). Both share the same tell: no
+    // per-cut bomDimensions populated.
+    const hasSpecificCut = material.bomDimensions && Object.keys(material.bomDimensions).length > 0;
+    if (material.fabricationCategory && hasSpecificCut) {
       setFabTransferRequest({ order, material });
       return;
     }
@@ -604,7 +639,9 @@ export default function PendingRequestsTab() {
     transferMutation.mutate({
       orderId: selectedRequest.order._id,
       materialCode: selectedRequest.material.materialCode,
-      quantityToTransfer: transferQty
+      quantityToTransfer: transferQty,
+      fabricationCategory: selectedRequest.material.fabricationCategory,
+      issuedTo: transferIssuedTo,
     });
   };
 
@@ -706,20 +743,24 @@ export default function PendingRequestsTab() {
                         <td className="px-6 py-4">
                           <div className="font-medium text-slate-800 flex items-center gap-1.5">
                             {mat.materialName}
-                            {mat.fabricationCategory && (
+                            {mat.sheetMetalPlanId ? (
+                              <span className="px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700 text-[10px] font-semibold">Sheet Metal — flat sheets</span>
+                            ) : mat.fabricationCategory && !(mat.bomDimensions && Object.keys(mat.bomDimensions).length > 0) ? (
+                              <span className="px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700 text-[10px] font-semibold">Fabrication — flat pieces</span>
+                            ) : mat.fabricationCategory && (
                               <span className="px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700 text-[10px] font-semibold">Fabrication</span>
                             )}
                           </div>
                           <div className="text-xs text-slate-500 font-mono">{mat.sourceItemCode || mat.materialCode}</div>
-                          {mat.fabricationCategory && (
+                          {mat.fabricationCategory && mat.bomDimensions && Object.keys(mat.bomDimensions).length > 0 && (
                             <div className="text-[10px] text-slate-400 mt-0.5">Cut: {formatDims(mat.bomDimensions)}</div>
                           )}
                         </td>
                         <td className="px-6 py-4">
-                          <span className="font-semibold text-slate-700">{mat.quantity} {mat.unit}</span>
+                          <span className="font-semibold text-slate-700">{mat.quantity} {mat.fabricationCategory ? 'pcs' : mat.unit}</span>
                         </td>
                         <td className="px-6 py-4 text-slate-500">
-                          {mat.transferredQuantity || 0} {mat.unit}
+                          {mat.transferredQuantity || 0} {mat.fabricationCategory ? 'pcs' : mat.unit}
                         </td>
                         <td className="px-6 py-4 text-right">
                           <div className="flex items-center justify-end gap-2">
@@ -855,7 +896,7 @@ export default function PendingRequestsTab() {
       </Dialog>
 
       {/* Standalone Transfer Modal View */}
-      <Dialog open={!!selectedRequest} onOpenChange={(open) => !open && setSelectedRequest(null)}>
+      <Dialog open={!!selectedRequest} onOpenChange={(open) => { if (!open) { setSelectedRequest(null); setTransferIssuedTo(''); } }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Transfer Material to Production</DialogTitle>
@@ -863,25 +904,31 @@ export default function PendingRequestsTab() {
               Transferring <span className="font-semibold text-slate-800">{selectedRequest?.material.materialName}</span> for order <span className="font-mono text-slate-800">{selectedRequest?.order.orderId || selectedRequest?.order._id}</span>.
             </DialogDescription>
           </DialogHeader>
-          <div className="py-4">
-            <label className="text-sm font-medium text-slate-700 mb-1 block">
-              Quantity to Transfer ({selectedRequest?.material.unit})
-            </label>
-            <Input
-              type="number"
-              value={transferQty}
-              onChange={(e) => setTransferQty(e.target.value)}
-              placeholder="Enter quantity"
-              autoFocus
-              min="1"
-              max={selectedRequest ? (selectedRequest.material.quantity || 0) - (selectedRequest.material.transferredQuantity || 0) : undefined}
-            />
-            {selectedRequest && Number(transferQty) > ((selectedRequest.material.quantity || 0) - (selectedRequest.material.transferredQuantity || 0)) && (
-              <p className="text-red-500 text-xs mt-1">Cannot exceed remaining requested quantity.</p>
-            )}
+          <div className="py-4 space-y-4">
+            <div>
+              <label className="text-sm font-medium text-slate-700 mb-1 block">
+                Quantity to Transfer ({selectedRequest?.material.unit})
+              </label>
+              <Input
+                type="number"
+                value={transferQty}
+                onChange={(e) => setTransferQty(e.target.value)}
+                placeholder="Enter quantity"
+                autoFocus
+                min="1"
+                max={selectedRequest ? (selectedRequest.material.quantity || 0) - (selectedRequest.material.transferredQuantity || 0) : undefined}
+              />
+              {selectedRequest && Number(transferQty) > ((selectedRequest.material.quantity || 0) - (selectedRequest.material.transferredQuantity || 0)) && (
+                <p className="text-red-500 text-xs mt-1">Cannot exceed remaining requested quantity.</p>
+              )}
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-700 mb-1 block">Issued To <span className="text-[10px] text-slate-400 font-normal">(who you're physically handing this to)</span></label>
+              <Input placeholder="e.g. Ramesh Kumar" value={transferIssuedTo} onChange={(e) => setTransferIssuedTo(e.target.value)} />
+            </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setSelectedRequest(null)}>Cancel</Button>
+            <Button variant="outline" onClick={() => { setSelectedRequest(null); setTransferIssuedTo(''); }}>Cancel</Button>
             <Button
               className="bg-blue-600 hover:bg-blue-700 text-white"
               onClick={handleConfirmTransfer}

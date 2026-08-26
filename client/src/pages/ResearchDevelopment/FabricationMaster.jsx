@@ -15,7 +15,7 @@ import DimensionCalculatorModal from '@/components/fabrication/DimensionCalculat
 import { ShapeTileIcon } from '@/components/fabrication/FabricationShapeIcons';
 
 const emptyForm = {
-  itemName: '', itemCode: '', category: '', density: { value: '', unit: 'kg/m3' }, isDiscontinued: false, dimensions: [],
+  itemName: '', itemCode: '', category: '', density: { value: '', unit: 'kg/m3' }, material: '', isSheetMetal: false, isDiscontinued: false, dimensions: [],
   purchaseUnitType: '', purchaseUnit: '', usedUnitType: '', usedUnit: '', receiveUnitType: '', receiveUnit: '',
 };
 
@@ -133,6 +133,8 @@ export default function FabricationMaster() {
     setForm({
       itemName: item.itemName || '', itemCode: item.itemCode || '', category: item.category || '',
       density: { value: item.density?.value ?? '', unit: item.density?.unit || 'kg/m3' },
+      material: item.material || '',
+      isSheetMetal: !!item.isSheetMetal,
       isDiscontinued: !!item.isDiscontinued,
       dimensions: (item.dimensions || []).map(d => ({ ...d, values: d.values || {} })),
       purchaseUnitType: item.purchaseUnitType || '', purchaseUnit: item.purchaseUnit || '',
@@ -176,8 +178,8 @@ export default function FabricationMaster() {
     setCalculatorOpen(true);
   };
   // Modal 2 Save — locks in the resolved category + item-level density, appends the row.
-  const handleCalculatorSave = ({ categoryKey, dimensionRow, density }) => {
-    setForm(f => ({ ...f, category: categoryKey, density, dimensions: [...f.dimensions, dimensionRow] }));
+  const handleCalculatorSave = ({ categoryKey, dimensionRow, density, materialLabel }) => {
+    setForm(f => ({ ...f, category: categoryKey, density, material: materialLabel || f.material, dimensions: [...f.dimensions, dimensionRow] }));
     setCalculatorOpen(false);
   };
   const removeDimension = (idx) => setForm(f => ({ ...f, dimensions: f.dimensions.filter((_, i) => i !== idx) }));
@@ -235,6 +237,12 @@ export default function FabricationMaster() {
           </select>
         </div>
       </div>
+
+      <label className="flex items-center gap-2 border border-slate-200 rounded-lg px-3 py-2 bg-white cursor-pointer w-fit">
+        <input type="checkbox" className="h-4 w-4" checked={form.isSheetMetal} onChange={e => setForm(f => ({ ...f, isSheetMetal: e.target.checked }))} />
+        <span className="text-sm text-slate-700">Sheet Metal</span>
+        <span className="text-xs text-slate-400">(unchecked = Non Sheet Metal)</span>
+      </label>
 
       <div className="p-3 border border-slate-200 rounded-lg bg-slate-50/50 space-y-3">
         <div className="flex items-center justify-between">
@@ -407,6 +415,7 @@ export default function FabricationMaster() {
                 <div className="bg-slate-50 rounded-lg p-3"><p className="text-xs text-slate-500 mb-1">Item Code</p><p className="text-sm font-mono font-medium text-slate-800">{selected.itemCode}</p></div>
                 <div className="bg-slate-50 rounded-lg p-3"><p className="text-xs text-slate-500 mb-1">Category</p><p className="text-sm font-medium text-slate-800">{categories.find(c => c.key === selected.category)?.label || selected.category}</p></div>
                 <div className="bg-slate-50 rounded-lg p-3"><p className="text-xs text-slate-500 mb-1">Density</p><p className="text-sm font-medium text-slate-800">{selected.density?.value} {selected.density?.unit === 'g/cm3' ? 'g/cm³' : 'kg/m³'}</p></div>
+                <div className="bg-slate-50 rounded-lg p-3"><p className="text-xs text-slate-500 mb-1">Material Type</p><p className="text-sm font-medium text-slate-800">{selected.isSheetMetal ? 'Sheet Metal' : 'Non Sheet Metal'}</p></div>
                 <div className="bg-slate-50 rounded-lg p-3">
                   <p className="text-xs text-slate-500 mb-1">Status</p>
                   <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${selected.isDiscontinued ? 'bg-red-100 text-red-700 border-red-200' : 'bg-emerald-100 text-emerald-700 border-emerald-200'}`}>{selected.isDiscontinued ? 'Discontinue' : 'Continue'}</span>

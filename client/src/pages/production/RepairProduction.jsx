@@ -435,7 +435,7 @@ export default function RepairProduction() {
                             {m.bomQuantity !== null && m.bomQuantity !== undefined ? (
                               <div className="flex flex-col">
                                 <span className="text-slate-800 font-semibold flex items-center gap-1.5">
-                                  Req: {m.quantity} {m.unit}
+                                  Req: {m.quantity} {m.fabricationCategory ? 'pcs' : m.unit}
                                   <span className="text-[9px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded uppercase font-bold border border-slate-200">BOM</span>
                                 </span>
                                 <span className={`text-[10px] font-bold mt-0.5 ${issued === m.quantity ? 'text-emerald-600' : 'text-blue-600'}`}>
@@ -445,7 +445,7 @@ export default function RepairProduction() {
                             ) : (
                               <div className="flex flex-col">
                                 <span className="text-purple-700 font-bold flex items-center gap-1.5">
-                                  Req: {m.quantity} {m.unit}
+                                  Req: {m.quantity} {m.fabricationCategory ? 'pcs' : m.unit}
                                   <span className="text-[9px] bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded uppercase font-bold border border-purple-200">Out of BOM</span>
                                 </span>
                                 <span className={`text-[10px] font-bold mt-0.5 ${issued === m.quantity ? 'text-emerald-600' : 'text-blue-600'}`}>

@@ -88,14 +88,17 @@ export default function FabricationRFQDialog({ pr, onClose, onFinalized }) {
 
   return (
     <Dialog open={!!pr} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
+      {/* Capped + flex-column so this never grows past the viewport as more
+          dimension lines are added — only the middle section (the part that
+          actually grows with the data) scrolls; header/footer stay put. */}
+      <DialogContent className="max-w-lg max-h-[85vh] flex flex-col overflow-hidden">
+        <DialogHeader className="shrink-0 pb-3 border-b border-slate-100">
           <DialogTitle className="flex items-center gap-2"><Send className="h-5 w-5 text-blue-600" /> Finalize & Send RFQ</DialogTitle>
           <DialogDescription>
             <span className="font-semibold text-slate-800">{pr.productName}</span> — review the dimension breakdown, adjust as needed, then send. The vendor only ever sees the combined total below, not these individual lines.
           </DialogDescription>
         </DialogHeader>
-        <div className="py-2 space-y-3">
+        <div className="py-2 space-y-3 flex-1 overflow-y-auto min-h-0 pr-1">
           <div className="space-y-1.5">
             {lines.map((l, idx) => (
               <div key={idx} className="flex items-center gap-2 p-2 rounded-md border border-slate-200 text-xs">
@@ -162,7 +165,7 @@ export default function FabricationRFQDialog({ pr, onClose, onFinalized }) {
             )}
           </div>
         </div>
-        <DialogFooter>
+        <DialogFooter className="shrink-0 pt-3 border-t border-slate-100">
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button
             className="bg-blue-600 hover:bg-blue-700 text-white"

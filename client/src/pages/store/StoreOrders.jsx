@@ -192,6 +192,12 @@ const StoreOrders = () => {
         availability: si.isAvailableInInventory || (!hasPerItemFlow ? item.isAvailableInInventory : null),
         qcStatus: si.storeQCStatus || (!hasPerItemFlow ? item.storeQCStatus : null),
         lastRejectionSource: si.lastRejectionSource || null,
+        // BOM raw-material availability — separate from `availability` above
+        // (which only checks the finished product's own stock). Computed at
+        // Order Form submission (see materialAvailabilityService.js); absent
+        // until then, or for a non-In-house item — see the two hover
+        // tooltips below, which simply omit themselves when this is unset.
+        materialAvailability: si.materialAvailability || null,
       }));
     }
     return (item.products || []).map((p, idx) => ({
@@ -459,6 +465,63 @@ const StoreOrders = () => {
                                     ? <><CheckCheck className="w-3.5 h-3.5" /> Available</>
                                     : <><XCircle className="w-3.5 h-3.5" /> Not Available</>}
                                 </span>
+                              )}
+                              {/* BOM raw-material availability — In-house items only, once computed
+                                  (see materialAvailabilityService.js). Separate from the finished-
+                                  product Availability chip above. Same hover-popover pattern as
+                                  PackedOrders.jsx's "Packed Machines" tooltip — hand-rolled group/
+                                  group-hover, not Radix, matching this app's own established style
+                                  for this exact visual. Each needs its own `group` wrapper since
+                                  Tailwind's group-hover scoping is per nearest ancestor. */}
+                              {row.productType === 'In-house Manufactured' && row.materialAvailability?.computedAt && (
+                                <>
+                                  {row.materialAvailability.available?.length > 0 && (
+                                    <div className="relative inline-block group cursor-pointer">
+                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-teal-50 text-teal-700 border border-teal-200">
+                                        📦 Available ({row.materialAvailability.available.length})
+                                      </span>
+                                      <div className="absolute left-0 top-full invisible opacity-0 -translate-y-1 group-hover:visible group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-150 z-50 bg-slate-900 text-slate-100 text-xs p-3 rounded-lg shadow-xl w-72 whitespace-normal break-words border border-slate-800">
+                                        <div className="font-semibold text-slate-400 mb-1.5 sticky top-0 bg-slate-900">
+                                          Available Material ({row.materialAvailability.available.length}):
+                                        </div>
+                                        <div className="space-y-1.5 max-h-56 overflow-y-auto">
+                                          {row.materialAvailability.available.map((m, idx) => (
+                                            <div key={idx} className="leading-normal flex justify-between gap-2">
+                                              <div>
+                                                <div className="font-medium text-slate-100">{m.name}</div>
+                                                <div className="text-slate-400 text-[10px]">{m.code}</div>
+                                              </div>
+                                              <div className="text-teal-400 text-right whitespace-nowrap">{m.availableQty} / {m.neededQty} {m.unit}</div>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+                                  {row.materialAvailability.needsPurchase?.length > 0 && (
+                                    <div className="relative inline-block group cursor-pointer">
+                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">
+                                        🛒 Needs Purchase ({row.materialAvailability.needsPurchase.length})
+                                      </span>
+                                      <div className="absolute left-0 top-full invisible opacity-0 -translate-y-1 group-hover:visible group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-150 z-50 bg-slate-900 text-slate-100 text-xs p-3 rounded-lg shadow-xl w-72 whitespace-normal break-words border border-slate-800">
+                                        <div className="font-semibold text-slate-400 mb-1.5 sticky top-0 bg-slate-900">
+                                          Needs Purchase ({row.materialAvailability.needsPurchase.length}):
+                                        </div>
+                                        <div className="space-y-1.5 max-h-56 overflow-y-auto">
+                                          {row.materialAvailability.needsPurchase.map((m, idx) => (
+                                            <div key={idx} className="leading-normal flex justify-between gap-2">
+                                              <div>
+                                                <div className="font-medium text-slate-100">{m.name}</div>
+                                                <div className="text-slate-400 text-[10px]">{m.code}{m.purchaseRequestId ? ` · ${m.purchaseRequestId}` : ''}</div>
+                                              </div>
+                                              <div className="text-amber-400 text-right whitespace-nowrap">short {m.shortfallQty} {m.unit}</div>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+                                </>
                               )}
                               {/* Store status chip */}
                               <StatusChip status={row.qcStatus} />

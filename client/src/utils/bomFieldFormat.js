@@ -8,7 +8,7 @@
 export const CATALOG_KEY_TO_MATERIAL_FIELD = {
   itemType: 'inventoryItemType', name: 'item', code: 'code', modelNumber: 'modelNumber',
   brand: 'brand', itemCategories: 'itemCategories', sourceType: 'sourceType', itemSourceType: 'itemSourceType',
-  metrology: 'metrology', materialGrade: 'materialGrade', unitWeightValue: 'unitWeightValue',
+  metrology: 'metrology', materialGrade: 'materialGrade',
   unit: 'unit', dimensions: 'dimensions', description: 'description',
 };
 
@@ -25,22 +25,60 @@ export const formatDimensions = (dims) => {
   return parts.length ? parts.join(', ') : '—';
 };
 
-// Fabrication Master materials only (mat.fabricationCategory set) — this
-// line's own consumed amount (mat.amountValue/amountUnit — a length, or an
-// area for sheets), not the generic Inventory dimensions snapshot every
-// other material uses. Falls back to the raw dimension set (mat.bomDimensions)
+// Fabrication Master materials (mat.fabricationCategory set) — this line's
+// own consumed amount (mat.amountValue/amountUnit — a length, or an area for
+// sheets), not the generic Inventory dimensions snapshot every other
+// material uses. Falls back to the raw dimension set (mat.bomDimensions)
 // for older BOM lines saved before the amount+quantity redesign. Includes
 // the resolved weight when known, same style used elsewhere for this data
 // (RDProductionQueue.jsx, OrderManagement.jsx's Material Demand table).
+//
+// Non-fabrication materials with an amountValue (Length/Area/Volume Used
+// Unit — see UnitAmountField.jsx) show the same per-piece amount, PLUS the
+// piece count — unlike fabrication, mat.quantity here is already the
+// resolved TOTAL (pieces x amountValue), not a piece count, so the piece
+// count itself only exists as this derived display (quantity / amountValue);
+// nowhere else shows it, since Qty columns elsewhere correctly show the
+// total in the item's own stocking unit.
 export const formatBomDimensions = (mat) => {
-  const dims = mat.amountValue != null && mat.amountUnit
-    ? `${mat.amountValue} ${mat.amountUnit}`
-    : Object.entries(mat.bomDimensions || {})
-      .filter(([, v]) => v !== undefined && v !== null && v !== '')
-      .map(([k, v]) => `${k}: ${v}mm`)
-      .join(', ');
-  const weight = mat.computedWeightPerPieceKg != null ? `${mat.computedWeightPerPieceKg.toFixed(2)} kg/pc` : null;
-  return [dims, weight].filter(Boolean).join(' · ') || '—';
+  const dims = formatBomAmountOnly(mat);
+  const weight = mat.fabricationCategory && mat.computedWeightPerPieceKg != null ? `${mat.computedWeightPerPieceKg.toFixed(2)} kg/pc` : null;
+  return [dims === '—' ? null : dims, weight].filter(Boolean).join(' · ') || '—';
+};
+
+// Just the consumed amount, no weight — Unit Weight is a BOM material's own
+// dedicated column now (formatUnitWeight below), not something the
+// Dimensions column doubles up on. formatBomDimensions above still combines
+// them for the compact one-line summaries elsewhere (RDProductionQueue.jsx's
+// approval review, OrderManagement.jsx's Material Demand subtitle) where
+// there's no separate Unit Weight column to defer to.
+export const formatBomAmountOnly = (mat) => {
+  if (mat.amountValue != null && mat.amountUnit) {
+    return mat.fabricationCategory
+      ? `${mat.amountValue} ${mat.amountUnit}`
+      : `${mat.amountValue} ${mat.amountUnit} × ${Math.round((mat.quantity / mat.amountValue) * 1000) / 1000} pcs`;
+  }
+  const dims = Object.entries(mat.bomDimensions || {})
+    .filter(([, v]) => v !== undefined && v !== null && v !== '')
+    .map(([k, v]) => `${k}: ${v}mm`)
+    .join(', ');
+  return dims || '—';
+};
+
+// Unit Weight is a BOM material's own field, not a BOM_FIELD_CATALOG /
+// "BOM Format & Modification" toggle — always shown as its own column
+// (BOMCreationTab.jsx), never combined into the Dimensions column. A
+// Fabrication Master material's weight is computed per BOM line
+// (computedWeightPerPieceKg, from its chosen dimension size x density);
+// every other material's is the generic Inventory-snapshot unitWeightValue/
+// unitWeightUnit already captured on this line when the code was matched.
+export const formatUnitWeight = (mat) => {
+  if (mat.fabricationCategory) {
+    return mat.computedWeightPerPieceKg != null ? `${mat.computedWeightPerPieceKg.toFixed(2)} kg/pc` : '—';
+  }
+  return (mat.unitWeightValue !== null && mat.unitWeightValue !== undefined && mat.unitWeightValue !== '')
+    ? `${mat.unitWeightValue} ${mat.unitWeightUnit || ''}`.trim()
+    : '—';
 };
 
 // Formats one BOM_FIELD_CATALOG field's value for a given material row.
@@ -52,15 +90,11 @@ export const formatCatalogFieldValue = (catalogKey, mat) => {
   }
   if (catalogKey === 'dimensions') {
     // "Dimensions" stays a shared column used by every material — for a
-    // Fabrication Master material specifically, it shows that line's own
-    // entered cut (bomDimensions) instead of the generic Inventory
-    // dimensions snapshot, which fabrication materials don't meaningfully
-    // have (their real size varies per BOM line, per RDBOM.js's
-    // bomDimensions comment).
-    return mat.fabricationCategory ? formatBomDimensions(mat) : formatDimensions(raw);
-  }
-  if (catalogKey === 'unitWeightValue') {
-    return raw !== null && raw !== undefined && raw !== '' ? `${raw} ${mat.unitWeightUnit || ''}`.trim() : '—';
+    // Fabrication Master material, or any non-fabrication material entered
+    // as Amount x Pieces (mat.amountValue set), it shows that line's own
+    // consumed amount (not the weight — see formatUnitWeight's own column)
+    // instead of the generic Inventory dimensions snapshot.
+    return (mat.fabricationCategory || mat.amountValue != null) ? formatBomAmountOnly(mat) : formatDimensions(raw);
   }
   return (raw !== null && raw !== undefined && raw !== '') ? String(raw) : '—';
 };
