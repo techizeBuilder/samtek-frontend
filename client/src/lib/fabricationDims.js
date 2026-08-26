@@ -52,3 +52,15 @@ export const AREA_UNITS = ['Millimeter Square', 'Centimeter Square', 'Meter Squa
 export const AREA_UNIT_TO_MM2 = { 'Millimeter Square': 1, 'Centimeter Square': 100, 'Meter Square': 1e6, 'Inch Square': 645.16, 'Foot Square': 92903.04 };
 export const toMm = (value, unit) => (LENGTH_UNIT_TO_MM[unit] && Number(value) > 0) ? Number(value) * LENGTH_UNIT_TO_MM[unit] : null;
 export const toMm2 = (value, unit) => (AREA_UNIT_TO_MM2[unit] && Number(value) > 0) ? Number(value) * AREA_UNIT_TO_MM2[unit] : null;
+
+// Auto-scales an mm² figure to whichever of mm²/m² reads naturally — a small
+// sheet-metal cut (e.g. 110mm x 110mm = 12,100mm²) shown as "0.012 m²" reads
+// like a rounding error even though the math is correct; showing it in mm²
+// instead (the app's own base unit throughout fabrication) is both accurate
+// and legible. 1,000,000mm² = 1m² is the crossover.
+export const formatAreaMm2 = (areaMm2) => {
+  if (areaMm2 == null || isNaN(areaMm2)) return '—';
+  return areaMm2 >= 1e6
+    ? `${(areaMm2 / 1e6).toFixed(3)} m²`
+    : `${Math.round(areaMm2).toLocaleString()} mm²`;
+};

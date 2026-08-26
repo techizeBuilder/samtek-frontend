@@ -12,9 +12,12 @@ import { apiRequest } from '@/lib/queryClient';
 import { showSmartToast } from '@/lib/toast-utils';
 import { config } from '@/config/environment';
 import BOMFieldConfigModal from './BOMFieldConfigModal';
+import SheetMetalPlanModal from './SheetMetalPlanModal';
+import FilePreviewModal from './FilePreviewModal';
 import { formatCatalogFieldValue, formatUnitWeight } from '@/utils/bomFieldFormat';
 import FabricationVariantAmountFields from '@/components/inventory/FabricationVariantAmountFields';
 import UnitAmountField, { AMOUNT_UNIT_TYPES, rowNeedsAmount as sharedRowNeedsAmount } from '@/components/inventory/UnitAmountField';
+import { formatAreaMm2 } from '@/lib/fabricationDims';
 
 // Fabrication Master materials (fabricationRef set) price by weight, not a
 // flat purchaseCost — the user picks which catalog dimensionVariant this
@@ -142,6 +145,16 @@ export default function BOMCreationTab({ product }) {
   const [savingProdCost, setSavingProdCost] = useState(false);
 
   const [addOpen, setAddOpen] = useState(false);
+  // Which Add button opened the dialog — only changes the MaterialCodePicker's
+  // item filter (Tool vs everything else); materialKind itself is always
+  // re-derived server-side from the picked Item, so this never has to be sent.
+  const [addMode, setAddMode] = useState('raw');
+  const [materialsTab, setMaterialsTab] = useState('raw'); // 'raw' | 'tool' | 'sheet'
+  const [sheetMetalPlanOpen, setSheetMetalPlanOpen] = useState(false);
+  // { code, dimensionVariantId } of the group being planned, or null to let
+  // the modal's own picker choose one (Add Sheet Metal button).
+  const [sheetMetalGroup, setSheetMetalGroup] = useState(null);
+  const [previewFile, setPreviewFile] = useState(null); // { url, name } | null
   const [editOpen, setEditOpen] = useState(false);
   const [lockOpen, setLockOpen] = useState(false);
   const [downloadingBOM, setDownloadingBOM] = useState(false);
@@ -167,6 +180,12 @@ export default function BOMCreationTab({ product }) {
     queryFn: () => apiRequest('GET', '/api/items?productKind=none&limit=1000'),
   });
   const inventoryItems = inventoryResponse?.items || [];
+  // Add Raw Material and Add Tool draw from disjoint subsets of the same
+  // Inventory list — Tool items (Item Type contains "tool", case-insensitive)
+  // are only reachable via Add Tool, never via Add Raw Material, so the two
+  // buttons can never create ambiguity about which table a row belongs in.
+  const toolInventoryItems = inventoryItems.filter(m => /tool/i.test(m.itemType || ''));
+  const rawInventoryItems = inventoryItems.filter(m => !/tool/i.test(m.itemType || ''));
 
   // Fabrication Master's category field definitions (Length/Width/Thickness
   // etc. per shape) — reused as-is for materials picked with a
@@ -324,6 +343,94 @@ export default function BOMCreationTab({ product }) {
     return (cp?.subChildParts || []).filter(s => !s.isDiscontinued);
   };
 
+  // Shared table body for the Raw Material / Tool / Sheet Metal tabs — same
+  // shape, just fed a different filtered slice of bom.materials.
+  const renderMaterialsTable = (list, emptyMessage) => (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="bg-slate-50 border-b border-slate-100">
+            <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">#</th>
+            <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Material Code</th>
+            <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Child Part</th>
+            <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Sub Child Part</th>
+            <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Material Name</th>
+            <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Qty</th>
+            <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Used Unit</th>
+            <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Price</th>
+            <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Unit Weight</th>
+            {extraColumns.map(f => (
+              <th key={f.key} className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">{f.label}</th>
+            ))}
+            <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
+            <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {list.length === 0 ? (
+            <tr><td colSpan={11 + extraColumns.length} className="text-center py-10 text-slate-400">{emptyMessage}</td></tr>
+          ) : list.map((mat, i) => (
+            <tr key={mat._id} className={`border-b border-slate-50 transition-colors ${mat.isDiscontinued ? 'bg-red-50/40 opacity-70' : 'hover:bg-slate-50'}`}>
+              <td className="px-5 py-3.5 text-slate-400 text-xs font-semibold">{i + 1}</td>
+              <td className="px-5 py-3.5"><span className="font-mono text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded">{mat.code || '—'}</span></td>
+              <td className="px-5 py-3.5 text-xs text-slate-600">{mat.childPart || '—'}</td>
+              <td className="px-5 py-3.5 text-xs text-slate-600">{mat.subChildPart || '—'}</td>
+              <td className={`px-5 py-3.5 font-medium ${mat.isDiscontinued ? 'text-slate-400 line-through' : 'text-slate-900'}`}>{mat.item}</td>
+              <td className="px-5 py-3.5 font-bold text-slate-800">
+                {/* A fabrication material's quantity is a piece
+                    count, unrelated to the Used Unit shown in the
+                    very next column (that's a Length/Area unit for
+                    BOM weight calc, e.g. Centimeter) — self-label
+                    it "pcs" so the two adjacent columns can't be
+                    misread together as "2 Centimeter". */}
+                {mat.quantity}{mat.fabricationCategory && <span className="ml-1 text-xs font-normal text-slate-400">pcs</span>}
+              </td>
+              <td className="px-5 py-3.5 text-slate-600">{mat.unit}</td>
+              <td className="px-5 py-3.5 text-slate-700">₹{(mat.totalPrice || 0).toLocaleString()} <span className="text-[10px] text-slate-400">(₹{mat.unitPrice || 0}/unit)</span></td>
+              <td className="px-5 py-3.5 text-slate-600">{formatUnitWeight(mat)}</td>
+              {extraColumns.map(f => {
+                const display = formatCatalogFieldValue(f.key, mat);
+                return (
+                  <td key={f.key} className="px-5 py-3.5 text-xs text-slate-600 max-w-[160px]">
+                    {display === '—' ? '—' : (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="block truncate cursor-default">{display}</span>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs whitespace-pre-wrap break-words">{display}</TooltipContent>
+                      </Tooltip>
+                    )}
+                  </td>
+                );
+              })}
+              <td className="px-5 py-3.5">
+                {mat.isDiscontinued
+                  ? <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-600 border border-red-200">Discontinued</span>
+                  : <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700 border border-emerald-200">Active</span>}
+              </td>
+              <td className="px-5 py-3.5">
+                <div className="flex gap-1">
+                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-blue-600" title="View details" onClick={() => openView(mat)}><Eye className="h-3.5 w-3.5" /></Button>
+                  {!bom.isLocked && (
+                    mat.isDiscontinued ? (
+                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-emerald-600" title="Reactivate" onClick={() => reactivateMaterial(bom._id, mat._id)}><RefreshCw className="h-3.5 w-3.5" /></Button>
+                    ) : (
+                      <>
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-purple-600" onClick={() => openEdit(mat)}><Edit2 className="h-3.5 w-3.5" /></Button>
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-red-600" onClick={() => setDeleteMat(mat)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-orange-600" title="Discontinue" onClick={() => discontinueMaterial(bom._id, mat._id)}><Ban className="h-3.5 w-3.5" /></Button>
+                      </>
+                    )
+                  )}
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+
   const renderCodeMatchHint = (code) => {
     if (!code) return null;
     const match = findProductByCode(code);
@@ -350,7 +457,31 @@ export default function BOMCreationTab({ product }) {
   }, [bom?._id, bom?.productionCost, bom?.productionExpense]);
 
   const materialsCost = (bom?.materials || []).filter(m => !m.isDiscontinued).reduce((sum, m) => sum + (m.totalPrice || 0), 0);
-  const totalBOMCost = materialsCost + (bom?.productionCost || 0) + (bom?.productionExpense || 0);
+
+  // 3-way split of the same materials array — materialKind/isSheetMetal are
+  // server-derived (rdController.js's addMaterial/updateMaterial), never
+  // client-computed, so a row always lands in the same table the Add button
+  // it came from implies. Sheet Metal items are still 'raw' materialKind
+  // (added via Add Raw Material, unchanged) — isSheetMetal is what routes
+  // them into their own tab instead.
+  const rawMaterials = (bom?.materials || []).filter(m => m.materialKind !== 'tool' && !m.isSheetMetal);
+  const toolMaterials = (bom?.materials || []).filter(m => m.materialKind === 'tool');
+  const sheetMetalMaterials = (bom?.materials || []).filter(m => m.isSheetMetal);
+
+  const { data: sheetMetalGroupsResponse } = useQuery({
+    queryKey: ['sheet-metal-groups', bom?._id],
+    queryFn: () => apiRequest('GET', `/api/rd/boms/${bom._id}/sheet-metal-groups`),
+    enabled: !!bom?._id && sheetMetalMaterials.length > 0,
+  });
+  const sheetMetalGroups = sheetMetalGroupsResponse?.data || [];
+  // Sum of every planned group's own scrap cost (₹ per unit of the machine)
+  // — see itemPricingService.js's computeSheetMetalPlanCostBreakdown.
+  // Deliberately NOT including leftoverValue here (or anywhere in BOM
+  // Management) — per the client, the returnable leftover isn't shown or
+  // added into this product's cost at all, only the true (unrecoverable)
+  // scrap is.
+  const totalScrapCost = sheetMetalGroups.reduce((sum, g) => sum + (g.scrapCost || 0), 0);
+  const totalBOMCost = materialsCost + totalScrapCost + (bom?.productionCost || 0) + (bom?.productionExpense || 0);
 
   const handleSaveProductionCost = async () => {
     if (!bom) return;
@@ -507,6 +638,15 @@ export default function BOMCreationTab({ product }) {
       </div>
 
       <BOMFieldConfigModal open={bomFormatOpen} onOpenChange={setBomFormatOpen} />
+      {bom && (
+        <SheetMetalPlanModal
+          open={sheetMetalPlanOpen}
+          onClose={() => setSheetMetalPlanOpen(false)}
+          bomId={bom._id}
+          group={sheetMetalGroup}
+        />
+      )}
+      <FilePreviewModal url={previewFile?.url} name={previewFile?.name} onClose={() => setPreviewFile(null)} />
 
       {!bom && (
         <Card className="border-none shadow-sm">
@@ -550,14 +690,20 @@ export default function BOMCreationTab({ product }) {
                     </span>
                   )}
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2 justify-end">
                   <Button size="sm" variant="outline" disabled={downloadingBOM} onClick={handleDownloadBOM}>
                     {downloadingBOM ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Download className="h-4 w-4 mr-1" />} Download BOM
                   </Button>
                   {!bom.isLocked && (
                     <>
-                      <Button size="sm" className="bg-gradient-to-r from-blue-600 to-purple-600 text-white" onClick={() => setAddOpen(true)}>
-                        <Plus className="h-4 w-4 mr-1" /> Add Material
+                      <Button size="sm" className="bg-gradient-to-r from-blue-600 to-purple-600 text-white" onClick={() => { setAddMode('raw'); setAddOpen(true); }}>
+                        <Plus className="h-4 w-4 mr-1" /> Add Raw Material
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => { setAddMode('tool'); setAddOpen(true); }}>
+                        <Plus className="h-4 w-4 mr-1" /> Add Tool
+                      </Button>
+                      <Button size="sm" variant="outline" className="border-purple-300 text-purple-700 hover:bg-purple-50" onClick={() => { setSheetMetalGroup(null); setSheetMetalPlanOpen(true); }}>
+                        <Plus className="h-4 w-4 mr-1" /> Add Sheet Metal
                       </Button>
                       <Button size="sm" variant="outline" className="border-amber-300 text-amber-700 hover:bg-amber-50" onClick={() => setLockOpen(true)}>
                         <Lock className="h-4 w-4 mr-1" /> Lock BOM
@@ -611,10 +757,14 @@ export default function BOMCreationTab({ product }) {
                 )}
               </div>
 
-              <div className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-2 sm:grid-cols-5 gap-3">
                 <div className="bg-slate-50 rounded-lg p-3">
                   <p className="text-xs text-slate-500 mb-1">Materials Cost</p>
                   <p className="text-sm font-semibold text-slate-800">₹{materialsCost.toLocaleString()}</p>
+                </div>
+                <div className="bg-amber-50 rounded-lg p-3 border border-amber-100">
+                  <p className="text-xs text-amber-600 mb-1">Scrap Cost <span className="opacity-70">(Sheet Metal)</span></p>
+                  <p className="text-sm font-semibold text-amber-800">₹{totalScrapCost.toLocaleString(undefined, { maximumFractionDigits: 2 })}</p>
                 </div>
                 <div className="bg-slate-50 rounded-lg p-3">
                   <p className="text-xs text-slate-500 mb-1">Production Cost</p>
@@ -626,7 +776,7 @@ export default function BOMCreationTab({ product }) {
                 </div>
                 <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
                   <p className="text-xs text-blue-600 mb-1 flex items-center gap-1"><IndianRupee className="h-3 w-3" /> Total BOM Cost</p>
-                  <p className="text-sm font-bold text-blue-800">₹{totalBOMCost.toLocaleString()}</p>
+                  <p className="text-sm font-bold text-blue-800">₹{totalBOMCost.toLocaleString(undefined, { maximumFractionDigits: 2 })}</p>
                 </div>
               </div>
               <p className="text-[11px] text-slate-400 mt-3">
@@ -635,95 +785,97 @@ export default function BOMCreationTab({ product }) {
             </CardContent>
           </Card>
 
-          {/* Materials Table */}
+          {/* Materials Table — 3 tabs sharing one filtered slice each of
+              bom.materials, per the client's decision to keep Raw Material /
+              Tool / Sheet Metal as separate table views rather than one
+              combined table with a type column. */}
           <Card className="border-none shadow-sm">
             <CardHeader className="border-b border-slate-50 pb-3">
-              <CardTitle className="text-base font-semibold text-slate-800">Raw Materials</CardTitle>
+              <div className="flex items-center gap-1">
+                {[
+                  { key: 'raw', label: 'Raw Material', count: rawMaterials.length },
+                  { key: 'tool', label: 'Tool', count: toolMaterials.length },
+                  { key: 'sheet', label: 'Sheet Metal', count: sheetMetalMaterials.length },
+                ].map(t => (
+                  <button
+                    key={t.key}
+                    onClick={() => setMaterialsTab(t.key)}
+                    className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-colors ${materialsTab === t.key ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                  >
+                    {t.label} <span className="opacity-70">({t.count})</span>
+                  </button>
+                ))}
+              </div>
             </CardHeader>
             <CardContent className="p-0">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-slate-50 border-b border-slate-100">
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">#</th>
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Material Code</th>
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Child Part</th>
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Sub Child Part</th>
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Material Name</th>
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Qty</th>
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Used Unit</th>
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Price</th>
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Unit Weight</th>
-                      {extraColumns.map(f => (
-                        <th key={f.key} className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">{f.label}</th>
-                      ))}
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {bom.materials.length === 0 ? (
-                      <tr><td colSpan={11 + extraColumns.length} className="text-center py-10 text-slate-400">No materials added. Click "Add Material" to start building the BOM.</td></tr>
-                    ) : bom.materials.map((mat, i) => (
-                      <tr key={mat._id} className={`border-b border-slate-50 transition-colors ${mat.isDiscontinued ? 'bg-red-50/40 opacity-70' : 'hover:bg-slate-50'}`}>
-                        <td className="px-5 py-3.5 text-slate-400 text-xs font-semibold">{i + 1}</td>
-                        <td className="px-5 py-3.5"><span className="font-mono text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded">{mat.code || '—'}</span></td>
-                        <td className="px-5 py-3.5 text-xs text-slate-600">{mat.childPart || '—'}</td>
-                        <td className="px-5 py-3.5 text-xs text-slate-600">{mat.subChildPart || '—'}</td>
-                        <td className={`px-5 py-3.5 font-medium ${mat.isDiscontinued ? 'text-slate-400 line-through' : 'text-slate-900'}`}>{mat.item}</td>
-                        <td className="px-5 py-3.5 font-bold text-slate-800">
-                          {/* A fabrication material's quantity is a piece
-                              count, unrelated to the Used Unit shown in the
-                              very next column (that's a Length/Area unit for
-                              BOM weight calc, e.g. Centimeter) — self-label
-                              it "pcs" so the two adjacent columns can't be
-                              misread together as "2 Centimeter". */}
-                          {mat.quantity}{mat.fabricationCategory && <span className="ml-1 text-xs font-normal text-slate-400">pcs</span>}
-                        </td>
-                        <td className="px-5 py-3.5 text-slate-600">{mat.unit}</td>
-                        <td className="px-5 py-3.5 text-slate-700">₹{(mat.totalPrice || 0).toLocaleString()} <span className="text-[10px] text-slate-400">(₹{mat.unitPrice || 0}/unit)</span></td>
-                        <td className="px-5 py-3.5 text-slate-600">{formatUnitWeight(mat)}</td>
-                        {extraColumns.map(f => {
-                          const display = formatCatalogFieldValue(f.key, mat);
-                          return (
-                            <td key={f.key} className="px-5 py-3.5 text-xs text-slate-600 max-w-[160px]">
-                              {display === '—' ? '—' : (
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <span className="block truncate cursor-default">{display}</span>
-                                  </TooltipTrigger>
-                                  <TooltipContent className="max-w-xs whitespace-pre-wrap break-words">{display}</TooltipContent>
-                                </Tooltip>
+              {materialsTab === 'raw' && renderMaterialsTable(rawMaterials, 'No raw materials added. Click "Add Raw Material" to start building the BOM.')}
+              {materialsTab === 'tool' && renderMaterialsTable(toolMaterials, 'No tools added. Click "Add Tool" to add one.')}
+              {materialsTab === 'sheet' && (
+                <div>
+                  <div className="p-5 border-b border-slate-100 bg-purple-50/40">
+                    <p className="text-sm font-semibold text-slate-700 mb-2">Sheet Metal Plans</p>
+                    {sheetMetalMaterials.length === 0 ? (
+                      <p className="text-xs text-slate-400">No sheet metal raw materials on this BOM yet — add one via "Add Raw Material" first, then plan its usage here.</p>
+                    ) : sheetMetalGroups.length === 0 ? (
+                      <p className="text-xs text-slate-400">Loading groups…</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {sheetMetalGroups.map(g => (
+                          <div key={`${g.itemCode}#${g.dimensionVariantId}`} className="bg-white border border-slate-200 rounded-lg px-3 py-2.5">
+                            <div className="flex items-center justify-between">
+                              <p className="text-sm font-medium text-slate-800">{g.itemName} <span className="text-xs font-mono text-slate-400">{g.itemCode}</span></p>
+                              {!bom.isLocked && (
+                                <Button size="sm" variant="outline" onClick={() => { setSheetMetalGroup(g); setSheetMetalPlanOpen(true); }}>
+                                  {g.existingPlan ? 'Edit Plan' : 'Plan Usage'}
+                                </Button>
                               )}
-                            </td>
-                          );
-                        })}
-                        <td className="px-5 py-3.5">
-                          {mat.isDiscontinued
-                            ? <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-600 border border-red-200">Discontinued</span>
-                            : <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700 border border-emerald-200">Active</span>}
-                        </td>
-                        <td className="px-5 py-3.5">
-                          <div className="flex gap-1">
-                            <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-blue-600" title="View details" onClick={() => openView(mat)}><Eye className="h-3.5 w-3.5" /></Button>
-                            {!bom.isLocked && (
-                              mat.isDiscontinued ? (
-                                <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-emerald-600" title="Reactivate" onClick={() => reactivateMaterial(bom._id, mat._id)}><RefreshCw className="h-3.5 w-3.5" /></Button>
-                              ) : (
-                                <>
-                                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-purple-600" onClick={() => openEdit(mat)}><Edit2 className="h-3.5 w-3.5" /></Button>
-                                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-red-600" onClick={() => setDeleteMat(mat)}><Trash2 className="h-3.5 w-3.5" /></Button>
-                                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-orange-600" title="Discontinue" onClick={() => discontinueMaterial(bom._id, mat._id)}><Ban className="h-3.5 w-3.5" /></Button>
-                                </>
-                              )
+                            </div>
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2">
+                              <div className="bg-slate-50 rounded px-2 py-1.5">
+                                <p className="text-[10px] text-slate-400 uppercase">Catalog Sheet Area</p>
+                                <p className="text-xs font-semibold text-slate-700">{formatAreaMm2(g.sheetAreaMm2)}</p>
+                              </div>
+                              <div className="bg-slate-50 rounded px-2 py-1.5">
+                                <p className="text-[10px] text-slate-400 uppercase">Used by Child Parts</p>
+                                <p className="text-xs font-semibold text-slate-700">{formatAreaMm2(g.requiredAreaMm2)}</p>
+                              </div>
+                              <div className="bg-blue-50 rounded px-2 py-1.5">
+                                <p className="text-[10px] text-blue-500 uppercase">Laser-Cutting Area</p>
+                                <p className="text-xs font-semibold text-blue-700">{g.existingPlan ? formatAreaMm2(g.existingPlan.plannedAreaMm2) : '—'}</p>
+                              </div>
+                              <div className="bg-amber-50 rounded px-2 py-1.5">
+                                <p className="text-[10px] text-amber-600 uppercase">Scrap Area</p>
+                                <p className="text-xs font-semibold text-amber-700">{g.existingPlan ? formatAreaMm2(g.scrapAreaMm2) : '—'}</p>
+                              </div>
+                            </div>
+                            {g.existingPlan ? (
+                              <p className="text-xs text-slate-500 mt-2">
+                                {g.existingPlan.sheetsNeededPerUnit} sheet(s)/unit
+                                {g.scrapCost != null && <span className="ml-2">· Scrap cost: ₹{g.scrapCost.toFixed(2)}/unit</span>}
+                                {g.existingPlan.warningBelowRequired && (
+                                  <span className="ml-2 text-amber-600 font-medium">⚠ Planned area is below what the child parts actually need</span>
+                                )}
+                                {g.existingPlan.laserFileUrl && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setPreviewFile({ url: `${config.baseURL}${g.existingPlan.laserFileUrl}`, name: g.existingPlan.laserFileName })}
+                                    className="ml-2 text-blue-600 hover:underline"
+                                  >
+                                    View laser file
+                                  </button>
+                                )}
+                              </p>
+                            ) : (
+                              <p className="text-xs text-amber-600 mt-2">No plan yet — required before this BOM can be locked.</p>
                             )}
                           </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  {renderMaterialsTable(sheetMetalMaterials, 'No sheet metal raw materials added yet.')}
+                </div>
+              )}
             </CardContent>
           </Card>
         </>
@@ -734,7 +886,7 @@ export default function BOMCreationTab({ product }) {
           since a sub-part is normally built from several materials, not one. */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>Add Materials</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{addMode === 'tool' ? 'Add Tools' : 'Add Raw Materials'}</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
             {childPartsForMachine.length === 0 && (
               <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
@@ -789,8 +941,8 @@ export default function BOMCreationTab({ product }) {
                   </div>
 
                   <div>
-                    <label className="text-xs font-semibold text-slate-600 mb-1 block">Inventory Item * <span className="text-[10px] text-slate-400 font-normal">(Raw Material / Tool / Readymade Material)</span></label>
-                    <MaterialCodePicker value={row.code} displayName={row.item} items={inventoryItems} onSelect={(m) => applyMatchToRow(idx, m)} />
+                    <label className="text-xs font-semibold text-slate-600 mb-1 block">Inventory Item * <span className="text-[10px] text-slate-400 font-normal">{addMode === 'tool' ? '(Item Type: Tool)' : '(everything except Tool — Tool items are added via Add Tool)'}</span></label>
+                    <MaterialCodePicker value={row.code} displayName={row.item} items={addMode === 'tool' ? toolInventoryItems : rawInventoryItems} onSelect={(m) => applyMatchToRow(idx, m)} />
                     {renderCodeMatchHint(row.code)}
                   </div>
 

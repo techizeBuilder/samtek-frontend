@@ -53,7 +53,7 @@ export default function SimpleInventoryForm({
     // Item Process Type + Fabrication Master link — see FABRICATION_PROCESS_TYPE above.
     itemProcessType: '', fabricationRef: null, dimensionVariants: [],
     importance: 'Normal', unitType: '', unit: '', isDiscontinued: false,
-    qty: 0, minStock: 0, batch: '', leadTime: 0,
+    qty: 0, minStock: 0, materialFlow: '', reorderQty: 0, batch: '', leadTime: 0,
     stdCost: 0, purchaseCost: 0, salePrice: 0, mrp: 0, gst: 0, hsn: '',
     // Auto-pricing bookkeeping (see itemPricingService.js) — 'Manual' until a
     // real BOM build or purchase invoice resolves a cost for this item
@@ -61,7 +61,7 @@ export default function SimpleInventoryForm({
     internalManufacturing: false, purchase: true, purchaseUnitType: '', purchaseUnit: '',
     receiveUnitType: '', receiveUnit: '', internalNotes: '', image: '',
     // Optional Product Master attributes — auto-filled when Item Code matches, editable after
-    brand: '', metrology: '', materialGrade: '', modelNumber: '', size: '', unitWeightValue: '', unitWeightUnitType: '', unitWeightUnit: '',
+    brand: '', metrology: '', materialGrade: '', isSheetMetal: false, modelNumber: '', size: '', unitWeightValue: '', unitWeightUnitType: '', unitWeightUnit: '',
     specifications: [], applications: [],
     // Inventory's own new classification fields — see InventoryMasterOption.js
     itemCategories: [], sourceType: '', itemSourceType: '',
@@ -253,6 +253,11 @@ export default function SimpleInventoryForm({
       // Material Grade carries the catalog entry's own Material label (e.g.
       // "SS 304") as one combined value — see the field's own comment below.
       materialGrade: fabItem.material || prev.materialGrade,
+      // Sheet Metal / Non Sheet Metal — always overwritten (not `||`-guarded
+      // like the units above) since it's a locked boolean, not a "keep
+      // whatever was there" fallback: this field only ever exists because a
+      // fabrication item was selected, so it must always reflect that item.
+      isSheetMetal: !!fabItem.isSheetMetal,
     }));
     setFabricationPickerOpen(false);
   };
@@ -273,6 +278,8 @@ export default function SimpleInventoryForm({
         receiveUnit: item.receiveUnit || '',
         qty: Number(item.qty) || 0,
         minStock: Number(item.minStock) || 0,
+        materialFlow: item.materialFlow || '',
+        reorderQty: Number(item.reorderQty) || 0,
         stdCost: Number(item.stdCost) || 0,
         purchaseCost: Number(item.purchaseCost) || 0,
         salePrice: Number(item.salePrice) || 0,
@@ -291,7 +298,10 @@ export default function SimpleInventoryForm({
         itemCategories: Array.isArray(item.itemCategories) ? item.itemCategories : [],
         itemProcessType: item.itemProcessType || '',
         fabricationRef: item.fabricationRef || null,
-        dimensionVariants: Array.isArray(item.dimensionVariants) ? item.dimensionVariants : [],
+        isSheetMetal: Boolean(item.isSheetMetal),
+        dimensionVariants: Array.isArray(item.dimensionVariants)
+          ? item.dimensionVariants.map(dv => ({ ...dv, materialFlow: dv.materialFlow || '', minStock: Number(dv.minStock) || 0, reorderQty: Number(dv.reorderQty) || 0 }))
+          : [],
         dimensions: {
           length: { value: item.dimensions?.length?.value ?? '', unit: item.dimensions?.length?.unit || '' },
           height: { value: item.dimensions?.height?.value ?? '', unit: item.dimensions?.height?.unit || '' },
@@ -334,6 +344,33 @@ export default function SimpleInventoryForm({
   const handleInputChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
     if (errors[field]) setErrors(prev => ({ ...prev, [field]: null }));
+  };
+
+  // Material Flow — High/Medium/Low is a preset that auto-fills Min Stock
+  // (20/10/5) but never locks it; Min Stock stays a plain, independently
+  // editable number right next to the dropdown. This is what lets the same
+  // label be reused across items while each item can still carry its own
+  // custom trigger point.
+  const FLOW_MIN_STOCK_DEFAULTS = { 'High Flow': 20, 'Medium Flow': 10, 'Low Flow': 5 };
+  const handleMaterialFlowChange = (value) => {
+    setFormData(prev => ({ ...prev, materialFlow: value, minStock: value ? FLOW_MIN_STOCK_DEFAULTS[value] : prev.minStock }));
+    if (errors.reorderQty) setErrors(prev => ({ ...prev, reorderQty: null }));
+  };
+
+  // Same Material Flow preset behavior, per fabrication dimensionVariants
+  // row — each dimension size is Store's own independent flow (cut, tracked
+  // and reordered separately from every other size on this item).
+  const updateDimensionVariant = (index, patch) => {
+    setFormData(prev => ({
+      ...prev,
+      dimensionVariants: prev.dimensionVariants.map((dv, i) => (i === index ? { ...dv, ...patch } : dv)),
+    }));
+  };
+  const handleDimensionVariantFlowChange = (index, value) => {
+    updateDimensionVariant(index, {
+      materialFlow: value,
+      minStock: value ? FLOW_MIN_STOCK_DEFAULTS[value] : formData.dimensionVariants[index].minStock,
+    });
   };
 
   const handleImageUpload = async (event) => {
@@ -382,6 +419,24 @@ export default function SimpleInventoryForm({
       if (formData.purchase) {
         if (!formData.purchaseUnitType && !formData.purchaseUnit) validationErrors.purchaseUnitType = 'Purchase Unit Type is required';
         if (!formData.purchaseUnit) validationErrors.purchaseUnit = 'Purchase Unit is required';
+        // Ordering less than the trigger point means receiving it would still
+        // leave stock at/below Min Stock — the auto-purchase would fire again
+        // immediately (same rule enforced again server-side).
+        if (Number(formData.reorderQty) > 0 && Number(formData.reorderQty) < Number(formData.minStock)) {
+          validationErrors.reorderQty = 'Order Quantity must be at least the Minimum Stock value.';
+        }
+        // Min Stock / Order Qty on a dimension are piece counts (like
+        // subStock), never the item's purchaseUnit — must be whole numbers.
+        formData.dimensionVariants.forEach((dv, i) => {
+          if (!Number.isInteger(Number(dv.minStock))) {
+            validationErrors[`dimensionVariants[${i}].minStock`] = 'Minimum Stock must be a whole number of pieces.';
+          }
+          if (!Number.isInteger(Number(dv.reorderQty))) {
+            validationErrors[`dimensionVariants[${i}].reorderQty`] = 'Order Quantity must be a whole number of pieces.';
+          } else if (Number(dv.reorderQty) > 0 && Number(dv.reorderQty) < Number(dv.minStock)) {
+            validationErrors[`dimensionVariants[${i}].reorderQty`] = 'Order Quantity must be at least the Minimum Stock value for this dimension.';
+          }
+        });
       }
 
       if (Object.keys(validationErrors).length > 0) {
@@ -398,6 +453,14 @@ export default function SimpleInventoryForm({
         purchaseUnit: formData.purchase ? formData.purchaseUnit : '',
         qty: Number(formData.qty) || 0,
         minStock: Number(formData.minStock) || 0,
+        materialFlow: formData.purchase ? formData.materialFlow : '',
+        reorderQty: formData.purchase ? Number(formData.reorderQty) || 0 : 0,
+        dimensionVariants: formData.dimensionVariants.map(dv => ({
+          ...dv,
+          materialFlow: formData.purchase ? (dv.materialFlow || '') : '',
+          minStock: Number(dv.minStock) || 0,
+          reorderQty: formData.purchase ? Number(dv.reorderQty) || 0 : 0,
+        })),
         stdCost: Number(formData.stdCost) || 0,
         purchaseCost: Number(formData.purchaseCost) || 0,
         salePrice: Number(formData.salePrice) || 0,
@@ -621,6 +684,20 @@ export default function SimpleInventoryForm({
                 )}
               </div>
             </div>
+            {/* Sheet Metal / Non Sheet Metal — born in Fabrication Master
+                (FabricationMaster.isSheetMetal), auto-fetched and locked here
+                the same way Material Grade above is. Only ever shown once a
+                Fabrication Item is actually picked — a plain Inventory item
+                has no such classification. Consumed by BOM later. */}
+            {formData.fabricationRef && (
+              <div className="mt-4">
+                <Label className="text-sm font-medium text-gray-700">Material Type</Label>
+                <label className="mt-1 flex items-center gap-2 h-10 px-3 border border-gray-200 rounded-md bg-gray-50 w-fit">
+                  <input type="checkbox" checked={formData.isSheetMetal} disabled className="h-4 w-4 cursor-not-allowed" />
+                  <span className="text-sm text-gray-500">{formData.isSheetMetal ? 'Sheet Metal' : 'Non Sheet Metal'}</span>
+                </label>
+              </div>
+            )}
             {formData.itemProcessType !== FABRICATION_PROCESS_TYPE && (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
                 <div>
@@ -795,14 +872,58 @@ export default function SimpleInventoryForm({
                 </p>
                 <div className="border border-gray-200 rounded-lg divide-y divide-gray-100 bg-white">
                   {formData.dimensionVariants.map((dv, i) => (
-                    <div key={i} className="flex items-center justify-between px-3 py-2 text-xs">
-                      <span className="text-gray-700">
-                        {dv.designation || Object.entries(dv.values || {}).map(([k, v]) => `${k}: ${v}`).join(', ')}
-                      </span>
-                      <span className="flex items-center gap-3">
-                        <span className="font-semibold text-gray-800">{dv.weightPerPieceKg != null ? `${Number(dv.weightPerPieceKg).toFixed(2)} kg` : '—'}</span>
-                        <span className="text-gray-400">Sub Stock: {dv.subStock ?? 0}</span>
-                      </span>
+                    <div key={i} className="px-3 py-2 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-700">
+                          {dv.designation || Object.entries(dv.values || {}).map(([k, v]) => `${k}: ${v}`).join(', ')}
+                        </span>
+                        <span className="flex items-center gap-3">
+                          <span className="font-semibold text-gray-800">{dv.weightPerPieceKg != null ? `${Number(dv.weightPerPieceKg).toFixed(2)} kg` : '—'}</span>
+                          <span className="text-gray-400">Sub Stock: {dv.subStock ?? 0}</span>
+                        </span>
+                      </div>
+                      {/* Material Flow for this exact dimension size — every
+                          size Store cuts/reorders independently, so each gets
+                          its own trigger point + order quantity. Min Stock
+                          and Order Qty are both a PIECE count of this size
+                          (like subStock above), never the item's purchaseUnit
+                          — a vendor sells whole pieces even when priced by
+                          weight, so both must be whole numbers; the cron job
+                          converts pieces -> the actual purchase-unit total
+                          (e.g. kg) when it raises the request. */}
+                      {formData.purchase && (
+                        <div className="grid grid-cols-3 gap-2 mt-2">
+                          <div>
+                            <Label className="text-[10px] text-gray-500 uppercase block mb-0.5">Material Flow</Label>
+                            <Select value={dv.materialFlow || ''} onValueChange={(v) => handleDimensionVariantFlowChange(i, v)}>
+                              <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select" /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="High Flow">High Flow</SelectItem>
+                                <SelectItem value="Medium Flow">Medium Flow</SelectItem>
+                                <SelectItem value="Low Flow">Low Flow</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div>
+                            <Label className="text-[10px] text-gray-500 uppercase block mb-0.5">Min Stock</Label>
+                            <div className="relative">
+                              <Input type="number" min="0" step="1" className={`h-8 text-xs pr-9 ${errors[`dimensionVariants[${i}].minStock`] ? 'border-red-500' : ''}`} value={dv.minStock ?? 0}
+                                onChange={(e) => updateDimensionVariant(i, { minStock: e.target.value })} />
+                              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-gray-400 pointer-events-none">pcs</span>
+                            </div>
+                          </div>
+                          <div>
+                            <Label className="text-[10px] text-gray-500 uppercase block mb-0.5">Order Qty</Label>
+                            <div className="relative">
+                              <Input type="number" min="0" step="1" className={`h-8 text-xs pr-9 ${errors[`dimensionVariants[${i}].reorderQty`] ? 'border-red-500' : ''}`} value={dv.reorderQty ?? 0}
+                                onChange={(e) => updateDimensionVariant(i, { reorderQty: e.target.value })} />
+                              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-gray-400 pointer-events-none">pcs</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      {errors[`dimensionVariants[${i}].minStock`] && <p className="text-red-500 text-[10px] mt-1">{errors[`dimensionVariants[${i}].minStock`]}</p>}
+                      {errors[`dimensionVariants[${i}].reorderQty`] && <p className="text-red-500 text-[10px] mt-1">{errors[`dimensionVariants[${i}].reorderQty`]}</p>}
                     </div>
                   ))}
                 </div>
@@ -834,6 +955,47 @@ export default function SimpleInventoryForm({
               </div>
             )}
           </div>
+
+          {/* ── Material Flow — R&D's High/Medium/Low reorder-point preset,
+              drives the low-stock auto-purchase sweep (see
+              server/jobs/lowStockReorderCron.js). Only for non-fabrication
+              Purchasable items — fabrication items set this per dimension
+              size instead (see the Size/Dimension rows above), and an
+              Internal-Manufacturing item has no purchase-based reorder
+              concept. ────────────────────────────────────────────────── */}
+          {formData.purchase && !formData.fabricationRef && (
+            <div className="border border-gray-200 rounded-lg p-4">
+              <Label className="text-sm font-medium text-gray-700 mb-2 block">Material Flow</Label>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <Label className="text-xs text-gray-500">Flow</Label>
+                  <Select value={formData.materialFlow} onValueChange={handleMaterialFlowChange}>
+                    <SelectTrigger className="mt-1"><SelectValue placeholder="Not classified" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="High Flow">High Flow</SelectItem>
+                      <SelectItem value="Medium Flow">Medium Flow</SelectItem>
+                      <SelectItem value="Low Flow">Low Flow</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs text-gray-500">Min Stock (reorder trigger)</Label>
+                  <Input type="number" min="0" className="mt-1" placeholder="0" value={formData.minStock}
+                    onChange={(e) => handleInputChange('minStock', e.target.value)} />
+                </div>
+                <div>
+                  <Label className="text-xs text-gray-500">Order Quantity</Label>
+                  <div className="relative">
+                    <Input type="number" min="0" className={`mt-1 pr-20 ${errors.reorderQty ? 'border-red-500' : ''}`} placeholder="0" value={formData.reorderQty}
+                      onChange={(e) => handleInputChange('reorderQty', e.target.value)} />
+                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">{formData.purchaseUnit || 'Purchase Unit'}</span>
+                  </div>
+                  {errors.reorderQty && <p className="text-red-500 text-xs mt-1">{errors.reorderQty}</p>}
+                </div>
+              </div>
+              <p className="text-xs text-gray-500 mt-2">Picking a Flow fills in a suggested Min Stock (High=20, Medium=10, Low=5) — both stay editable per item. Once stock falls to Min Stock, a Purchase Request for the Order Quantity is raised automatically.</p>
+            </div>
+          )}
 
           {/* ── 17-18: Item Status & Description ──────────────────────────── */}
           <div className="border border-gray-200 rounded-lg p-4">

@@ -151,6 +151,7 @@ export default function ViewItemModal({ isOpen, onClose, item }) {
                 <InfoRow icon={Tag} label="Model Number" value={item.modelNumber} />
                 <InfoRow icon={Tag} label="Metrology" value={item.metrology} />
                 <InfoRow icon={Tag} label="Material Grade" value={item.materialGrade} />
+                {item.fabricationRef && <InfoRow icon={Tag} label="Material Type" value={item.isSheetMetal ? 'Sheet Metal' : 'Non Sheet Metal'} />}
                 <InfoRow icon={Tag} label="Size" value={item.size} />
                 {(item.unitWeightValue !== null && item.unitWeightValue !== undefined && item.unitWeightValue !== '') && (
                   <InfoRow icon={BarChart3} label="Unit Weight" value={`${item.unitWeightValue} ${item.unitWeightUnit || ''}`.trim()} />
@@ -189,6 +190,12 @@ export default function ViewItemModal({ isOpen, onClose, item }) {
             <CardContent className="space-y-1">
               <InfoRow icon={BarChart3} label="Current Stock" value={`${itemDisplayQty(item)} ${itemDisplayUnit(item)}`} />
               <InfoRow icon={AlertTriangle} label="Minimum Stock" value={`${item.minStock || 0} ${itemDisplayUnit(item)}`} />
+              {item.purchase && !item.fabricationRef && item.materialFlow && (
+                <InfoRow icon={AlertTriangle} label="Material Flow" value={item.materialFlow} />
+              )}
+              {item.purchase && !item.fabricationRef && (
+                <InfoRow icon={BarChart3} label="Order Quantity" value={`${item.reorderQty || 0} ${item.purchaseUnit || ''}`} />
+              )}
               {item.purchase && (
                 <InfoRow
                   icon={BarChart3}
