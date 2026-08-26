@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { HoverCard, HoverCardTrigger, HoverCardContent } from '@/components/ui/hover-card';
 import {
   ClipboardList, Plus, CheckCircle, AlertTriangle, Clock, Package,
   ChevronRight, FileCheck, Wrench, Send, Search, Filter, FileText, ExternalLink, ShoppingCart, ArrowDownToLine, Eye, Layers, Pencil
@@ -956,15 +957,25 @@ export default function OrderManagement() {
                       <tbody>
                         {materialList.rows.map(row => {
                           const m = row.demand;
-                          // Same group/group-hover popover pattern used for Store
-                          // Orders' "Available Material"/"Needs Purchase" tooltips
-                          // this session — hand-rolled, not Radix.
+                          // Radix HoverCard, not the hand-rolled group/group-hover CSS
+                          // popover this used before — that version was clipped by this
+                          // table's own overflow wrapper and had no viewport collision
+                          // detection, so it could render mostly off-screen (showing as
+                          // a bare sliver) depending on where the row fell on the page.
+                          // Same fix as Store Orders' Available/Needs Purchase badges.
                           const childPartsHover = row.childParts?.length > 0 && (
-                            <div className="relative inline-block group cursor-pointer align-middle ml-1">
-                              <span className="text-[9px] text-blue-500 underline decoration-dotted">({row.childParts.length} part{row.childParts.length > 1 ? 's' : ''})</span>
-                              <div className="absolute left-0 top-full invisible opacity-0 -translate-y-1 group-hover:visible group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-150 z-50 bg-slate-900 text-slate-100 text-xs p-3 rounded-lg shadow-xl w-64 whitespace-normal break-words border border-slate-800">
+                            <HoverCard openDelay={100} closeDelay={150}>
+                              <HoverCardTrigger asChild>
+                                <span className="text-[9px] text-blue-500 underline decoration-dotted cursor-pointer ml-1">({row.childParts.length} part{row.childParts.length > 1 ? 's' : ''})</span>
+                              </HoverCardTrigger>
+                              <HoverCardContent
+                                side="bottom"
+                                align="start"
+                                collisionPadding={12}
+                                className="w-64 whitespace-normal break-words bg-slate-900 text-slate-100 text-xs p-3 rounded-lg shadow-xl border border-slate-800"
+                              >
                                 <div className="font-semibold text-slate-400 mb-1.5">Covers ({row.childParts.length}):</div>
-                                <div className="space-y-1 max-h-56 overflow-y-auto">
+                                <div className="space-y-1 max-h-56 overflow-y-auto pr-1 dark-popover-scrollbar">
                                   {row.childParts.map((cp, idx) => (
                                     <div key={idx} className="leading-normal">
                                       <div className="font-medium text-slate-100">{cp.childPart}</div>
@@ -972,8 +983,8 @@ export default function OrderManagement() {
                                     </div>
                                   ))}
                                 </div>
-                              </div>
-                            </div>
+                              </HoverCardContent>
+                            </HoverCard>
                           );
 
                           if (!m) {
@@ -1076,7 +1087,12 @@ export default function OrderManagement() {
                                   >
                                     <Eye className="h-3 w-3" /> View
                                   </button>
-                                  {m.fabricationCategory && m.status !== 'In Transit' && (
+                                  {/* Only once fully Received — while a demand is still
+                                      Requested/In Transit, Store already has (or is acting
+                                      on) a transfer for the CURRENT quantity, so changing it
+                                      here could silently mismatch what's physically been
+                                      picked/moved against what the record now says. */}
+                                  {m.fabricationCategory && m.status === 'Issued' && (
                                     <button
                                       onClick={() => openAdjustDemand(m)}
                                       className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 transition-colors"

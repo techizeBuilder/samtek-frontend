@@ -17,7 +17,7 @@ import {
   ChevronRight, Users, Mail, BarChart3, Gavel, RefreshCw, Tag,
   Info, FlaskConical, Wrench, Shield // <-- Added missing icons for R&D
 } from 'lucide-react';
-import { formatDims, fabricationPieceCount } from '@/lib/fabricationDims';
+import { formatDims, fabricationPieceCount, itemDisplayUnit } from '@/lib/fabricationDims';
 import FabricationRFQDialog from '@/components/accounts/FabricationRFQDialog';
 
 // ── Status badge helper ───────────────────────────────────────────────────────
@@ -380,7 +380,13 @@ export default function RFQManagement() {
                         </td>
                         <td className="py-3 px-5 text-center font-bold text-slate-700">
                           {pr.fabricationDimensionLines?.length > 0 ? fabricationPieceCount(pr.fabricationDimensionLines) : pr.quantity}
-                          {(pr.item?.unit || pr.unit) && (
+                          {pr.fabricationDimensionLines?.length > 0 ? (
+                            // A piece count (fabricationPieceCount above) needs the
+                            // item's Receive Unit label ("Pieces"), never its Used
+                            // Unit (a Length/Area unit meant for BOM consumption) —
+                            // same fix as PurchaseRequest.jsx's identical column.
+                            <span className="ml-1 font-medium text-slate-500 text-xs">{itemDisplayUnit(pr.item)}</span>
+                          ) : (pr.item?.unit || pr.unit) && (
                             <span className="ml-1 font-medium text-slate-500 text-xs">{pr.item?.unit || pr.unit}</span>
                           )}
                         </td>
