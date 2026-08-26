@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
+import { usePermissions } from '@/hooks/usePermissions';
 import {
   CheckCircle2,
   Clock,
@@ -51,6 +52,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 
 const PaymentVerifications = () => {
+  const { hasFeatureAccess } = usePermissions();
+  const canAdd = hasFeatureAccess('accounts', 'sales', 'add');
+  const canEdit = hasFeatureAccess('accounts', 'sales', 'edit');
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -538,15 +542,18 @@ const PaymentVerifications = () => {
                       {/* Actions */}
                       <TableCell>
                         <div className="flex flex-col gap-1.5 min-w-[120px]">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="w-full text-xs h-7 gap-1 border-slate-300 hover:bg-slate-100"
-                            onClick={() => handleUpdateClick(lead)}
-                          >
-                            <CheckCircle2 className="h-3 w-3" />
-                            Verify
-                          </Button>
+                          {canEdit && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="w-full text-xs h-7 gap-1 border-slate-300 hover:bg-slate-100"
+                              onClick={() => handleUpdateClick(lead)}
+                            >
+                              <CheckCircle2 className="h-3 w-3" />
+                              Verify
+                            </Button>
+                          )}
+                          {canAdd && (
                           <Button
                             size="sm"
                             variant="outline"
@@ -556,6 +563,7 @@ const PaymentVerifications = () => {
                             <Plus className="h-3 w-3" />
                             Add Payment
                           </Button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>

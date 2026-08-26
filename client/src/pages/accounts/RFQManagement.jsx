@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
+import { usePermissions } from '@/hooks/usePermissions';
 import { format } from 'date-fns';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription
@@ -50,6 +51,8 @@ const priorityColor = (p) => {
 };
 
 export default function RFQManagement() {
+  const { hasFeatureAccess } = usePermissions();
+  const canAdd = hasFeatureAccess('accounts', 'purchases', 'add');
   const { toast } = useToast();
   const qc = useQueryClient();
 
@@ -421,7 +424,7 @@ export default function RFQManagement() {
                                 <Eye className="w-3.5 h-3.5" />
                               </Button>
                             </div>
-                          ) : (
+                          ) : canAdd ? (
                             <Button
                               size="sm"
                               className="bg-blue-600 hover:bg-blue-700 text-white h-8 text-xs font-semibold shadow-sm"
@@ -434,7 +437,7 @@ export default function RFQManagement() {
                                 <><Send className="w-3.5 h-3.5 mr-1" /> Send RFQ</>
                               )}
                             </Button>
-                          )}
+                          ) : null}
                         </td>
                       </tr>
                     );

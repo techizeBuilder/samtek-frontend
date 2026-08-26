@@ -9,6 +9,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
+import { usePermissions } from '@/hooks/usePermissions';
 import { Phone, MessageCircle, Mail, MapPin, Truck, CheckCircle, Package, AlertCircle, Search } from 'lucide-react';
 import { sendWhatsApp } from '@/lib/whatsapp';
 import SendEmailModal from '@/components/email/SendEmailModal';
@@ -37,6 +38,8 @@ const groupConfirmationStatus = (jobs) => {
 
 export default function DeliveryConfirmation() {
   const { toast } = useToast();
+  const { hasFeatureAccess } = usePermissions();
+  const canEdit = hasFeatureAccess('complaints', 'deliveryConfirmation', 'edit');
   const qc = useQueryClient();
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [search, setSearch] = useState('');
@@ -185,7 +188,7 @@ export default function DeliveryConfirmation() {
               ) : (
                 <OrderList
                   list={pendingOrders}
-                  canEdit={true}
+                  canEdit={canEdit}
                   selectedGroup={selectedGroup}
                   setSelectedGroup={setSelectedGroup}
                   handleWhatsApp={handleWhatsApp}
@@ -292,7 +295,7 @@ export default function DeliveryConfirmation() {
                   <Input name="remarks" defaultValue={selectedGroup.jobs[0].customerConfirmation?.remarks} placeholder="Spoke to customer..." />
                 </div>
 
-                <Button type="submit" className="w-full mt-4" disabled={updateMutation.isPending}>
+                <Button type="submit" className="w-full mt-4" disabled={updateMutation.isPending || !canEdit}>
                   {updateMutation.isPending ? 'Saving...' : 'Save Confirmation'}
                 </Button>
               </form>

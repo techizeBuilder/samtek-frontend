@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { usePackagingDispatch } from '@/contexts/PackagingDispatchContext';
+import { usePermissions } from '@/hooks/usePermissions';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -350,7 +351,7 @@ function DeliveryModal({ group, onClose }) {
 // subset of `group.jobs` that's actually eligible for a given transition
 // (e.g. only the ones still 'Dispatched' for Mark In Transit), so a slightly
 // out-of-sync sibling never blocks or errors the whole order's action.
-function DispatchGroupCard({ group }) {
+function DispatchGroupCard({ group, canEdit, canCloseHistory }) {
   const { markInTransit, closeDispatch } = usePackagingDispatch();
   const { toast } = useToast();
   const [modal, setModal] = useState(null);
@@ -469,7 +470,7 @@ function DispatchGroupCard({ group }) {
           </div>
 
           <div className="flex gap-2 flex-wrap">
-            {readyJobs.length > 0 && (
+            {readyJobs.length > 0 && canEdit && (
               <Button size="sm" className="flex-1" onClick={() => setModal('execute')}>
                 <Truck className="h-4 w-4 mr-1.5" />
                 Execute Dispatch{readyJobs.length > 1 ? ` (${readyJobs.length})` : ''}
@@ -483,12 +484,14 @@ function DispatchGroupCard({ group }) {
                     Docs
                   </Button>
                 )}
-                <Button size="sm" variant="outline" className="flex-1" onClick={handleInTransit} disabled={loading}>
-                  Mark In Transit{dispatchedJobs.length > 1 ? ` (${dispatchedJobs.length})` : ''}
-                </Button>
+                {canEdit && (
+                  <Button size="sm" variant="outline" className="flex-1" onClick={handleInTransit} disabled={loading}>
+                    Mark In Transit{dispatchedJobs.length > 1 ? ` (${dispatchedJobs.length})` : ''}
+                  </Button>
+                )}
               </>
             )}
-            {(dispatchedJobs.length > 0 || transitJobs.length > 0) && (
+            {(dispatchedJobs.length > 0 || transitJobs.length > 0) && canEdit && (
               <Button size="sm" className="flex-1" onClick={() => setModal('deliver')}>
                 <CheckCircle2 className="h-4 w-4 mr-1.5" />
                 Confirm Delivery{(dispatchedJobs.length + transitJobs.length) > 1 ? ` (${dispatchedJobs.length + transitJobs.length})` : ''}
@@ -510,9 +513,11 @@ function DispatchGroupCard({ group }) {
                     View Documents
                   </Button>
                 )}
-                <Button size="sm" variant="outline" className="flex-1" onClick={handleClose} disabled={loading}>
-                  Close Dispatch{deliveredJobs.length > 1 ? ` (${deliveredJobs.length})` : ''}
-                </Button>
+                {canCloseHistory && (
+                  <Button size="sm" variant="outline" className="flex-1" onClick={handleClose} disabled={loading}>
+                    Close Dispatch{deliveredJobs.length > 1 ? ` (${deliveredJobs.length})` : ''}
+                  </Button>
+                )}
               </>
             )}
           </div>
@@ -524,6 +529,9 @@ function DispatchGroupCard({ group }) {
 
 export default function DispatchExecution() {
   const { dispatchOrders, dispatchOrdersLoading } = usePackagingDispatch();
+  const { hasFeatureAccess } = usePermissions();
+  const canEdit = hasFeatureAccess('dispatches', 'activeDispatches', 'edit');
+  const canCloseHistory = hasFeatureAccess('dispatches', 'dispatchHistory', 'edit');
   const [filter, setFilter] = useState('all');
 
   const activeStatuses = ['Ready', 'Dispatched', 'In Transit', 'Delivered'];
@@ -584,7 +592,7 @@ export default function DispatchExecution() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {orderGroups.map(group => <DispatchGroupCard key={group.orderId} group={group} />)}
+          {orderGroups.map(group => <DispatchGroupCard key={group.orderId} group={group} canEdit={canEdit} canCloseHistory={canCloseHistory} />)}
         </div>
       )}
     </div>

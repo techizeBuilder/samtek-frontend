@@ -89,6 +89,8 @@ const Leads = () => {
   const queryClient = useQueryClient();
   const apiSettings = user?.company?.apiSettings || null;
   const { hasFeatureAccess } = usePermissions();
+  const canAddLead = hasFeatureAccess('sales', 'leads', 'add');
+  const canEditLead = hasFeatureAccess('sales', 'leads', 'edit');
   const [location, setLocation] = useLocation();
 
   // States
@@ -592,28 +594,28 @@ const Leads = () => {
     }
   };
 
-  // Won Checklist Modal
+  // Won Checklist Modal — points are configured by Super Admin under
+  // Settings > Lead Settings > Sales Checklist. salesChecklistConfig itself
+  // is derived further below (once adminSettingsData is fetched) but is
+  // safe to reference here since it's only read inside handlers/JSX that
+  // run after the whole component has rendered at least once.
   const [isWonChecklistModalOpen, setIsWonChecklistModalOpen] = useState(false);
   const [wonChecklistLead, setWonChecklistLead] = useState(null);
-  const [salesChecklist, setSalesChecklist] = useState({
-    advancePayment: { checked: true, value: 0 },
-    installationCharge: { checked: false, value: '' },
-    warranty: { checked: false, value: '' },
-    boardingLodging: { checked: false, value: '' },
-    backupGenerator: { checked: false, value: '' },
-    operatorErrorClause: { checked: false }
-  });
+  const [salesChecklist, setSalesChecklist] = useState({});
 
   const handleOpenWonChecklistModal = (lead) => {
     setWonChecklistLead(lead);
-    setSalesChecklist({
-      advancePayment: { checked: true, value: lead.advancedPaymentAmount || 0 },
-      installationCharge: { checked: false, value: '' },
-      warranty: { checked: false, value: '' },
-      boardingLodging: { checked: false, value: '' },
-      backupGenerator: { checked: false, value: '' },
-      operatorErrorClause: { checked: false }
+    const initial = {};
+    salesChecklistConfig.forEach(cfg => {
+      // 'advancePayment' is pre-checked and pre-filled from the lead's own
+      // advance amount — same special-cased default this always had.
+      if (cfg.key === 'advancePayment') {
+        initial[cfg.key] = { checked: true, value: lead.advancedPaymentAmount || 0 };
+      } else {
+        initial[cfg.key] = { checked: false, value: cfg.valueType === 'number' ? 0 : '' };
+      }
     });
+    setSalesChecklist(initial);
     setIsWonChecklistModalOpen(true);
   };
 
@@ -703,6 +705,7 @@ const Leads = () => {
   const dynDocTypes     = adminSettingsData?.settings?.documentTypes?.map(d => d.name) || null;
   const dynRejectReasons = adminSettingsData?.settings?.leadRejectReasons?.map(r => r.label) || null;
   const DISQUALIFY_REASONS = (dynRejectReasons && dynRejectReasons.length) ? dynRejectReasons : DISQUALIFY_REASONS_FALLBACK;
+  const salesChecklistConfig = adminSettingsData?.settings?.salesChecklist || [];
 
 const assignableUsers = (usersData?.users || []).filter(
   (user) =>
@@ -1450,10 +1453,12 @@ const assignableUsers = (usersData?.users || []).filter(
             Filters {Object.values(appliedFilters).filter(v => v).length > 0 && `(${Object.values(appliedFilters).filter(v => v).length})`}
           </Button>
 
-          <Button size="sm" className="bg-blue-600 hover:bg-blue-700" onClick={handleOpenAddModal}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Leads
-          </Button>
+          {canAddLead && (
+            <Button size="sm" className="bg-blue-600 hover:bg-blue-700" onClick={handleOpenAddModal}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add Leads
+            </Button>
+          )}
 
           <Button
             size="sm"
@@ -1540,10 +1545,12 @@ const assignableUsers = (usersData?.users || []).filter(
             <Target className="h-16 w-16 mx-auto text-gray-300 mb-4" />
             <h3 className="text-xl font-medium text-gray-600">No Leads Found</h3>
             <p className="text-gray-400 mt-2">Start adding leads to manage your sales pipeline.</p>
-            <Button className="mt-4 bg-blue-600 hover:bg-blue-700" onClick={handleOpenAddModal}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add First Lead
-            </Button>
+            {canAddLead && (
+              <Button className="mt-4 bg-blue-600 hover:bg-blue-700" onClick={handleOpenAddModal}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add First Lead
+              </Button>
+            )}
           </div>
         ) : (
           leads.map((lead) => (
@@ -1738,10 +1745,12 @@ const assignableUsers = (usersData?.users || []).filter(
                     <div className="mb-4">
                       <h3 className="text-blue-600 font-bold text-lg flex items-center">
                         {lead.productRequired}
-                        <Edit 
-                          className="h-4 w-4 ml-2 cursor-pointer text-gray-400 hover:text-blue-600" 
-                          onClick={() => handleEditReqClick(lead)}
-                        />
+                        {canEditLead && (
+                          <Edit
+                            className="h-4 w-4 ml-2 cursor-pointer text-gray-400 hover:text-blue-600"
+                            onClick={() => handleEditReqClick(lead)}
+                          />
+                        )}
                       </h3>
                       <p className="text-sm text-gray-600 mt-1">
                         <span className="font-bold">Product Required:</span> {lead.productRequired}
@@ -1763,14 +1772,16 @@ const assignableUsers = (usersData?.users || []).filter(
                           <p className="text-xs text-gray-500">Location: {lead.city}, {lead.state}, {lead.country}</p>
                           <p className="text-xs text-gray-500">Buyer Type: {lead.customerType || 'N/A'}</p>
                         </div>
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
-                          className="h-8 px-2 text-xs bg-red-50 text-red-600 border-red-100"
-                          onClick={() => handleEditBuyerClick(lead)}
-                        >
-                          Edit <ChevronRight className="h-3 w-3 ml-1" />
-                        </Button>
+                        {canEditLead && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 px-2 text-xs bg-red-50 text-red-600 border-red-100"
+                            onClick={() => handleEditBuyerClick(lead)}
+                          >
+                            Edit <ChevronRight className="h-3 w-3 ml-1" />
+                          </Button>
+                        )}
                       </div>
                     </div>
 
@@ -1885,12 +1896,12 @@ const assignableUsers = (usersData?.users || []).filter(
                   <div className="flex gap-2">
                     <Button variant="outline" size="sm" className="h-8 text-xs rounded-full">Call Attempts</Button>
                     <Button variant="outline" size="sm" className="h-8 text-xs rounded-full" onClick={() => handleOpenMeetingAttempts(lead)}>Meeting Attempts</Button>
-                    <Button 
-                      variant="default" 
-                      size="sm" 
+                    <Button
+                      variant="default"
+                      size="sm"
                       className="h-8 text-xs rounded-full bg-blue-600"
                       onClick={() => setLocation(`/sales/quotation?lead_id=${lead._id}`)}
-                      // disabled={lead.status === 'Won'}
+                      disabled={!canEditLead}
                     >
                       {lead.hasQuotation  ? 'Update Quotation' : 'Send Quotation'}
                     </Button>
@@ -4501,212 +4512,64 @@ const assignableUsers = (usersData?.users || []).filter(
           </DialogHeader>
 
           <div className="space-y-4 py-4">
-            {/* 1. Advanced Payment */}
-            <div className="p-3 border rounded-lg bg-gray-50 hover:bg-gray-50/75 transition-all space-y-2">
-              <div className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  id="chk-adv"
-                  checked={salesChecklist.advancePayment.checked}
-                  onChange={(e) => setSalesChecklist(p => ({
-                    ...p,
-                    advancePayment: { ...p.advancePayment, checked: e.target.checked }
-                  }))}
-                  className="h-4.5 w-4.5 rounded border-gray-300 text-green-600 focus:ring-green-500"
-                />
-                <Label htmlFor="chk-adv" className="font-semibold text-gray-800 cursor-pointer flex-1">
-                  1. Advanced Payment Received/Discussed?
-                </Label>
-              </div>
-              {salesChecklist.advancePayment.checked && (
-                <div className="pl-7 space-y-1">
-                  <span className="text-xs text-gray-500">Advanced Amount (INR)</span>
-                  <Input
-                    type="text"
-                    inputMode="numeric"
-                    value={salesChecklist.advancePayment.value === 0 || salesChecklist.advancePayment.value === "0" ? "0" : salesChecklist.advancePayment.value}
-                    onFocus={(e) => {
-                      if (e.target.value === "0" || e.target.value === 0) {
-                        setSalesChecklist(p => ({
-                          ...p,
-                          advancePayment: { ...p.advancePayment, value: "" }
-                        }));
-                      }
-                    }}
-                    onBlur={(e) => {
-                      if (e.target.value === "") {
-                        setSalesChecklist(p => ({
-                          ...p,
-                          advancePayment: { ...p.advancePayment, value: 0 }
-                        }));
-                      }
-                    }}
-                    onChange={(e) => {
-                      const val = e.target.value.replace(/[^0-9]/g, "");
-                      setSalesChecklist(p => ({
-                        ...p,
-                        advancePayment: { ...p.advancePayment, value: val === "" ? "" : Number(val) }
-                      }));
-                    }}
-                    className="h-9 border-gray-300 focus:ring-green-500"
-                    placeholder="Enter amount"
-                  />
+            {salesChecklistConfig.length === 0 && (
+              <p className="text-sm text-gray-400 italic">No checklist points configured yet.</p>
+            )}
+            {salesChecklistConfig.map((cfg, idx) => {
+              const item = salesChecklist[cfg.key] || { checked: false, value: cfg.valueType === 'number' ? 0 : '' };
+              const setItem = (patch) => setSalesChecklist(p => ({
+                ...p,
+                [cfg.key]: { ...(p[cfg.key] || item), ...patch }
+              }));
+              return (
+                <div key={cfg.key} className={cfg.valueType === 'none'
+                  ? "p-3 border rounded-lg bg-gray-50 hover:bg-gray-50/75 transition-all flex items-center gap-3"
+                  : "p-3 border rounded-lg bg-gray-50 hover:bg-gray-50/75 transition-all space-y-2"}>
+                  <div className={cfg.valueType === 'none' ? "flex items-center gap-3 flex-1" : "flex items-center gap-3"}>
+                    <input
+                      type="checkbox"
+                      id={`chk-${cfg.key}`}
+                      checked={item.checked}
+                      onChange={(e) => setItem({ checked: e.target.checked })}
+                      className="h-4.5 w-4.5 rounded border-gray-300 text-green-600 focus:ring-green-500"
+                    />
+                    <Label htmlFor={`chk-${cfg.key}`} className="font-semibold text-gray-800 cursor-pointer flex-1">
+                      {idx + 1}. {cfg.label}
+                    </Label>
+                  </div>
+                  {cfg.valueType !== 'none' && item.checked && (
+                    <div className="pl-7 space-y-1">
+                      {cfg.valueLabel && <span className="text-xs text-gray-500">{cfg.valueLabel}</span>}
+                      <Input
+                        type="text"
+                        inputMode={cfg.valueType === 'number' ? 'numeric' : undefined}
+                        value={item.value}
+                        onChange={(e) => {
+                          if (cfg.valueType === 'number') {
+                            const val = e.target.value.replace(/[^0-9]/g, "");
+                            setItem({ value: val === "" ? "" : Number(val) });
+                          } else {
+                            setItem({ value: e.target.value });
+                          }
+                        }}
+                        onFocus={(e) => {
+                          if (cfg.valueType === 'number' && (e.target.value === "0" || e.target.value === 0)) {
+                            setItem({ value: "" });
+                          }
+                        }}
+                        onBlur={(e) => {
+                          if (cfg.valueType === 'number' && e.target.value === "") {
+                            setItem({ value: 0 });
+                          }
+                        }}
+                        className="h-9 border-gray-300 focus:ring-green-500"
+                        placeholder={cfg.valuePlaceholder || ''}
+                      />
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-
-            {/* 2. Installation Charges */}
-            <div className="p-3 border rounded-lg bg-gray-50 hover:bg-gray-50/75 transition-all space-y-2">
-              <div className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  id="chk-inst"
-                  checked={salesChecklist.installationCharge.checked}
-                  onChange={(e) => setSalesChecklist(p => ({
-                    ...p,
-                    installationCharge: { ...p.installationCharge, checked: e.target.checked }
-                  }))}
-                  className="h-4.5 w-4.5 rounded border-gray-300 text-green-600 focus:ring-green-500"
-                />
-                <Label htmlFor="chk-inst" className="font-semibold text-gray-800 cursor-pointer flex-1">
-                  2. Installation Charges Discussed?
-                </Label>
-              </div>
-              {salesChecklist.installationCharge.checked && (
-                <div className="pl-7 space-y-1">
-                  <span className="text-xs text-gray-500">How much installation charge is agreed?</span>
-                  <Input
-                    type="text"
-                    value={salesChecklist.installationCharge.value}
-                    onChange={(e) => setSalesChecklist(p => ({
-                      ...p,
-                      installationCharge: { ...p.installationCharge, value: e.target.value }
-                    }))}
-                    className="h-9 border-gray-300 focus:ring-green-500"
-                    placeholder="e.g. ₹15,000 / Extra at actual / Included in Deal"
-                  />
-                </div>
-              )}
-            </div>
-
-            {/* 3. Warranty Period */}
-            <div className="p-3 border rounded-lg bg-gray-50 hover:bg-gray-50/75 transition-all space-y-2">
-              <div className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  id="chk-war"
-                  checked={salesChecklist.warranty.checked}
-                  onChange={(e) => setSalesChecklist(p => ({
-                    ...p,
-                    warranty: { ...p.warranty, checked: e.target.checked }
-                  }))}
-                  className="h-4.5 w-4.5 rounded border-gray-300 text-green-600 focus:ring-green-500"
-                />
-                <Label htmlFor="chk-war" className="font-semibold text-gray-800 cursor-pointer flex-1">
-                  3. Warranty Committed?
-                </Label>
-              </div>
-              {salesChecklist.warranty.checked && (
-                <div className="pl-7 space-y-1">
-                  <span className="text-xs text-gray-500">Warranty duration & details</span>
-                  <Input
-                    type="text"
-                    value={salesChecklist.warranty.value}
-                    onChange={(e) => setSalesChecklist(p => ({
-                      ...p,
-                      warranty: { ...p.warranty, value: e.target.value }
-                    }))}
-                    className="h-9 border-gray-300 focus:ring-green-500"
-                    placeholder="e.g. 1 Year / 6 months / 2 Years on motor"
-                  />
-                </div>
-              )}
-            </div>
-
-            {/* 4. Boarding/Lodging */}
-            <div className="p-3 border rounded-lg bg-gray-50 hover:bg-gray-50/75 transition-all space-y-2">
-              <div className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  id="chk-board"
-                  checked={salesChecklist.boardingLodging.checked}
-                  onChange={(e) => setSalesChecklist(p => ({
-                    ...p,
-                    boardingLodging: { ...p.boardingLodging, checked: e.target.checked }
-                  }))}
-                  className="h-4.5 w-4.5 rounded border-gray-300 text-green-600 focus:ring-green-500"
-                />
-                <Label htmlFor="chk-board" className="font-semibold text-gray-800 cursor-pointer flex-1">
-                  4. Installation Crew Stay/Food Arranged?
-                </Label>
-              </div>
-              {salesChecklist.boardingLodging.checked && (
-                <div className="pl-7 space-y-1">
-                  <span className="text-xs text-gray-500">Boarding & Lodging arrangement details</span>
-                  <Input
-                    type="text"
-                    value={salesChecklist.boardingLodging.value}
-                    onChange={(e) => setSalesChecklist(p => ({
-                      ...p,
-                      boardingLodging: { ...p.boardingLodging, value: e.target.value }
-                    }))}
-                    className="h-9 border-gray-300 focus:ring-green-500"
-                    placeholder="e.g. Under Customer Scope / Hotel by customer"
-                  />
-                </div>
-              )}
-            </div>
-
-            {/* 5. Backup Power / Generator */}
-            <div className="p-3 border rounded-lg bg-gray-50 hover:bg-gray-50/75 transition-all space-y-2">
-              <div className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  id="chk-gen"
-                  checked={salesChecklist.backupGenerator.checked}
-                  onChange={(e) => setSalesChecklist(p => ({
-                    ...p,
-                    backupGenerator: { ...p.backupGenerator, checked: e.target.checked }
-                  }))}
-                  className="h-4.5 w-4.5 rounded border-gray-300 text-green-600 focus:ring-green-500"
-                />
-                <Label htmlFor="chk-gen" className="font-semibold text-gray-800 cursor-pointer flex-1">
-                  5. Backup Power Support / DG Discussed?
-                </Label>
-              </div>
-              {salesChecklist.backupGenerator.checked && (
-                <div className="pl-7 space-y-1">
-                  <span className="text-xs text-gray-500">Generator / Power fluctuation arrangement details</span>
-                  <Input
-                    type="text"
-                    value={salesChecklist.backupGenerator.value}
-                    onChange={(e) => setSalesChecklist(p => ({
-                      ...p,
-                      backupGenerator: { ...p.backupGenerator, value: e.target.value }
-                    }))}
-                    className="h-9 border-gray-300 focus:ring-green-500"
-                    placeholder="e.g. Customer will provide generator for backup"
-                  />
-                </div>
-              )}
-            </div>
-
-            {/* 6. Operator Error Clause */}
-            <div className="p-3 border rounded-lg bg-gray-50 hover:bg-gray-50/75 transition-all flex items-center gap-3">
-              <input
-                type="checkbox"
-                id="chk-oper"
-                checked={salesChecklist.operatorErrorClause.checked}
-                onChange={(e) => setSalesChecklist(p => ({
-                  ...p,
-                  operatorErrorClause: { ...p.operatorErrorClause, checked: e.target.checked }
-                }))}
-                className="h-4.5 w-4.5 rounded border-gray-300 text-green-600 focus:ring-green-500"
-              />
-              <Label htmlFor="chk-oper" className="font-semibold text-gray-800 cursor-pointer flex-1">
-                6. Customer agreed that damage due to operator mistake is NOT our fault?
-              </Label>
-            </div>
+              );
+            })}
           </div>
 
           <div className="flex justify-end gap-3 pt-4 border-t">
@@ -4749,14 +4612,7 @@ const assignableUsers = (usersData?.users || []).filter(
             </div>
           ) : viewingChecklistOrder ? (() => {
             const checklist = viewingChecklistOrder.salesChecklist || {};
-            const checklistConfig = [
-              { key: 'advancePayment', label: '1. Advanced Payment', type: 'number' },
-              { key: 'installationCharge', label: '2. Installation Charges', type: 'text' },
-              { key: 'warranty', label: '3. Warranty Period', type: 'text' },
-              { key: 'boardingLodging', label: '4. Installation Team Stay/Food', type: 'text' },
-              { key: 'backupGenerator', label: '5. Backup Power / DG', type: 'text' },
-              { key: 'operatorErrorClause', label: '6. Operator Error Clause', type: 'boolean' }
-            ];
+            const checklistConfig = salesChecklistConfig;
 
             return (
               <div className="space-y-4 py-3">
@@ -4782,23 +4638,23 @@ const assignableUsers = (usersData?.users || []).filter(
 
                 {/* Checklist items list */}
                 <div className="space-y-3">
-                  {checklistConfig.map((cfg) => {
+                  {checklistConfig.map((cfg, idx) => {
                     const item = checklist[cfg.key] || { checked: false, value: '', verified: false };
                     return (
-                      <div 
-                        key={cfg.key} 
+                      <div
+                        key={cfg.key}
                         className={cn(
                           "p-3 rounded-lg border flex items-center justify-between transition-all",
-                          item.checked 
+                          item.checked
                             ? (item.verified ? "bg-green-50/40 border-green-200" : "bg-orange-50/40 border-orange-200")
                             : "bg-gray-50/40 border-gray-150 opacity-60"
                         )}
                       >
                         <div>
-                          <p className="font-semibold text-sm text-gray-800">{cfg.label}</p>
+                          <p className="font-semibold text-sm text-gray-800">{idx + 1}. {cfg.label}</p>
                           {item.checked ? (
                             <p className="text-xs text-gray-600 mt-1">
-                              Agreed: <strong className="text-blue-700">{cfg.type === 'number' ? `₹${item.value}` : (cfg.type === 'boolean' ? 'Agreed' : item.value || 'N/A')}</strong>
+                              Agreed: <strong className="text-blue-700">{cfg.valueType === 'number' ? `₹${item.value}` : (cfg.valueType === 'none' ? 'Agreed' : item.value || 'N/A')}</strong>
                             </p>
                           ) : (
                             <p className="text-xs text-gray-400 mt-0.5">Not discussed with customer</p>

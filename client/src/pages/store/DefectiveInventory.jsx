@@ -1,6 +1,7 @@
 ﻿import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { apiRequest, queryClient } from '@/lib/queryClient';
+import { usePermissions } from '@/hooks/usePermissions';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -30,6 +31,9 @@ import {
 const LIMIT = 10;
 
 export default function DefectiveInventory() {
+  const { hasFeatureAccess } = usePermissions();
+  const canRepair = hasFeatureAccess('Store', 'defectiveInventory', 'edit');
+  const canScrap = hasFeatureAccess('Store', 'defectiveInventory', 'delete');
   const { toast } = useToast();
   const [search, setSearch] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -228,12 +232,16 @@ export default function DefectiveInventory() {
                       <td className="px-4 py-3 text-slate-500">{item.unit || '-'}</td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-2">
-                          <Button size="sm" variant="outline" className="border-green-300 text-green-700 hover:bg-green-50 gap-1.5" onClick={() => openModal('repair', item)}>
-                            <Wrench className="h-3.5 w-3.5" /> Repair
-                          </Button>
-                          <Button size="sm" variant="outline" className="border-red-300 text-red-600 hover:bg-red-50 gap-1.5" onClick={() => openModal('scrap', item)}>
-                            <Trash2 className="h-3.5 w-3.5" /> Scrap
-                          </Button>
+                          {canRepair && (
+                            <Button size="sm" variant="outline" className="border-green-300 text-green-700 hover:bg-green-50 gap-1.5" onClick={() => openModal('repair', item)}>
+                              <Wrench className="h-3.5 w-3.5" /> Repair
+                            </Button>
+                          )}
+                          {canScrap && (
+                            <Button size="sm" variant="outline" className="border-red-300 text-red-600 hover:bg-red-50 gap-1.5" onClick={() => openModal('scrap', item)}>
+                              <Trash2 className="h-3.5 w-3.5" /> Scrap
+                            </Button>
+                          )}
                         </div>
                       </td>
                     </tr>

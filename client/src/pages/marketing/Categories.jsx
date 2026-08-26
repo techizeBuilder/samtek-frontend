@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useMarketing } from '@/contexts/MarketingContext';
+import { usePermissions } from '@/hooks/usePermissions';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -12,6 +13,10 @@ import { useToast } from '@/hooks/use-toast';
 
 export default function CategoryManagement() {
   const { categories, categoriesLoading, createCategory, updateCategory, deleteCategory } = useMarketing();
+  const { hasFeatureAccess } = usePermissions();
+  const canAdd = hasFeatureAccess('marketing', 'categories', 'add');
+  const canEdit = hasFeatureAccess('marketing', 'categories', 'edit');
+  const canDelete = hasFeatureAccess('marketing', 'categories', 'delete');
   const { toast } = useToast();
 
   const [open, setOpen]   = useState(false);
@@ -67,7 +72,7 @@ export default function CategoryManagement() {
           <h1 className="text-2xl font-bold text-slate-900">Category Management</h1>
           <p className="text-slate-500 text-sm mt-1">{categories.length} categories total</p>
         </div>
-        <Button onClick={() => openCreate()} className="gap-2"><Plus className="h-4 w-4" />Add Category</Button>
+        {canAdd && <Button onClick={() => openCreate()} className="gap-2"><Plus className="h-4 w-4" />Add Category</Button>}
       </div>
 
       {mainCategories.length === 0 ? (
@@ -75,7 +80,7 @@ export default function CategoryManagement() {
           <Package className="h-10 w-10 mx-auto mb-3" />
           <p className="font-medium">No categories yet</p>
           <p className="text-sm">Create your first main category to get started</p>
-          <Button className="mt-4 gap-2" onClick={() => openCreate()}><Plus className="h-4 w-4" />Create Category</Button>
+          {canAdd && <Button className="mt-4 gap-2" onClick={() => openCreate()}><Plus className="h-4 w-4" />Create Category</Button>}
         </CardContent></Card>
       ) : (
         <div className="space-y-4">
@@ -91,9 +96,9 @@ export default function CategoryManagement() {
                       <Badge variant="secondary" className="text-xs">{subs.length} sub-categories</Badge>
                     </div>
                     <div className="flex gap-2">
-                      <Button size="sm" variant="outline" className="gap-1 text-xs" onClick={() => openCreate(main._id)}><Plus className="h-3 w-3" />Add Sub</Button>
-                      <Button size="sm" variant="ghost" onClick={() => openEdit(main)}><Edit className="h-4 w-4" /></Button>
-                      <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => handleDelete(main)}><Trash2 className="h-4 w-4" /></Button>
+                      {canAdd && <Button size="sm" variant="outline" className="gap-1 text-xs" onClick={() => openCreate(main._id)}><Plus className="h-3 w-3" />Add Sub</Button>}
+                      {canEdit && <Button size="sm" variant="ghost" onClick={() => openEdit(main)}><Edit className="h-4 w-4" /></Button>}
+                      {canDelete && <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => handleDelete(main)}><Trash2 className="h-4 w-4" /></Button>}
                     </div>
                   </div>
                 </CardHeader>
@@ -106,8 +111,8 @@ export default function CategoryManagement() {
                             <ChevronRight className="h-3 w-3 text-slate-400" />{sub.name}
                           </div>
                           <div className="flex gap-1">
-                            <Button size="sm" variant="ghost" onClick={() => openEdit(sub)}><Edit className="h-3 w-3" /></Button>
-                            <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => handleDelete(sub)}><Trash2 className="h-3 w-3" /></Button>
+                            {canEdit && <Button size="sm" variant="ghost" onClick={() => openEdit(sub)}><Edit className="h-3 w-3" /></Button>}
+                            {canDelete && <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => handleDelete(sub)}><Trash2 className="h-3 w-3" /></Button>}
                           </div>
                         </div>
                       ))}

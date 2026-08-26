@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useRD } from '@/contexts/RDContext';
+import { usePermissions } from '@/hooks/usePermissions';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -90,6 +91,10 @@ export default function ProductMaster() {
     masterOptions, addMasterOption, updateMasterOption, deleteMasterOption,
     customFieldTemplates, getCustomFieldTemplate, saveCustomFieldTemplate, deleteCustomFieldTemplate,
   } = useRD();
+  const { hasFeatureAccess } = usePermissions();
+  const canAdd = hasFeatureAccess('rnd', 'productMaster', 'add');
+  const canEdit = hasFeatureAccess('rnd', 'productMaster', 'edit');
+  const canDelete = hasFeatureAccess('rnd', 'productMaster', 'delete');
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('All');
@@ -791,12 +796,16 @@ export default function ProductMaster() {
           <p className="text-slate-500 text-sm mt-0.5">Central register of all machines — no machine exists in ERP without R&D entry</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setTemplateManagerOpen(true)} className="bg-white">
-            <Settings2 className="h-4 w-4 mr-2" /> Manage Classifications &amp; Fields
-          </Button>
-          <Button onClick={() => setAddOpen(true)} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow">
-            <Plus className="h-4 w-4 mr-2" /> Add Item
-          </Button>
+          {canEdit && (
+            <Button variant="outline" onClick={() => setTemplateManagerOpen(true)} className="bg-white">
+              <Settings2 className="h-4 w-4 mr-2" /> Manage Classifications &amp; Fields
+            </Button>
+          )}
+          {canAdd && (
+            <Button onClick={() => setAddOpen(true)} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow">
+              <Plus className="h-4 w-4 mr-2" /> Add Item
+            </Button>
+          )}
         </div>
       </div>
 
@@ -936,12 +945,14 @@ export default function ProductMaster() {
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-1">
                         <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-blue-600" onClick={() => { setSelected(m); setViewOpen(true); }}><Eye className="h-3.5 w-3.5" /></Button>
-                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-purple-600" onClick={() => openEdit(m)}><Edit2 className="h-3.5 w-3.5" /></Button>
-                        {!m.isDiscontinued ? (
+                        {canEdit && (
+                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-purple-600" onClick={() => openEdit(m)}><Edit2 className="h-3.5 w-3.5" /></Button>
+                        )}
+                        {canEdit && (!m.isDiscontinued ? (
                           <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-red-600" onClick={() => setConfirmDiscontinue(m)}><Ban className="h-3.5 w-3.5" /></Button>
                         ) : (
                           <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-emerald-600" onClick={() => reactivateMachine(m._id)}><RefreshCw className="h-3.5 w-3.5" /></Button>
-                        )}
+                        ))}
                       </div>
                     </td>
                   </tr>

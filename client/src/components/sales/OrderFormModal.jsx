@@ -25,7 +25,10 @@ import { AlertCircle, Plus, Trash2, Loader2 } from 'lucide-react';
 const ACCOUNTS_ROLES = ['Accounts', 'Accounts Head', 'Account Employee', 'Superadmin', 'Super Admin'];
 const ORDER_TYPES = ['Customer', 'Dealer', 'New', 'Repeat', 'Replacement'];
 const PAYMENT_TYPES = ['Advance Payment', 'Full Payment', 'Partial Payment'];
-const WAY_OF_PAYMENT_OPTIONS = ['Cash', 'Cheque', 'Bank Transfer', 'UPI', 'Other'];
+// Kept in sync with LeadPayment.paymentMethod's enum (Accounts > Payment
+// Verifications) so a payment recorded there always has a matching option
+// here when auto-filled — see prefillFromLead.
+const WAY_OF_PAYMENT_OPTIONS = ['Cash', 'Cheque', 'Bank Transfer', 'UPI', 'Card', 'Other'];
 
 const GST_RATE = 0.18;
 
@@ -190,7 +193,13 @@ export default function OrderFormModal({ open, onOpenChange, orderId, order, lea
     enabled: open,
   });
 
-  const prefillFromLead = (l, o) => {
+  // `latestPayment` is the most recent Verified LeadPayment for this lead
+  // (see Accounts > Payment Verifications, /api/lead-payments/lead/:leadId) —
+  // Way of Payment / Payment Receiver / Payment Date are pulled from it so
+  // Sales doesn't have to retype what Accounts already recorded. Received
+  // Amount instead comes from the lead's own running advancedPaymentAmount
+  // (a cumulative total, not any single payment's amount).
+  const prefillFromLead = (l, o, latestPayment) => {
     const settings = adminSettingsData?.settings?.quotationNumberSettings;
     const activeSetting = (settings && settings.length > 0) ? settings[settings.length - 1] : null;
     const today = toDateInput(new Date());
@@ -209,12 +218,12 @@ export default function OrderFormModal({ open, onOpenChange, orderId, order, lea
       orderDate: today,
       deliveryDate: '',
       issueDate: today,
-      receivedAmount: '',
+      receivedAmount: l?.advancedPaymentAmount || '',
       paymentType: 'Advance Payment',
       balanceAmount: '',
-      wayOfPayment: 'Cash',
-      paymentReceiverAC: '',
-      paymentDate: '',
+      wayOfPayment: latestPayment?.paymentMethod || 'Cash',
+      paymentReceiverAC: latestPayment?.paymentMethod === 'Cash' ? '' : (latestPayment?.bankAccountName || ''),
+      paymentDate: latestPayment?.paymentDate ? toDateInput(latestPayment.paymentDate) : '',
     });
     setItems(itemsFromQuotation(l) || [blankItem()]);
   };
@@ -280,14 +289,22 @@ export default function OrderFormModal({ open, onOpenChange, orderId, order, lea
             // downloaded/printed/emailed. Re-fetch fresh so the item table always
             // reflects the latest saved quotation snapshot.
             let freshLead = lead;
+            let latestPayment = null;
             if (lead?._id) {
               try {
                 const leadRes = await leadApi.getById(lead._id);
                 if (leadRes?.lead) freshLead = leadRes.lead;
               } catch (e) { console.error('Failed to refresh lead for Order Form prefill:', e); }
+              try {
+                // Way of Payment / Payment Receiver / Payment Date come from
+                // whatever Accounts most recently recorded for this lead in
+                // Payment Verifications, not retyped here.
+                const payRes = await apiRequest('GET', `/api/lead-payments/lead/${lead._id}`);
+                latestPayment = (payRes?.payments || []).find(p => p.status === 'Verified') || null;
+              } catch (e) { console.error('Failed to fetch payment details for Order Form prefill:', e); }
             }
             if (cancelled) return;
-            prefillFromLead(freshLead, order);
+            prefillFromLead(freshLead, order, latestPayment);
             setEditing(true);
           } else if (f.status === 'Returned') {
             applyExistingForm(f);
@@ -406,21 +423,24 @@ export default function OrderFormModal({ open, onOpenChange, orderId, order, lea
     }
     // Bill Amt must clear the item's own BOM cost (materials + production
     // cost/expense, PER UNIT — see computeBOMMaterialsMrpCost) times however
-    // many units this row orders, by more than 10% — items with no BOM for
+    // many units this row orders, by more than that item's own Bill Amount %
+    // (Company Admin > Pricing Value, default 10%) — items with no BOM for
     // their M/C Code are skipped (nothing to check).
     const bomViolation = visibleItems.find(({ it }) => {
       const bomInfo = bomCostByCode[(it.mcCode || '').trim()];
       if (!bomInfo || bomInfo === 'loading' || !bomInfo.found) return false;
       const qty = num(it.qty) || 1;
-      return num(it.billAmount) <= bomInfo.totalCost * qty * 1.1;
+      const pct = bomInfo.billAmountPercent ?? 10;
+      return num(it.billAmount) <= bomInfo.totalCost * qty * (1 + pct / 100);
     });
     if (bomViolation) {
       const bomInfo = bomCostByCode[(bomViolation.it.mcCode || '').trim()];
       const qty = num(bomViolation.it.qty) || 1;
-      const minRequired = bomInfo.totalCost * qty * 1.1;
+      const pct = bomInfo.billAmountPercent ?? 10;
+      const minRequired = bomInfo.totalCost * qty * (1 + pct / 100);
       toast({
         title: 'Billing Amount too low',
-        description: `${bomViolation.it.itemName || bomViolation.it.mcCode}: Bill Amt must be above ₹${minRequired.toLocaleString('en-IN')} (BOM cost ₹${bomInfo.totalCost.toLocaleString('en-IN')}/unit × ${qty} unit${qty > 1 ? 's' : ''} + 10%).`,
+        description: `${bomViolation.it.itemName || bomViolation.it.mcCode}: Bill Amt must be above ₹${minRequired.toLocaleString('en-IN')} (BOM cost ₹${bomInfo.totalCost.toLocaleString('en-IN')}/unit × ${qty} unit${qty > 1 ? 's' : ''} + ${pct}%).`,
         variant: 'destructive'
       });
       return;
@@ -799,14 +819,16 @@ function QtyCell({ value, onChange, disabled }) {
 
 // Shows the item's BOM cost (Σ material MRP × qty + production cost/expense,
 // PER UNIT — see computeBOMMaterialsMrpCost) × how many units this row
-// orders, and the minimum Billing Amount (that × 1.1) under the Bill Amt
+// orders, and the minimum Billing Amount (that × the item's own Bill Amount %
+// from Company Admin > Pricing Value, default 10%) under the Bill Amt
 // input — nothing renders when the item has no BOM (bomInfo is
 // null/undefined/'loading').
 function BomCostHint({ bomInfo, billAmount, qty }) {
   if (!bomInfo || bomInfo === 'loading' || !bomInfo.found) return null;
   const units = num(qty) || 1;
   const bomCostForQty = bomInfo.totalCost * units;
-  const minRequired = bomCostForQty * 1.1;
+  const pct = bomInfo.billAmountPercent ?? 10;
+  const minRequired = bomCostForQty * (1 + pct / 100);
   const isBelowMin = num(billAmount) > 0 && num(billAmount) <= minRequired;
   return (
     <p className={`text-[10px] mt-1 leading-tight ${isBelowMin ? 'text-red-500 font-semibold' : 'text-gray-400'}`}>

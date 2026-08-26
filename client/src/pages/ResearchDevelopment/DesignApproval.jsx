@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useRD } from '@/contexts/RDContext';
+import { usePermissions } from '@/hooks/usePermissions';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -20,6 +21,8 @@ const statusConfig = {
 
 export default function DesignApproval() {
   const { updateDesignStatus } = useRD();
+  const { hasFeatureAccess } = usePermissions();
+  const canEdit = hasFeatureAccess('rnd', 'designApproval', 'edit');
   const [activeTab, setActiveTab] = useState('All');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -162,12 +165,12 @@ export default function DesignApproval() {
                       <Button size="sm" variant="outline" className="flex-1 text-xs" onClick={() => { setSelected(m); setViewOpen(true); }}>
                         <Eye className="h-3 w-3 mr-1" /> View
                       </Button>
-                      {m.designStatus === 'Draft' && (
+                      {m.designStatus === 'Draft' && canEdit && (
                         <Button size="sm" className="flex-1 text-xs bg-amber-500 hover:bg-amber-600 text-white" onClick={() => { setSelected(m); setSendTestOpen(true); }}>
                           Send to Testing
                         </Button>
                       )}
-                      {m.designStatus === 'Testing' && (
+                      {m.designStatus === 'Testing' && canEdit && (
                         <>
                           <Button size="sm" className="flex-1 text-xs bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => { setSelected(m); setApproveOpen(true); }}>
                             Approve

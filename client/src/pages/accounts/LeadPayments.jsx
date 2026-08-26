@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
+import { usePermissions } from '@/hooks/usePermissions';
 import { apiRequest } from '@/api/index';
 import {
   Card,
@@ -53,6 +54,8 @@ import {
 import { cn } from '@/lib/utils';
 
 const LeadPayments = () => {
+  const { hasFeatureAccess } = usePermissions();
+  const canAdd = hasFeatureAccess('accounts', 'sales', 'add');
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -273,13 +276,15 @@ const LeadPayments = () => {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
         <h1 className="text-2xl font-bold text-gray-800">Lead Payments</h1>
-        <Button 
-          className="bg-blue-600 hover:bg-blue-700"
-          onClick={() => setIsAddPaymentModalOpen(true)}
-        >
-          <Plus className="h-4 w-4 mr-2" />
-          Add Payment
-        </Button>
+        {canAdd && (
+          <Button
+            className="bg-blue-600 hover:bg-blue-700"
+            onClick={() => setIsAddPaymentModalOpen(true)}
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Add Payment
+          </Button>
+        )}
       </div>
 
       {/* Tabs */}

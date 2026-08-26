@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useRD } from '@/contexts/RDContext';
+import { usePermissions } from '@/hooks/usePermissions';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -41,6 +42,8 @@ const summarizeBomDimensions = (mat) => {
 };
 
 export default function RDProductionQueue() {
+    const { hasFeatureAccess } = usePermissions();
+    const canEdit = hasFeatureAccess('rnd', 'approveRequests', 'edit');
     const {
         productionRequests,
         productionRequestsPagination,
@@ -350,14 +353,16 @@ export default function RDProductionQueue() {
                                                 {reqFilters.tab === 'fresh' && (
                                                     <td className="px-5 py-4">
                                                         <div className="flex items-center justify-center gap-2">
-                                                            <Button
-                                                                size="sm"
-                                                                variant="outline"
-                                                                className="h-8 bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 hover:text-emerald-800"
-                                                                onClick={() => handleApprove(req._id, req.requestType)}
-                                                            >
-                                                                <CheckCircle className="h-3.5 w-3.5 mr-1" /> Approve
-                                                            </Button>
+                                                            {canEdit && (
+                                                                <Button
+                                                                    size="sm"
+                                                                    variant="outline"
+                                                                    className="h-8 bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 hover:text-emerald-800"
+                                                                    onClick={() => handleApprove(req._id, req.requestType)}
+                                                                >
+                                                                    <CheckCircle className="h-3.5 w-3.5 mr-1" /> Approve
+                                                                </Button>
+                                                            )}
                                                             {/* Review only makes sense for Initial BOM (has BOM + docs to preview) */}
                                                             {!isMaterialChange && (
                                                                 <Button
@@ -369,14 +374,16 @@ export default function RDProductionQueue() {
                                                                     <Eye className="h-3.5 w-3.5 mr-1" /> Review
                                                                 </Button>
                                                             )}
-                                                            <Button
-                                                                size="sm"
-                                                                variant="outline"
-                                                                className="h-8 bg-red-50 text-red-700 border-red-200 hover:bg-red-100 hover:text-red-800"
-                                                                onClick={() => setRejectModal({ open: true, requestId: req._id, requestType: req.requestType || 'Initial BOM', reason: '' })}
-                                                            >
-                                                                <XCircle className="h-3.5 w-3.5 mr-1" /> Reject
-                                                            </Button>
+                                                            {canEdit && (
+                                                                <Button
+                                                                    size="sm"
+                                                                    variant="outline"
+                                                                    className="h-8 bg-red-50 text-red-700 border-red-200 hover:bg-red-100 hover:text-red-800"
+                                                                    onClick={() => setRejectModal({ open: true, requestId: req._id, requestType: req.requestType || 'Initial BOM', reason: '' })}
+                                                                >
+                                                                    <XCircle className="h-3.5 w-3.5 mr-1" /> Reject
+                                                                </Button>
+                                                            )}
                                                         </div>
                                                     </td>
                                                 )}

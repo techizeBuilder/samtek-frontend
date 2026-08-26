@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useProduction, useProductionOrdersList, computeOrderProgress, PROCESS_STEPS, PROCESS_TYPE_MAP } from '@/contexts/ProductionContext';
+import { usePermissions } from '@/hooks/usePermissions';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -63,6 +64,8 @@ export default function ProcessExecution() {
     approveQC, rejectQC, updateProcessNotes,
     addSubEntry, completeSubEntry, qcSubEntry,
   } = useProduction();
+  const { hasFeatureAccess } = usePermissions();
+  const canEdit = hasFeatureAccess('production', 'orders', 'edit');
 
   const [selectedOrderId, setSelectedOrderId] = useState('');
   // Held directly when an order is picked from the Completed tab below,
@@ -477,12 +480,12 @@ export default function ProcessExecution() {
                           
                           return (
                             <>
-                              {proc.status === 'Pending' && unlocked && (
+                              {proc.status === 'Pending' && unlocked && canEdit && (
                                 <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white text-xs" onClick={() => startProcess(selectedOrderId, proc.step, activeUnit)}>
                                   <Play className="h-3.5 w-3.5 mr-1" /> Start
                                 </Button>
                               )}
-                              {proc.status === 'In Progress' && (
+                              {proc.status === 'In Progress' && canEdit && (
                                 <>
                                   <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white text-xs" onClick={() => markProcessComplete(selectedOrderId, proc.step, activeUnit)} disabled={isFabricationLocked}>
                                     <CheckCircle className="h-3.5 w-3.5 mr-1" /> Mark Complete
@@ -492,7 +495,7 @@ export default function ProcessExecution() {
                                   </Button>
                                 </>
                               )}
-                              {proc.status === 'QC Pending' && (
+                              {proc.status === 'QC Pending' && canEdit && (
                                 <>
                                   <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs" onClick={() => setQcDialog({ step: proc.step, action: 'approve' })} disabled={isFabricationLocked}>
                                     <ThumbsUp className="h-3.5 w-3.5 mr-1" /> Approve QC

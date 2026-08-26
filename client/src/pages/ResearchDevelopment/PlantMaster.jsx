@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Factory, Plus, Search, Eye, Edit2, Ban, RefreshCw, XCircle, Trash2 } from 'lucide-react';
 import { showSuccessToast, showSmartToast } from '@/lib/toast-utils';
+import { usePermissions } from '@/hooks/usePermissions';
 
 const emptyForm = {
   category: '', subCategory: '', name: '', productionRate: '', isDiscontinued: false,
@@ -17,6 +18,9 @@ const emptyForm = {
 };
 
 export default function PlantMaster() {
+  const { hasFeatureAccess } = usePermissions();
+  const canAdd = hasFeatureAccess('rnd', 'plantMaster', 'add');
+  const canEdit = hasFeatureAccess('rnd', 'plantMaster', 'edit');
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -312,9 +316,11 @@ export default function PlantMaster() {
           </h1>
           <p className="text-slate-500 text-sm mt-0.5">Group machines and motors into a plant — used to build sales quotations</p>
         </div>
-        <Button onClick={() => { setForm(emptyForm); setMachineSearch(''); setMotorSearch(''); setAddOpen(true); }} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow">
-          <Plus className="h-4 w-4 mr-2" /> Add Plant
-        </Button>
+        {canAdd && (
+          <Button onClick={() => { setForm(emptyForm); setMachineSearch(''); setMotorSearch(''); setAddOpen(true); }} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow">
+            <Plus className="h-4 w-4 mr-2" /> Add Plant
+          </Button>
+        )}
       </div>
 
       <Card className="border-none shadow-sm">
@@ -376,14 +382,14 @@ export default function PlantMaster() {
                     <td className="px-5 py-3.5">
                       <div className="flex gap-1">
                         <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-blue-600" onClick={() => openView(p)}><Eye className="h-3.5 w-3.5" /></Button>
-                        {p.isDiscontinued ? (
+                        {canEdit && (p.isDiscontinued ? (
                           <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-emerald-600" onClick={() => statusMutation.mutate({ id: p._id, isDiscontinued: false })}><RefreshCw className="h-3.5 w-3.5" /></Button>
                         ) : (
                           <>
                             <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-purple-600" onClick={() => { setMachineSearch(''); setMotorSearch(''); openEdit(p); }}><Edit2 className="h-3.5 w-3.5" /></Button>
                             <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-orange-600" onClick={() => statusMutation.mutate({ id: p._id, isDiscontinued: true })}><Ban className="h-3.5 w-3.5" /></Button>
                           </>
-                        )}
+                        ))}
                       </div>
                     </td>
                   </tr>

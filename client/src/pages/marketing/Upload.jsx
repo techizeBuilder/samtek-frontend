@@ -10,6 +10,7 @@ import {
   Upload as UploadIcon, CheckCircle2, ArrowLeft, Loader2
 } from 'lucide-react';
 import { apiRequest } from '@/lib/queryClient';
+import { usePermissions } from '@/hooks/usePermissions';
 import { useToast } from '@/hooks/use-toast';
 
 // Relative server paths (e.g. "/uploads/marketing/mkt-123.jpg") need the backend
@@ -24,6 +25,8 @@ const getMediaUrl = (p) => {
 const PAGE_SIZE = 15;
 
 export default function UploadContent() {
+  const { hasFeatureAccess } = usePermissions();
+  const canAdd = hasFeatureAccess('marketing', 'upload', 'add');
   const { toast } = useToast();
   const qc = useQueryClient();
 
@@ -416,9 +419,11 @@ export default function UploadContent() {
                 </div>
               </div>
 
-              <Button type="submit" disabled={uploadMutation.isPending} className="gap-2">
-                {uploadMutation.isPending ? <><Loader2 className="h-4 w-4 animate-spin" /> Uploading...</> : <><UploadIcon className="h-4 w-4" /> Save Media</>}
-              </Button>
+              {canAdd && (
+                <Button type="submit" disabled={uploadMutation.isPending} className="gap-2">
+                  {uploadMutation.isPending ? <><Loader2 className="h-4 w-4 animate-spin" /> Uploading...</> : <><UploadIcon className="h-4 w-4" /> Save Media</>}
+                </Button>
+              )}
             </form>
           </CardContent>
         </Card>

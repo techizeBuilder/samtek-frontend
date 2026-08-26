@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/hooks/useAuth'; // Required for role-based button
+import { usePermissions } from '@/hooks/usePermissions';
 import { useSupportTickets, useServicemen } from '@/hooks/useComplaints';
 import { Search, Eye, AlertCircle, Clock, CheckCircle2, Calendar } from 'lucide-react';
 import TicketDetailModal from '@/components/support/TicketDetailModal';
@@ -7,6 +8,7 @@ import TicketCreationForm from '@/components/support/TicketCreationForm';
 
 export default function TicketWorkspace() {
   const { user } = useAuth() as any;
+  const { hasFeatureAccess } = usePermissions();
 
   // 1. Page & Modal States
   const [isCreateFormOpen, setIsCreateFormOpen] = useState(false);
@@ -44,10 +46,10 @@ export default function TicketWorkspace() {
   const tickets = response?.data || [];
   const pagination = response?.pagination;
 
-  // Define who is allowed to create support tickets
-  const canCreateTicket = user && (
-    ['Company Admin', 'Super Admin', 'Admin', 'Complaint Management Head'].includes(user.role)
-  );
+  // Who is allowed to create support tickets — driven by the Support
+  // Management "Add" permission checkbox (Superadmin always bypasses via
+  // hasFeatureAccess), not a hardcoded role list.
+  const canCreateTicket = hasFeatureAccess('complaints', 'supportManagement', 'add');
 
   const getStatusBadge = (status: string) => {
     switch (status) {

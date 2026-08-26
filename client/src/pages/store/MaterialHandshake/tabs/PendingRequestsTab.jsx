@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { apiRequest, queryClient } from '@/lib/queryClient';
+import { usePermissions } from '@/hooks/usePermissions';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -360,6 +361,8 @@ function FabricationPurchaseDialog({ request, onClose }) {
 }
 
 export default function PendingRequestsTab() {
+  const { hasFeatureAccess } = usePermissions();
+  const canTransfer = hasFeatureAccess('Store', 'materialTransfers', 'edit');
   const { toast } = useToast();
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [transferQty, setTransferQty] = useState('');
@@ -668,15 +671,17 @@ export default function PendingRequestsTab() {
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
-                    <Button
-                      size="sm"
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition-colors"
-                      disabled={bulkTransferMutation.isPending}
-                      onClick={() => bulkTransferMutation.mutate(order._id)}
-                    >
-                      <ListChecks className="w-4 h-4 mr-1.5" />
-                      Bulk Transfer Card
-                    </Button>
+                    {canTransfer && (
+                      <Button
+                        size="sm"
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition-colors"
+                        disabled={bulkTransferMutation.isPending}
+                        onClick={() => bulkTransferMutation.mutate(order._id)}
+                      >
+                        <ListChecks className="w-4 h-4 mr-1.5" />
+                        Bulk Transfer Card
+                      </Button>
+                    )}
 
                     <div className="text-sm text-slate-500 flex items-center gap-1.5 bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-sm">
                       <Calendar className="h-4 w-4 text-slate-400" />
@@ -718,23 +723,27 @@ export default function PendingRequestsTab() {
                         </td>
                         <td className="px-6 py-4 text-right">
                           <div className="flex items-center justify-end gap-2">
-                            <Button
-                              size="sm"
-                              className="bg-blue-600 hover:bg-blue-700 text-white"
-                              onClick={() => handleTransferClick(order, mat)}
-                            >
-                              <Send className="w-4 h-4 mr-2" />
-                              Transfer
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="border-emerald-300 text-emerald-700 hover:bg-emerald-50"
-                              onClick={() => handlePurchaseClick(order, mat)}
-                            >
-                              <ShoppingCart className="w-4 h-4 mr-2" />
-                              Purchase
-                            </Button>
+                            {canTransfer && (
+                              <Button
+                                size="sm"
+                                className="bg-blue-600 hover:bg-blue-700 text-white"
+                                onClick={() => handleTransferClick(order, mat)}
+                              >
+                                <Send className="w-4 h-4 mr-2" />
+                                Transfer
+                              </Button>
+                            )}
+                            {canTransfer && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                                onClick={() => handlePurchaseClick(order, mat)}
+                              >
+                                <ShoppingCart className="w-4 h-4 mr-2" />
+                                Purchase
+                              </Button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -828,17 +837,19 @@ export default function PendingRequestsTab() {
 
           <DialogFooter className="pt-4 border-t border-slate-100 flex items-center justify-end gap-2 mt-4">
             <Button variant="outline" onClick={() => setIsCartOpen(false)}>Keep Staged</Button>
-            <Button
-              className="bg-amber-600 hover:bg-amber-700 text-white shadow-sm font-medium text-xs h-9"
-              disabled={consolidatedListForAccounts.length === 0 || bulkPurchaseMutation.isPending}
-              onClick={() => bulkPurchaseMutation.mutate({
-                finalItems: consolidatedListForAccounts,
-                stagedIds: totalStagedIdsToPurge
-              })}
-            >
-              {bulkPurchaseMutation.isPending ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
-              Dispatch Clean Requests ({consolidatedListForAccounts.length})
-            </Button>
+            {canTransfer && (
+              <Button
+                className="bg-amber-600 hover:bg-amber-700 text-white shadow-sm font-medium text-xs h-9"
+                disabled={consolidatedListForAccounts.length === 0 || bulkPurchaseMutation.isPending}
+                onClick={() => bulkPurchaseMutation.mutate({
+                  finalItems: consolidatedListForAccounts,
+                  stagedIds: totalStagedIdsToPurge
+                })}
+              >
+                {bulkPurchaseMutation.isPending ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
+                Dispatch Clean Requests ({consolidatedListForAccounts.length})
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

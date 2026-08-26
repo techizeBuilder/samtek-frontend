@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useProduction, PROCESS_STEPS } from '@/contexts/ProductionContext';
+import { usePermissions } from '@/hooks/usePermissions';
 import { apiRequest } from '@/lib/queryClient';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -46,6 +47,8 @@ const skillColor = {
 
 export default function ManpowerTracking() {
   const { orders, teams, addTeam, getTeamById } = useProduction();
+  const { hasFeatureAccess } = usePermissions();
+  const canAdd = hasFeatureAccess('production', 'manpower', 'add');
   const [selectedTeamId, setSelectedTeamId] = useState(null);
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
   const [addTeamOpen, setAddTeamOpen] = useState(false);
@@ -100,9 +103,11 @@ export default function ManpowerTracking() {
           </h1>
           <p className="text-slate-500 text-sm mt-0.5">Team performance, skill mapping, and process assignments</p>
         </div>
-        <Button onClick={() => setAddTeamOpen(true)} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">
-          <Plus className="h-4 w-4 mr-1" /> Add Team
-        </Button>
+        {canAdd && (
+          <Button onClick={() => setAddTeamOpen(true)} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">
+            <Plus className="h-4 w-4 mr-1" /> Add Team
+          </Button>
+        )}
       </div>
 
       {/* Summary Cards */}

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import axios from "axios";
 import { Percent, Save, Search } from "lucide-react";
 import { toast } from "../../Alert/Toast";
+import { usePermissions } from "@/hooks/usePermissions";
 
 const API_BASE = import.meta.env.VITE_API_URL || "/api";
 
@@ -20,6 +21,7 @@ interface PricingItem {
   salePrice?: number;
   profitPercent?: number | null;
   discountPercent?: number | null;
+  billAmountPercent?: number | null;
 }
 
 const money = (n?: number) =>
@@ -33,13 +35,15 @@ const resolvedCost = (item: PricingItem) => {
 
 export default function PricingValue() {
   const token = localStorage.getItem("token");
+  const { hasFeatureAccess } = usePermissions();
+  const canEdit = hasFeatureAccess("hrms", "pricingValue", "edit");
 
   const [items, setItems] = useState<PricingItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, pages: 1 });
-  const [drafts, setDrafts] = useState<Record<string, { profitPercent: string; discountPercent: string }>>({});
+  const [drafts, setDrafts] = useState<Record<string, { profitPercent: string; discountPercent: string; billAmountPercent: string }>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
 
   const fetchItems = async () => {
@@ -52,11 +56,12 @@ export default function PricingValue() {
       const list: PricingItem[] = res.data?.items || [];
       setItems(list);
       setPagination(res.data?.pagination || { page: 1, limit: 20, total: list.length, pages: 1 });
-      const nextDrafts: Record<string, { profitPercent: string; discountPercent: string }> = {};
+      const nextDrafts: Record<string, { profitPercent: string; discountPercent: string; billAmountPercent: string }> = {};
       list.forEach((it) => {
         nextDrafts[it._id] = {
           profitPercent: it.profitPercent != null ? String(it.profitPercent) : "",
           discountPercent: it.discountPercent != null ? String(it.discountPercent) : "",
+          billAmountPercent: it.billAmountPercent != null ? String(it.billAmountPercent) : "10",
         };
       });
       setDrafts(nextDrafts);
@@ -74,7 +79,7 @@ export default function PricingValue() {
     setPage(1);
   };
 
-  const setDraft = (id: string, field: "profitPercent" | "discountPercent", value: string) => {
+  const setDraft = (id: string, field: "profitPercent" | "discountPercent" | "billAmountPercent", value: string) => {
     setDrafts((d) => ({ ...d, [id]: { ...d[id], [field]: value } }));
   };
 
@@ -87,6 +92,7 @@ export default function PricingValue() {
         {
           profitPercent: draft.profitPercent === "" ? null : Number(draft.profitPercent),
           discountPercent: draft.discountPercent === "" ? null : Number(draft.discountPercent),
+          billAmountPercent: draft.billAmountPercent === "" ? null : Number(draft.billAmountPercent),
         },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -97,6 +103,7 @@ export default function PricingValue() {
         [item._id]: {
           profitPercent: updated.profitPercent != null ? String(updated.profitPercent) : "",
           discountPercent: updated.discountPercent != null ? String(updated.discountPercent) : "",
+          billAmountPercent: updated.billAmountPercent != null ? String(updated.billAmountPercent) : "10",
         },
       }));
       toast({ type: "success", title: "Saved", message: `Pricing updated for ${item.code}` });
@@ -138,7 +145,10 @@ export default function PricingValue() {
           price (once purchased) — MRP and Sale Price are calculated automatically using{" "}
           <span className="font-medium text-gray-700">that item's own</span> Profit%/Discount%:
           MRP = Cost + Profit%, Sale Price = Cost − Discount%. Items with no Profit%/Discount% set are treated
-          as 0% — MRP and Sale Price simply show cost.
+          as 0% — MRP and Sale Price simply show cost.{" "}
+          <span className="font-medium text-gray-700">Bill Amount %</span> controls the Sales Order Form: for
+          this item, the Bill Amt entered there must exceed its BOM material cost by more than this percent
+          (default 10%).
         </p>
       </div>
 
@@ -176,6 +186,7 @@ export default function PricingValue() {
                 <th className="px-4 py-3 text-right">Cost</th>
                 <th className="px-4 py-3 text-center">Profit %</th>
                 <th className="px-4 py-3 text-center">Discount %</th>
+                <th className="px-4 py-3 text-center">Bill Amount %</th>
                 <th className="px-4 py-3 text-right">MRP</th>
                 <th className="px-4 py-3 text-right">Sale Price (MSP)</th>
                 <th className="px-4 py-3 text-center">Action</th>
@@ -184,7 +195,7 @@ export default function PricingValue() {
             <tbody>
               {items.map((item) => {
                 const cost = resolvedCost(item);
-                const draft = drafts[item._id] || { profitPercent: "", discountPercent: "" };
+                const draft = drafts[item._id] || { profitPercent: "", discountPercent: "", billAmountPercent: "10" };
                 return (
                   <tr key={item._id} className="border-t border-gray-100">
                     <td className="px-4 py-3 font-medium text-gray-800">{item.code}</td>
@@ -205,7 +216,8 @@ export default function PricingValue() {
                         placeholder="0"
                         value={draft.profitPercent}
                         onChange={(e) => setDraft(item._id, "profitPercent", e.target.value)}
-                        className="w-20 border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-orange-400"
+                        disabled={!canEdit}
+                        className="w-20 border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-orange-400 disabled:opacity-50 disabled:cursor-not-allowed"
                       />
                     </td>
                     <td className="px-4 py-3">
@@ -216,20 +228,35 @@ export default function PricingValue() {
                         placeholder="0"
                         value={draft.discountPercent}
                         onChange={(e) => setDraft(item._id, "discountPercent", e.target.value)}
-                        className="w-20 border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-orange-400"
+                        disabled={!canEdit}
+                        className="w-20 border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-orange-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                      />
+                    </td>
+                    <td className="px-4 py-3">
+                      <input
+                        type="number"
+                        min={0}
+                        max={1000}
+                        placeholder="10"
+                        value={draft.billAmountPercent}
+                        onChange={(e) => setDraft(item._id, "billAmountPercent", e.target.value)}
+                        disabled={!canEdit}
+                        className="w-20 border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-orange-400 disabled:opacity-50 disabled:cursor-not-allowed"
                       />
                     </td>
                     <td className="px-4 py-3 text-right font-medium text-gray-800">{money(item.mrp)}</td>
                     <td className="px-4 py-3 text-right font-medium text-gray-800">{money(item.salePrice)}</td>
                     <td className="px-4 py-3 text-center">
-                      <button
-                        onClick={() => saveItem(item)}
-                        disabled={savingId === item._id}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-500 text-white rounded-lg text-xs font-medium hover:bg-orange-600 transition disabled:opacity-50 mx-auto"
-                      >
-                        <Save className="w-3.5 h-3.5" />
-                        {savingId === item._id ? "Saving…" : "Save"}
-                      </button>
+                      {canEdit && (
+                        <button
+                          onClick={() => saveItem(item)}
+                          disabled={savingId === item._id}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-500 text-white rounded-lg text-xs font-medium hover:bg-orange-600 transition disabled:opacity-50 mx-auto"
+                        >
+                          <Save className="w-3.5 h-3.5" />
+                          {savingId === item._id ? "Saving…" : "Save"}
+                        </button>
+                      )}
                     </td>
                   </tr>
                 );

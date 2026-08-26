@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useMarketing } from '@/contexts/MarketingContext';
-import { useAuth } from '@/hooks/useAuth';
+import { usePermissions } from '@/hooks/usePermissions';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -22,9 +22,9 @@ const TYPE_BUCKETS = { pdf: DOC_TYPES, image: IMAGE_TYPES, video: VIDEO_TYPES };
 
 export default function MarketingLibrary() {
   const { categories, shareAsset, deleteAsset } = useMarketing();
-  const { user } = useAuth();
+  const { hasFeatureAccess } = usePermissions();
   const { toast } = useToast();
-  const isMarketingHead = user?.role === 'Marketing Head';
+  const canDelete = hasFeatureAccess('marketing', 'library', 'delete');
 
   const [search, setSearch]           = useState('');
   const [filterType, setFilterType]   = useState('all');
@@ -172,7 +172,7 @@ export default function MarketingLibrary() {
                 <div className="flex gap-1 pt-1">
                   <Button size="sm" variant="outline" className="flex-1 gap-1 text-xs" onClick={() => window.open(getFileUrl(asset.fileUrl), '_blank')}><Eye className="h-3 w-3" />View</Button>
                   <Button size="sm" className="flex-1 gap-1 text-xs bg-green-600 hover:bg-green-700 text-white" onClick={() => { setShareModal(asset); setShareForm({ method: 'WhatsApp', customerName: '', customerPhone: '', customerEmail: '' }); }}><Share2 className="h-3 w-3" />Share</Button>
-                  {isMarketingHead && (
+                  {canDelete && (
                     <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50 px-2" onClick={() => handleDelete(asset)}><Trash2 className="h-3 w-3" /></Button>
                   )}
                 </div>

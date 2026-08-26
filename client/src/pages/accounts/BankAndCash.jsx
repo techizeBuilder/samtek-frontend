@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Plus, Search, Edit2, Trash2, Eye, Wallet, Receipt, ArrowUpRight, ArrowDownRight, CheckCircle2, History } from 'lucide-react';
 import { api } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
+import { usePermissions } from '@/hooks/usePermissions';
 import {
   Dialog,
   DialogContent,
@@ -26,6 +27,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { format } from 'date-fns';
 
 const BankAndCash = () => {
+  const { hasFeatureAccess } = usePermissions();
+  const canAdd = hasFeatureAccess('accounts', 'bankAndCash', 'add');
+  const canEdit = hasFeatureAccess('accounts', 'bankAndCash', 'edit');
+  // Delete goes through the general Account model (api.deleteAccount ->
+  // DELETE /api/accounts/:id), which the backend gates under chartOfAccounts
+  // (accountsRoutes.js has no dedicated bankAndCash delete permission).
+  const canDeleteAccount = hasFeatureAccess('accounts', 'chartOfAccounts', 'delete');
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('All');
@@ -279,12 +287,14 @@ const BankAndCash = () => {
               setIsAccountModalOpen(open);
               if (!open) resetAccountForm();
             }}>
-              <DialogTrigger asChild>
-                <Button className="bg-slate-900 hover:bg-slate-800 text-white shadow-md transition-all">
-                  <Plus className="w-4 h-4 mr-2" />
-                  New Account
-                </Button>
-              </DialogTrigger>
+              {canAdd && (
+                <DialogTrigger asChild>
+                  <Button className="bg-slate-900 hover:bg-slate-800 text-white shadow-md transition-all">
+                    <Plus className="w-4 h-4 mr-2" />
+                    New Account
+                  </Button>
+                </DialogTrigger>
+              )}
               <DialogContent className="sm:max-w-[425px]">
                 <DialogHeader>
                   <DialogTitle className="text-xl font-bold text-slate-900">
@@ -701,22 +711,26 @@ const BankAndCash = () => {
                                 >
                                   <Eye className="w-4 h-4" />
                                 </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-8 w-8 text-blue-600 hover:bg-blue-50"
-                                  onClick={() => handleEdit(account)}
-                                >
-                                  <Edit2 className="w-4 h-4" />
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-8 w-8 text-red-600 hover:bg-red-50"
-                                  onClick={() => handleDeleteClick(account)}
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </Button>
+                                {canEdit && (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 text-blue-600 hover:bg-blue-50"
+                                    onClick={() => handleEdit(account)}
+                                  >
+                                    <Edit2 className="w-4 h-4" />
+                                  </Button>
+                                )}
+                                {canDeleteAccount && (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 text-red-600 hover:bg-red-50"
+                                    onClick={() => handleDeleteClick(account)}
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                )}
                               </div>
                             </td>
                           </tr>
@@ -787,7 +801,7 @@ const BankAndCash = () => {
                               )}
                             </td>
                             <td className="px-6 py-4 text-center">
-                              {!txn.isReconciled && (
+                              {!txn.isReconciled && canEdit && (
                                 <Button
                                   size="sm"
                                   variant="ghost"

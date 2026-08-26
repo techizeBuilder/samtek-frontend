@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Layers, Plus, Search, Eye, Edit2, Ban, RefreshCw, XCircle, ArrowLeft } from 'lucide-react';
+import { usePermissions } from '@/hooks/usePermissions';
 import { showSuccessToast, showSmartToast } from '@/lib/toast-utils';
 import CategoryPickerModal from '@/components/fabrication/CategoryPickerModal';
 import DimensionCalculatorModal from '@/components/fabrication/DimensionCalculatorModal';
@@ -57,6 +58,9 @@ const UnitFieldGroup = ({ title, unitTypes, typeValue, unitValue, onTypeChange, 
 };
 
 export default function FabricationMaster() {
+  const { hasFeatureAccess } = usePermissions();
+  const canAdd = hasFeatureAccess('rnd', 'inventory', 'add');
+  const canEdit = hasFeatureAccess('rnd', 'inventory', 'edit');
   const qc = useQueryClient();
   const [, setLocation] = useLocation();
   const [search, setSearch] = useState('');
@@ -291,9 +295,11 @@ export default function FabricationMaster() {
           </h1>
           <p className="text-slate-500 text-sm mt-0.5">Register raw fabrication shapes (sheets, pipes, angles, beams...) with auto-calculated piece weights</p>
         </div>
-        <Button onClick={openAdd} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow">
-          <Plus className="h-4 w-4 mr-2" /> Add Fabrication Item
-        </Button>
+        {canAdd && (
+          <Button onClick={openAdd} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow">
+            <Plus className="h-4 w-4 mr-2" /> Add Fabrication Item
+          </Button>
+        )}
       </div>
 
       <Card className="border-none shadow-sm">
@@ -345,14 +351,14 @@ export default function FabricationMaster() {
                     <td className="px-5 py-3.5">
                       <div className="flex gap-1">
                         <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-blue-600" onClick={() => openView(it)}><Eye className="h-3.5 w-3.5" /></Button>
-                        {it.isDiscontinued ? (
+                        {canEdit && (it.isDiscontinued ? (
                           <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-emerald-600" onClick={() => statusMutation.mutate({ id: it._id, isDiscontinued: false })}><RefreshCw className="h-3.5 w-3.5" /></Button>
                         ) : (
                           <>
                             <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-purple-600" onClick={() => openEdit(it)}><Edit2 className="h-3.5 w-3.5" /></Button>
                             <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-orange-600" onClick={() => statusMutation.mutate({ id: it._id, isDiscontinued: true })}><Ban className="h-3.5 w-3.5" /></Button>
                           </>
-                        )}
+                        ))}
                       </div>
                     </td>
                   </tr>

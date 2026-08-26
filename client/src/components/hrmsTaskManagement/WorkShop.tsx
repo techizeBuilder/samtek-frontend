@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useAuth } from "@/hooks/useAuth";
+import { usePermissions } from "@/hooks/usePermissions";
 import { useTasks, useKanbanTasks, useCalendarTasks, useDeleteTask, useAssignableEmployees } from "@/hooks/useTaskManagement";
 
 import TaskDetailsDrawer from "@/components/hrmsTaskManagement/TaskDetailsDrawer";
@@ -72,8 +73,15 @@ const TaskWorkspaceView = ({ myTasksOnly = false }: { myTasksOnly?: boolean }) =
   const [page, setPage] = useState(1);
   const limit = 10;
 
+  const { hasFeatureAccess } = usePermissions();
   const isTopAdmin = TOP_LEVEL_ADMINS.includes(user?.role);
   const isDeptHead = DEPT_HEADS.includes(user?.role);
+  // HR-Admin/Company Admin are the only roles with a "Task Management"
+  // checkbox in roleModulesConfig.js — further restrict their delete
+  // button to the saved permission; other Top Admin roles have no catalog
+  // entry for it, so they keep the existing role-based access.
+  const isHrmsRole = user?.role === 'HR-Admin' || user?.role === 'Company Admin';
+  const canDeleteTask = isTopAdmin && (!isHrmsRole || hasFeatureAccess('hrms', 'taskManagement', 'delete'));
 
   const canFilterUsers = (isTopAdmin || isDeptHead) && !myTasksOnly;
 
@@ -311,7 +319,7 @@ const TaskWorkspaceView = ({ myTasksOnly = false }: { myTasksOnly?: boolean }) =
                             >
                               <Eye className="w-4 h-4" />
                             </button>
-                            {isTopAdmin && (
+                            {canDeleteTask && (
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();

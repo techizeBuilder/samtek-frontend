@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Plus, RotateCw, Trash2, Receipt, Eye, Pencil, AlertCircle, Calendar, RotateCcw } from 'lucide-react';
+import { usePermissions } from '@/hooks/usePermissions';
 import {
     Dialog,
     DialogContent,
@@ -33,6 +34,9 @@ import {
 import { showSmartToast } from '@/lib/toast-utils';
 
 const PurchaseReturns = () => {
+    const { hasFeatureAccess } = usePermissions();
+    const canAdd = hasFeatureAccess('accounts', 'purchases', 'add');
+    const canEdit = hasFeatureAccess('accounts', 'purchases', 'edit');
     const [searchTerm, setSearchTerm] = useState('');
     const [currentPage, setCurrentPage] = useState(1);
     const [limit] = useState(10);
@@ -181,10 +185,12 @@ const PurchaseReturns = () => {
                     <h1 className="text-3xl font-bold text-slate-900">Purchase Returns</h1>
                     <p className="text-slate-500">Record material returns and vendor debit notes</p>
                 </div>
-                <Button onClick={() => setShowAddModal(true)} className="bg-slate-900">
-                    <Plus className="w-4 h-4 mr-2" />
-                    New Return
-                </Button>
+                {canAdd && (
+                    <Button onClick={() => setShowAddModal(true)} className="bg-slate-900">
+                        <Plus className="w-4 h-4 mr-2" />
+                        New Return
+                    </Button>
+                )}
             </div>
 
             {/* Search */}

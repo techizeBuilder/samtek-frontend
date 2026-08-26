@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
+import { usePermissions } from '@/hooks/usePermissions';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Wrench, Package, Cog, Search, Save, IndianRupee, Boxes } from 'lucide-react';
 
@@ -63,6 +64,8 @@ const stockWeightKg = (item) =>
 
 function InventoryCostPanel({ tab }) {
   const { toast } = useToast();
+  const { hasFeatureAccess } = usePermissions();
+  const canEdit = hasFeatureAccess('accounts', 'purchases', 'edit');
   const [search, setSearch] = useState('');
   const [drafts, setDrafts] = useState({});
   const [savingId, setSavingId] = useState(null);
@@ -229,7 +232,8 @@ function InventoryCostPanel({ tab }) {
                         placeholder="0"
                         value={drafts[item._id] ?? ''}
                         onChange={(e) => setDraft(item._id, e.target.value)}
-                        className={`w-28 border border-slate-300 rounded-lg px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-2 ${tab.accent.ring}`}
+                        disabled={!canEdit}
+                        className={`w-28 border border-slate-300 rounded-lg px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-2 ${tab.accent.ring} disabled:opacity-50 disabled:cursor-not-allowed`}
                       />
                       {item.fabricationRef && <span className="text-slate-400 text-xs">/kg</span>}
                     </div>
@@ -237,14 +241,16 @@ function InventoryCostPanel({ tab }) {
                   <td className="px-4 py-3 text-right text-slate-600 text-xs">{money(item.mrp)}</td>
                   <td className="px-4 py-3 text-right text-slate-600 text-xs">{money(item.salePrice)}</td>
                   <td className="px-4 py-3 text-center">
-                    <button
-                      onClick={() => saveItem(item)}
-                      disabled={savingId === item._id}
-                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-white rounded-lg text-xs font-medium transition disabled:opacity-50 ${tab.accent.button}`}
-                    >
-                      <Save className="w-3.5 h-3.5" />
-                      {savingId === item._id ? 'Saving…' : 'Save'}
-                    </button>
+                    {canEdit && (
+                      <button
+                        onClick={() => saveItem(item)}
+                        disabled={savingId === item._id}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-white rounded-lg text-xs font-medium transition disabled:opacity-50 ${tab.accent.button}`}
+                      >
+                        <Save className="w-3.5 h-3.5" />
+                        {savingId === item._id ? 'Saving…' : 'Save'}
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}

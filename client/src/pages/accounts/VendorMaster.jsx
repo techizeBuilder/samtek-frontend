@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
+import { usePermissions } from '@/hooks/usePermissions';
 import {
     Plus, Search, Edit2, MapPin, Phone, Mail,
     Tag, X, PlusCircle
@@ -80,6 +81,9 @@ const TagInput = ({ label, icon: Icon, items, setItems, placeholder, colorClass 
 
 // ── Main Component ─────────────────────────────────────────────────────────────
 const VendorMaster = () => {
+    const { hasFeatureAccess } = usePermissions();
+    const canAdd = hasFeatureAccess('accounts', 'purchases', 'add');
+    const canEdit = hasFeatureAccess('accounts', 'purchases', 'edit');
     const { toast } = useToast();
     const [searchTerm, setSearchTerm] = useState('');
     const [page, setPage] = useState(1);
@@ -167,10 +171,12 @@ const VendorMaster = () => {
                     <h1 className="text-3xl font-bold text-slate-900">Vendor Master</h1>
                     <p className="text-slate-500">Manage your raw material and service providers</p>
                 </div>
-                <Button onClick={openAdd} className="bg-gradient-to-r from-blue-600 to-purple-600">
-                    <Plus className="w-4 h-4 mr-2" />
-                    Add Vendor
-                </Button>
+                {canAdd && (
+                    <Button onClick={openAdd} className="bg-gradient-to-r from-blue-600 to-purple-600">
+                        <Plus className="w-4 h-4 mr-2" />
+                        Add Vendor
+                    </Button>
+                )}
             </div>
 
             {/* Search */}
@@ -241,9 +247,9 @@ const VendorMaster = () => {
                                         <span className="text-slate-400">Opening Balance: </span>
                                         <span className="font-bold">₹{vendor.openingBalance || 0}</span>
                                     </div>
-                                    <Button variant="ghost" size="sm" onClick={() => openEdit(vendor)}>
+                                    {canEdit && <Button variant="ghost" size="sm" onClick={() => openEdit(vendor)}>
                                         <Edit2 className="w-4 h-4" />
-                                    </Button>
+                                    </Button>}
                                 </div>
                             </CardContent>
                         </Card>

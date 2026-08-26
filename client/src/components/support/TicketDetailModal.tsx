@@ -7,6 +7,7 @@ import {
   useCancelTicket
 } from '@/hooks/useComplaints';
 import { User, MapPin, Monitor, FileText, CheckCircle2, AlertCircle, Wrench, Play, X, Phone, Briefcase, Map, Mail, Loader2, XCircle, Clock } from 'lucide-react';
+import { usePermissions } from '@/hooks/usePermissions';
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 const FILE_BASE = API_BASE.replace('/api', '');
@@ -14,6 +15,11 @@ const FILE_BASE = API_BASE.replace('/api', '');
 export default function TicketDetailModal({ ticketId, onClose }: { ticketId: string, onClose: () => void }) {
   const { data: response, isLoading, isError } = useTicketDetails(ticketId);
   const ticket = response?.data;
+
+  const { hasFeatureAccess } = usePermissions();
+  const canAssign = hasFeatureAccess('complaints', 'technicians', 'edit');
+  const canCancel = hasFeatureAccess('complaints', 'supportManagement', 'edit');
+  const canVerify = hasFeatureAccess('complaints', 'dealVerifications', 'edit');
 
   const { data: servicemenRes } = useServicemen();
   const technicians = servicemenRes?.data || [];
@@ -300,13 +306,15 @@ export default function TicketDetailModal({ ticketId, onClose }: { ticketId: str
                   })()
                 )}
 
-                <button onClick={handleAssign} disabled={!selectedTech || isAssigning} className="w-full bg-indigo-600 text-white px-3 py-2 rounded-md text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition mt-2">
-                  {isAssigning ? 'Assigning...' : (ticket.status === 'Reopened' ? 'Re-Assign Ticket' : 'Assign Ticket')}
-                </button>
+                {canAssign && (
+                  <button onClick={handleAssign} disabled={!selectedTech || isAssigning} className="w-full bg-indigo-600 text-white px-3 py-2 rounded-md text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition mt-2">
+                    {isAssigning ? 'Assigning...' : (ticket.status === 'Reopened' ? 'Re-Assign Ticket' : 'Assign Ticket')}
+                  </button>
+                )}
               </div>
 
               {/* CANCEL TICKET TRIGGER */}
-              {!cancelView && (
+              {!cancelView && canCancel && (
                 <div className="text-center mt-4 pt-4 border-t border-indigo-100/50">
                   <button onClick={() => setCancelView(true)} className="text-[11px] text-red-500 hover:text-red-700 hover:underline font-bold uppercase tracking-wider">
                     Cancel This Ticket?
@@ -350,17 +358,21 @@ export default function TicketDetailModal({ ticketId, onClose }: { ticketId: str
               {ticket.status === 'Resolved' ? (
                 <>
                   <p className="text-xs text-purple-700 mb-4 px-2">The technician marked this as resolved. Send a verification link to the customer for final closure.</p>
-                  <button onClick={handleSendVerification} disabled={isSendingEmail || !ticket.customer.email} className="w-full bg-purple-600 text-white px-4 py-2.5 rounded-lg text-sm font-bold hover:bg-purple-700 transition flex items-center justify-center gap-2 disabled:opacity-50">
-                    {isSendingEmail ? <Loader2 size={16} className="animate-spin" /> : 'Send Link to Customer'}
-                  </button>
+                  {canVerify && (
+                    <button onClick={handleSendVerification} disabled={isSendingEmail || !ticket.customer.email} className="w-full bg-purple-600 text-white px-4 py-2.5 rounded-lg text-sm font-bold hover:bg-purple-700 transition flex items-center justify-center gap-2 disabled:opacity-50">
+                      {isSendingEmail ? <Loader2 size={16} className="animate-spin" /> : 'Send Link to Customer'}
+                    </button>
+                  )}
                   {!ticket.customer.email && <p className="text-xs text-red-500 mt-2 font-medium">Missing customer email.</p>}
                 </>
               ) : (
                 <>
                   <p className="text-xs text-purple-700 mb-4 px-2 font-medium">Verification link sent to customer. Awaiting their response to seal the ticket.</p>
-                  <button onClick={handleSendVerification} disabled={isSendingEmail} className="w-full bg-white text-purple-600 border border-purple-200 px-4 py-2.5 rounded-lg text-sm font-bold hover:bg-purple-50 transition flex items-center justify-center gap-2">
-                    {isSendingEmail ? <Loader2 size={16} className="animate-spin" /> : 'Resend Link'}
-                  </button>
+                  {canVerify && (
+                    <button onClick={handleSendVerification} disabled={isSendingEmail} className="w-full bg-white text-purple-600 border border-purple-200 px-4 py-2.5 rounded-lg text-sm font-bold hover:bg-purple-50 transition flex items-center justify-center gap-2">
+                      {isSendingEmail ? <Loader2 size={16} className="animate-spin" /> : 'Resend Link'}
+                    </button>
+                  )}
                 </>
               )}
             </div>

@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
+import { usePermissions } from "@/hooks/usePermissions";
 
 import TaskDashboardView from "@/components/hrmsTaskManagement/Dashboard";
 import TaskWorkspaceView from "@/components/hrmsTaskManagement/WorkShop";
@@ -39,7 +40,14 @@ export default function HRMSTaskManagement() {
     'Research & Development Head', 'Store Head', 'QC Head'
   ];
 
-  const canCreateTask = user && (TOP_LEVEL_ADMINS.includes(user.role) || DEPT_HEADS.includes(user.role));
+  const { hasFeatureAccess } = usePermissions();
+  // HR-Admin/Company Admin are the only roles with a "Task Management"
+  // checkbox in roleModulesConfig.js — further restrict them to their saved
+  // add permission; every other Top Admin/Dept Head role here has no
+  // catalog entry for it, so they keep the existing role-based access.
+  const isHrmsRole = user && (user.role === 'HR-Admin' || user.role === 'Company Admin');
+  const canCreateTask = user && (TOP_LEVEL_ADMINS.includes(user.role) || DEPT_HEADS.includes(user.role))
+    && (!isHrmsRole || hasFeatureAccess('hrms', 'taskManagement', 'add'));
 
   return (
     <div className="p-6 bg-gray-50 min-h-screen relative">

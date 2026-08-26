@@ -71,6 +71,11 @@ export const adminSettingsApi = {
   updateDispatchChecklistItem: (id, body) => apiFetch(`/dispatch-checklist/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   deleteDispatchChecklistItem: (id) => apiFetch(`/dispatch-checklist/${id}`, { method: 'DELETE' }),
 
+  // Sales Checklist (Deal Won commitments)
+  addSalesChecklistItem: (body) => apiFetch('/sales-checklist', { method: 'POST', body: JSON.stringify(body) }),
+  updateSalesChecklistItem: (id, body) => apiFetch(`/sales-checklist/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deleteSalesChecklistItem: (id) => apiFetch(`/sales-checklist/${id}`, { method: 'DELETE' }),
+
   // Quotation Number Settings
   addQuotationNumberSetting: (body) => apiFetch('/quotation-number-settings', { method: 'POST', body: JSON.stringify(body) }),
   updateQuotationNumberSetting: (id, body) => apiFetch(`/quotation-number-settings/${id}`, { method: 'PUT', body: JSON.stringify(body) }),

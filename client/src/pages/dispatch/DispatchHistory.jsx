@@ -57,10 +57,13 @@ import {
   Layers
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+import { usePermissions } from '@/hooks/usePermissions';
 import { useToast } from '@/hooks/use-toast';
 
 export default function DispatchHistory() {
   const { user } = useAuth();
+  const { hasFeatureAccess } = usePermissions();
+  const canUpdate = hasFeatureAccess('dispatches', 'dashboard', 'edit');
   const { toast } = useToast();
 
   // Filter states
@@ -737,15 +740,17 @@ export default function DispatchHistory() {
                                   <Download className="w-3 h-3" />
                                   Invoice
                                 </Button>
-                                <Button
-                                  variant="default"
-                                  size="sm"
-                                  onClick={() => handleUpdateClick(group)}
-                                  className="flex items-center gap-1 bg-blue-600 hover:bg-blue-700"
-                                >
-                                  <Edit className="w-3 h-3" />
-                                  Update
-                                </Button>
+                                {canUpdate && (
+                                  <Button
+                                    variant="default"
+                                    size="sm"
+                                    onClick={() => handleUpdateClick(group)}
+                                    className="flex items-center gap-1 bg-blue-600 hover:bg-blue-700"
+                                  >
+                                    <Edit className="w-3 h-3" />
+                                    Update
+                                  </Button>
+                                )}
                               </div>
                             </TableCell>
                           </TableRow>

@@ -237,6 +237,98 @@ function QuotationNumberSettingSection({ items = [], onAdd, onUpdate, onDelete }
   );
 }
 
+// ─── Sales Checklist Setting — bespoke because each point needs a Value Type
+//     select (none/text/number) plus fields that only make sense for text/
+//     number, which the generic CrudSection/ListItem above don't support ────
+const VALUE_TYPE_OPTIONS = [
+  { value: 'none', label: 'No value — just a checkbox' },
+  { value: 'text', label: 'Text value (e.g. "1 Year / 6 months")' },
+  { value: 'number', label: 'Number value (e.g. an amount)' },
+];
+
+function SalesChecklistSection({ items = [], onAdd, onUpdate, onDelete }) {
+  const emptyForm = { label: '', valueType: 'text', valueLabel: '', valuePlaceholder: '' };
+  const [form, setForm] = useState(emptyForm);
+  const [editingId, setEditingId] = useState(null);
+
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const startEdit = (item) => {
+    setEditingId(item._id);
+    setForm({
+      label: item.label || '',
+      valueType: item.valueType || 'text',
+      valueLabel: item.valueLabel || '',
+      valuePlaceholder: item.valuePlaceholder || '',
+    });
+  };
+  const cancelEdit = () => { setEditingId(null); setForm(emptyForm); };
+  const handleSave = () => {
+    if (!form.label.trim()) return;
+    if (editingId) onUpdate(editingId, form);
+    else onAdd(form);
+    setForm(emptyForm);
+    setEditingId(null);
+  };
+
+  return (
+    <div className="bg-white rounded-lg border border-gray-200">
+      {/* Form */}
+      <div className="p-5 border-b border-gray-100 space-y-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <Label className="text-sm">Checklist Point</Label>
+            <Input value={form.label} onChange={e => set('label', e.target.value)} placeholder="e.g. Warranty Committed?" />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-sm">Value Type</Label>
+            <select className={selectClass} value={form.valueType} onChange={e => set('valueType', e.target.value)}>
+              {VALUE_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+        </div>
+        {form.valueType !== 'none' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label className="text-sm">Value Field Label</Label>
+              <Input value={form.valueLabel} onChange={e => set('valueLabel', e.target.value)} placeholder="e.g. Warranty duration & details" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-sm">Value Placeholder</Label>
+              <Input value={form.valuePlaceholder} onChange={e => set('valuePlaceholder', e.target.value)} placeholder="e.g. 1 Year / 6 months" />
+            </div>
+          </div>
+        )}
+        <div className="flex justify-end gap-2">
+          {editingId && <Button size="sm" variant="ghost" onClick={cancelEdit}>Cancel</Button>}
+          <Button size="sm" onClick={handleSave} disabled={!form.label.trim()}>{editingId ? 'Update' : 'Add Point'}</Button>
+        </div>
+      </div>
+
+      {/* Saved points list */}
+      <div className="p-2">
+        {items.length === 0 ? (
+          <p className="text-sm text-gray-400 italic p-3">No checklist points yet — add one above.</p>
+        ) : items.map(item => (
+          <div key={item._id} className="flex items-center justify-between px-3 py-2.5 rounded-lg hover:bg-gray-50 transition-colors">
+            <div className="min-w-0">
+              <p className="font-medium text-gray-800 text-sm truncate">{item.label}</p>
+              <p className="text-xs text-gray-400">
+                {VALUE_TYPE_OPTIONS.find(o => o.value === item.valueType)?.label || item.valueType}
+                {item.valueType !== 'none' && item.valueLabel ? ` — ${item.valueLabel}` : ''}
+              </p>
+            </div>
+            <div className="flex gap-1 shrink-0 ml-3">
+              <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-gray-500 hover:text-gray-800" onClick={() => startEdit(item)}><Pencil className="h-3.5 w-3.5" /></Button>
+              <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-400 hover:text-red-600" onClick={() => onDelete(item._id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function AdminSettings() {
   const { toast } = useToast();
@@ -276,6 +368,7 @@ export default function AdminSettings() {
   const charges       = settings.additionalCharges || [];
   const notes         = settings.quotationNotes || [];
   const dispatchChecklist = settings.dispatchChecklist || [];
+  const salesChecklist = settings.salesChecklist || [];
   const quotationNumberSettings = settings.quotationNumberSettings || [];
   const hrmsDocumentTypes = settings.hrmsDocumentTypes || [];
   const roles = settings.roles || [];
@@ -333,6 +426,11 @@ export default function AdminSettings() {
   const addChecklistM = useMutation(m(b => adminSettingsApi.addDispatchChecklistItem(b), 'Checklist item added'));
   const updChecklistM = useMutation(m(({ id, body }) => adminSettingsApi.updateDispatchChecklistItem(id, body), 'Checklist item updated'));
   const delChecklistM = useMutation(m(id => adminSettingsApi.deleteDispatchChecklistItem(id), 'Checklist item deleted'));
+
+  // Sales Checklist
+  const addSalesChecklistM = useMutation(m(b => adminSettingsApi.addSalesChecklistItem(b), 'Checklist point added'));
+  const updSalesChecklistM = useMutation(m(({ id, body }) => adminSettingsApi.updateSalesChecklistItem(id, body), 'Checklist point updated'));
+  const delSalesChecklistM = useMutation(m(id => adminSettingsApi.deleteSalesChecklistItem(id), 'Checklist point deleted'));
 
   // Lead Reject Reasons
   const addRejectReasonM = useMutation(m(b => adminSettingsApi.addLeadRejectReason(b), 'Reject reason added'));
@@ -485,6 +583,7 @@ export default function AdminSettings() {
         { id: 'business_type', label: 'Business Type' },
         { id: 'document_type', label: 'Document Type' },
         { id: 'lead_reject_reason', label: 'Lead Reject Reason' },
+        { id: 'sales_checklist', label: 'Sales Checklist' },
       ]
     },
     {
@@ -824,6 +923,18 @@ export default function AdminSettings() {
                     emptyText="No reject reasons yet."
                   />
                 </div>
+              </>
+            )}
+            {generalSection === 'sales_checklist' && (
+              <>
+                <h1 className="text-xl font-semibold text-gray-900">Sales Checklist</h1>
+                <p className="text-sm text-gray-500 -mt-3">These points appear in the "Deal Won" checklist on the Leads page and are verified one-by-one by the Service team.</p>
+                <SalesChecklistSection
+                  items={salesChecklist}
+                  onAdd={f => addSalesChecklistM.mutate(f)}
+                  onUpdate={(id, f) => updSalesChecklistM.mutate({ id, body: f })}
+                  onDelete={id => delSalesChecklistM.mutate(id)}
+                />
               </>
             )}
 

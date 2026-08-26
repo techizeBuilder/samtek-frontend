@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useStartVisit, useCompleteVisit } from '@/hooks/useComplaints';
+import { usePermissions } from '@/hooks/usePermissions';
 import { MapPin, Phone, Play, CheckCircle, Camera, Loader2, X, AlertCircle, CheckCircle2, Plus, Trash2 } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
@@ -8,6 +9,8 @@ const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 export default function TechnicianActionModal({ ticket, onClose }: { ticket: any, onClose: () => void }) {
   const { mutate: startVisit, isPending: isStarting } = useStartVisit();
   const { mutate: completeVisit, isPending: isCompleting } = useCompleteVisit();
+  const { hasFeatureAccess } = usePermissions();
+  const canWork = hasFeatureAccess('complaints', 'supportManagement', 'edit');
 
   // State for the Completion Form
   const [workDone, setWorkDone] = useState('');
@@ -172,8 +175,8 @@ export default function TechnicianActionModal({ ticket, onClose }: { ticket: any
               </div>
               <h3 className="text-lg font-bold text-gray-800 mb-2">Arrived at location?</h3>
               <p className="text-sm text-gray-500 mb-6">Tap start to log your arrival time and begin working on the machine.</p>
-              <button 
-                onClick={handleStart} disabled={isStarting}
+              <button
+                onClick={handleStart} disabled={isStarting || !canWork}
                 className="w-full bg-blue-600 text-white font-bold text-lg py-4 rounded-xl hover:bg-blue-700 active:scale-95 transition shadow-lg shadow-blue-200 flex justify-center items-center gap-2 disabled:opacity-70"
               >
                 {isStarting ? <Loader2 className="animate-spin" /> : <><Play size={20} fill="currentColor" /> Start Visit</>}
@@ -302,8 +305,8 @@ export default function TechnicianActionModal({ ticket, onClose }: { ticket: any
                  )}
               </div>
 
-              <button 
-                type="submit" disabled={isCompleting || !workDone}
+              <button
+                type="submit" disabled={isCompleting || !workDone || !canWork}
                 className="w-full bg-amber-500 text-white font-bold text-lg py-4 rounded-xl hover:bg-amber-600 active:scale-95 transition shadow-lg shadow-amber-200 flex justify-center items-center gap-2 mt-4 disabled:opacity-70 disabled:cursor-not-allowed"
               >
                 {isCompleting ? <Loader2 className="animate-spin" /> : <><CheckCircle size={20}/> Complete & Submit</>}

@@ -7,6 +7,7 @@ import {
   Plus, Trash2, CheckCircle, Image as ImageIcon, Lock, Eye, EyeOff, Landmark
 } from "lucide-react";
 import { toast } from "../../Alert/Toast";
+import { usePermissions } from "@/hooks/usePermissions";
 
 const API_BASE = import.meta.env.VITE_API_URL || "/api";
 const IMG_BASE = API_BASE.replace("/api", "");
@@ -156,6 +157,8 @@ function SixDigitInput({ value, onChange }: { value: string; onChange: (v: strin
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function MyCompany() {
   const token = localStorage.getItem("token");
+  const { hasFeatureAccess } = usePermissions();
+  const canEdit = hasFeatureAccess("hrms", "myCompany", "edit");
 
   const [company, setCompany] = useState<CompanyData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -399,12 +402,14 @@ export default function MyCompany() {
           <p className="text-sm text-gray-500 mt-0.5">System Configuration / My Company</p>
         </div>
         {!editing ? (
-          <button
-            onClick={startEdit}
-            className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg text-sm font-medium hover:bg-orange-600 transition-all active:scale-95 shadow-sm"
-          >
-            <Edit2 className="w-4 h-4" /> Edit Details
-          </button>
+          canEdit && (
+            <button
+              onClick={startEdit}
+              className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg text-sm font-medium hover:bg-orange-600 transition-all active:scale-95 shadow-sm"
+            >
+              <Edit2 className="w-4 h-4" /> Edit Details
+            </button>
+          )
         ) : (
           <div className="flex gap-2">
             <button

@@ -195,6 +195,27 @@ export const usePermissions = () => {
     return hasFeatureAccess(moduleName, featureKey, action);
   };
 
+  // Like hasFeatureAccess, but for a feature (e.g. 'lms') that's duplicated
+  // across most — but not all — modules in roleModulesConfig.js rather than
+  // owned by one module. True if ANY of the user's assigned modules that
+  // actually define this feature key grants the action on it. If NONE of a
+  // user's modules even define the feature (e.g. HR-Admin/Company Admin,
+  // whose only module 'hrms' has no 'lms' entry because they oversee
+  // training company-wide rather than through one department's checkbox),
+  // the catalog doesn't offer this checkbox to that role — callers should
+  // combine this with whatever role-based check already gates the page for
+  // those roles, since a bare `false` here isn't a real denial for them.
+  const hasAnyModuleFeatureAccess = (featureKey, action = 'view') => {
+    if (!user) return false;
+    if (user.role === 'Superadmin' || user.role === 'Super Admin') return true;
+    if (!Array.isArray(user.permissions?.modules)) return false;
+    const relevantFeatures = user.permissions.modules
+      .map((module) => module.features?.find((f) => f.key === featureKey))
+      .filter(Boolean);
+    if (relevantFeatures.length === 0) return true;
+    return relevantFeatures.some((f) => f[action]);
+  };
+
   // Check if user can manage users (for backwards compatibility)
   const canManageUsers = () => {
     return user && ['Superadmin', 'Super Admin', 'Unit Head'].includes(user.role);
@@ -219,6 +240,7 @@ export const usePermissions = () => {
   return {
     hasModuleAccess,
     hasFeatureAccess,
+    hasAnyModuleFeatureAccess,
     getAccessibleModules,
     getModuleFeatures,
     canPerformAction,

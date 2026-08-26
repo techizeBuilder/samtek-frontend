@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { orderApi } from '@/api/orderService';
+import { adminSettingsApi } from '@/api/adminSettingsApi';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -8,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
+import { usePermissions } from '@/hooks/usePermissions';
 import { sendWhatsApp } from '@/lib/whatsapp';
 import SendEmailModal from '@/components/email/SendEmailModal';
 import {
@@ -68,6 +70,8 @@ const STATUS_TABS = [
 
 const DealVerifications = () => {
   const { toast } = useToast();
+  const { hasFeatureAccess } = usePermissions();
+  const canEdit = hasFeatureAccess('complaints', 'dealVerifications', 'edit');
   const queryClient = useQueryClient();
 
   const [activeTab, setActiveTab] = useState('all');
@@ -107,17 +111,19 @@ const DealVerifications = () => {
   const [statusModal,  setStatusModal]  = useState({ open: false, order: null });
   const [emailModal,   setEmailModal]   = useState({ open: false, to: '' });
 
+  // Checklist points are configured by Super Admin under Settings > Lead
+  // Settings > Sales Checklist, so this reads dynamically instead of a
+  // hardcoded point list.
+  const { data: adminSettingsData } = useQuery({
+    queryKey: ['admin-settings'],
+    queryFn: () => adminSettingsApi.getAll(),
+  });
+  const salesChecklistConfig = adminSettingsData?.settings?.salesChecklist || [];
+
   const [verifyFormData, setVerifyFormData] = useState({
     remarks: '',
     callRecordingUrl: '',
-    salesChecklist: {
-      advancePayment: { checked: false, value: 0, verified: false },
-      installationCharge: { checked: false, value: '', verified: false },
-      warranty: { checked: false, value: '', verified: false },
-      boardingLodging: { checked: false, value: '', verified: false },
-      backupGenerator: { checked: false, value: '', verified: false },
-      operatorErrorClause: { checked: false, verified: false }
-    }
+    salesChecklist: {}
   });
 
   const handleOpenVerifyModal = (order) => {
@@ -126,14 +132,7 @@ const DealVerifications = () => {
       (o) => o._id === order._id
     ) || order;
 
-    const checklist = latestOrder.salesChecklist || {
-      advancePayment: { checked: false, value: 0, verified: false },
-      installationCharge: { checked: false, value: '', verified: false },
-      warranty: { checked: false, value: '', verified: false },
-      boardingLodging: { checked: false, value: '', verified: false },
-      backupGenerator: { checked: false, value: '', verified: false },
-      operatorErrorClause: { checked: false, verified: false }
-    };
+    const checklist = latestOrder.salesChecklist || {};
     setVerifyFormData({
       remarks: '',
       callRecordingUrl: '',
@@ -483,7 +482,7 @@ const DealVerifications = () => {
                           <p className="text-xs text-gray-500">Category: {customer.category || 'N/A'}</p>
                           {customer.gstin && <p className="text-xs text-gray-500">GSTIN: {customer.gstin}</p>}
                         </div>
-                        {isPending ? (
+                        {isPending && canEdit ? (
                           <Button
                             variant="outline" size="sm"
                             className="h-8 px-2 text-xs bg-blue-50 text-blue-600 border-blue-100 shrink-0"
@@ -543,7 +542,7 @@ const DealVerifications = () => {
                         onClick={() => setDetailModal({ open: true, order })}>
                         View Details
                       </Button>
-                      {isPending ? (
+                      {isPending && canEdit ? (
                         <Button variant="default" size="sm"
                           className="h-8 text-xs rounded-full bg-green-600 hover:bg-green-700"
                           onClick={() => handleOpenVerifyModal(order)}>
@@ -611,7 +610,7 @@ const DealVerifications = () => {
                             title="Email" onClick={() => email(customer.email)}>
                             <Mail className="h-3.5 w-3.5" />
                           </Button>
-                          {isPending ? (
+                          {isPending && canEdit ? (
                             <Button variant="ghost" size="icon" className="h-7 w-8 rounded-none hover:bg-purple-50 text-purple-600"
                               title="Verify" onClick={() => handleOpenVerifyModal(order)}>
                               <ShieldCheck className="h-3.5 w-3.5" />
@@ -746,14 +745,7 @@ const DealVerifications = () => {
             const c = verifyModal.order.customer || {};
             
             // Check list config
-            const checklistConfig = [
-              { key: 'advancePayment', label: '1. Advanced Payment', type: 'number', desc: 'How much advanced payment is paid?' },
-              { key: 'installationCharge', label: '2. Installation Charges', type: 'text', desc: 'How much installation charge was quoted?' },
-              { key: 'warranty', label: '3. Warranty Period', type: 'text', desc: 'What is the promised warranty period?' },
-              { key: 'boardingLodging', label: '4. Installation Team Stay/Food', type: 'text', desc: 'Arrangements for boarding/lodging crew?' },
-              { key: 'backupGenerator', label: '5. Backup Power / DG', type: 'text', desc: 'Is backup generator setup discussed?' },
-              { key: 'operatorErrorClause', label: '6. Operator Error Clause', type: 'boolean', desc: 'Customer agreed that operator mistake is not our fault?' }
-            ];
+            const checklistConfig = salesChecklistConfig;
 
             const checklist = verifyFormData.salesChecklist || {};
             const allCheckedVerified = checklistConfig.every(cfg => {
@@ -804,22 +796,22 @@ const DealVerifications = () => {
                   </p>
                   
                   <div className="space-y-2.5 max-h-[300px] overflow-y-auto pr-1">
-                    {checklistConfig.map((cfg) => {
+                    {checklistConfig.map((cfg, idx) => {
                       const item = checklist[cfg.key] || { checked: false, value: '', verified: false };
-                      
+
                       return (
-                        <div 
+                        <div
                           key={cfg.key}
                           className={cn(
                             "p-3 rounded-lg border flex items-center justify-between transition-all shadow-xs",
-                            item.checked 
+                            item.checked
                               ? (item.verified ? "bg-green-50/40 border-green-200" : "bg-orange-50/40 border-orange-200")
                               : "bg-gray-50/40 border-gray-150"
                           )}
                         >
                           <div className="flex-1 min-w-0 pr-3">
                             <div className="flex items-center gap-2">
-                              <span className="font-semibold text-sm text-gray-800">{cfg.label}</span>
+                              <span className="font-semibold text-sm text-gray-800">{idx + 1}. {cfg.label}</span>
                               {item.checked ? (
                                 <Badge className="bg-amber-100 text-amber-800 border-amber-200 text-[10px] h-5 px-1.5 font-bold">
                                   Discussed
@@ -828,13 +820,13 @@ const DealVerifications = () => {
                                 <span className="text-[11px] text-gray-400 font-medium">Not Discussed</span>
                               )}
                             </div>
-                            
+
                             {item.checked ? (
                               <p className="text-xs text-gray-600 mt-1 font-medium bg-white/70 p-1.5 rounded border border-gray-100 inline-block">
-                                Value declared by Sales: <strong className="text-blue-700">{cfg.type === 'number' ? `₹${item.value}` : (cfg.type === 'boolean' ? 'Agreed' : item.value || 'N/A')}</strong>
+                                Value declared by Sales: <strong className="text-blue-700">{cfg.valueType === 'number' ? `₹${item.value}` : (cfg.valueType === 'none' ? 'Agreed' : item.value || 'N/A')}</strong>
                               </p>
                             ) : (
-                              <p className="text-[11px] text-gray-400 mt-0.5">{cfg.desc}</p>
+                              <p className="text-[11px] text-gray-400 mt-0.5">Not yet marked as discussed by Sales.</p>
                             )}
 
                             {/* Real warranty from Item master — so service team can compare
@@ -878,8 +870,8 @@ const DealVerifications = () => {
                                 const newChecklist = {
                                   ...verifyFormData.salesChecklist,
                                   [cfg.key]: {
-                                    ...verifyFormData.salesChecklist[cfg.key],
-                                    verified: !verifyFormData.salesChecklist[cfg.key].verified
+                                    ...item,
+                                    verified: !item.verified
                                   }
                                 };
                                 // DO NOT update local state here — wait for API success (onSuccess updates it)
@@ -941,15 +933,15 @@ const DealVerifications = () => {
                   <Button 
                     className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold"
                     onClick={() => handleVerifySubmit('verified')}
-                    disabled={verifyMutation.isPending || !allCheckedVerified}
+                    disabled={verifyMutation.isPending || !allCheckedVerified || !canEdit}
                   >
                     <CheckCircle2 className="h-4 w-4 mr-2" /> Approve Deal
                   </Button>
-                  <Button 
-                    variant="destructive" 
+                  <Button
+                    variant="destructive"
                     className="flex-1 font-bold"
                     onClick={() => handleVerifySubmit('rejected')}
-                    disabled={verifyMutation.isPending}
+                    disabled={verifyMutation.isPending || !canEdit}
                   >
                     <XCircle className="h-4 w-4 mr-2" /> Reject Deal
                   </Button>
@@ -1059,12 +1051,14 @@ const DealVerifications = () => {
                   </div>
                 )}
 
-                <div className="flex gap-2 pt-2">
-                  <Button className="flex-1 bg-green-600 hover:bg-green-700"
-                    onClick={() => { setDetailModal({ open: false, order: null }); handleOpenVerifyModal(o); }}>
-                    <ShieldCheck className="h-4 w-4 mr-2" /> Verify This Deal
-                  </Button>
-                </div>
+                {canEdit && (
+                  <div className="flex gap-2 pt-2">
+                    <Button className="flex-1 bg-green-600 hover:bg-green-700"
+                      onClick={() => { setDetailModal({ open: false, order: null }); handleOpenVerifyModal(o); }}>
+                      <ShieldCheck className="h-4 w-4 mr-2" /> Verify This Deal
+                    </Button>
+                  </div>
+                )}
               </div>
             );
           })()}
@@ -1163,7 +1157,7 @@ const DealVerifications = () => {
                 />
               </div>
               <Button className="w-full bg-blue-600 hover:bg-blue-700"
-                onClick={handleAddNote} disabled={updateMutation.isPending}>
+                onClick={handleAddNote} disabled={updateMutation.isPending || !canEdit}>
                 Add Note
               </Button>
             </div>
@@ -1236,7 +1230,7 @@ const DealVerifications = () => {
               </SelectContent>
             </Select>
             <Button className="w-full bg-blue-600 hover:bg-blue-700"
-              onClick={handleSavePriority} disabled={updateMutation.isPending}>
+              onClick={handleSavePriority} disabled={updateMutation.isPending || !canEdit}>
               Save Priority
             </Button>
           </div>
@@ -1267,7 +1261,7 @@ const DealVerifications = () => {
               </SelectContent>
             </Select>
             <Button className="w-full bg-blue-600 hover:bg-blue-700"
-              onClick={handleSaveStatus} disabled={updateMutation.isPending}>
+              onClick={handleSaveStatus} disabled={updateMutation.isPending || !canEdit}>
               Update Status
             </Button>
           </div>

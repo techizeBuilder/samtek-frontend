@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useLocation } from 'wouter';
 import { useQuery } from '@tanstack/react-query';
 import { useQC } from '@/contexts/QCContext';
+import { usePermissions } from '@/hooks/usePermissions';
 import { apiRequest } from '@/lib/queryClient';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -23,10 +24,10 @@ const statusColor = {
 
 const itemStatusColor = { Pending: 'text-slate-400', Pass: 'text-emerald-600', Fail: 'text-red-600' };
 
-function ChecklistRow({ item, jobStatus, onUpdate }) {
+function ChecklistRow({ item, jobStatus, onUpdate, canEdit }) {
   const [local, setLocal] = useState({ actualValue: item.actualValue || '', status: item.status || 'Pending', remarks: item.remarks || '' });
   const [saving, setSaving] = useState(false);
-  const editable = jobStatus === 'In Progress';
+  const editable = jobStatus === 'In Progress' && canEdit;
 
   const save = async () => {
     setSaving(true);
@@ -109,6 +110,11 @@ export default function QCInspection() {
   const { id } = useParams();
   const [, setLocation] = useLocation();
   const { startInspection, updateChecklistItem, submitDecision, addChecklistItem, removeChecklistItem } = useQC();
+  const { hasFeatureAccess } = usePermissions();
+  const canView = hasFeatureAccess('quality-control', 'qcInspection', 'view');
+  const canEdit = hasFeatureAccess('quality-control', 'qcInspection', 'edit');
+  const canAddItem = hasFeatureAccess('quality-control', 'qcInspection', 'add');
+  const canDeleteItem = hasFeatureAccess('quality-control', 'qcInspection', 'delete');
   const { toast } = useToast();
 
   const [loading, setLoading] = useState(false);
@@ -124,7 +130,7 @@ export default function QCInspection() {
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['qc-job', id],
     queryFn: () => apiRequest('GET', `/api/qc/jobs/${id}`),
-    enabled: !!id,
+    enabled: !!id && canView,
   });
 
   const job = data?.data;
@@ -238,6 +244,17 @@ export default function QCInspection() {
     } finally { setLoading(false); }
   };
 
+  if (!canView) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Access Denied</h2>
+          <p className="text-gray-600">You don't have permission to view QC Inspection.</p>
+        </div>
+      </div>
+    );
+  }
+
   if (isLoading) return <div className="p-6 text-slate-500">Loading...</div>;
   if (!job) return <div className="p-6 text-slate-500">QC Job not found</div>;
 
@@ -286,7 +303,7 @@ export default function QCInspection() {
       </Card>
 
       {/* Start inspection */}
-      {job.status === 'Pending' && (
+      {job.status === 'Pending' && canEdit && (
         <Card className="border-none shadow-sm border-l-4 border-l-amber-400">
           <CardContent className="p-5">
             <p className="font-semibold text-slate-800 mb-3">Start Inspection</p>
@@ -317,7 +334,7 @@ export default function QCInspection() {
             </div>
 
             {/* Sync R&D Data Button */}
-            {(job.status === 'Pending' || job.status === 'In Progress') && (
+            {(job.status === 'Pending' || job.status === 'In Progress') && canEdit && (
               <Button
                 variant="outline"
                 size="sm"
@@ -337,8 +354,8 @@ export default function QCInspection() {
             <div className="space-y-3">
               {cl.map(item => (
                 <div key={item._id} className="relative group">
-                  <ChecklistRow item={item} jobStatus={job.status} onUpdate={handleUpdateItem} />
-                  {job.status === 'In Progress' && (
+                  <ChecklistRow item={item} jobStatus={job.status} onUpdate={handleUpdateItem} canEdit={canEdit} />
+                  {job.status === 'In Progress' && canDeleteItem && (
                     <button
                       onClick={() => handleRemoveItem(item._id)}
                       className="absolute top-2 right-2 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
@@ -352,7 +369,7 @@ export default function QCInspection() {
           )}
 
           {/* Add item (only In Progress) */}
-          {job.status === 'In Progress' && (
+          {job.status === 'In Progress' && canAddItem && (
             <div className="flex gap-2 mt-4 pt-4 border-t border-slate-100">
               <Input className="text-sm" placeholder="New parameter" value={newParam} onChange={e => setNewParam(e.target.value)} />
               <Input className="text-sm" placeholder="Standard value" value={newStd} onChange={e => setNewStd(e.target.value)} />
@@ -365,7 +382,7 @@ export default function QCInspection() {
       </Card>
 
       {/* Decision panel */}
-      {job.status === 'In Progress' && (
+      {job.status === 'In Progress' && canEdit && (
         <Card className={`border-none shadow-sm border-l-4 ${allInspected ? (hasAnyFail ? 'border-l-red-400' : 'border-l-emerald-400') : 'border-l-slate-300'}`}>
           <CardContent className="p-5">
             <h2 className="font-semibold text-slate-800 mb-1">Final Decision</h2>

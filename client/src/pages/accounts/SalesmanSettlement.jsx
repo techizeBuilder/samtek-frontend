@@ -1,4 +1,5 @@
 import { useAuth } from '@/hooks/useAuth';
+import { usePermissions } from '@/hooks/usePermissions';
 import React, { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { accountsSalesPersonsApi } from '@/api/customerService';
@@ -57,6 +58,8 @@ import { showSmartToast } from '@/lib/toast-utils';
 import { cn } from '@/lib/utils';
 
 export default function SalesmanSettlement() {
+  const { hasFeatureAccess } = usePermissions();
+  const canAdd = hasFeatureAccess('accounts', 'salesmanSettlement', 'add');
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState('overview');
@@ -524,7 +527,7 @@ export default function SalesmanSettlement() {
                         "w-full h-12 font-bold text-white shadow-lg transition-all",
                         transactionType === 'Credit' ? "bg-green-600 hover:bg-green-700" : "bg-red-600 hover:bg-red-700"
                       )}
-                      disabled={!settlementAmount || saveSettlementMutation.isPending}
+                      disabled={!settlementAmount || saveSettlementMutation.isPending || !canAdd}
                       onClick={handleSaveSettlement}
                     >
                       {saveSettlementMutation.isPending ? <RefreshCw className="animate-spin mr-2" /> : <CheckCircle className="mr-2 h-4 w-4" />}

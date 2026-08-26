@@ -7,10 +7,15 @@ import DesignationModal from "./DesignationModal";
 import DeleteDesignationModal from "./DeleteDesignationModal";
 import Loader from "../Loader";
 import { toast } from "../../Alert/Toast";
+import { usePermissions } from "@/hooks/usePermissions";
 const API_BASE = import.meta.env.VITE_API_URL;
 
 export default function Designation() {
   const token = localStorage.getItem("token");
+  const { hasFeatureAccess } = usePermissions();
+  const canAdd = hasFeatureAccess("hrms", "designations", "add");
+  const canEdit = hasFeatureAccess("hrms", "designations", "edit");
+  const canDelete = hasFeatureAccess("hrms", "designations", "delete");
 
   const [data, setData] = useState<any[]>([]);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
@@ -116,16 +121,18 @@ export default function Designation() {
             />
           </div>
 
-          <button
-            onClick={() => {
-              setMode("add");
-              setSelected(null);
-              setOpenModal(true);
-            }}
-            className="bg-[#49A7F5] text-white px-4 py-2 rounded-md font-medium hover:bg-[#3D96E1] shadow-sm transition-all active:scale-95"
-          >
-            + Add Designation
-          </button>
+          {canAdd && (
+            <button
+              onClick={() => {
+                setMode("add");
+                setSelected(null);
+                setOpenModal(true);
+              }}
+              className="bg-[#49A7F5] text-white px-4 py-2 rounded-md font-medium hover:bg-[#3D96E1] shadow-sm transition-all active:scale-95"
+            >
+              + Add Designation
+            </button>
+          )}
         </div>
       </div>
 
@@ -178,27 +185,31 @@ export default function Designation() {
                       >
                         View
                       </button>
-                      <button
-                        className="block px-4 py-2 w-full text-left"
-                        onClick={() => {
-                          setMode("edit");
-                          setSelected(d);
-                          setOpenModal(true);
-                          setOpenMenu(null);
-                        }}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        className="block px-4 py-2 w-full text-left text-red-500"
-                        onClick={() => {
-                          setItemToDelete(d);
-                          setOpenDeleteModal(true);
-                          setOpenMenu(null);
-                        }}
-                      >
-                        Delete
-                      </button>
+                      {canEdit && (
+                        <button
+                          className="block px-4 py-2 w-full text-left"
+                          onClick={() => {
+                            setMode("edit");
+                            setSelected(d);
+                            setOpenModal(true);
+                            setOpenMenu(null);
+                          }}
+                        >
+                          Edit
+                        </button>
+                      )}
+                      {canDelete && (
+                        <button
+                          className="block px-4 py-2 w-full text-left text-red-500"
+                          onClick={() => {
+                            setItemToDelete(d);
+                            setOpenDeleteModal(true);
+                            setOpenMenu(null);
+                          }}
+                        >
+                          Delete
+                        </button>
+                      )}
                     </div>
                   )}
                 </td>

@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
+import { usePermissions } from '@/hooks/usePermissions';
 import { cn } from '@/lib/utils';
 import { Plus, Search, Receipt, Calculator, ShoppingBag, Trash2 } from 'lucide-react';
 import {
@@ -25,6 +26,8 @@ import {
 } from '@/components/ui/table';
 
 const PurchaseInvoices = () => {
+    const { hasFeatureAccess } = usePermissions();
+    const canAdd = hasFeatureAccess('accounts', 'purchases', 'add');
     const { toast } = useToast();
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [items, setItems] = useState([]);
@@ -132,10 +135,12 @@ const PurchaseInvoices = () => {
                     <h1 className="text-3xl font-bold text-slate-900">Purchase Invoices</h1>
                     <p className="text-slate-500">Record bills and track inventory intake</p>
                 </div>
-                <Button onClick={() => setIsAddModalOpen(true)} className="bg-slate-900">
-                    <Plus className="w-4 h-4 mr-2" />
-                    Record New Bill
-                </Button>
+                {canAdd && (
+                    <Button onClick={() => setIsAddModalOpen(true)} className="bg-slate-900">
+                        <Plus className="w-4 h-4 mr-2" />
+                        Record New Bill
+                    </Button>
+                )}
             </div>
 
             <Card className="border-0 shadow-sm">

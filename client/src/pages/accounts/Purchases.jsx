@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Link } from 'wouter';
 import { Plus, Search, Edit2, Trash2, Eye, TrendingDown, RotateCw, ChevronLeft, ChevronRight, X, BarChart, RotateCcw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { usePermissions } from '@/hooks/usePermissions';
 import {
   Dialog,
   DialogContent,
@@ -18,6 +19,8 @@ import {
 } from '@/components/ui/dialog';
 
 const Purchases = () => {
+  const { hasFeatureAccess } = usePermissions();
+  const canAdd = hasFeatureAccess('accounts', 'purchases', 'add');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedType, setSelectedType] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -305,15 +308,17 @@ const Purchases = () => {
                             >
                               <Eye className="w-4 h-4" />
                             </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="text-green-600 hover:bg-green-50"
-                              onClick={() => handleAddToPurchase(item)}
-                              title="Add to purchase order"
-                            >
-                              <Plus className="w-4 h-4" />
-                            </Button>
+                            {canAdd && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-green-600 hover:bg-green-50"
+                                onClick={() => handleAddToPurchase(item)}
+                                title="Add to purchase order"
+                              >
+                                <Plus className="w-4 h-4" />
+                              </Button>
+                            )}
                           </div>
                         </td>
                       </tr>

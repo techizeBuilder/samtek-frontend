@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
+import { usePermissions } from '@/hooks/usePermissions';
 import {
     Plus,
     Search,
@@ -46,6 +47,8 @@ import { format } from 'date-fns';
 import { useAuthContext } from '@/contexts/AuthContext';
 
 const SalesInvoices = () => {
+    const { hasFeatureAccess } = usePermissions();
+    const canAdd = hasFeatureAccess('accounts', 'sales', 'add');
     const { toast } = useToast();
     const { user } = useAuthContext();
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -312,9 +315,11 @@ const SalesInvoices = () => {
                                     onChange={(e) => changeSearch(e.target.value)}
                                 />
                             </div>
-                            <Button onClick={() => { setGeneratingInvoice(null); setIsAddModalOpen(true); }} className="bg-blue-600 hover:bg-blue-700 text-white">
-                                <Plus className="w-4 h-4 mr-2" /> New Invoice
-                            </Button>
+                            {canAdd && (
+                                <Button onClick={() => { setGeneratingInvoice(null); setIsAddModalOpen(true); }} className="bg-blue-600 hover:bg-blue-700 text-white">
+                                    <Plus className="w-4 h-4 mr-2" /> New Invoice
+                                </Button>
+                            )}
                         </div>
                     </div>
                 </CardHeader>

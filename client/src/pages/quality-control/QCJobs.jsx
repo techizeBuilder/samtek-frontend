@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useSearch } from 'wouter';
 import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
+import { usePermissions } from '@/hooks/usePermissions';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -24,6 +25,10 @@ const statusIcon = {
 const sourceIcon = { Purchase: ShoppingCart, Production: Factory, Store: Package };
 
 export default function QCJobs() {
+  const { hasFeatureAccess } = usePermissions();
+  const canView = hasFeatureAccess('quality-control', 'qcJobs', 'view');
+  const canAddInward = hasFeatureAccess('quality-control', 'qcInward', 'add');
+
   const searchString = useSearch(); // e.g. "status=Pending"
   const queryParams = new URLSearchParams(searchString);
   const statusFromUrl = queryParams.get('status') || 'all';
@@ -55,6 +60,7 @@ export default function QCJobs() {
       return apiRequest('GET', `/api/qc/jobs?${params.toString()}`);
     },
     keepPreviousData: true,
+    enabled: canView,
   });
   const filtered = jobsResponse?.data || [];
   const pagination = jobsResponse?.pagination || { page: 1, pages: 1, total: 0 };
@@ -63,6 +69,17 @@ export default function QCJobs() {
     acc[s] = s === 'all' ? (rawCounts.all ?? 0) : (rawCounts[s] ?? 0);
     return acc;
   }, {});
+
+  if (!canView) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Access Denied</h2>
+          <p className="text-gray-600">You don't have permission to view QC Jobs.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 space-y-6 bg-slate-50 min-h-screen">
@@ -75,11 +92,13 @@ export default function QCJobs() {
             {statusFromUrl === 'all' ? 'All quality control inspection jobs' : `Showing jobs with status: ${statusFromUrl}`}
           </p>
         </div>
-        <Link href="/qc/inward">
-          <Button className="flex items-center gap-2">
-            <Plus className="h-4 w-4" /> New QC Entry
-          </Button>
-        </Link>
+        {canAddInward && (
+          <Link href="/qc/inward">
+            <Button className="flex items-center gap-2">
+              <Plus className="h-4 w-4" /> New QC Entry
+            </Button>
+          </Link>
+        )}
       </div>
 
       {/* Filters */}

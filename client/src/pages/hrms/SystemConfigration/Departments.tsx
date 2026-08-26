@@ -6,6 +6,7 @@ import { MoreVertical, Search } from "lucide-react";
 import DepartmentModal from "./DepartmentModal";
 import Loader from "../Loader";
 import { toast } from "../../Alert/Toast";
+import { usePermissions } from "@/hooks/usePermissions";
 const API_BASE = import.meta.env.VITE_API_URL;
 
 export interface Department {
@@ -20,6 +21,10 @@ export interface Department {
 
 export default function DepartmentPage() {
   const token = localStorage.getItem("token");
+  const { hasFeatureAccess } = usePermissions();
+  const canAdd = hasFeatureAccess("hrms", "departments", "add");
+  const canEdit = hasFeatureAccess("hrms", "departments", "edit");
+  const canDelete = hasFeatureAccess("hrms", "departments", "delete");
 
   const [departments, setDepartments] = useState<Department[]>([]);
   const [openModal, setOpenModal] = useState(false);
@@ -106,16 +111,18 @@ export default function DepartmentPage() {
             />
           </div>
 
-          <button
-            onClick={() => {
-              setMode("add");
-              setSelected(null);
-              setOpenModal(true);
-            }}
-            className="bg-[#49A7F5] text-white px-4 py-2 rounded-md font-medium hover:bg-[#3D96E1] shadow-sm transition-all active:scale-95"
-          >
-            + Add Department
-          </button>
+          {canAdd && (
+            <button
+              onClick={() => {
+                setMode("add");
+                setSelected(null);
+                setOpenModal(true);
+              }}
+              className="bg-[#49A7F5] text-white px-4 py-2 rounded-md font-medium hover:bg-[#3D96E1] shadow-sm transition-all active:scale-95"
+            >
+              + Add Department
+            </button>
+          )}
         </div>
       </div>
 
@@ -173,23 +180,27 @@ export default function DepartmentPage() {
                       >
                         View
                       </button>
-                      <button
-                        className="block w-full px-4 py-2 text-left hover:bg-gray-100"
-                        onClick={() => {
-                          setMode("edit");
-                          setSelected(d);
-                          setOpenModal(true);
-                          setMenu(null);
-                        }}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        className="block w-full px-4 py-2 text-left text-red-500 hover:bg-red-50"
-                        onClick={() => deleteDepartment(d._id)}
-                      >
-                        Delete
-                      </button>
+                      {canEdit && (
+                        <button
+                          className="block w-full px-4 py-2 text-left hover:bg-gray-100"
+                          onClick={() => {
+                            setMode("edit");
+                            setSelected(d);
+                            setOpenModal(true);
+                            setMenu(null);
+                          }}
+                        >
+                          Edit
+                        </button>
+                      )}
+                      {canDelete && (
+                        <button
+                          className="block w-full px-4 py-2 text-left text-red-500 hover:bg-red-50"
+                          onClick={() => deleteDepartment(d._id)}
+                        >
+                          Delete
+                        </button>
+                      )}
                     </div>
                   )}
                 </td>

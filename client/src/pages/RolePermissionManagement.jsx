@@ -45,6 +45,7 @@ import {
 } from 'lucide-react';
 import { showSuccessToast, showSmartToast } from '@/lib/toast-utils';
 import { useAuth } from '@/hooks/useAuth';
+import { usePermissions } from '@/hooks/usePermissions';
 import { MODULES, ROLE_MODULE_MAP, PERMISSION_ACTIONS, getDefaultModulesForRole } from '@/lib/roleModulesConfig';
 // Role and Module Configuration
 const ROLES = [
@@ -144,6 +145,10 @@ export default function RolePermissionManagement() {
 
   // Filter companies based on user role
   const { user: currentUser } = useAuth();
+  const { hasFeatureAccess } = usePermissions();
+  const canAddEmployee = hasFeatureAccess('hrms', 'employeeManagement', 'add');
+  const canEditEmployee = hasFeatureAccess('hrms', 'employeeManagement', 'edit');
+  const canDeleteEmployee = hasFeatureAccess('hrms', 'employeeManagement', 'delete');
   const isSuperAdmin = currentUser?.role === 'Superadmin' || currentUser?.role === 'Super Admin';
   const isCompanyAdmin = currentUser?.role === 'Company Admin';
 
@@ -583,12 +588,14 @@ export default function RolePermissionManagement() {
           </p>
         </div>
         <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-          <DialogTrigger asChild>
-            <Button onClick={() => { resetForm(); setIsCreateDialogOpen(true); }} className="w-full sm:w-auto">
-              <UserPlus className="h-4 w-4 mr-2" />
-              Create New User
-            </Button>
-          </DialogTrigger>
+          {canAddEmployee && (
+            <DialogTrigger asChild>
+              <Button onClick={() => { resetForm(); setIsCreateDialogOpen(true); }} className="w-full sm:w-auto">
+                <UserPlus className="h-4 w-4 mr-2" />
+                Create New User
+              </Button>
+            </DialogTrigger>
+          )}
           <DialogContent className="w-[95vw] max-w-4xl max-h-[90vh] overflow-y-auto mx-2 sm:mx-4">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-lg sm:text-xl">
@@ -993,10 +1000,12 @@ export default function RolePermissionManagement() {
                     : "Get started by creating your first user"
                   }
                 </p>
-                <Button onClick={() => { resetForm(); setIsCreateDialogOpen(true); }}>
-                  <UserPlus className="h-4 w-4 mr-2" />
-                  Create User
-                </Button>
+                {canAddEmployee && (
+                  <Button onClick={() => { resetForm(); setIsCreateDialogOpen(true); }}>
+                    <UserPlus className="h-4 w-4 mr-2" />
+                    Create User
+                  </Button>
+                )}
               </div>
             </div>
           ) : (
@@ -1072,34 +1081,40 @@ export default function RolePermissionManagement() {
                         </td>
                         <td className="py-3 sm:py-4 px-1 sm:px-4">
                           <div className="flex items-center justify-center gap-1">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handlePasswordUpdate(user)}
-                              className="h-7 w-7 sm:h-8 sm:w-8 p-0 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                              title="Update Password"
-                            >
-                              <Lock className="h-3 w-3 sm:h-4 sm:w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleEditUser(user)}
-                              className="h-7 w-7 sm:h-8 sm:w-8 p-0 text-gray-600 hover:text-gray-700 hover:bg-gray-50"
-                              title="Edit User"
-                            >
-                              <Edit className="h-3 w-3 sm:h-4 sm:w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleDeleteUser(user)}
-                              disabled={isSelf(user)}
-                              className="h-7 w-7 sm:h-8 sm:w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50 disabled:opacity-30 disabled:cursor-not-allowed"
-                              title={isSelf(user) ? "You cannot delete your own account" : "Delete User"}
-                            >
-                              <Trash2 className="h-3 w-3 sm:h-4 sm:w-4" />
-                            </Button>
+                            {canEditEmployee && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handlePasswordUpdate(user)}
+                                className="h-7 w-7 sm:h-8 sm:w-8 p-0 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                title="Update Password"
+                              >
+                                <Lock className="h-3 w-3 sm:h-4 sm:w-4" />
+                              </Button>
+                            )}
+                            {canEditEmployee && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleEditUser(user)}
+                                className="h-7 w-7 sm:h-8 sm:w-8 p-0 text-gray-600 hover:text-gray-700 hover:bg-gray-50"
+                                title="Edit User"
+                              >
+                                <Edit className="h-3 w-3 sm:h-4 sm:w-4" />
+                              </Button>
+                            )}
+                            {canDeleteEmployee && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleDeleteUser(user)}
+                                disabled={isSelf(user)}
+                                className="h-7 w-7 sm:h-8 sm:w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50 disabled:opacity-30 disabled:cursor-not-allowed"
+                                title={isSelf(user) ? "You cannot delete your own account" : "Delete User"}
+                              >
+                                <Trash2 className="h-3 w-3 sm:h-4 sm:w-4" />
+                              </Button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -1129,24 +1144,29 @@ export default function RolePermissionManagement() {
                           </div>
                         </div>
                         <div className="flex items-center gap-1 ml-2 flex-shrink-0">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handlePasswordUpdate(user)}
-                            className="h-7 w-7 p-0 text-blue-600 hover:bg-blue-50:bg-blue-900/20"
-                            title="Update Password"
-                          >
-                            <Lock className="h-3 w-3" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleEditUser(user)}
-                            className="h-7 w-7 p-0 text-gray-600 hover:bg-gray-50:bg-gray-700"
-                            title="Edit User"
-                          >
-                            <Edit className="h-3 w-3" />
-                          </Button>
+                          {canEditEmployee && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handlePasswordUpdate(user)}
+                              className="h-7 w-7 p-0 text-blue-600 hover:bg-blue-50:bg-blue-900/20"
+                              title="Update Password"
+                            >
+                              <Lock className="h-3 w-3" />
+                            </Button>
+                          )}
+                          {canEditEmployee && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleEditUser(user)}
+                              className="h-7 w-7 p-0 text-gray-600 hover:bg-gray-50:bg-gray-700"
+                              title="Edit User"
+                            >
+                              <Edit className="h-3 w-3" />
+                            </Button>
+                          )}
+                          {canDeleteEmployee && (
                           <Button
                             variant="ghost"
                             size="sm"
@@ -1157,6 +1177,7 @@ export default function RolePermissionManagement() {
                           >
                             <Trash2 className="h-3 w-3" />
                           </Button>
+                          )}
                         </div>
                       </div>
 

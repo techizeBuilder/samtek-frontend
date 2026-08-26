@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'wouter';
 import { useQC } from '@/contexts/QCContext';
+import { usePermissions } from '@/hooks/usePermissions';
 import { Card, CardContent } from '@/components/ui/card';
 import {
   ClipboardList, CheckCircle2, XCircle, Clock, AlertTriangle,
@@ -19,7 +20,21 @@ const categoryIcon = { Machine: Factory, 'Raw Material': Package, Tool: Wrench, 
 
 export default function QCDashboard() {
   const { dashboard, dashboardLoading } = useQC();
+  const { hasFeatureAccess } = usePermissions();
+  const canView = hasFeatureAccess('quality-control', 'dashboard', 'view');
+  const canAddInward = hasFeatureAccess('quality-control', 'qcInward', 'add');
   const { summary = {}, sourceBreakdown = [], categoryBreakdown = [], failReasons = [], recentJobs = [] } = dashboard;
+
+  if (!canView) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Access Denied</h2>
+          <p className="text-gray-600">You don't have permission to view the QC Dashboard.</p>
+        </div>
+      </div>
+    );
+  }
 
   const statsCards = [
     { label: 'Total QC Jobs', value: summary.total || 0, icon: ClipboardList, color: 'text-slate-600', bg: 'bg-slate-100' },
@@ -31,11 +46,11 @@ export default function QCDashboard() {
   ];
 
   const modules = [
-    { label: 'QC Inward Entry', path: '/qc/inward', icon: ClipboardList, desc: 'Create new QC job', color: 'text-blue-600', bg: 'bg-blue-50' },
+    canAddInward && { label: 'QC Inward Entry', path: '/qc/inward', icon: ClipboardList, desc: 'Create new QC job', color: 'text-blue-600', bg: 'bg-blue-50' },
     { label: 'All QC Jobs', path: '/qc/jobs', icon: BarChart3, desc: 'View & manage QC jobs', color: 'text-slate-600', bg: 'bg-slate-100' },
     { label: 'Pending Inspection', path: '/qc/jobs?status=Pending', icon: Clock, desc: `${summary.pending || 0} awaiting inspector`, color: 'text-amber-600', bg: 'bg-amber-50' },
     { label: 'In Progress', path: '/qc/jobs?status=In Progress', icon: AlertTriangle, desc: `${summary.inProgress || 0} being inspected`, color: 'text-purple-600', bg: 'bg-purple-50' },
-  ];
+  ].filter(Boolean);
 
   if (dashboardLoading) {
     return <div className="p-6 flex items-center justify-center min-h-64 text-slate-500">Loading dashboard...</div>;
@@ -49,12 +64,14 @@ export default function QCDashboard() {
           <h1 className="text-2xl font-bold text-slate-900">Quality Control Dashboard</h1>
           <p className="text-slate-500 text-sm mt-0.5">QC Inward → Inspection → Decision → Transfer</p>
         </div>
-        <Link href="/qc/inward">
-          <button className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
-            <ClipboardList className="h-4 w-4" />
-            New QC Entry
-          </button>
-        </Link>
+        {canAddInward && (
+          <Link href="/qc/inward">
+            <button className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
+              <ClipboardList className="h-4 w-4" />
+              New QC Entry
+            </button>
+          </Link>
+        )}
       </div>
 
       {/* Summary cards */}

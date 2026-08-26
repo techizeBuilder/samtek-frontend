@@ -12,12 +12,17 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Boxes, Plus, Wand2, ImageIcon, FileText, Ban, RefreshCw, Loader2, Edit2, Trash2 } from 'lucide-react';
 import { showSuccessToast, showSmartToast } from '@/lib/toast-utils';
+import { usePermissions } from '@/hooks/usePermissions';
 import { config } from '@/config/environment';
 
 const resolveMediaUrl = (url) => (!url ? '' : (url.startsWith('http') || url.startsWith('data:')) ? url : `${config.baseURL}${url}`);
 const isPdfUrl = (url) => !!url && /\.pdf(\?|$)/i.test(url);
 
 export default function ChildPartCreationTab({ product }) {
+  const { hasFeatureAccess } = usePermissions();
+  const canAdd = hasFeatureAccess('rnd', 'bomManagement', 'add');
+  const canEdit = hasFeatureAccess('rnd', 'bomManagement', 'edit');
+  const canDelete = hasFeatureAccess('rnd', 'bomManagement', 'delete');
   const qc = useQueryClient();
   const [cpName, setCpName] = useState('');
   const [cpCode, setCpCode] = useState('');
@@ -235,9 +240,11 @@ export default function ChildPartCreationTab({ product }) {
               <p className="text-[11px] text-slate-400 mt-1">Image or PDF, up to 10MB</p>
             </div>
           </div>
-          <Button size="sm" onClick={handleAddChildPart} disabled={!cpName || !cpCode || createChildPartMutation.isPending} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">
-            <Plus className="h-4 w-4 mr-1" /> Add Child Part
-          </Button>
+          {canAdd && (
+            <Button size="sm" onClick={handleAddChildPart} disabled={!cpName || !cpCode || createChildPartMutation.isPending} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">
+              <Plus className="h-4 w-4 mr-1" /> Add Child Part
+            </Button>
+          )}
         </CardContent>
       </Card>
 
@@ -273,15 +280,21 @@ export default function ChildPartCreationTab({ product }) {
                       </div>
                     </div>
                     <div className="flex items-center gap-1">
-                      <Button size="sm" variant="ghost" className="h-8 w-8 p-0" title="Edit Child Part" onClick={() => openEditModal(cp)}>
-                        <Edit2 className="h-4 w-4 text-blue-600" />
-                      </Button>
-                      <Button size="sm" variant="ghost" className="h-8 w-8 p-0" title="Delete Child Part" onClick={() => setDeleteChildPartTarget(cp)}>
-                        <Trash2 className="h-4 w-4 text-red-600" />
-                      </Button>
-                      <Button size="sm" variant="ghost" title={cp.isDiscontinued ? 'Reactivate' : 'Discontinue'} onClick={() => discontinueChildPartMutation.mutate({ id: cp._id, isDiscontinued: !cp.isDiscontinued })}>
-                        {cp.isDiscontinued ? <RefreshCw className="h-4 w-4 text-emerald-600" /> : <Ban className="h-4 w-4 text-red-500" />}
-                      </Button>
+                      {canEdit && (
+                        <Button size="sm" variant="ghost" className="h-8 w-8 p-0" title="Edit Child Part" onClick={() => openEditModal(cp)}>
+                          <Edit2 className="h-4 w-4 text-blue-600" />
+                        </Button>
+                      )}
+                      {canDelete && (
+                        <Button size="sm" variant="ghost" className="h-8 w-8 p-0" title="Delete Child Part" onClick={() => setDeleteChildPartTarget(cp)}>
+                          <Trash2 className="h-4 w-4 text-red-600" />
+                        </Button>
+                      )}
+                      {canEdit && (
+                        <Button size="sm" variant="ghost" title={cp.isDiscontinued ? 'Reactivate' : 'Discontinue'} onClick={() => discontinueChildPartMutation.mutate({ id: cp._id, isDiscontinued: !cp.isDiscontinued })}>
+                          {cp.isDiscontinued ? <RefreshCw className="h-4 w-4 text-emerald-600" /> : <Ban className="h-4 w-4 text-red-500" />}
+                        </Button>
+                      )}
                     </div>
                   </div>
 
@@ -295,20 +308,26 @@ export default function ChildPartCreationTab({ product }) {
                           {sub.isDiscontinued && <span className="ml-2 text-[10px] text-red-500 font-semibold">DISCONTINUED</span>}
                         </div>
                         <div className="flex items-center gap-1">
-                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Edit Sub Child Part" onClick={() => openEditModal(cp)}>
-                            <Edit2 className="h-3.5 w-3.5 text-blue-600" />
-                          </Button>
-                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Delete Sub Child Part" onClick={() => setDeleteSubTarget({ childPartId: cp._id, subId: sub._id, name: sub.name })}>
-                            <Trash2 className="h-3.5 w-3.5 text-red-600" />
-                          </Button>
-                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title={sub.isDiscontinued ? 'Reactivate' : 'Discontinue'} onClick={() => discontinueSubMutation.mutate({ childPartId: cp._id, subId: sub._id, isDiscontinued: !sub.isDiscontinued })}>
-                            {sub.isDiscontinued ? <RefreshCw className="h-3.5 w-3.5 text-emerald-600" /> : <Ban className="h-3.5 w-3.5 text-red-500" />}
-                          </Button>
+                          {canEdit && (
+                            <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Edit Sub Child Part" onClick={() => openEditModal(cp)}>
+                              <Edit2 className="h-3.5 w-3.5 text-blue-600" />
+                            </Button>
+                          )}
+                          {canDelete && (
+                            <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Delete Sub Child Part" onClick={() => setDeleteSubTarget({ childPartId: cp._id, subId: sub._id, name: sub.name })}>
+                              <Trash2 className="h-3.5 w-3.5 text-red-600" />
+                            </Button>
+                          )}
+                          {canEdit && (
+                            <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title={sub.isDiscontinued ? 'Reactivate' : 'Discontinue'} onClick={() => discontinueSubMutation.mutate({ childPartId: cp._id, subId: sub._id, isDiscontinued: !sub.isDiscontinued })}>
+                              {sub.isDiscontinued ? <RefreshCw className="h-3.5 w-3.5 text-emerald-600" /> : <Ban className="h-3.5 w-3.5 text-red-500" />}
+                            </Button>
+                          )}
                         </div>
                       </div>
                     ))}
 
-                    {!cp.isDiscontinued && (
+                    {!cp.isDiscontinued && canAdd && (
                       <div className="flex items-end gap-2 pt-1">
                         <div className="flex-1">
                           <Label className="text-[11px] text-slate-500 mb-1 block">Sub Child Part Name</Label>

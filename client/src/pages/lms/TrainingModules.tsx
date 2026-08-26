@@ -4,6 +4,7 @@ import { useModules, useDeactivateModule } from '../../hooks/useTraining';
 import CreateModuleModal from '../../components/lms/CreateModuleModal';
 import EditModuleInfoModal from '../../components/lms/EditModuleInfoModal';
 import ManageMediaModal from '../../components/lms/ManageMediaModal';
+import { usePermissions } from '../../hooks/usePermissions';
 
 // Define the TypeScript Interface based on our Mongoose Schema
 interface ModuleContent {
@@ -33,6 +34,10 @@ export default function TrainingModules() {
   const userStr = localStorage.getItem('user');
   const currentUser = userStr ? JSON.parse(userStr) : null;
   const isTopAdmin = currentUser && TOP_LEVEL_ADMINS.includes(currentUser.role);
+  const { hasAnyModuleFeatureAccess } = usePermissions();
+  const canAdd = hasAnyModuleFeatureAccess('lms', 'add');
+  const canEdit = hasAnyModuleFeatureAccess('lms', 'edit');
+  const canDelete = hasAnyModuleFeatureAccess('lms', 'delete');
 
   // --- UI STATE ---
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -90,12 +95,14 @@ export default function TrainingModules() {
           <h1 className="text-2xl font-bold text-gray-900">Training Course Library</h1>
           <p className="text-sm text-gray-500">Manage the educational content, videos, and SOPs for your company.</p>
         </div>
-        <button
-          onClick={() => setIsCreateModalOpen(true)}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md shadow transition-colors"
-        >
-          + Create New Module
-        </button>
+        {canAdd && (
+          <button
+            onClick={() => setIsCreateModalOpen(true)}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md shadow transition-colors"
+          >
+            + Create New Module
+          </button>
+        )}
       </div>
 
       {/* Filter Section */}
@@ -172,9 +179,11 @@ export default function TrainingModules() {
           {modules.length === 0 ? (
             <div className="col-span-full py-12 text-center bg-white rounded-lg border border-dashed border-gray-300">
               <p className="text-gray-500 mb-2">No training modules found.</p>
-              <button onClick={() => setIsCreateModalOpen(true)} className="text-blue-600 hover:underline font-medium">
-                Create your first module
-              </button>
+              {canAdd && (
+                <button onClick={() => setIsCreateModalOpen(true)} className="text-blue-600 hover:underline font-medium">
+                  Create your first module
+                </button>
+              )}
             </div>
           ) : (
             modules.map((module) => (
@@ -229,11 +238,15 @@ export default function TrainingModules() {
 
                 <div className="p-4 border-t border-gray-100 bg-white flex justify-between items-center gap-2">
                   <div className="flex gap-2">
-                    <button onClick={() => setModuleToEdit(module)} className="text-xs font-medium text-gray-600 hover:text-blue-600 px-2 py-1 rounded transition-colors">Edit Info</button>
-                    <button onClick={() => setModuleToManageMedia(module)} className="text-xs font-medium text-gray-600 hover:text-blue-600 px-2 py-1 rounded transition-colors">Manage Media</button>
+                    {canEdit && (
+                      <>
+                        <button onClick={() => setModuleToEdit(module)} className="text-xs font-medium text-gray-600 hover:text-blue-600 px-2 py-1 rounded transition-colors">Edit Info</button>
+                        <button onClick={() => setModuleToManageMedia(module)} className="text-xs font-medium text-gray-600 hover:text-blue-600 px-2 py-1 rounded transition-colors">Manage Media</button>
+                      </>
+                    )}
                     <button onClick={() => navigate(`/lms/question-bank/${module._id}`)} className="text-xs font-medium text-purple-600 hover:text-purple-800 bg-purple-50 px-2 py-1 rounded transition-colors">Manage Quiz</button>
                   </div>
-                  {module.isActive && (
+                  {module.isActive && canDelete && (
                     <button onClick={() => handleDelete(module._id, module.title)} className="text-xs font-medium text-red-500 hover:text-red-700 px-2 py-1 transition-colors">Archive</button>
                   )}
                 </div>

@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Cog, Plus, Search, Eye, Edit2, Ban, RefreshCw, Loader2, ImageIcon, Trash2 } from 'lucide-react';
 import { showSuccessToast, showSmartToast } from '@/lib/toast-utils';
+import { usePermissions } from '@/hooks/usePermissions';
 import { config } from '@/config/environment';
 
 const resolveMediaUrl = (url) => (!url ? '' : (url.startsWith('http') || url.startsWith('data:')) ? url : `${config.baseURL}${url}`);
@@ -34,6 +35,9 @@ const hpToKwh = (hp) => {
 };
 
 export default function MotorMaster() {
+  const { hasFeatureAccess } = usePermissions();
+  const canAdd = hasFeatureAccess('rnd', 'motorMaster', 'add');
+  const canEdit = hasFeatureAccess('rnd', 'motorMaster', 'edit');
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -425,9 +429,11 @@ export default function MotorMaster() {
           </h1>
           <p className="text-slate-500 text-sm mt-0.5">Central register of motors — purchased or internally manufactured</p>
         </div>
-        <Button onClick={() => { setForm(emptyForm); setAddOpen(true); }} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow">
-          <Plus className="h-4 w-4 mr-2" /> Add Motor
-        </Button>
+        {canAdd && (
+          <Button onClick={() => { setForm(emptyForm); setAddOpen(true); }} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow">
+            <Plus className="h-4 w-4 mr-2" /> Add Motor
+          </Button>
+        )}
       </div>
 
       <Card className="border-none shadow-sm">
@@ -489,14 +495,14 @@ export default function MotorMaster() {
                     <td className="px-5 py-3.5">
                       <div className="flex gap-1">
                         <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-blue-600" onClick={() => openView(m)}><Eye className="h-3.5 w-3.5" /></Button>
-                        {m.isDiscontinued ? (
+                        {canEdit && (m.isDiscontinued ? (
                           <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-emerald-600" onClick={() => statusMutation.mutate({ id: m._id, isDiscontinued: false })}><RefreshCw className="h-3.5 w-3.5" /></Button>
                         ) : (
                           <>
                             <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-purple-600" onClick={() => openEdit(m)}><Edit2 className="h-3.5 w-3.5" /></Button>
                             <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-orange-600" onClick={() => statusMutation.mutate({ id: m._id, isDiscontinued: true })}><Ban className="h-3.5 w-3.5" /></Button>
                           </>
-                        )}
+                        ))}
                       </div>
                     </td>
                   </tr>

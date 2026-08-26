@@ -19,6 +19,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import { useLocation, useSearch } from "wouter";
 import Loader from "@/pages/hrms/Loader";
+import { usePermissions } from "@/hooks/usePermissions";
 
 import config from "@/config/environment";
 const API_BASE = config.apiURL || "http://localhost:5000/api";
@@ -56,6 +57,10 @@ export default function Employee() {
   const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
   const isCompanyAdmin = currentUser?.role === "Company Admin";
   const isManager = currentUser?.role === "Manager";
+  const { hasFeatureAccess } = usePermissions();
+  const canAddEmployee = hasFeatureAccess("hrms", "employeeManagement", "add");
+  const canEditEmployee = hasFeatureAccess("hrms", "employeeManagement", "edit");
+  const canDeleteEmployee = hasFeatureAccess("hrms", "employeeManagement", "delete");
   // Use wouter's search/location hooks to avoid conflict with wouter routing
   const search = useSearch();
   const [location, setLocation] = useLocation();
@@ -311,7 +316,7 @@ export default function Employee() {
 
         {/* View Toggles & Filters */}
         <div className="flex items-center gap-4">
-          {!isCompanyAdmin && !isManager && (
+          {!isCompanyAdmin && !isManager && canAddEmployee && (
             <button
               onClick={() => navigate("/hrms/SuperAdmin/addUser")}
               className="flex items-center gap-2 bg-[#49A7F5] hover:bg-[#3D96E1] text-white px-4 py-2 rounded-lg transition-all font-medium shadow-sm mr-2 active:scale-95"
@@ -606,26 +611,30 @@ export default function Employee() {
                       View Profile
                     </button>
 
-                    <button
-                      className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${emp.status === "ACTIVE" ? "text-red-600" : "text-green-600"
-                        }`}
-                      onClick={() => {
-                        setOpenMenu(null);
-                        setStatusModal({ open: true, emp });
-                      }}
-                    >
-                      {emp.status === "ACTIVE" ? "Deactivate" : "Activate"}
-                    </button>
+                    {canEditEmployee && (
+                      <button
+                        className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${emp.status === "ACTIVE" ? "text-red-600" : "text-green-600"
+                          }`}
+                        onClick={() => {
+                          setOpenMenu(null);
+                          setStatusModal({ open: true, emp });
+                        }}
+                      >
+                        {emp.status === "ACTIVE" ? "Deactivate" : "Activate"}
+                      </button>
+                    )}
 
-                    <button
-                      className="w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-red-50 border-t"
-                      onClick={() => {
-                        setOpenMenu(null);
-                        setDeleteModal({ open: true, emp });
-                      }}
-                    >
-                      Delete User
-                    </button>
+                    {canDeleteEmployee && (
+                      <button
+                        className="w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-red-50 border-t"
+                        onClick={() => {
+                          setOpenMenu(null);
+                          setDeleteModal({ open: true, emp });
+                        }}
+                      >
+                        Delete User
+                      </button>
+                    )}
                   </div>
                 )}
               </div>

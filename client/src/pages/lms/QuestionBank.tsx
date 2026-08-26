@@ -5,8 +5,9 @@ import {
   useQuestions, 
   useAddQuestion, 
   useUpdateQuestion, 
-  useDeleteQuestion 
+  useDeleteQuestion
 } from '../../hooks/useTraining'; // Adjust path if needed
+import { usePermissions } from '../../hooks/usePermissions';
 
 // --- TYPES ---
 interface Option {
@@ -26,6 +27,10 @@ export default function QuestionBank() {
   // --- ROUTER HOOKS ---
   const { moduleId: urlModuleId } = useParams<{ moduleId: string }>();
   const navigate = useNavigate();
+  const { hasAnyModuleFeatureAccess } = usePermissions();
+  const canAdd = hasAnyModuleFeatureAccess('lms', 'add');
+  const canEdit = hasAnyModuleFeatureAccess('lms', 'edit');
+  const canDelete = hasAnyModuleFeatureAccess('lms', 'delete');
 
   // --- STATE ---
   const [activeModuleId, setActiveModuleId] = useState<string | null>(urlModuleId || null);
@@ -275,8 +280,12 @@ export default function QuestionBank() {
                       <span className="break-words">{q.questionText}</span>
                     </h3>
                     <div className="flex gap-2 shrink-0">
-                      <button onClick={() => handleEditClick(q)} disabled={isBusy} className="text-xs font-medium text-blue-600 hover:bg-blue-50 px-2 py-1 rounded transition-colors disabled:opacity-50">Edit</button>
-                      <button onClick={() => handleDeleteClick(q._id)} disabled={isBusy} className="text-xs font-medium text-red-600 hover:bg-red-50 px-2 py-1 rounded transition-colors disabled:opacity-50">Delete</button>
+                      {canEdit && (
+                        <button onClick={() => handleEditClick(q)} disabled={isBusy} className="text-xs font-medium text-blue-600 hover:bg-blue-50 px-2 py-1 rounded transition-colors disabled:opacity-50">Edit</button>
+                      )}
+                      {canDelete && (
+                        <button onClick={() => handleDeleteClick(q._id)} disabled={isBusy} className="text-xs font-medium text-red-600 hover:bg-red-50 px-2 py-1 rounded transition-colors disabled:opacity-50">Delete</button>
+                      )}
                     </div>
                   </div>
 
@@ -343,6 +352,7 @@ export default function QuestionBank() {
           </div>
 
           {/* RIGHT COLUMN: The Sticky Builder Form */}
+          {(canAdd || canEdit) && (
           <div className="flex flex-col h-full bg-white rounded-lg shadow-sm border border-gray-200">
             <div className={`p-4 border-b font-bold tracking-wider text-xs uppercase ${editingId ? 'bg-orange-50 text-orange-800 border-orange-200' : 'bg-gray-50 text-gray-700'}`}>
               {editingId ? '✏️ Edit Existing Question' : '✨ Add New Question'}
@@ -436,6 +446,7 @@ export default function QuestionBank() {
 
             </form>
           </div>
+          )}
 
         </div>
       )}

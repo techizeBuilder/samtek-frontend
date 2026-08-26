@@ -96,27 +96,38 @@ function getInventoryApiPath(user) {
   }
 }
 
-// Permission checking functions using the permissions system
+// Permission checking functions using the permissions system.
+// This component is shared by Store (module 'Store') and R&D (module 'rnd')
+// — both catalog their inventory access under a feature key of 'inventory',
+// per roleModulesConfig.js's MODULES list. (Previously this checked module
+// 'inventory'/feature 'items', which doesn't exist in that catalog under any
+// role, so Store's Inventory checkbox could never have any effect here; R&D
+// was separately hardcoded to always-allow. Both are fixed below.)
 function useInventoryPermissions() {
   const { user } = useAuth();
   const { canPerformAction } = usePermissions();
 
-  // R&D Head and Employee have full inventory permissions (backend enforces this)
-  if (user?.role === 'Research & Development Head' || user?.role === 'Research Development Employee') {
-    return { canView: true, canAdd: true, canEdit: true, canDelete: true, canAlter: true };
+  // Unit Head permissions are stored under the unitHead module with
+  // inventory as the feature key.
+  if (user?.role === 'Unit Head') {
+    return {
+      canView: canPerformAction('unitHead', 'inventory', 'view'),
+      canAdd: canPerformAction('unitHead', 'inventory', 'add'),
+      canEdit: canPerformAction('unitHead', 'inventory', 'edit'),
+      canDelete: canPerformAction('unitHead', 'inventory', 'delete'),
+      canAlter: canPerformAction('unitHead', 'inventory', 'alter')
+    };
   }
 
-  // For Unit Head, permissions are stored under unitHead module with inventory as feature key
-  // For other roles, it's under inventory module with items as feature key
-  const moduleName = user?.role === 'Unit Head' ? 'unitHead' : 'inventory';
-  const featureKey = user?.role === 'Unit Head' ? 'inventory' : 'items';
+  const isRnd = user?.role === 'Research & Development Head' || user?.role === 'Research Development Employee';
+  const moduleName = isRnd ? 'rnd' : 'Store';
 
   return {
-    canView: canPerformAction(moduleName, featureKey, 'view'),
-    canAdd: canPerformAction(moduleName, featureKey, 'add'),
-    canEdit: canPerformAction(moduleName, featureKey, 'edit'),
-    canDelete: canPerformAction(moduleName, featureKey, 'delete'),
-    canAlter: canPerformAction(moduleName, featureKey, 'alter')
+    canView: canPerformAction(moduleName, 'inventory', 'view'),
+    canAdd: canPerformAction(moduleName, 'inventory', 'add'),
+    canEdit: canPerformAction(moduleName, 'inventory', 'edit'),
+    canDelete: canPerformAction(moduleName, 'inventory', 'delete'),
+    canAlter: canPerformAction(moduleName, 'inventory', 'alter')
   };
 }
 

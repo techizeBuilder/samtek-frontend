@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
+import { usePermissions } from '@/hooks/usePermissions';
 import { format } from 'date-fns';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription
@@ -48,6 +49,8 @@ const StarRating = ({ rating }) => (
 );
 
 export default function VendorBids() {
+  const { hasFeatureAccess } = usePermissions();
+  const canEdit = hasFeatureAccess('accounts', 'purchases', 'edit');
   const { toast } = useToast();
   const qc = useQueryClient();
 
@@ -382,7 +385,7 @@ export default function VendorBids() {
                               <div className="text-emerald-600 font-semibold text-sm flex items-center gap-1">
                                 <CheckCircle2 className="w-4 h-4" /> Finalized
                               </div>
-                            ) : currentRFQ?.status !== 'Awarded' ? (
+                            ) : currentRFQ?.status !== 'Awarded' && canEdit ? (
                               <Button
                                 size="sm"
                                 onClick={() => handleSelectBid(bid)}

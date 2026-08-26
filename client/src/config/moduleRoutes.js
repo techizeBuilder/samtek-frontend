@@ -493,20 +493,20 @@ const complaintAgentMenuItems = [
 
 const marketingMenuItems = [
   { label: 'Dashboard', path: '/marketing/dashboard', icon: LayoutDashboard, module: 'marketing' },
-  { label: 'Upload Content', path: '/marketing/upload', icon: Upload, module: 'marketing' },
-  { label: 'Event Flyer', path: '/marketing/events', icon: Image, module: 'marketing' },
-  { label: 'Sales Requests', path: '/marketing/sales-requests', icon: Inbox, module: 'marketing' },
-  { label: 'Marketing Expenses', path: '/marketing/expenses', icon: Receipt, module: 'marketing' },
-  { label: 'Reports', path: '/marketing/reports', icon: BarChart, module: 'marketing' },
-  { label: 'Audit Logs', path: '/marketing/audit-logs', icon: History, module: 'marketing' },
-  { label: 'Notifications', path: '/marketing/notifications', icon: Bell, module: 'marketing' },
+  { label: 'Upload Content', path: '/marketing/upload', icon: Upload, module: 'marketing', feature: 'upload' },
+  { label: 'Event Flyer', path: '/marketing/events', icon: Image, module: 'marketing', feature: 'eventFlyer' },
+  { label: 'Sales Requests', path: '/marketing/sales-requests', icon: Inbox, module: 'marketing', feature: 'salesRequests' },
+  { label: 'Marketing Expenses', path: '/marketing/expenses', icon: Receipt, module: 'marketing', feature: 'expenses' },
+  { label: 'Reports', path: '/marketing/reports', icon: BarChart, module: 'marketing', feature: 'reports' },
+  { label: 'Audit Logs', path: '/marketing/audit-logs', icon: History, module: 'marketing', feature: 'auditLogs' },
+  { label: 'Notifications', path: '/marketing/notifications', icon: Bell, module: 'marketing', feature: 'notifications' },
 ];
 
 // Marketing Employee has a narrower scope than Marketing Head — logging
 // expenses and publishing event flyers, no access to content library/upload.
 const marketingEmployeeMenuItems = [
-  { label: 'Event Flyer', path: '/marketing/events', icon: Image, module: 'marketing' },
-  { label: 'Marketing Expenses', path: '/marketing/expenses', icon: Receipt, module: 'marketing' },
+  { label: 'Event Flyer', path: '/marketing/events', icon: Image, module: 'marketing', feature: 'eventFlyer' },
+  { label: 'Marketing Expenses', path: '/marketing/expenses', icon: Receipt, module: 'marketing', feature: 'expenses' },
 ];
 
 const storeMenuItems = [
@@ -572,6 +572,14 @@ const misAdminMenuItems = [
 const traineeMenuItems = [
   { label: 'Dashboard', path: '/lms/dashboard', icon: LayoutDashboard, module: 'lms' },
   { label: 'My Training', path: '/lms/training', icon: Pen, module: 'lms' }
+];
+
+// Route-permission-only entries — never surfaced in a sidebar (not returned
+// by getMenuItemsByRole), just registered so ProtectedRoute's direct-URL
+// guard has something to check for pages reached via an in-page action link
+// rather than a nav item (e.g. "Send Quotation" from a lead row).
+const hiddenRouteOnlyItems = [
+  { label: 'Quotation', path: '/sales/quotation', module: 'sales', feature: 'leads' },
 ];
 
 // Function to get menu items based on role
@@ -675,6 +683,7 @@ const ALL_MENU_ARRAYS = [
   qcMenuItems,
   misAdminMenuItems,
   traineeMenuItems,
+  hiddenRouteOnlyItems,
 ];
 
 function buildRoutePermissionIndex() {

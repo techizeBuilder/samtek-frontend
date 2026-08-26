@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useRD } from '@/contexts/RDContext';
+import { usePermissions } from '@/hooks/usePermissions';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,6 +16,9 @@ export default function QualityParameters() {
   // materials and Motor Master motors too so parameters/checklists can be
   // defined on any item, not just Product Master's.
   const { machines, getQualityParams, addQualityParam, deleteQualityParam, addQCItem, deleteQCItem } = useRD();
+  const { hasFeatureAccess } = usePermissions();
+  const canAdd = hasFeatureAccess('rnd', 'qualityParameters', 'add');
+  const canDelete = hasFeatureAccess('rnd', 'qualityParameters', 'delete');
 
   const { data: inventoryResponse } = useQuery({
     queryKey: ['quality-params-inventory-items'],
@@ -123,9 +127,11 @@ export default function QualityParameters() {
                   <CardTitle className="text-base font-semibold text-slate-800">Quality Parameters</CardTitle>
                   <p className="text-xs text-slate-500 mt-0.5">Tolerance and performance standards followed by the Quality team</p>
                 </div>
-                <Button size="sm" onClick={() => setAddParamOpen(true)} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">
-                  <Plus className="h-4 w-4 mr-1" /> Add Parameter
-                </Button>
+                {canAdd && (
+                  <Button size="sm" onClick={() => setAddParamOpen(true)} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">
+                    <Plus className="h-4 w-4 mr-1" /> Add Parameter
+                  </Button>
+                )}
               </CardHeader>
               <CardContent className="p-0">
                 <div className="overflow-x-auto">
@@ -151,9 +157,11 @@ export default function QualityParameters() {
                           </td>
                           <td className="px-5 py-3.5 text-slate-600 text-xs">{p.performanceStandard}</td>
                           <td className="px-5 py-3.5">
-                            <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-red-600" onClick={() => setDeleteParam(p)}>
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
+                            {canDelete && (
+                              <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-red-600" onClick={() => setDeleteParam(p)}>
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -172,9 +180,11 @@ export default function QualityParameters() {
                   <CardTitle className="text-base font-semibold text-slate-800">QC Inspection Checklist</CardTitle>
                   <p className="text-xs text-slate-500 mt-0.5">Inspection checklist used by Quality team during product inspection</p>
                 </div>
-                <Button size="sm" onClick={() => setAddQCOpen(true)} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">
-                  <Plus className="h-4 w-4 mr-1" /> Add Item
-                </Button>
+                {canAdd && (
+                  <Button size="sm" onClick={() => setAddQCOpen(true)} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">
+                    <Plus className="h-4 w-4 mr-1" /> Add Item
+                  </Button>
+                )}
               </CardHeader>
               <CardContent className="p-5">
                 {checklist.length === 0 ? (
@@ -186,7 +196,7 @@ export default function QualityParameters() {
                         <div className="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold flex-shrink-0">{i + 1}</div>
                         <CheckSquare className="h-4 w-4 text-slate-400 flex-shrink-0" />
                         <p className="text-sm text-slate-700 flex-1">{item.item}</p>
-                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => setDeleteQC(item)}>
+                        <Button size="sm" variant="ghost" className={`h-7 w-7 p-0 text-slate-400 hover:text-red-600 transition-opacity ${canDelete ? 'opacity-0 group-hover:opacity-100' : 'hidden'}`} onClick={() => setDeleteQC(item)}>
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       </div>

@@ -55,6 +55,7 @@ export const MODULES = [
       { key: 'dispatchPlanning', label: 'Dispatch Planning' },
       { key: 'activeDispatches', label: 'Active Dispatches' },
       { key: 'dispatchHistory', label: 'History' },
+      { key: 'expenses', label: 'Expenses' },
       { key: 'lms', label: 'LMS' }
     ]
   },
@@ -79,6 +80,7 @@ export const MODULES = [
       { key: 'dashboard', label: 'Dashboard' },
       { key: 'packingSheet', label: 'Packing Sheet' },
       { key: 'packingHistory', label: 'History' },
+      { key: 'expenses', label: 'Expenses' },
       { key: 'lms', label: 'LMS' }
     ]
   },
@@ -184,6 +186,9 @@ export const MODULES = [
       { key: 'reports', label: 'Reports' },
       { key: 'auditLogs', label: 'Audit Logs' },
       { key: 'notifications', label: 'Notifications' },
+      { key: 'expenses', label: 'Marketing Expenses' },
+      { key: 'eventFlyer', label: 'Event Flyer' },
+      { key: 'salesRequests', label: 'Sales Requests' },
       { key: 'lms', label: 'LMS' }
     ]
   },
@@ -209,7 +214,6 @@ export const MODULES = [
       { key: 'qcJobs', label: 'QC Jobs' },
       { key: 'qcInspection', label: 'QC Inspection' },
       { key: 'qcInward', label: 'QC Inward' },
-      { key: 'qcReports', label: 'QC Reports' },
       { key: 'lms', label: 'LMS' }
     ]
   }
@@ -361,7 +365,16 @@ export const getDefaultModulesForRole = (role) => {
     case 'Dispatch Head':
       return [{ name: 'dispatches', dashboard: true, features: headDefaultFeatures('dispatches') }];
     case 'Dispatch Employee':
-      return [{ name: 'dispatches', dashboard: true, features: employeeDefaultFeatures('dispatches') }];
+      // Expenses is self-service (log your own, backend scopes edit/delete
+      // to entries you added) so default it to full CRUD like Dispatch Head,
+      // unlike the rest of the module which stays view+add only.
+      return [{
+        name: 'dispatches',
+        dashboard: true,
+        features: employeeDefaultFeatures('dispatches').map(f =>
+          f.key === 'expenses' ? { ...f, edit: true, delete: true } : f
+        )
+      }];
     case 'Accounts Head':
       return [
         {
@@ -389,6 +402,9 @@ export const getDefaultModulesForRole = (role) => {
             { key: 'reports', view: true, add: false, edit: false, delete: false, alter: false },
             { key: 'auditLogs', view: true, add: false, edit: false, delete: false, alter: false },
             { key: 'notifications', view: true, add: false, edit: false, delete: false, alter: false },
+            { key: 'expenses', view: true, add: true, edit: true, delete: true, alter: true },
+            { key: 'eventFlyer', view: true, add: true, edit: true, delete: true, alter: true },
+            { key: 'salesRequests', view: true, add: false, edit: true, delete: false, alter: false },
             { key: 'lms', label: 'LMS', view: true, add: false, edit: false, delete: false, alter: false }
           ]
         },
@@ -427,7 +443,6 @@ export const getDefaultModulesForRole = (role) => {
             { key: 'qcJobs', label: 'QC Jobs', view: true, add: true, edit: true, delete: true, alter: true },
             { key: 'qcInspection', label: 'QC Inspection', view: true, add: true, edit: true, delete: true, alter: true },
             { key: 'qcInward', label: 'QC Inward', view: true, add: true, edit: true, delete: true, alter: true },
-            { key: 'qcReports', label: 'QC Reports', view: true, add: false, edit: false, delete: false, alter: false },
             { key: 'lms', label: 'LMS', view: true, add: false, edit: false, delete: false, alter: false }
           ]
         }
@@ -499,19 +514,72 @@ export const getDefaultModulesForRole = (role) => {
     case 'Sales Employee':
       return [{ name: 'sales', dashboard: true, features: employeeDefaultFeatures('sales') }];
     case 'Production Employee':
-      return [{ name: 'production', dashboard: true, features: employeeDefaultFeatures('production') }];
+      // Expenses is self-service (log your own, backend scopes edit/delete
+      // to entries you added) so default it to full CRUD like Production
+      // Head, unlike the rest of the module which stays view+add only.
+      return [{
+        name: 'production',
+        dashboard: true,
+        features: employeeDefaultFeatures('production').map(f =>
+          f.key === 'expenses' ? { ...f, edit: true, delete: true } : f
+        )
+      }];
     case 'Account Employee':
-      return [{ name: 'accounts', dashboard: true, features: employeeDefaultFeatures('accounts') }];
+      // Purchase/Tender Expenses are self-service (log your own, backend
+      // scopes edit/delete to entries you added) so default 'purchases' to
+      // full CRUD like Accounts Head, unlike the rest of the module which
+      // stays view+add only.
+      return [{
+        name: 'accounts',
+        dashboard: true,
+        features: employeeDefaultFeatures('accounts').map(f =>
+          f.key === 'purchases' ? { ...f, edit: true, delete: true } : f
+        )
+      }];
     case 'Research Development Employee':
-      return [{ name: 'rnd', dashboard: true, features: employeeDefaultFeatures('rnd') }];
+      // Expenses is self-service (log your own, backend scopes edit/delete
+      // to entries you added) so default it to full CRUD like R&D Head,
+      // unlike the rest of the module which stays view+add only.
+      return [{
+        name: 'rnd',
+        dashboard: true,
+        features: employeeDefaultFeatures('rnd').map(f =>
+          f.key === 'expenses' ? { ...f, edit: true, delete: true } : f
+        )
+      }];
     case 'Complaint Management Employee':
-      return [{ name: 'complaints', dashboard: true, features: employeeDefaultFeatures('complaints') }];
+      // Starting/completing visits, confirming delivery, scheduling
+      // installation and logging feedback are this role's actual job (the
+      // backend gates all of them behind 'edit', not 'add'), and expenses is
+      // self-service like other Employee roles — so those default to edit
+      // access too, unlike the generic view+add-only employee template.
+      return [{
+        name: 'complaints',
+        dashboard: true,
+        features: employeeDefaultFeatures('complaints').map(f =>
+          ['supportManagement', 'deliveryConfirmation', 'installationSchedule', 'feedbackRatings', 'expenses'].includes(f.key)
+            ? { ...f, edit: true, delete: f.key === 'expenses' }
+            : f
+        )
+      }];
     case 'Store Employee':
       return [{ name: 'Store', dashboard: true, features: employeeDefaultFeatures('Store') }];
     case 'QC Employee':
       return [{ name: 'quality-control', dashboard: true, features: employeeDefaultFeatures('quality-control') }];
     case 'Marketing Employee':
-      return [{ name: 'marketing', dashboard: true, features: employeeDefaultFeatures('marketing') }];
+      // Expenses/Event Flyer are self-service (log your own, backend scopes
+      // edit/delete to entries you added) so default them to full CRUD like
+      // Marketing Head, unlike the rest of the module which stays view+add
+      // only via the generic employee default.
+      return [{
+        name: 'marketing',
+        dashboard: true,
+        features: employeeDefaultFeatures('marketing').map(f =>
+          (f.key === 'expenses' || f.key === 'eventFlyer')
+            ? { ...f, edit: true, delete: true }
+            : f
+        )
+      }];
 
     default:
       return [];

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { marketingRequestApi } from '@/api/marketingRequestService';
+import { usePermissions } from '@/hooks/usePermissions';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -35,6 +36,8 @@ const MATCH_MESSAGES = {
 };
 
 export default function SalesRequests() {
+  const { hasFeatureAccess } = usePermissions();
+  const canReview = hasFeatureAccess('marketing', 'salesRequests', 'edit');
   const { toast } = useToast();
   const qc = useQueryClient();
   const [filter, setFilter] = useState('Pending');
@@ -160,7 +163,7 @@ export default function SalesRequests() {
                         {' · '}{new Date(req.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
                       </p>
                     </div>
-                    {req.status === 'Pending' && (
+                    {req.status === 'Pending' && canReview && (
                       <div className="flex gap-2">
                         <Button size="sm" className="gap-1 text-xs bg-green-600 hover:bg-green-700 text-white" onClick={() => openApprove(req)}>
                           <CheckCircle2 className="h-3.5 w-3.5" />Approve

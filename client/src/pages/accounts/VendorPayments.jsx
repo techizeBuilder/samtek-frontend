@@ -6,10 +6,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
+import { usePermissions } from '@/hooks/usePermissions';
 import { Send, Wallet, Banknote, CreditCard } from 'lucide-react';
 
 const VendorPayments = () => {
     const { toast } = useToast();
+    const { hasFeatureAccess } = usePermissions();
+    const canAdd = hasFeatureAccess('accounts', 'purchases', 'add');
     const [selectedVendor, setSelectedVendor] = useState('');
 
     const { data: vendorsData } = useQuery({
@@ -164,9 +167,11 @@ const VendorPayments = () => {
                                 <Input name="referenceNo" placeholder="Bank confirmation number" className="p-6 rounded-xl border-2" />
                             </div>
 
-                            <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 py-6 text-lg font-bold" disabled={mutation.isPending}>
-                                {mutation.isPending ? 'Recording Payment...' : 'Confirm & Post Payment'}
-                            </Button>
+                            {canAdd && (
+                                <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 py-6 text-lg font-bold" disabled={mutation.isPending}>
+                                    {mutation.isPending ? 'Recording Payment...' : 'Confirm & Post Payment'}
+                                </Button>
+                            )}
                         </form>
                     </CardContent>
                 </Card>

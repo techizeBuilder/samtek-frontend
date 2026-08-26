@@ -2,8 +2,11 @@ import React, { useState } from 'react';
 import { useServicemen, useUpdateTechnician } from '@/hooks/useComplaints';
 import { Search, MapPin, Wrench, Phone, Edit, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { usePermissions } from '@/hooks/usePermissions';
 
 export default function MyTechnicians() {
+  const { hasFeatureAccess } = usePermissions();
+  const canEdit = hasFeatureAccess('complaints', 'technicians', 'edit');
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [zoneFilter, setZoneFilter] = useState('');
@@ -83,9 +86,11 @@ export default function MyTechnicians() {
                         </div>
                      </div>
                   </div>
-                  <button onClick={() => setEditingTech(tech)} className="text-gray-400 hover:text-indigo-600 p-1.5 rounded-lg transition hover:bg-indigo-50" title="Edit Technician">
-                    <Edit size={16} />
-                  </button>
+                  {canEdit && (
+                    <button onClick={() => setEditingTech(tech)} className="text-gray-400 hover:text-indigo-600 p-1.5 rounded-lg transition hover:bg-indigo-50" title="Edit Technician">
+                      <Edit size={16} />
+                    </button>
+                  )}
                </div>
                
                <div className="space-y-3">

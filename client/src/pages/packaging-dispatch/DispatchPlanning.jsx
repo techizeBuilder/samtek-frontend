@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { usePackagingDispatch } from '@/contexts/PackagingDispatchContext';
+import { usePermissions } from '@/hooks/usePermissions';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -173,6 +174,8 @@ function CreateDispatchModal({ group, onClose }) {
 
 export default function DispatchPlanning() {
   const { jobs, jobsLoading } = usePackagingDispatch();
+  const { hasFeatureAccess } = usePermissions();
+  const canAdd = hasFeatureAccess('dispatches', 'dispatchPlanning', 'add');
   const { toast } = useToast();
   const [selectedOrderId, setSelectedOrderId] = useState(null);
 
@@ -320,16 +323,18 @@ export default function DispatchPlanning() {
                     </span>
                   </div>
                 </div>
-                <Button
-                  className="w-full"
-                  size="sm"
-                  onClick={() => handlePlanDispatch(group)}
-                  variant={ready ? 'default' : 'secondary'}
-                  title={!rep.invoiceNumber ? 'Invoice not generated for this order yet' : undefined}
-                >
-                  <Plus className="h-4 w-4 mr-1.5" />
-                  Plan Dispatch ({group.jobs.length})
-                </Button>
+                {canAdd && (
+                  <Button
+                    className="w-full"
+                    size="sm"
+                    onClick={() => handlePlanDispatch(group)}
+                    variant={ready ? 'default' : 'secondary'}
+                    title={!rep.invoiceNumber ? 'Invoice not generated for this order yet' : undefined}
+                  >
+                    <Plus className="h-4 w-4 mr-1.5" />
+                    Plan Dispatch ({group.jobs.length})
+                  </Button>
+                )}
               </CardContent>
             </Card>
             );

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useAuth } from '@/hooks/useAuth';
+import { usePermissions } from '@/hooks/usePermissions';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -29,6 +30,10 @@ const emptyForm = () => ({ category: '', amount: '', date: todayStr(), notes: ''
 
 export default function TenderExpenses() {
   const { user } = useAuth();
+  const { hasFeatureAccess } = usePermissions();
+  const canAdd = hasFeatureAccess('accounts', 'purchases', 'add');
+  const canEdit = hasFeatureAccess('accounts', 'purchases', 'edit');
+  const canDelete = hasFeatureAccess('accounts', 'purchases', 'delete');
   const { toast } = useToast();
   const qc = useQueryClient();
 
@@ -135,9 +140,11 @@ export default function TenderExpenses() {
           <h1 className="text-2xl sm:text-3xl font-bold text-slate-900">Tender Expenses</h1>
           <p className="text-slate-500">Log and track tender-related spend — every entry is stamped with date &amp; time.</p>
         </div>
-        <Button className="bg-blue-600 hover:bg-blue-700 text-white shadow-md" onClick={openNew}>
-          <Plus className="w-4 h-4 mr-2" /> Add Expense
-        </Button>
+        {canAdd && (
+          <Button className="bg-blue-600 hover:bg-blue-700 text-white shadow-md" onClick={openNew}>
+            <Plus className="w-4 h-4 mr-2" /> Add Expense
+          </Button>
+        )}
       </div>
 
       {/* Summary cards */}
@@ -241,14 +248,18 @@ export default function TenderExpenses() {
                       {new Date(exp.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                     </TableCell>
                     <TableCell className="text-right">
-                      {canManage(exp) ? (
+                      {(canEdit || canDelete) && canManage(exp) ? (
                         <div className="flex justify-end gap-1">
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-blue-600 hover:bg-blue-50" onClick={() => openEdit(exp)}>
-                            <Edit2 className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-red-600 hover:bg-red-50" onClick={() => setDeleteTarget(exp)}>
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                          {canEdit && (
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-blue-600 hover:bg-blue-50" onClick={() => openEdit(exp)}>
+                              <Edit2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                          {canDelete && (
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-red-600 hover:bg-red-50" onClick={() => setDeleteTarget(exp)}>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
                         </div>
                       ) : (
                         <span className="text-xs text-slate-300">—</span>

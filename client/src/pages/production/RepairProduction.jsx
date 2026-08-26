@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
+import { usePermissions } from '@/hooks/usePermissions';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -26,6 +27,9 @@ const getRealOrderId = (job) => job.orderCode || job.rejectionDetails?.originalO
 
 export default function RepairProduction() {
   const { toast } = useToast();
+  const { hasFeatureAccess } = usePermissions();
+  const canEdit = hasFeatureAccess('production', 'repairProduction', 'edit');
+  const canAddDemand = hasFeatureAccess('production', 'orders', 'add');
   const qc = useQueryClient();
   const [completeModal, setCompleteModal] = useState(null); // order being completed
   const [notes, setNotes] = useState('');
@@ -294,12 +298,12 @@ export default function RepairProduction() {
                               <span className="ml-1.5 text-[10px] bg-slate-200 text-slate-700 px-1.5 rounded-full">{job.materialDemands.length}</span>
                             )}
                           </Button>
-                          {status === 'Pending' && (
+                          {status === 'Pending' && canEdit && (
                             <Button size="sm" variant="outline" onClick={() => { setStartModal(job); setSelectedTeamId(''); }}>
                               Start Repair
                             </Button>
                           )}
-                          {status === 'In Progress' && (
+                          {status === 'In Progress' && canEdit && (
                             <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setCompleteModal(job)}>
                               Mark Complete
                             </Button>
@@ -396,7 +400,7 @@ export default function RepairProduction() {
           {materialsJobLive && (
             <div className="space-y-3 py-2">
               <div className="flex items-center justify-end">
-                {materialsJobLive.repair?.status !== 'Completed' && (
+                {materialsJobLive.repair?.status !== 'Completed' && canAddDemand && (
                   <Button size="sm" className="h-7 text-xs" variant="outline" onClick={() => {
                     setDemandForm(emptyDemand);
                     setFoundItem(null);

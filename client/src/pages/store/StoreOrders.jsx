@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useAuthContext } from '@/contexts/AuthContext';
+import { usePermissions } from '@/hooks/usePermissions';
 import { useSettings } from '@/hooks/useSettings';
 import { generateOrderSummaryPDF } from '@/utils/generateOrderSummaryPDF';
 import {
@@ -101,6 +102,8 @@ const itemCheckState = (qcStatus, lastRejectionSource) => {
 const StoreOrders = () => {
   const { toast } = useToast();
   const { user } = useAuthContext();
+  const { hasFeatureAccess } = usePermissions();
+  const canCheck = hasFeatureAccess('Store', 'orders', 'edit');
   const { settings } = useSettings();
   const [searchTerm, setSearchTerm] = useState('');
   const [page, setPage] = useState(1);
@@ -460,29 +463,31 @@ const StoreOrders = () => {
                               {/* Store status chip */}
                               <StatusChip status={row.qcStatus} />
                               {/* Per-item Check button */}
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className={`h-7 px-2 text-xs gap-1 ml-auto transition-colors ${
-                                  busy
-                                    ? 'text-blue-500 border-blue-300'
-                                    : chk.disabled
-                                      ? 'text-slate-400 border-slate-200 cursor-not-allowed opacity-50'
-                                      : row.qcStatus === 'Rejected from QC'
-                                        ? 'text-rose-600 border-rose-300 hover:bg-rose-50'
-                                        : row.qcStatus === 'Purchase Completed'
-                                          ? 'text-teal-600 border-teal-300 hover:bg-teal-50'
-                                          : 'text-indigo-600 border-indigo-200 hover:bg-indigo-50'
-                                }`}
-                                onClick={() => !chk.disabled && !busy && handleCheckItem(item, row)}
-                                disabled={chk.disabled || busy}
-                                title={chk.disabled ? chk.reason : `Check inventory & route "${row.name}"`}
-                              >
-                                {busy
-                                  ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                                  : <ScanSearch className="w-3.5 h-3.5" />}
-                                {busy ? '...' : 'Check'}
-                              </Button>
+                              {canCheck && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className={`h-7 px-2 text-xs gap-1 ml-auto transition-colors ${
+                                    busy
+                                      ? 'text-blue-500 border-blue-300'
+                                      : chk.disabled
+                                        ? 'text-slate-400 border-slate-200 cursor-not-allowed opacity-50'
+                                        : row.qcStatus === 'Rejected from QC'
+                                          ? 'text-rose-600 border-rose-300 hover:bg-rose-50'
+                                          : row.qcStatus === 'Purchase Completed'
+                                            ? 'text-teal-600 border-teal-300 hover:bg-teal-50'
+                                            : 'text-indigo-600 border-indigo-200 hover:bg-indigo-50'
+                                  }`}
+                                  onClick={() => !chk.disabled && !busy && handleCheckItem(item, row)}
+                                  disabled={chk.disabled || busy}
+                                  title={chk.disabled ? chk.reason : `Check inventory & route "${row.name}"`}
+                                >
+                                  {busy
+                                    ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                    : <ScanSearch className="w-3.5 h-3.5" />}
+                                  {busy ? '...' : 'Check'}
+                                </Button>
+                              )}
                             </div>
                           );
                         })}
@@ -501,23 +506,25 @@ const StoreOrders = () => {
                     {/* Order actions */}
                     <TableCell>
                       <div className="flex flex-col items-center gap-1.5">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className={`h-8 px-2 text-xs gap-1 w-full ${
-                            isCheckingAll
-                              ? 'text-blue-500 border-blue-300'
-                              : 'text-indigo-600 border-indigo-200 hover:bg-indigo-50'
-                          }`}
-                          onClick={() => !isCheckingAll && handleCheckAll(item)}
-                          disabled={isCheckingAll || rowItems.every(r => itemCheckState(r.qcStatus, r.lastRejectionSource).disabled)}
-                          title="Check inventory & route every unprocessed item"
-                        >
-                          {isCheckingAll
-                            ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                            : <ListChecks className="w-3.5 h-3.5" />}
-                          {isCheckingAll ? 'Checking...' : 'Check All Items'}
-                        </Button>
+                        {canCheck && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className={`h-8 px-2 text-xs gap-1 w-full ${
+                              isCheckingAll
+                                ? 'text-blue-500 border-blue-300'
+                                : 'text-indigo-600 border-indigo-200 hover:bg-indigo-50'
+                            }`}
+                            onClick={() => !isCheckingAll && handleCheckAll(item)}
+                            disabled={isCheckingAll || rowItems.every(r => itemCheckState(r.qcStatus, r.lastRejectionSource).disabled)}
+                            title="Check inventory & route every unprocessed item"
+                          >
+                            {isCheckingAll
+                              ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                              : <ListChecks className="w-3.5 h-3.5" />}
+                            {isCheckingAll ? 'Checking...' : 'Check All Items'}
+                          </Button>
+                        )}
                         <div className="flex gap-1">
                           <Button
                             variant="ghost"

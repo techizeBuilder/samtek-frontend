@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { usePackagingDispatch } from '@/contexts/PackagingDispatchContext';
+import { usePermissions } from '@/hooks/usePermissions';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -98,8 +99,22 @@ function CreateJobModal({ order, onClose }) {
 
 export default function PackagingQueue() {
   const { readyOrders, readyLoading } = usePackagingDispatch();
+  const { hasFeatureAccess } = usePermissions();
+  const canView = hasFeatureAccess('dispatches', 'packagingQueue', 'view');
+  const canAdd = hasFeatureAccess('dispatches', 'packagingJobs', 'add');
   const [selected, setSelected] = useState(null);
   const [search, setSearch] = useState('');
+
+  if (!canView) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Access Denied</h2>
+          <p className="text-gray-600">You don't have permission to view the Packaging Queue.</p>
+        </div>
+      </div>
+    );
+  }
 
   const filtered = readyOrders.filter(o =>
     !search || o.orderId?.toLowerCase().includes(search.toLowerCase()) ||
@@ -213,19 +228,21 @@ export default function PackagingQueue() {
                     </div>
                   )}
 
-                  <Button
-                    className="w-full"
-                    size="sm"
-                    disabled={isLocked}
-                    title={isLocked ? 'Packing opens when every item of this order is QC-approved' : ''}
-                    onClick={() => !isLocked && setSelected(order)}
-                  >
-                    {isLocked ? (
-                      <><Lock className="h-4 w-4 mr-1.5" /> Waiting for Full Order</>
-                    ) : (
-                      <><Plus className="h-4 w-4 mr-1.5" /> Create Packaging Job{(order.unitsTotal || 1) > 1 ? `s (${order.unitsTotal})` : ''}</>
-                    )}
-                  </Button>
+                  {canAdd && (
+                    <Button
+                      className="w-full"
+                      size="sm"
+                      disabled={isLocked}
+                      title={isLocked ? 'Packing opens when every item of this order is QC-approved' : ''}
+                      onClick={() => !isLocked && setSelected(order)}
+                    >
+                      {isLocked ? (
+                        <><Lock className="h-4 w-4 mr-1.5" /> Waiting for Full Order</>
+                      ) : (
+                        <><Plus className="h-4 w-4 mr-1.5" /> Create Packaging Job{(order.unitsTotal || 1) > 1 ? `s (${order.unitsTotal})` : ''}</>
+                      )}
+                    </Button>
+                  )}
                 </CardContent>
               </Card>
             );

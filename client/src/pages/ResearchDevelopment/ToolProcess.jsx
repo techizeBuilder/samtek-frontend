@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useRD } from '@/contexts/RDContext';
+import { usePermissions } from '@/hooks/usePermissions';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -21,6 +22,10 @@ const emptyProcess = { step: '', type: 'Cutting', description: '', duration: '',
 
 export default function ToolProcess() {
   const { machines, getToolsProcess, addTool, removeTool, discontinueTool, reactivateTool, addProcess, removeProcess } = useRD();
+  const { hasFeatureAccess } = usePermissions();
+  const canAdd = hasFeatureAccess('rnd', 'toolProcess', 'add');
+  const canEdit = hasFeatureAccess('rnd', 'toolProcess', 'edit');
+  const canDelete = hasFeatureAccess('rnd', 'toolProcess', 'delete');
   const [selectedMachineId, setSelectedMachineId] = useState('');
   const [activeTab, setActiveTab] = useState('tools');
   const [addToolOpen, setAddToolOpen] = useState(false);
@@ -115,9 +120,11 @@ export default function ToolProcess() {
             <Card className="border-none shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between border-b border-slate-50 pb-3">
                 <CardTitle className="text-base font-semibold text-slate-800">Tools Required</CardTitle>
-                <Button size="sm" onClick={() => setAddToolOpen(true)} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">
-                  <Plus className="h-4 w-4 mr-1" /> Add Tool
-                </Button>
+                {canAdd && (
+                  <Button size="sm" onClick={() => setAddToolOpen(true)} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">
+                    <Plus className="h-4 w-4 mr-1" /> Add Tool
+                  </Button>
+                )}
               </CardHeader>
               <CardContent className="p-0">
                 <div className="overflow-x-auto">
@@ -151,17 +158,23 @@ export default function ToolProcess() {
                           <td className="px-5 py-3.5">
                             <div className="flex gap-1">
                               {t.isDiscontinued ? (
-                                <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-emerald-600" title="Reactivate" onClick={() => reactivateTool(selectedMachineId, t._id)}>
-                                  <RefreshCw className="h-3.5 w-3.5" />
-                                </Button>
+                                canEdit && (
+                                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-emerald-600" title="Reactivate" onClick={() => reactivateTool(selectedMachineId, t._id)}>
+                                    <RefreshCw className="h-3.5 w-3.5" />
+                                  </Button>
+                                )
                               ) : (
                                 <>
-                                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-orange-600" title="Discontinue" onClick={() => discontinueTool(selectedMachineId, t._id)}>
-                                    <Ban className="h-3.5 w-3.5" />
-                                  </Button>
-                                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-red-600" onClick={() => setConfirmDelete({ id: t._id, name: t.name, kind: 'tool' })}>
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  </Button>
+                                  {canEdit && (
+                                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-orange-600" title="Discontinue" onClick={() => discontinueTool(selectedMachineId, t._id)}>
+                                      <Ban className="h-3.5 w-3.5" />
+                                    </Button>
+                                  )}
+                                  {canDelete && (
+                                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-red-600" onClick={() => setConfirmDelete({ id: t._id, name: t.name, kind: 'tool' })}>
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </Button>
+                                  )}
                                 </>
                               )}
                             </div>
@@ -180,9 +193,11 @@ export default function ToolProcess() {
             <Card className="border-none shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between border-b border-slate-50 pb-3">
                 <CardTitle className="text-base font-semibold text-slate-800">Manufacturing Process Steps</CardTitle>
-                <Button size="sm" onClick={() => setAddProcessOpen(true)} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">
-                  <Plus className="h-4 w-4 mr-1" /> Add Step
-                </Button>
+                {canAdd && (
+                  <Button size="sm" onClick={() => setAddProcessOpen(true)} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">
+                    <Plus className="h-4 w-4 mr-1" /> Add Step
+                  </Button>
+                )}
               </CardHeader>
               <CardContent className="p-5">
                 {processes.length === 0 ? (
@@ -199,9 +214,11 @@ export default function ToolProcess() {
                               {p.duration && <span className="text-xs text-slate-400">{p.duration}</span>}
                               {p.tool && <span className="text-xs text-slate-500 bg-white border border-slate-200 px-2 py-0.5 rounded">Tool: {p.tool}</span>}
                             </div>
-                            <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-red-600" onClick={() => setConfirmDelete({ id: p._id, name: `Step ${p.step}: ${p.type}`, kind: 'process' })}>
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
+                            {canDelete && (
+                              <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-red-600" onClick={() => setConfirmDelete({ id: p._id, name: `Step ${p.step}: ${p.type}`, kind: 'process' })}>
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
                           </div>
                           <p className="text-sm text-slate-700">{p.description}</p>
                         </div>

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useRD } from '@/contexts/RDContext';
 import { apiRequest } from '@/lib/queryClient';
+import { usePermissions } from '@/hooks/usePermissions';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -24,6 +25,9 @@ const emptyForm = { type: 'Design Files', name: '', version: 'v1.0', notes: '' }
 
 export default function Documentation() {
   const { machines, getDocumentsForMachine, addDocument, deleteDocument } = useRD();
+  const { hasFeatureAccess } = usePermissions();
+  const canAdd = hasFeatureAccess('rnd', 'documentation', 'add');
+  const canDelete = hasFeatureAccess('rnd', 'documentation', 'delete');
   const [selectedMachineId, setSelectedMachineId] = useState('');
   const [filterType, setFilterType] = useState('All');
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -132,9 +136,11 @@ export default function Documentation() {
               <span className="font-semibold text-slate-800">{selectedMachine?.name}</span>
               <span className="text-xs text-slate-400">{allDocs.length} documents</span>
             </div>
-            <Button size="sm" onClick={() => setUploadOpen(true)} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">
-              <Upload className="h-4 w-4 mr-2" /> Upload Document
-            </Button>
+            {canAdd && (
+              <Button size="sm" onClick={() => setUploadOpen(true)} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">
+                <Upload className="h-4 w-4 mr-2" /> Upload Document
+              </Button>
+            )}
           </div>
 
           {/* Document Type Summary Cards */}
@@ -226,7 +232,7 @@ export default function Documentation() {
                                 ) : (
                                   <span className="text-[10px] text-slate-300 px-2">No file</span>
                                 )}
-                                {!doc.isChildPartFile && (
+                                {!doc.isChildPartFile && canDelete && (
                                   <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-red-600" onClick={() => setDeleteDoc(doc)}>
                                     <Trash2 className="h-3.5 w-3.5" />
                                   </Button>

@@ -6,6 +6,7 @@ import {
   useUpdateTraineeModules,
   useViewCertificate
 } from '../../hooks/useTraining';
+import { usePermissions } from '../../hooks/usePermissions';
 
 interface TraineeDetailsViewProps {
   isOpen: boolean;
@@ -90,7 +91,9 @@ export default function TraineeDetailsView({ isOpen, profileId, onClose }: Train
 
   const currentUserStr = localStorage.getItem('user');
   const currentUserRole = currentUserStr ? JSON.parse(currentUserStr).role : '';
-  const canFinalize = TOP_LEVEL_ADMINS.includes(currentUserRole);
+  const { hasAnyModuleFeatureAccess } = usePermissions();
+  const canEdit = hasAnyModuleFeatureAccess('lms', 'edit');
+  const canFinalize = TOP_LEVEL_ADMINS.includes(currentUserRole) && canEdit;
 
   const { data: response, isLoading, isError } = useTraineeDetails(profileId || '');
   const { mutate: finalizeTrainee, isPending: isFinalizing } = useFinalizeTrainee();

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useAuth } from '@/hooks/useAuth';
+import { usePermissions } from '@/hooks/usePermissions';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -45,6 +46,10 @@ const TYPE_COLORS = {
 
 export default function EventFlyer() {
   const { user } = useAuth();
+  const { hasFeatureAccess } = usePermissions();
+  const canAdd = hasFeatureAccess('marketing', 'eventFlyer', 'add');
+  const canEdit = hasFeatureAccess('marketing', 'eventFlyer', 'edit');
+  const canDelete = hasFeatureAccess('marketing', 'eventFlyer', 'delete');
   const { toast } = useToast();
   const qc = useQueryClient();
 
@@ -153,9 +158,11 @@ export default function EventFlyer() {
           <h1 className="text-2xl sm:text-3xl font-bold text-slate-900">Event Flyer</h1>
           <p className="text-slate-500">Publish event name, type &amp; date along with the flyer image.</p>
         </div>
-        <Button className="bg-blue-600 hover:bg-blue-700 text-white shadow-md" onClick={openNew}>
-          <Plus className="w-4 h-4 mr-2" /> Add Event Flyer
-        </Button>
+        {canAdd && (
+          <Button className="bg-blue-600 hover:bg-blue-700 text-white shadow-md" onClick={openNew}>
+            <Plus className="w-4 h-4 mr-2" /> Add Event Flyer
+          </Button>
+        )}
       </div>
 
       {/* Filters */}
@@ -228,14 +235,18 @@ export default function EventFlyer() {
                 <Badge className={`absolute top-2 left-2 border ${TYPE_COLORS[flyer.eventType] || TYPE_COLORS.Other}`}>
                   <Tag className="h-3 w-3 mr-1" />{flyer.eventType}
                 </Badge>
-                {canManage(flyer) && (
+                {(canEdit || canDelete) && canManage(flyer) && (
                   <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Button size="icon" className="h-7 w-7 bg-white/90 hover:bg-white text-blue-600 shadow" onClick={() => openEdit(flyer)}>
-                      <Edit2 className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button size="icon" className="h-7 w-7 bg-white/90 hover:bg-white text-red-600 shadow" onClick={() => setDeleteTarget(flyer)}>
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
+                    {canEdit && (
+                      <Button size="icon" className="h-7 w-7 bg-white/90 hover:bg-white text-blue-600 shadow" onClick={() => openEdit(flyer)}>
+                        <Edit2 className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                    {canDelete && (
+                      <Button size="icon" className="h-7 w-7 bg-white/90 hover:bg-white text-red-600 shadow" onClick={() => setDeleteTarget(flyer)}>
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
                   </div>
                 )}
               </div>

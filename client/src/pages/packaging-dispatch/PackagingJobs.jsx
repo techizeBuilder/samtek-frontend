@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { usePackagingDispatch, usePackagingJobsList } from '@/contexts/PackagingDispatchContext';
+import { usePermissions } from '@/hooks/usePermissions';
 import { adminSettingsApi } from '@/api/adminSettingsApi';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -18,7 +19,7 @@ const statusColor = {
   Dispatched: 'bg-blue-100 text-blue-700',
 };
 
-function JobCard({ job, checklistItems }) {
+function JobCard({ job, checklistItems, canEdit }) {
   const { startPacking, updateChecklist, completePacking } = usePackagingDispatch();
   const { toast } = useToast();
   const [expanded, setExpanded] = useState(false);
@@ -111,7 +112,7 @@ function JobCard({ job, checklistItems }) {
                             id={`${job._id}-${item.key}`}
                             checked={!!cl[item.key]}
                             onCheckedChange={(v) => handleChecklistChange(item.key, !!v)}
-                            disabled={job.status === 'Packed' || job.status === 'Dispatched'}
+                            disabled={!canEdit || job.status === 'Packed' || job.status === 'Dispatched'}
                           />
                         )}
                         <label
@@ -158,7 +159,7 @@ function JobCard({ job, checklistItems }) {
 
         {/* Actions */}
         <div className="flex gap-2 mt-4">
-          {job.status === 'Pending' && (
+          {job.status === 'Pending' && canEdit && (
             <Button className="flex-1" size="sm" onClick={handleStartPacking} disabled={loading}>
               <Play className="h-4 w-4 mr-1.5" />
               Start Packing
@@ -172,7 +173,7 @@ function JobCard({ job, checklistItems }) {
                   Manage Checklist
                 </Button>
               )}
-              {allChecked && (
+              {allChecked && canEdit && (
                 <Button className="flex-1" size="sm" onClick={handleCompletePacking} disabled={loading}>
                   <CheckCircle2 className="h-4 w-4 mr-1.5" />
                   {loading ? 'Completing...' : 'Mark Packed'}
@@ -199,6 +200,9 @@ function JobCard({ job, checklistItems }) {
 }
 
 export default function PackagingJobs() {
+  const { hasFeatureAccess } = usePermissions();
+  const canView = hasFeatureAccess('dispatches', 'packagingJobs', 'view');
+  const canEdit = hasFeatureAccess('dispatches', 'packagingJobs', 'edit');
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -218,10 +222,21 @@ export default function PackagingJobs() {
 
   const { data: jobsListData, isLoading: jobsLoading } = usePackagingJobsList({
     page, limit: 20, search, status: filter,
-  });
+  }, { enabled: canView });
   const filtered = jobsListData?.data?.jobs || [];
   const pagination = jobsListData?.data?.pagination || {};
   const counts = jobsListData?.data?.summary || {};
+
+  if (!canView) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Access Denied</h2>
+          <p className="text-gray-600">You don't have permission to view Packaging Jobs.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 space-y-6 bg-slate-50 min-h-screen">
@@ -268,7 +283,7 @@ export default function PackagingJobs() {
       ) : (
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {filtered.map(job => <JobCard key={job._id} job={job} checklistItems={checklistItems} />)}
+            {filtered.map(job => <JobCard key={job._id} job={job} checklistItems={checklistItems} canEdit={canEdit} />)}
           </div>
 
           {pagination.pages > 1 && (

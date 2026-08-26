@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from '@/lib/queryClient';
 import { useAuth } from '@/hooks/useAuth';
+import { usePermissions } from '@/hooks/usePermissions';
 import { 
   Loader2, Plus, Eye, Check, Mail, Clock, ShieldCheck,
   MapPin, Notebook, Info, FileText, ChevronRight, Edit2, RotateCw,
@@ -29,6 +30,10 @@ import FabricationReceiveDialog from '@/components/accounts/FabricationReceiveDi
 
 export default function PurchaseRequest() {
   const { user } = useAuth();
+  const { hasFeatureAccess } = usePermissions();
+  // Shared by Accounts/Purchase dept and Store — matches backend's
+  // checkAnyPermission([['accounts','purchases'],['Store','purchaseOrders']]).
+  const canEdit = hasFeatureAccess('accounts', 'purchases', 'edit') || hasFeatureAccess('Store', 'purchaseOrders', 'edit');
   const isStoreUser = user?.role === 'Store Head' || user?.role === 'Store Employee';
   const { toast } = useToast();
   const [requests, setRequests] = useState([]);
@@ -1214,7 +1219,7 @@ export default function PurchaseRequest() {
                   Close
                 </Button>
                 
-                {poModalMode === 'view' && selectedRequest.purchaseOrder?.status === 'Draft' && !isStoreUser && (
+                {poModalMode === 'view' && selectedRequest.purchaseOrder?.status === 'Draft' && !isStoreUser && canEdit && (
                   <Button
                     type="button"
                     onClick={() => setPoModalMode('edit')}

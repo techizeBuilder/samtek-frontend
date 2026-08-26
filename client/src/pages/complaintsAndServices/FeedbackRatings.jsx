@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
+import { usePermissions } from '@/hooks/usePermissions';
 import { Star, CheckCircle, User, Package, Phone, MessageCircle, Mail, BadgeCheck, Link2, Search } from 'lucide-react';
 import { sendWhatsApp } from '@/lib/whatsapp';
 import SendEmailModal from '@/components/email/SendEmailModal';
@@ -28,6 +29,8 @@ const groupByOrder = (list) => Object.values(
 
 export default function FeedbackRatings() {
   const { toast } = useToast();
+  const { hasFeatureAccess } = usePermissions();
+  const canEdit = hasFeatureAccess('complaints', 'feedbackRatings', 'edit');
   const qc = useQueryClient();
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [rating, setRating] = useState(0);
@@ -189,7 +192,7 @@ export default function FeedbackRatings() {
                   handleWhatsApp={handleWhatsApp}
                   handleCall={handleCall}
                   handleEmail={handleEmail}
-                  canEdit={true}
+                  canEdit={canEdit}
                 />
               )}
             </TabsContent>
@@ -286,7 +289,7 @@ export default function FeedbackRatings() {
                 <Button
                   type="submit"
                   className="w-full bg-amber-500 hover:bg-amber-600 text-white"
-                  disabled={updateMutation.isPending || rating === 0}
+                  disabled={updateMutation.isPending || rating === 0 || !canEdit}
                 >
                   {updateMutation.isPending ? 'Saving...' : 'Submit Feedback'}
                 </Button>

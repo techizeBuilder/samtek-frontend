@@ -4,6 +4,7 @@ import { apiRequest } from '@/lib/queryClient';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import BackendPagination from '@/components/shared/BackendPagination';
 import { useAuthContext } from '@/contexts/AuthContext';
+import { usePermissions } from '@/hooks/usePermissions';
 import { useToast } from '@/hooks/use-toast';
 import { useSettings } from '@/hooks/useSettings';
 import { generateDueBillPDF } from '@/utils/generateDueBillPDF';
@@ -56,6 +57,8 @@ import {
 } from "@/components/ui/select";
 
 const PackedOrders = () => {
+  const { hasFeatureAccess } = usePermissions();
+  const canEdit = hasFeatureAccess('accounts', 'sales', 'edit');
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { settings } = useSettings();
@@ -629,7 +632,7 @@ const PackedOrders = () => {
                               Due Bill
                             </Button>
 
-                            {item.saleId ? (
+                            {!canEdit ? null : item.saleId ? (
                               <Button
                                 size="sm"
                                 variant="outline"

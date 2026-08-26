@@ -7,6 +7,7 @@ import CompanyModal from "./CompanyModal";
 import DeleteCompanyModal from "./DeleteCompanyModel";
 import Loader from "../Loader";
 import { toast } from "../../Alert/Toast";
+import { usePermissions } from "@/hooks/usePermissions";
 
 const API_BASE = import.meta.env.VITE_API_URL;
 
@@ -28,6 +29,8 @@ export interface Company {
 
 export default function Company() {
   const token = localStorage.getItem("token");
+  const { hasFeatureAccess } = usePermissions();
+  const canDelete = hasFeatureAccess("hrms", "myCompany", "delete");
 
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(false);
@@ -259,16 +262,18 @@ export default function Company() {
                           Edit
                         </button> */}
 
-                        <button
-                          className="w-full px-4 py-2 text-left text-red-500 hover:bg-red-50"
-                          onClick={() => {
-                            setCompanyToDelete(company);
-                            setOpenDeleteModal(true);
-                            setOpenMenu(null);
-                          }}
-                        >
-                          Delete
-                        </button>
+                        {canDelete && (
+                          <button
+                            className="w-full px-4 py-2 text-left text-red-500 hover:bg-red-50"
+                            onClick={() => {
+                              setCompanyToDelete(company);
+                              setOpenDeleteModal(true);
+                              setOpenMenu(null);
+                            }}
+                          >
+                            Delete
+                          </button>
+                        )}
                       </div>
                     )}
                   </td>

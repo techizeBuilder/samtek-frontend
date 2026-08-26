@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useRD } from '@/contexts/RDContext';
+import { usePermissions } from '@/hooks/usePermissions';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -111,6 +112,10 @@ function MaterialCodePicker({ value, displayName, items, onSelect }) {
 
 export default function BOMCreationTab({ product }) {
   const { boms, getBOMForMachine, addBOM, addMaterials, updateMaterial, deleteMaterial, lockBOM, discontinueMaterial, reactivateMaterial, updateProductionCost } = useRD();
+  const { hasFeatureAccess } = usePermissions();
+  const canAdd = hasFeatureAccess('rnd', 'bomManagement', 'add');
+  const canEdit = hasFeatureAccess('rnd', 'bomManagement', 'edit');
+  const canDelete = hasFeatureAccess('rnd', 'bomManagement', 'delete');
   const selectedMachineId = product?._id || '';
   const selectedMachine = product;
 
@@ -454,11 +459,13 @@ export default function BOMCreationTab({ product }) {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-end">
-        <Button variant="outline" size="sm" onClick={() => setBomFormatOpen(true)}>
-          <Settings2 className="h-4 w-4 mr-1.5" /> BOM Format & Modification
-        </Button>
-      </div>
+      {canEdit && (
+        <div className="flex items-center justify-end">
+          <Button variant="outline" size="sm" onClick={() => setBomFormatOpen(true)}>
+            <Settings2 className="h-4 w-4 mr-1.5" /> BOM Format & Modification
+          </Button>
+        </div>
+      )}
 
       <BOMFieldConfigModal open={bomFormatOpen} onOpenChange={setBomFormatOpen} />
 
@@ -468,9 +475,11 @@ export default function BOMCreationTab({ product }) {
             <ClipboardList className="h-10 w-10 mx-auto text-slate-300" />
             <p className="text-slate-500 font-medium">No BOM found for {selectedMachine?.name}</p>
             <p className="text-slate-400 text-sm">Create the first BOM for this machine to define raw materials and quantities.</p>
-            <Button onClick={() => setNewBOMOpen(true)} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">
-              <Plus className="h-4 w-4 mr-2" /> Create BOM
-            </Button>
+            {canAdd && (
+              <Button onClick={() => setNewBOMOpen(true)} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">
+                <Plus className="h-4 w-4 mr-2" /> Create BOM
+              </Button>
+            )}
           </CardContent>
         </Card>
       )}
@@ -508,15 +517,15 @@ export default function BOMCreationTab({ product }) {
                   <Button size="sm" variant="outline" disabled={downloadingBOM} onClick={handleDownloadBOM}>
                     {downloadingBOM ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Download className="h-4 w-4 mr-1" />} Download BOM
                   </Button>
-                  {!bom.isLocked && (
-                    <>
-                      <Button size="sm" className="bg-gradient-to-r from-blue-600 to-purple-600 text-white" onClick={() => setAddOpen(true)}>
-                        <Plus className="h-4 w-4 mr-1" /> Add Material
-                      </Button>
-                      <Button size="sm" variant="outline" className="border-amber-300 text-amber-700 hover:bg-amber-50" onClick={() => setLockOpen(true)}>
-                        <Lock className="h-4 w-4 mr-1" /> Lock BOM
-                      </Button>
-                    </>
+                  {!bom.isLocked && canAdd && (
+                    <Button size="sm" className="bg-gradient-to-r from-blue-600 to-purple-600 text-white" onClick={() => setAddOpen(true)}>
+                      <Plus className="h-4 w-4 mr-1" /> Add Material
+                    </Button>
+                  )}
+                  {!bom.isLocked && canEdit && (
+                    <Button size="sm" variant="outline" className="border-amber-300 text-amber-700 hover:bg-amber-50" onClick={() => setLockOpen(true)}>
+                      <Lock className="h-4 w-4 mr-1" /> Lock BOM
+                    </Button>
                   )}
                 </div>
               </div>
@@ -650,13 +659,15 @@ export default function BOMCreationTab({ product }) {
                         <td className="px-5 py-3.5">
                           <div className="flex gap-1">
                             <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-blue-600" title="View details" onClick={() => openView(mat)}><Eye className="h-3.5 w-3.5" /></Button>
-                            {!bom.isLocked && (
+                            {!bom.isLocked && canEdit && (
                               mat.isDiscontinued ? (
                                 <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-emerald-600" title="Reactivate" onClick={() => reactivateMaterial(bom._id, mat._id)}><RefreshCw className="h-3.5 w-3.5" /></Button>
                               ) : (
                                 <>
                                   <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-purple-600" onClick={() => openEdit(mat)}><Edit2 className="h-3.5 w-3.5" /></Button>
-                                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-red-600" onClick={() => setDeleteMat(mat)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                                  {canDelete && (
+                                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-red-600" onClick={() => setDeleteMat(mat)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                                  )}
                                   <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-400 hover:text-orange-600" title="Discontinue" onClick={() => discontinueMaterial(bom._id, mat._id)}><Ban className="h-3.5 w-3.5" /></Button>
                                 </>
                               )

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useActiveTrainees, useDeleteTraineeRecord } from '../../hooks/useTraining';
 import StageCandidateModal from '../../components/lms/StageCandidateModal';
 import TraineeDetailsView from '../../components/lms/TraineeDetailsView';
+import { usePermissions } from '../../hooks/usePermissions';
 
 interface PopulatedUser {
     _id: string;
@@ -26,6 +27,9 @@ export default function Trainees() {
     const userStr = localStorage.getItem('user');
     const currentUser = userStr ? JSON.parse(userStr) : null;
     const isTopAdmin = currentUser && TOP_LEVEL_ADMINS.includes(currentUser.role);
+    const { hasAnyModuleFeatureAccess } = usePermissions();
+    const canAdd = hasAnyModuleFeatureAccess('lms', 'add');
+    const canDelete = hasAnyModuleFeatureAccess('lms', 'delete');
 
     // --- UI STATE ---
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -89,12 +93,14 @@ export default function Trainees() {
                     <h1 className="text-2xl font-bold text-gray-900">Active Trainees Tracker</h1>
                     <p className="text-sm text-gray-500">Monitor candidates currently in the training staging area.</p>
                 </div>
-                <button
-                    onClick={() => setIsModalOpen(true)}
-                    className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md shadow transition-colors"
-                >
-                    + Assign Training
-                </button>
+                {canAdd && (
+                    <button
+                        onClick={() => setIsModalOpen(true)}
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md shadow transition-colors"
+                    >
+                        + Assign Training
+                    </button>
+                )}
             </div>
 
             {/* --- FILTER CONTROLS --- */}
@@ -245,12 +251,14 @@ export default function Trainees() {
                                             )}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                            <button
-                                                onClick={(e) => handleDelete(e, trainee._id)}
-                                                className="text-red-600 hover:text-red-900 px-3 py-1 rounded hover:bg-red-50 transition-colors"
-                                            >
-                                                Delete
-                                            </button>
+                                            {canDelete && (
+                                                <button
+                                                    onClick={(e) => handleDelete(e, trainee._id)}
+                                                    className="text-red-600 hover:text-red-900 px-3 py-1 rounded hover:bg-red-50 transition-colors"
+                                                >
+                                                    Delete
+                                                </button>
+                                            )}
                                         </td>
                                     </tr>
                                 ))

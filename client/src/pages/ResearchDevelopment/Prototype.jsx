@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useRD } from '@/contexts/RDContext';
+import { usePermissions } from '@/hooks/usePermissions';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -34,6 +35,9 @@ const emptyForm = { machineName: '', machineCode: '', machineId: '', prototypeNa
 
 export default function Prototype() {
   const { machines, addPrototype, updatePrototype, updateReleaseStatus } = useRD();
+  const { hasFeatureAccess } = usePermissions();
+  const canAdd = hasFeatureAccess('rnd', 'prototype', 'add');
+  const canEdit = hasFeatureAccess('rnd', 'prototype', 'edit');
   const [filterStatus, setFilterStatus] = useState('All');
   const [page, setPage] = useState(1);
   const [addOpen, setAddOpen] = useState(false);
@@ -112,9 +116,11 @@ export default function Prototype() {
           </h1>
           <p className="text-slate-500 text-sm mt-0.5">Every new machine must pass prototype testing before production release</p>
         </div>
-        <Button onClick={() => setAddOpen(true)} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow">
-          <Plus className="h-4 w-4 mr-2" /> New Prototype
-        </Button>
+        {canAdd && (
+          <Button onClick={() => setAddOpen(true)} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow">
+            <Plus className="h-4 w-4 mr-2" /> New Prototype
+          </Button>
+        )}
       </div>
 
       {/* Workflow Banner */}
@@ -210,7 +216,7 @@ export default function Prototype() {
                       <Button size="sm" variant="outline" className="text-xs" onClick={() => { setSelected(p); setViewOpen(true); }}>
                         <Eye className="h-3 w-3 mr-1" /> View
                       </Button>
-                      {p.status !== 'Passed' && (
+                      {p.status !== 'Passed' && canEdit && (
                         <Button size="sm" variant="outline" className="text-xs border-blue-200 text-blue-700 hover:bg-blue-50" onClick={() => openEdit(p)}>
                           <Edit2 className="h-3 w-3 mr-1" /> Update
                         </Button>

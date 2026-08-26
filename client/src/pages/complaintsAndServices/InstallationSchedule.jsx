@@ -11,6 +11,7 @@ import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
+import { usePermissions } from '@/hooks/usePermissions';
 import { CalendarCheck, MapPin, CheckCircle, Package, User, Phone, MessageCircle, Mail, Send, ChevronDown, Search } from 'lucide-react';
 import { sendWhatsApp } from '@/lib/whatsapp';
 import SendEmailModal from '@/components/email/SendEmailModal';
@@ -36,6 +37,8 @@ const groupInstallationStatus = (jobs) => {
 
 export default function InstallationSchedule() {
   const { toast } = useToast();
+  const { hasFeatureAccess } = usePermissions();
+  const canEdit = hasFeatureAccess('complaints', 'installationSchedule', 'edit');
   const qc = useQueryClient();
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [search, setSearch] = useState('');
@@ -294,7 +297,7 @@ export default function InstallationSchedule() {
                   handleWhatsApp={handleWhatsApp}
                   handleCall={handleCall}
                   handleEmail={handleEmail}
-                  canEdit={true}
+                  canEdit={canEdit}
                 />
               )}
             </TabsContent>
@@ -313,7 +316,7 @@ export default function InstallationSchedule() {
                   handleWhatsApp={handleWhatsApp}
                   handleCall={handleCall}
                   handleEmail={handleEmail}
-                  canEdit={true}
+                  canEdit={canEdit}
                 />
               )}
             </TabsContent>
@@ -539,7 +542,7 @@ export default function InstallationSchedule() {
                   Notify via WhatsApp
                 </Button>
               )}
-              <Button type="submit" form="installation-form" className="flex-1 h-11" disabled={updateMutation.isPending}>
+              <Button type="submit" form="installation-form" className="flex-1 h-11" disabled={updateMutation.isPending || !canEdit}>
                 {updateMutation.isPending ? 'Saving...' : 'Save Schedule'}
               </Button>
             </div>

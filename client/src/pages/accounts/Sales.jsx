@@ -14,8 +14,11 @@ import {
 } from '@/components/ui/dialog';
 import { Plus, Search, Edit2, Eye, TrendingUp, RotateCw, Download, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { usePermissions } from '@/hooks/usePermissions';
 
 const Sales = () => {
+  const { hasFeatureAccess } = usePermissions();
+  const canEdit = hasFeatureAccess('accounts', 'sales', 'edit');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('All');
   const [currentPage, setCurrentPage] = useState(1);
@@ -380,14 +383,16 @@ const Sales = () => {
                               >
                                 <Eye className="w-4 h-4" />
                               </Button>
-                              <Button 
-                                variant="ghost" 
-                                size="sm" 
-                                className="text-gray-600 hover:bg-gray-100"
-                                onClick={() => handleEdit(sale)}
-                              >
-                                <Edit2 className="w-4 h-4" />
-                              </Button>
+                              {canEdit && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-gray-600 hover:bg-gray-100"
+                                  onClick={() => handleEdit(sale)}
+                                >
+                                  <Edit2 className="w-4 h-4" />
+                                </Button>
+                              )}
                             </div>
                           </td>
                         </tr>

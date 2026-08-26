@@ -5,6 +5,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
+import { usePermissions } from '@/hooks/usePermissions';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
@@ -25,6 +26,9 @@ import { config } from '@/config/environment';
 
 export default function DeliveryChallan() {
   const { toast } = useToast();
+  const { hasFeatureAccess } = usePermissions();
+  const canAdd = hasFeatureAccess('dispatches', 'deliveryChallan', 'add');
+  const canEdit = hasFeatureAccess('dispatches', 'deliveryChallan', 'edit');
   const [loading, setLoading] = useState(false);
   const [products, setProducts] = useState([]);
   const [salespeople, setSalespeople] = useState([]);
@@ -1262,15 +1266,19 @@ export default function DeliveryChallan() {
           <p className="text-sm sm:text-base text-gray-600 mt-1">Product Groups and Indent Quantities for Today</p>
         </div>
         <div className="flex flex-wrap gap-2 w-full lg:w-auto">
-          <Button onClick={handleDirectOrderModalOpen} variant="default" className="bg-green-600 hover:bg-green-700 text-xs sm:text-sm flex-1 sm:flex-none">
-            <Plus className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-            <span className="hidden sm:inline">Create Dispatch Order</span>
-            <span className="sm:hidden">Dispatch Order</span>
-          </Button>
-          <Button onClick={handleInvoiceModalOpen} variant="default" className="bg-blue-600 hover:bg-blue-700 text-xs sm:text-sm flex-1 sm:flex-none">
-            <span className="hidden sm:inline">Generate Invoice</span>
-            <span className="sm:hidden">Invoice</span>
-          </Button>
+          {canAdd && (
+            <Button onClick={handleDirectOrderModalOpen} variant="default" className="bg-green-600 hover:bg-green-700 text-xs sm:text-sm flex-1 sm:flex-none">
+              <Plus className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+              <span className="hidden sm:inline">Create Dispatch Order</span>
+              <span className="sm:hidden">Dispatch Order</span>
+            </Button>
+          )}
+          {canEdit && (
+            <Button onClick={handleInvoiceModalOpen} variant="default" className="bg-blue-600 hover:bg-blue-700 text-xs sm:text-sm flex-1 sm:flex-none">
+              <span className="hidden sm:inline">Generate Invoice</span>
+              <span className="sm:hidden">Invoice</span>
+            </Button>
+          )}
           <Button onClick={handleReset} variant="outline" disabled={loading} className="text-xs sm:text-sm flex-1 sm:flex-none">
             <RefreshCw className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
             Reset

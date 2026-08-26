@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useRD } from '@/contexts/RDContext';
+import { usePermissions } from '@/hooks/usePermissions';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -34,6 +35,9 @@ const emptyForm = { machineId: '', raisedBy: '', department: 'Production', chang
 
 export default function ChangeManagement() {
   const { machines, addChangeRequest, resolveChangeRequest } = useRD();
+  const { hasFeatureAccess } = usePermissions();
+  const canAdd = hasFeatureAccess('rnd', 'changeManagement', 'add');
+  const canEdit = hasFeatureAccess('rnd', 'changeManagement', 'edit');
   const [activeTab, setActiveTab] = useState('Pending');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -89,9 +93,11 @@ export default function ChangeManagement() {
           </h1>
           <p className="text-slate-500 text-sm mt-0.5">No direct design, material, or tool change is allowed without R&D review and approval</p>
         </div>
-        <Button onClick={() => setAddOpen(true)} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow">
-          <Plus className="h-4 w-4 mr-2" /> Raise Change Request
-        </Button>
+        {canAdd && (
+          <Button onClick={() => setAddOpen(true)} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow">
+            <Plus className="h-4 w-4 mr-2" /> Raise Change Request
+          </Button>
+        )}
       </div>
 
       {/* Stats */}
@@ -167,7 +173,7 @@ export default function ChangeManagement() {
                       <Button size="sm" variant="outline" className="text-xs" onClick={() => { setSelected(cr); setViewOpen(true); }}>
                         <Eye className="h-3 w-3 mr-1" /> View
                       </Button>
-                      {cr.status === 'Pending' && (
+                      {cr.status === 'Pending' && canEdit && (
                         <Button size="sm" className="text-xs bg-gradient-to-r from-blue-600 to-purple-600 text-white" onClick={() => { setSelected(cr); setResolveAction('approve'); setRdNotes(''); setResolveOpen(true); }}>
                           Review
                         </Button>

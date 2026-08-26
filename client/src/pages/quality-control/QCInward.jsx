@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useLocation } from 'wouter';
 import { useQC } from '@/contexts/QCContext';
+import { usePermissions } from '@/hooks/usePermissions';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -43,6 +44,8 @@ const defaultChecklist = {
 
 export default function QCInward() {
   const { createJob } = useQC();
+  const { hasFeatureAccess } = usePermissions();
+  const canAdd = hasFeatureAccess('quality-control', 'qcInward', 'add');
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const [loading, setLoading] = useState(false);
@@ -90,6 +93,17 @@ export default function QCInward() {
       setLoading(false);
     }
   };
+
+  if (!canAdd) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Access Denied</h2>
+          <p className="text-gray-600">You don't have permission to create a new QC entry.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 space-y-6 bg-slate-50 min-h-screen max-w-3xl mx-auto">

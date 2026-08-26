@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useProduction, useProductionOrdersList, computeOrderProgress } from '@/contexts/ProductionContext';
+import { usePermissions } from '@/hooks/usePermissions';
 import { UNIT_TYPES, getUnitsForType } from '@/utils/unitTypes';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -57,6 +58,9 @@ export default function OrderManagement() {
     decideRework, decideRepair,
     addMaterialDemand, updateMaterialStatus, markMaterialIssued,
   } = useProduction();
+  const { hasFeatureAccess } = usePermissions();
+  const canAdd = hasFeatureAccess('production', 'orders', 'add');
+  const canEdit = hasFeatureAccess('production', 'orders', 'edit');
   const queryClient = useQueryClient();
 
   const [search, setSearch] = useState('');
@@ -473,9 +477,11 @@ export default function OrderManagement() {
           </h1>
           <p className="text-slate-500 text-sm mt-0.5">Machine manufacturing orders — triggered by Store notification</p>
         </div>
-        <Button onClick={() => setAddOpen(true)} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">
-          <Plus className="h-4 w-4 mr-1" /> New Order
-        </Button>
+        {canAdd && (
+          <Button onClick={() => setAddOpen(true)} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">
+            <Plus className="h-4 w-4 mr-1" /> New Order
+          </Button>
+        )}
       </div>
 
       {/* Stats */}
@@ -837,13 +843,15 @@ export default function OrderManagement() {
                       <Button size="sm" className="h-6 text-xs bg-slate-100 text-slate-700 hover:bg-slate-200 border-slate-200" variant="outline" onClick={handleDownloadPDF} title="Download Material Ledger PDF">
                         <ArrowDownToLine className="h-3 w-3 mr-1" /> Download PDF
                       </Button>
-                      <Button size="sm" className="h-6 text-xs" variant="outline" onClick={() => {
-                        setDemandForm(emptyDemand);
-                        setFoundItem(null);
-                        setDemandOpen(true);
-                      }}>
-                        <Plus className="h-3 w-3 mr-1" /> Add Demand
-                      </Button>
+                      {canAdd && (
+                        <Button size="sm" className="h-6 text-xs" variant="outline" onClick={() => {
+                          setDemandForm(emptyDemand);
+                          setFoundItem(null);
+                          setDemandOpen(true);
+                        }}>
+                          <Plus className="h-3 w-3 mr-1" /> Add Demand
+                        </Button>
+                      )}
                     </div>
                   </div>
                   {detailOrderLive.materialDemands.length === 0 ? (

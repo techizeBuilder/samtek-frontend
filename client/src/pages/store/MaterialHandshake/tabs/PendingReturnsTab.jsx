@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { apiRequest, queryClient } from '@/lib/queryClient';
+import { usePermissions } from '@/hooks/usePermissions';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Hash, Calendar, RefreshCw, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
@@ -16,6 +17,8 @@ import {
 } from "@/components/ui/dialog";
 
 export default function ReturnedMaterialsTab() {
+    const { hasFeatureAccess } = usePermissions();
+    const canResolve = hasFeatureAccess('Store', 'materialTransfers', 'edit');
     const { toast } = useToast();
     // Holds context data for confirmation actions: { logId, materialName, orderId, action }
     const [confirmationAction, setConfirmationAction] = useState(null);
@@ -160,25 +163,31 @@ export default function ReturnedMaterialsTab() {
                                                     {mat.reason}
                                                 </td>
                                                 <td className="px-6 py-4 text-right space-x-2 whitespace-nowrap">
-                                                    {/* Reject Option */}
-                                                    <Button
-                                                        size="sm"
-                                                        variant="outline"
-                                                        className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
-                                                        onClick={() => handleActionClick(mat.logId, mat.materialName, order.orderId, 'Reject')}
-                                                    >
-                                                        <XCircle className="w-4 h-4 mr-1" />
-                                                        Reject
-                                                    </Button>
-                                                    {/* Accept Option */}
-                                                    <Button
-                                                        size="sm"
-                                                        className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                                                        onClick={() => handleActionClick(mat.logId, mat.materialName, order.orderId, 'Accept')}
-                                                    >
-                                                        <CheckCircle2 className="w-4 h-4 mr-1" />
-                                                        Accept
-                                                    </Button>
+                                                    {canResolve ? (
+                                                        <>
+                                                            {/* Reject Option */}
+                                                            <Button
+                                                                size="sm"
+                                                                variant="outline"
+                                                                className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
+                                                                onClick={() => handleActionClick(mat.logId, mat.materialName, order.orderId, 'Reject')}
+                                                            >
+                                                                <XCircle className="w-4 h-4 mr-1" />
+                                                                Reject
+                                                            </Button>
+                                                            {/* Accept Option */}
+                                                            <Button
+                                                                size="sm"
+                                                                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                                                                onClick={() => handleActionClick(mat.logId, mat.materialName, order.orderId, 'Accept')}
+                                                            >
+                                                                <CheckCircle2 className="w-4 h-4 mr-1" />
+                                                                Accept
+                                                            </Button>
+                                                        </>
+                                                    ) : (
+                                                        <span className="text-xs text-slate-300">—</span>
+                                                    )}
                                                 </td>
                                             </tr>
                                         ))}

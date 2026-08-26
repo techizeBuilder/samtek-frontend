@@ -4,6 +4,7 @@ import { apiRequest } from '@/lib/queryClient';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import BackendPagination from '@/components/shared/BackendPagination';
 import { useAuthContext } from '@/contexts/AuthContext';
+import { usePermissions } from '@/hooks/usePermissions';
 import {
   Search,
   Eye,
@@ -43,6 +44,8 @@ import { loadImgCompressed } from '@/utils/pdfImage';
 import config from '@/config/environment';
 
 const NocRequest = () => {
+  const { hasFeatureAccess } = usePermissions();
+  const canEdit = hasFeatureAccess('accounts', 'sales', 'edit');
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { settings } = useSettings();
@@ -694,7 +697,7 @@ const NocRequest = () => {
                             >
                               <FileText className="w-3.5 h-3.5" /> View Gate Pass
                             </Button>
-                          ) : (
+                          ) : canEdit ? (
                             <Button
                               variant="default"
                               size="sm"
@@ -703,7 +706,7 @@ const NocRequest = () => {
                             >
                               Generate Gate Pass
                             </Button>
-                          )}
+                          ) : null}
                           {/* NOC Certificate — view opens PDF in a new tab, icon downloads it */}
                           <div className="flex gap-1 w-full">
                             <Button
@@ -729,7 +732,7 @@ const NocRequest = () => {
                             </Button>
                           </div>
                         </>
-                      ) : (
+                      ) : canEdit ? (
                         <Button
                           variant="default"
                           size="sm"
@@ -739,7 +742,7 @@ const NocRequest = () => {
                         >
                           {approveNOCMutation.isPending ? "Approving..." : "Approve NOC"}
                         </Button>
-                      )}
+                      ) : null}
                     </div>
                   </TableCell>
                 </TableRow>
