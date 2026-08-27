@@ -25,7 +25,15 @@ export default function FabricationRFQDialog({ pr, onClose, onFinalized }) {
   const [manualQty, setManualQty] = useState('');
   const [addingVariantId, setAddingVariantId] = useState('');
 
-  const sourceItemCode = pr?.materialCode || pr?.itemId;
+  // itemId is preferred: an order-form-raised fabrication request stores a
+  // "{code}#{dimensionVariantId}" composite in materialCode instead of a real
+  // catalog code (see materialAvailabilityService.js's
+  // raiseFabricationPurchaseRequest — needed for its per-dimension dedup
+  // index), which neither /api/items/by-code nor the preview endpoint can
+  // resolve. itemId already carries the real code for those requests; for a
+  // Material-Flow (cron) request itemId is simply unset, so this still falls
+  // back to materialCode (which IS a plain code there) exactly as before.
+  const sourceItemCode = pr?.itemId || pr?.materialCode;
   const { data: itemRes } = useQuery({
     queryKey: ['item-by-code-for-rfq-edit', sourceItemCode],
     queryFn: () => apiRequest('GET', `/api/items/by-code?code=${encodeURIComponent(sourceItemCode)}`),
@@ -62,6 +70,7 @@ export default function FabricationRFQDialog({ pr, onClose, onFinalized }) {
     queryKey: ['preview-fabrication-total-edit', sourceItemCode, JSON.stringify(linesPayload)],
     queryFn: () => apiRequest('POST', '/api/purchase-requests/preview-fabrication-total', {
       materialCode: sourceItemCode,
+      productName: pr?.productName,
       lines: linesPayload,
     }),
     enabled: allQtyValid,
@@ -91,20 +100,20 @@ export default function FabricationRFQDialog({ pr, onClose, onFinalized }) {
       {/* Capped + flex-column so this never grows past the viewport as more
           dimension lines are added — only the middle section (the part that
           actually grows with the data) scrolls; header/footer stay put. */}
-      <DialogContent className="max-w-lg max-h-[85vh] flex flex-col overflow-hidden">
+      <DialogContent className="max-w-xl max-h-[85vh] flex flex-col overflow-hidden">
         <DialogHeader className="shrink-0 pb-3 border-b border-slate-100">
           <DialogTitle className="flex items-center gap-2"><Send className="h-5 w-5 text-blue-600" /> Finalize & Send RFQ</DialogTitle>
           <DialogDescription>
             <span className="font-semibold text-slate-800">{pr.productName}</span> — review the dimension breakdown, adjust as needed, then send. The vendor only ever sees the combined total below, not these individual lines.
           </DialogDescription>
         </DialogHeader>
-        <div className="py-2 space-y-3 flex-1 overflow-y-auto min-h-0 pr-1">
+        <div className="py-2 space-y-3 flex-1 overflow-y-auto overflow-x-hidden min-h-0 px-1">
           <div className="space-y-1.5">
             {lines.map((l, idx) => (
               <div key={idx} className="flex items-center gap-2 p-2 rounded-md border border-slate-200 text-xs">
-                <span className="font-mono flex-1">{formatDims(l.values)}</span>
-                <Input type="number" min="1" className="w-20 h-7 text-xs" value={l.quantity} onChange={(e) => updateLineQty(idx, e.target.value)} />
-                <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:text-red-600" onClick={() => removeLine(idx)}>
+                <span className="font-mono flex-1 min-w-0 break-words">{formatDims(l.values)}</span>
+                <Input type="number" min="1" className="w-20 h-7 text-xs shrink-0" value={l.quantity} onChange={(e) => updateLineQty(idx, e.target.value)} />
+                <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:text-red-600 shrink-0" onClick={() => removeLine(idx)}>
                   <X className="h-3.5 w-3.5" />
                 </Button>
               </div>
@@ -115,14 +124,14 @@ export default function FabricationRFQDialog({ pr, onClose, onFinalized }) {
           {availableToAdd.length > 0 && (
             <div className="flex items-center gap-2">
               <select
-                className="flex-1 border border-slate-200 rounded-md text-xs h-8 px-2 bg-white"
+                className="flex-1 min-w-0 border border-slate-200 rounded-md text-xs h-8 px-2 bg-white"
                 value={addingVariantId}
                 onChange={(e) => setAddingVariantId(e.target.value)}
               >
                 <option value="">+ Add another catalog size…</option>
                 {availableToAdd.map(v => <option key={v._id} value={v._id}>{formatDims(v.values)}</option>)}
               </select>
-              <Button size="sm" variant="outline" className="h-8 text-xs" disabled={!addingVariantId} onClick={addLine}>
+              <Button size="sm" variant="outline" className="h-8 text-xs shrink-0 whitespace-nowrap" disabled={!addingVariantId} onClick={addLine}>
                 <Plus className="h-3.5 w-3.5 mr-1" /> Add
               </Button>
             </div>
@@ -135,9 +144,9 @@ export default function FabricationRFQDialog({ pr, onClose, onFinalized }) {
               ) : preview ? (
                 <>
                   {preview.lines.map((l, i) => (
-                    <div key={i} className="flex justify-between text-slate-600">
-                      <span className="font-mono">{formatDims(l.values)} × {l.quantity}</span>
-                      <span>{l.lineWeightKg != null ? `${l.lineWeightKg} kg` : '—'}</span>
+                    <div key={i} className="flex justify-between gap-2 text-slate-600">
+                      <span className="font-mono min-w-0 break-words">{formatDims(l.values)} × {l.quantity}</span>
+                      <span className="shrink-0">{l.lineWeightKg != null ? `${l.lineWeightKg} kg` : '—'}</span>
                     </div>
                   ))}
                   <div className="flex justify-between font-bold text-slate-800 border-t border-slate-200 pt-1 mt-1">
@@ -159,6 +168,11 @@ export default function FabricationRFQDialog({ pr, onClose, onFinalized }) {
               placeholder={isMassUnit ? (preview?.resolvedQuantity != null ? String(preview.resolvedQuantity) : '') : `Enter amount in ${purchaseUnit || 'the purchase unit'}`}
               value={manualQty}
               onChange={(e) => setManualQty(e.target.value)}
+              // Scoped override — the shared Input's default focus ring uses
+              // the app's global --ring var (near-black), which reads as a
+              // harsh box on a full-width field next to this dialog's much
+              // lighter, compact styling. Kept local to this one input.
+              className="focus-visible:ring-blue-400 focus-visible:ring-offset-1"
             />
             {!isMassUnit && (
               <p className="text-[10px] text-amber-600 mt-1">This item's Purchase Unit isn't weight-based — enter the final order amount yourself.</p>

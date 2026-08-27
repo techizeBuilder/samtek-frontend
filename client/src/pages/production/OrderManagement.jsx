@@ -20,6 +20,7 @@ import { formatCatalogFieldValue, formatBomDimensions } from '@/utils/bomFieldFo
 import FabricationVariantAmountFields from '@/components/inventory/FabricationVariantAmountFields';
 import UnitAmountField, { rowNeedsAmount as sharedRowNeedsAmount } from '@/components/inventory/UnitAmountField';
 import { useAuth } from '@/hooks/useAuth';
+import { LENGTH_UNITS } from '@/lib/fabricationDims';
 
 // Department-Head-only gate for Issue Material + Receive — mirrors
 // ProductionExpenses.jsx's own HEAD_ROLES/canManage pattern exactly.
@@ -111,8 +112,10 @@ export default function OrderManagement() {
   // the actual measured leftover area after cutting, entered by Production
   // itself rather than guessed by Store beforehand. See
   // productionMfgController.js's returnMaterialToStore.
-  const [returnLeftoverAmount, setReturnLeftoverAmount] = useState('');
-  const [returnLeftoverUnit, setReturnLeftoverUnit] = useState('Meter Square');
+  const [returnLeftoverLengthValue, setReturnLeftoverLengthValue] = useState('');
+  const [returnLeftoverLengthUnit, setReturnLeftoverLengthUnit] = useState('Millimeter');
+  const [returnLeftoverWidthValue, setReturnLeftoverWidthValue] = useState('');
+  const [returnLeftoverWidthUnit, setReturnLeftoverWidthUnit] = useState('Millimeter');
 
   // R&D BOM lookup (by machine code) — powers the "View" eye button on each material
   // demand row, so Production can see the full BOM entry (hierarchy, material type,
@@ -233,9 +236,23 @@ export default function OrderManagement() {
     }
   };
 
+  // A "flat piece" demand (fabricationCategory set, no specific per-cut
+  // bomDimensions — Store shipped whole catalog pieces, Production does the
+  // actual cutting on the floor) is the only kind that needs a measured
+  // leftover on return; a demand with a specific bomDimensions cut was
+  // already cut to size by Store, so any unused whole pieces returned are
+  // already exactly that size — nothing to measure. Same "flat pieces"
+  // signature this session already uses for routing elsewhere.
+  const returnDemandCategoryInfo = (row) => {
+    const isFlatPieceDemand = !!row?.fabricationCategory && (!row.bomDimensions || Object.keys(row.bomDimensions).length === 0);
+    const isSheet = fabricationCategories.find(c => c.key === row?.fabricationCategory)?.calcType === 'sheet';
+    return { isFlatPieceDemand, isSheet };
+  };
+
   const handleReturnMaterial = async () => {
     if (!returnRow || !returnQty || Number(returnQty) <= 0 || Number(returnQty) > returnRow.issuedQuantity) return;
-    if (returnRow.sheetMetalPlanId && !(Number(returnLeftoverAmount) > 0)) return;
+    const { isFlatPieceDemand, isSheet } = returnDemandCategoryInfo(returnRow);
+    if (isFlatPieceDemand && !(Number(returnLeftoverLengthValue) > 0 && (!isSheet || Number(returnLeftoverWidthValue) > 0))) return;
     try {
       const orderId = detailOrderLive?._id || detailOrderLive?.id;
       await apiRequest('POST', `/api/production-mfg/orders/${orderId}/materials/return`, {
@@ -243,9 +260,13 @@ export default function OrderManagement() {
         returnQuantity: Number(returnQty),
         reason: returnReason,
         returnType,
-        ...(returnRow.sheetMetalPlanId ? {
-          leftoverAmountValue: Number(returnLeftoverAmount),
-          leftoverAmountUnit: returnLeftoverUnit,
+        ...(isFlatPieceDemand ? {
+          leftoverLengthValue: Number(returnLeftoverLengthValue),
+          leftoverLengthUnit: returnLeftoverLengthUnit,
+          ...(isSheet ? {
+            leftoverWidthValue: Number(returnLeftoverWidthValue),
+            leftoverWidthUnit: returnLeftoverWidthUnit,
+          } : {}),
         } : {}),
       });
 
@@ -257,8 +278,10 @@ export default function OrderManagement() {
       setReturnQty('');
       setReturnReason('');
       setReturnType('Excess');
-      setReturnLeftoverAmount('');
-      setReturnLeftoverUnit('Meter Square');
+      setReturnLeftoverLengthValue('');
+      setReturnLeftoverLengthUnit('Millimeter');
+      setReturnLeftoverWidthValue('');
+      setReturnLeftoverWidthUnit('Millimeter');
     } catch (error) {
       showSmartToast(error, 'Return Material Failed');
     }
@@ -1113,7 +1136,7 @@ export default function OrderManagement() {
                                     <button
                                       onClick={() => {
                                         const inTransitQty = (m.transferredQuantity || 0) - (m.issuedQuantity || 0);
-                                        setIssueRow({ materialCode: m.materialCode, sourceItemCode: m.sourceItemCode, bomDimensions: m.bomDimensions, materialName: m.materialName, remainingQty: inTransitQty > 0 ? inTransitQty : remaining, unit: m.unit });
+                                        setIssueRow({ materialCode: m.materialCode, sourceItemCode: m.sourceItemCode, bomDimensions: m.bomDimensions, materialName: m.materialName, remainingQty: inTransitQty > 0 ? inTransitQty : remaining, unit: m.unit, issuedToName: m.issuedToName });
                                         setIssueQty(inTransitQty > 0 ? inTransitQty : remaining); // Default to exactly what they need
                                         setIssueModalOpen(true);
                                       }}
@@ -1126,7 +1149,7 @@ export default function OrderManagement() {
                                   {m.status === 'Issued' && (
                                     <button
                                       onClick={() => {
-                                        setReturnRow({ materialCode: m.materialCode, sourceItemCode: m.sourceItemCode, bomDimensions: m.bomDimensions, materialName: m.materialName, issuedQuantity: m.issuedQuantity, unit: m.unit, sheetMetalPlanId: m.sheetMetalPlanId || null });
+                                        setReturnRow({ materialCode: m.materialCode, sourceItemCode: m.sourceItemCode, bomDimensions: m.bomDimensions, materialName: m.materialName, issuedQuantity: m.issuedQuantity, unit: m.unit, sheetMetalPlanId: m.sheetMetalPlanId || null, fabricationCategory: m.fabricationCategory || '', dimensionVariantId: m.dimensionVariantId || null });
                                         setReturnQty('');
                                         setReturnLeftoverAmount('');
                                         setReturnLeftoverUnit('');
@@ -1389,14 +1412,16 @@ export default function OrderManagement() {
       </Dialog>
 
       {/* ─── RETURN MATERIAL MODAL ─── */}
-      <Dialog open={returnModalOpen} onOpenChange={(o) => { setReturnModalOpen(o); if (!o) { setReturnRow(null); setReturnQty(''); setReturnReason(''); setReturnType('Excess'); setReturnLeftoverAmount(''); setReturnLeftoverUnit('Meter Square'); } }}>
+      <Dialog open={returnModalOpen} onOpenChange={(o) => { setReturnModalOpen(o); if (!o) { setReturnRow(null); setReturnQty(''); setReturnReason(''); setReturnType('Excess'); setReturnLeftoverLengthValue(''); setReturnLeftoverLengthUnit('Millimeter'); setReturnLeftoverWidthValue(''); setReturnLeftoverWidthUnit('Millimeter'); } }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-amber-700">
               <Package className="h-5 w-5" /> Return Material
             </DialogTitle>
           </DialogHeader>
-          {returnRow && (
+          {returnRow && (() => {
+            const { isFlatPieceDemand, isSheet } = returnDemandCategoryInfo(returnRow);
+            return (
             <div className="space-y-4 py-2">
               <p className="text-xs text-slate-500 leading-relaxed">
                 Return excess or defective materials back to the store.
@@ -1409,27 +1434,50 @@ export default function OrderManagement() {
                 )}
                 <div className="flex justify-between border-t border-slate-200 pt-1 mt-1"><span className="text-xs text-slate-500 font-semibold">Max Returnable</span><span className="text-amber-700 text-xs font-bold">{returnRow.issuedQuantity} {returnRow.unit}</span></div>
               </div>
-              {returnRow.sheetMetalPlanId && (
+              {isFlatPieceDemand && (
                 <div className="p-3 border border-purple-200 rounded-lg bg-purple-50/50 space-y-2">
                   <label className="text-xs font-semibold text-purple-800 block">
-                    Measured Leftover Area * <span className="text-[10px] text-slate-500 font-normal">(what's actually left after cutting — Store will get this exact size back, not a guess)</span>
+                    Measured Leftover {isSheet ? 'Size' : 'Length'} * <span className="text-[10px] text-slate-500 font-normal">(what's actually left after cutting — Store will get this exact size back, not a guess)</span>
                   </label>
-                  <div className="flex gap-2">
-                    <Input
-                      type="number" min="0" placeholder="0" className="flex-1 bg-white"
-                      value={returnLeftoverAmount}
-                      onChange={e => setReturnLeftoverAmount(e.target.value)}
-                    />
-                    <select className="w-36 border border-slate-200 rounded-lg text-sm bg-white px-2" value={returnLeftoverUnit} onChange={e => setReturnLeftoverUnit(e.target.value)}>
-                      {['Millimeter Square', 'Centimeter Square', 'Meter Square', 'Inch Square', 'Foot Square'].map(u => <option key={u} value={u}>{u}</option>)}
-                    </select>
+                  <div className={isSheet ? 'grid grid-cols-2 gap-2' : ''}>
+                    <div>
+                      <label className="text-[10px] text-slate-500 uppercase">Length</label>
+                      <div className="flex gap-1.5 mt-0.5">
+                        <Input
+                          type="number" min="0" placeholder="0" className="flex-1 bg-white h-9"
+                          value={returnLeftoverLengthValue}
+                          onChange={e => setReturnLeftoverLengthValue(e.target.value)}
+                        />
+                        <select className="w-28 border border-slate-200 rounded-lg text-xs bg-white px-1.5" value={returnLeftoverLengthUnit} onChange={e => setReturnLeftoverLengthUnit(e.target.value)}>
+                          {LENGTH_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                    {isSheet && (
+                      <div>
+                        <label className="text-[10px] text-slate-500 uppercase">Width</label>
+                        <div className="flex gap-1.5 mt-0.5">
+                          <Input
+                            type="number" min="0" placeholder="0" className="flex-1 bg-white h-9"
+                            value={returnLeftoverWidthValue}
+                            onChange={e => setReturnLeftoverWidthValue(e.target.value)}
+                          />
+                          <select className="w-28 border border-slate-200 rounded-lg text-xs bg-white px-1.5" value={returnLeftoverWidthUnit} onChange={e => setReturnLeftoverWidthUnit(e.target.value)}>
+                            {LENGTH_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                          </select>
+                        </div>
+                      </div>
+                    )}
                   </div>
+                  <p className="text-[10px] text-slate-500">
+                    {isSheet ? 'Thickness' : 'Cross-section and other dimensions'} carried over from the original stock automatically — no need to re-enter.
+                  </p>
                 </div>
               )}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-semibold text-slate-600 mb-1 block">
-                    {returnRow.sheetMetalPlanId ? 'How Many Leftover Pieces? *' : 'Quantity to Return *'}
+                    {isFlatPieceDemand ? 'How Many Leftover Pieces? *' : 'Quantity to Return *'}
                   </label>
                   <Input
                     type="number"
@@ -1473,15 +1521,17 @@ export default function OrderManagement() {
                 />
               </div>
             </div>
-          )}
+            );
+          })()}
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setReturnModalOpen(false); setReturnRow(null); setReturnQty(''); setReturnReason(''); setReturnType('Excess'); setReturnLeftoverAmount(''); setReturnLeftoverUnit('Meter Square'); }}>Cancel</Button>
+            <Button variant="outline" onClick={() => { setReturnModalOpen(false); setReturnRow(null); setReturnQty(''); setReturnReason(''); setReturnType('Excess'); setReturnLeftoverLengthValue(''); setReturnLeftoverLengthUnit('Millimeter'); setReturnLeftoverWidthValue(''); setReturnLeftoverWidthUnit('Millimeter'); }}>Cancel</Button>
             <Button
               onClick={handleReturnMaterial}
-              disabled={
-                !returnQty || Number(returnQty) <= 0 || Number(returnQty) > (returnRow?.issuedQuantity || 0) ||
-                (returnRow?.sheetMetalPlanId && !(Number(returnLeftoverAmount) > 0))
-              }
+              disabled={(() => {
+                if (!returnQty || Number(returnQty) <= 0 || Number(returnQty) > (returnRow?.issuedQuantity || 0)) return true;
+                const { isFlatPieceDemand, isSheet } = returnDemandCategoryInfo(returnRow);
+                return isFlatPieceDemand && !(Number(returnLeftoverLengthValue) > 0 && (!isSheet || Number(returnLeftoverWidthValue) > 0));
+              })()}
               className="bg-amber-600 hover:bg-amber-700 text-white"
             >
               Submit Return
@@ -1510,6 +1560,9 @@ export default function OrderManagement() {
                   <div className="flex justify-between"><span className="text-xs text-slate-500 font-semibold">Cut Size</span><span className="text-slate-600 text-[11px] font-medium truncate ml-2">{Object.entries(issueRow.bomDimensions).filter(([, v]) => v !== undefined && v !== null && v !== '').map(([k, v]) => `${k}:${v}`).join(', ')}</span></div>
                 )}
                 <div className="flex justify-between border-t border-slate-200 pt-1 mt-1"><span className="text-xs text-slate-500 font-semibold">Remaining Required</span><span className="text-emerald-700 text-xs font-bold">{issueRow.remainingQty} {issueRow.unit}</span></div>
+                {issueRow.issuedToName && (
+                  <div className="flex justify-between"><span className="text-xs text-slate-500 font-semibold">Issued To</span><span className="text-slate-800 text-xs font-medium">{issueRow.issuedToName}</span></div>
+                )}
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>

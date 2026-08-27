@@ -114,20 +114,23 @@ export default function FabricationReceiveDialog({ pr, onClose, onReceived }) {
 
   return (
     <Dialog open={!!pr} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
+      {/* Capped + flex-column so this never grows past the viewport as more
+          lines/a new-dimension form are added — only the middle section (the
+          part that actually grows with the data) scrolls; header/footer stay put. */}
+      <DialogContent className="max-w-xl max-h-[85vh] flex flex-col overflow-hidden">
+        <DialogHeader className="shrink-0 pb-3 border-b border-slate-100">
           <DialogTitle className="flex items-center gap-2"><PackageCheck className="h-5 w-5 text-emerald-600" /> Receive Fabrication Purchase</DialogTitle>
           <DialogDescription>
             <span className="font-semibold text-slate-800">{pr.productName}</span> — enter how many pieces of each size actually arrived. Stock updates once QC passes this receipt.
           </DialogDescription>
         </DialogHeader>
-        <div className="py-2 space-y-3">
+        <div className="py-2 space-y-3 flex-1 overflow-y-auto overflow-x-hidden min-h-0 px-1">
           <div className="space-y-1.5">
             {lines.map((l, idx) => (
               <div key={idx} className="flex items-center gap-2 p-2 rounded-md border border-slate-200 text-xs">
-                <span className="font-mono flex-1">{formatDims(l.values)}</span>
-                <Input type="number" min="1" className="w-20 h-7 text-xs" value={l.quantity} onChange={(e) => updateLineQty(idx, e.target.value)} />
-                <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:text-red-600" onClick={() => removeLine(idx)}>
+                <span className="font-mono flex-1 min-w-0 break-words">{formatDims(l.values)}</span>
+                <Input type="number" min="1" className="w-20 h-7 text-xs shrink-0" value={l.quantity} onChange={(e) => updateLineQty(idx, e.target.value)} />
+                <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:text-red-600 shrink-0" onClick={() => removeLine(idx)}>
                   <X className="h-3.5 w-3.5" />
                 </Button>
               </div>
@@ -138,14 +141,14 @@ export default function FabricationReceiveDialog({ pr, onClose, onReceived }) {
           {availableToAdd.length > 0 && (
             <div className="flex items-center gap-2">
               <select
-                className="flex-1 border border-slate-200 rounded-md text-xs h-8 px-2 bg-white"
+                className="flex-1 min-w-0 border border-slate-200 rounded-md text-xs h-8 px-2 bg-white"
                 value={addingVariantId}
                 onChange={(e) => setAddingVariantId(e.target.value)}
               >
                 <option value="">+ Add a catalog size…</option>
                 {availableToAdd.map(v => <option key={v._id} value={v._id}>{formatDims(v.values)}</option>)}
               </select>
-              <Button size="sm" variant="outline" className="h-8 text-xs" disabled={!addingVariantId} onClick={addCatalogLine}>
+              <Button size="sm" variant="outline" className="h-8 text-xs shrink-0 whitespace-nowrap" disabled={!addingVariantId} onClick={addCatalogLine}>
                 <Plus className="h-3.5 w-3.5 mr-1" /> Add
               </Button>
             </div>
@@ -197,9 +200,9 @@ export default function FabricationReceiveDialog({ pr, onClose, onReceived }) {
               ) : preview ? (
                 <>
                   {preview.lines.map((l, i) => (
-                    <div key={i} className="flex justify-between text-slate-600">
-                      <span className="font-mono">{formatDims(l.values)} × {l.quantity}</span>
-                      <span>{l.lineWeightKg != null ? `${l.lineWeightKg} kg` : '—'}</span>
+                    <div key={i} className="flex justify-between gap-2 text-slate-600">
+                      <span className="font-mono min-w-0 break-words">{formatDims(l.values)} × {l.quantity}</span>
+                      <span className="shrink-0">{l.lineWeightKg != null ? `${l.lineWeightKg} kg` : '—'}</span>
                     </div>
                   ))}
                   <div className="flex justify-between font-bold text-slate-800 border-t border-slate-200 pt-1 mt-1">
@@ -211,7 +214,7 @@ export default function FabricationReceiveDialog({ pr, onClose, onReceived }) {
             </div>
           )}
         </div>
-        <DialogFooter>
+        <DialogFooter className="shrink-0 pt-3 border-t border-slate-100">
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button
             className="bg-emerald-600 hover:bg-emerald-700 text-white"

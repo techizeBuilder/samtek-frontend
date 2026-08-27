@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import {
   Card,
@@ -127,7 +127,10 @@ export default function RolePermissionManagement() {
       return apiRequest('GET', `/api/users?${params.toString()}`);
     },
     enabled: true,
-    retry: 1
+    retry: 1,
+    // Keeps the current page of results on screen (instead of blanking to a
+    // loading state) while a new debounced search/filter is in flight.
+    placeholderData: keepPreviousData
   });
 
   // Fetch companies for dropdown
@@ -198,10 +201,6 @@ export default function RolePermissionManagement() {
   useEffect(() => {
     setCurrentPage(1);
   }, [debouncedSearchTerm, roleFilter, statusFilter]);
-
-  // Debug companies data
-  console.log('Companies data from API:', companies);
-  console.log('First company structure:', companies[0]);
 
   // Create user mutation
   const createUserMutation = useMutation({

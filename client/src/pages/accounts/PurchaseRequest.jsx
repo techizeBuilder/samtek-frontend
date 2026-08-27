@@ -1269,9 +1269,12 @@ export default function PurchaseRequest() {
               {invCheckRequest && (
                 <span>
                   Checking stock for: <strong>{invCheckRequest.productName}</strong>
-                  {invCheckRequest.materialCode && (
+                  {(invCheckRequest.itemId || invCheckRequest.materialCode) && (
                     <span className="ml-1 font-mono text-xs bg-violet-100 px-1.5 py-0.5 rounded">
-                      Code: {invCheckRequest.materialCode}
+                      {/* itemId preferred — an order-form-raised fabrication request's
+                          materialCode is a "{code}#{dimensionVariantId}" dedup key, not
+                          a real catalog code (see FabricationRFQDialog.jsx's own note). */}
+                      Code: {invCheckRequest.itemId || invCheckRequest.materialCode}
                     </span>
                   )}
                 </span>

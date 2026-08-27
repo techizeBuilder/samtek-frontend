@@ -16,7 +16,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { formatDims, LENGTH_UNITS, AREA_UNITS, toMm, toMm2 } from '@/lib/fabricationDims';
+import { formatDims, LENGTH_UNITS, toMm, toMm2 } from '@/lib/fabricationDims';
 
 const variantCapacityMm = (variant, isSheet) => variant
   ? (isSheet ? (Number(variant.values?.width) || 0) * (Number(variant.values?.length) || 0) : (Number(variant.values?.length) || 0))
@@ -38,8 +38,10 @@ function FabricationTransferDialog({ request, onClose, categories }) {
   const [sourceVariantId, setSourceVariantId] = useState('');
   const [piecesConsumed, setPiecesConsumed] = useState('');
   const [qtyFulfilled, setQtyFulfilled] = useState('');
-  const [leftoverAmount, setLeftoverAmount] = useState('');
-  const [leftoverUnit, setLeftoverUnit] = useState('');
+  const [leftoverLengthValue, setLeftoverLengthValue] = useState('');
+  const [leftoverLengthUnit, setLeftoverLengthUnit] = useState('');
+  const [leftoverWidthValue, setLeftoverWidthValue] = useState('');
+  const [leftoverWidthUnit, setLeftoverWidthUnit] = useState('');
   const [leftoverPieces, setLeftoverPieces] = useState('');
   const [issuedTo, setIssuedTo] = useState('');
 
@@ -53,7 +55,6 @@ function FabricationTransferDialog({ request, onClose, categories }) {
   const chosenVariant = variants.find(v => v._id === sourceVariantId);
   const category = categories.find(c => c.key === request?.material?.fabricationCategory);
   const isSheet = category?.calcType === 'sheet';
-  const unitOptions = isSheet ? AREA_UNITS : LENGTH_UNITS;
 
   const remaining = (request?.material?.quantity || 0) - (request?.material?.transferredQuantity || 0);
   const demandAmountValue = request?.material?.amountValue;
@@ -88,8 +89,12 @@ function FabricationTransferDialog({ request, onClose, categories }) {
       sourceVariantId,
       stockPiecesConsumed: Number(piecesConsumed),
       quantityFulfilled: Number(qtyFulfilled),
-      leftover: (Number(leftoverAmount) > 0 && leftoverUnit && Number(leftoverPieces) > 0)
-        ? { amountValue: Number(leftoverAmount), amountUnit: leftoverUnit, pieceCount: Number(leftoverPieces) }
+      leftover: (Number(leftoverLengthValue) > 0 && leftoverLengthUnit && Number(leftoverPieces) > 0 && (!isSheet || (Number(leftoverWidthValue) > 0 && leftoverWidthUnit)))
+        ? {
+          lengthValue: Number(leftoverLengthValue), lengthUnit: leftoverLengthUnit,
+          ...(isSheet ? { widthValue: Number(leftoverWidthValue), widthUnit: leftoverWidthUnit } : {}),
+          pieceCount: Number(leftoverPieces),
+        }
         : undefined,
       issuedTo: issuedTo || undefined,
     }),
@@ -126,7 +131,7 @@ function FabricationTransferDialog({ request, onClose, categories }) {
                 {variants.map(v => (
                   <label key={v._id} className={`flex items-center justify-between gap-2 p-2 rounded-md border text-xs cursor-pointer ${sourceVariantId === v._id ? 'border-blue-400 bg-blue-50' : 'border-slate-200'}`}>
                     <span className="flex items-center gap-2">
-                      <input type="radio" name="sourceVariant" checked={sourceVariantId === v._id} onChange={() => { setSourceVariantId(v._id); setLeftoverAmount(''); setLeftoverUnit(''); setLeftoverPieces(''); }} />
+                      <input type="radio" name="sourceVariant" checked={sourceVariantId === v._id} onChange={() => { setSourceVariantId(v._id); setLeftoverLengthValue(''); setLeftoverLengthUnit(''); setLeftoverWidthValue(''); setLeftoverWidthUnit(''); setLeftoverPieces(''); }} />
                       <span className="font-mono">{formatDims(v.values)}</span>
                       {v.isLeftover && <span className="px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-semibold">Leftover</span>}
                     </span>
@@ -163,29 +168,42 @@ function FabricationTransferDialog({ request, onClose, categories }) {
 
           {chosenVariant && category && (
             <div className="p-3 border border-amber-200 rounded-lg bg-amber-50/50 space-y-2">
-              <label className="text-xs font-semibold text-amber-800 block">Leftover After Cutting <span className="text-[10px] text-slate-500 font-normal">(optional — leave blank if nothing usable remains)</span></label>
-              <div className="grid grid-cols-3 gap-3">
+              <label className="text-xs font-semibold text-amber-800 block">
+                Leftover After Cutting <span className="text-[10px] text-slate-500 font-normal">(optional — leave blank if nothing usable remains{isSheet ? '; a real offcut is a rectangle, so enter its actual Length and Width' : ''})</span>
+              </label>
+              <div className={isSheet ? 'grid grid-cols-2 gap-3' : ''}>
                 <div>
-                  <label className="text-[10px] text-slate-500 uppercase">{isSheet ? 'Area' : 'Length'}</label>
-                  <Input type="number" min="0" className="mt-1 bg-white h-9" placeholder="0" value={leftoverAmount} onChange={(e) => setLeftoverAmount(e.target.value)} />
+                  <label className="text-[10px] text-slate-500 uppercase">Length</label>
+                  <div className="flex gap-1.5 mt-1">
+                    <Input type="number" min="0" className="bg-white h-9" placeholder="0" value={leftoverLengthValue} onChange={(e) => setLeftoverLengthValue(e.target.value)} />
+                    <select className="w-28 h-9 border border-slate-200 rounded-md bg-white text-xs px-1.5" value={leftoverLengthUnit} onChange={(e) => setLeftoverLengthUnit(e.target.value)}>
+                      <option value="">Select…</option>
+                      {LENGTH_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                    </select>
+                  </div>
                 </div>
-                <div>
-                  <label className="text-[10px] text-slate-500 uppercase">Unit</label>
-                  <select className="mt-1 w-full h-9 border border-slate-200 rounded-md bg-white text-sm px-2" value={leftoverUnit} onChange={(e) => setLeftoverUnit(e.target.value)}>
-                    <option value="">Select…</option>
-                    {unitOptions.map(u => <option key={u} value={u}>{u}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-[10px] text-slate-500 uppercase">Pieces</label>
-                  <Input type="number" min="0" className="mt-1 bg-white h-9" placeholder="0" value={leftoverPieces} onChange={(e) => setLeftoverPieces(e.target.value)} />
-                </div>
+                {isSheet && (
+                  <div>
+                    <label className="text-[10px] text-slate-500 uppercase">Width</label>
+                    <div className="flex gap-1.5 mt-1">
+                      <Input type="number" min="0" className="bg-white h-9" placeholder="0" value={leftoverWidthValue} onChange={(e) => setLeftoverWidthValue(e.target.value)} />
+                      <select className="w-28 h-9 border border-slate-200 rounded-md bg-white text-xs px-1.5" value={leftoverWidthUnit} onChange={(e) => setLeftoverWidthUnit(e.target.value)}>
+                        <option value="">Select…</option>
+                        {LENGTH_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="w-1/3">
+                <label className="text-[10px] text-slate-500 uppercase">Pieces</label>
+                <Input type="number" min="0" className="mt-1 bg-white h-9" placeholder="0" value={leftoverPieces} onChange={(e) => setLeftoverPieces(e.target.value)} />
               </div>
             </div>
           )}
 
           <div>
-            <label className="text-sm font-medium text-slate-700 mb-1 block">Issued To <span className="text-[10px] text-slate-400 font-normal">(who you're physically handing this to)</span></label>
+            <label className="text-sm font-medium text-slate-700 mb-1 block">Issued To <span className="text-red-500">*</span> <span className="text-[10px] text-slate-400 font-normal">(who you're physically handing this to)</span></label>
             <Input placeholder="e.g. Ramesh Kumar" value={issuedTo} onChange={(e) => setIssuedTo(e.target.value)} />
           </div>
         </div>
@@ -194,7 +212,7 @@ function FabricationTransferDialog({ request, onClose, categories }) {
           <Button
             className="bg-blue-600 hover:bg-blue-700 text-white"
             onClick={() => transferMutation.mutate()}
-            disabled={transferMutation.isPending || !sourceVariantId || !piecesConsumed || !qtyFulfilled || Number(piecesConsumed) <= 0 || Number(qtyFulfilled) <= 0 || Number(piecesConsumed) > (chosenVariant?.subStock || 0) || Number(qtyFulfilled) > remaining || insufficient}
+            disabled={transferMutation.isPending || !sourceVariantId || !piecesConsumed || !qtyFulfilled || !issuedTo.trim() || Number(piecesConsumed) <= 0 || Number(qtyFulfilled) <= 0 || Number(piecesConsumed) > (chosenVariant?.subStock || 0) || Number(qtyFulfilled) > remaining || insufficient}
           >
             {transferMutation.isPending ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
             Confirm Transfer
@@ -923,7 +941,7 @@ export default function PendingRequestsTab() {
               )}
             </div>
             <div>
-              <label className="text-sm font-medium text-slate-700 mb-1 block">Issued To <span className="text-[10px] text-slate-400 font-normal">(who you're physically handing this to)</span></label>
+              <label className="text-sm font-medium text-slate-700 mb-1 block">Issued To <span className="text-red-500">*</span> <span className="text-[10px] text-slate-400 font-normal">(who you're physically handing this to)</span></label>
               <Input placeholder="e.g. Ramesh Kumar" value={transferIssuedTo} onChange={(e) => setTransferIssuedTo(e.target.value)} />
             </div>
           </div>
@@ -936,6 +954,7 @@ export default function PendingRequestsTab() {
                 transferMutation.isPending ||
                 !transferQty ||
                 Number(transferQty) <= 0 ||
+                !transferIssuedTo.trim() ||
                 (selectedRequest && Number(transferQty) > ((selectedRequest.material.quantity || 0) - (selectedRequest.material.transferredQuantity || 0)))
               }
             >
