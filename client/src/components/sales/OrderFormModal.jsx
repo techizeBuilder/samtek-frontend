@@ -139,6 +139,11 @@ export default function OrderFormModal({ open, onOpenChange, orderId, order, lea
 
   const [fields, setFields] = useState({});
   const [items, setItems] = useState([blankItem()]);
+  // Names of top-level fields that came pre-filled from the lead/order/payment
+  // record on this fill — locked so Sales can't quietly overwrite what
+  // Accounts/the lead record already has on file (mirrors the item rows'
+  // own `locked` flag for quotation-sourced rows, see itemsFromQuotation).
+  const [lockedFields, setLockedFields] = useState(new Set());
 
   // Cash Amount is hidden from Accounts by default (per-item and the Total
   // row) — double-clicking a masked cell reveals just that figure. No
@@ -226,6 +231,27 @@ export default function OrderFormModal({ open, onOpenChange, orderId, order, lea
       paymentDate: latestPayment?.paymentDate ? toDateInput(latestPayment.paymentDate) : '',
     });
     setItems(itemsFromQuotation(l) || [blankItem()]);
+
+    // Lock only the fields that actually got a real fetched value — an empty
+    // source value (e.g. no GST on file) leaves the field open so Sales isn't
+    // blocked from filling in what's genuinely missing.
+    const lockSet = new Set();
+    const lockIfPresent = (key, val) => { if (val !== undefined && val !== null && val !== '') lockSet.add(key); };
+    lockIfPresent('customerName', l?.contactPerson || l?.companyName);
+    lockIfPresent('mobile', l?.mobile);
+    lockIfPresent('email', l?.email);
+    lockIfPresent('companyName', l?.companyName);
+    lockIfPresent('gstNumber', l?.gstNumber);
+    lockIfPresent('companyAddress', l?.address);
+    lockIfPresent('state', l?.state);
+    lockIfPresent('pin', l?.pincode);
+    lockIfPresent('quotationNo', l?.leadCode);
+    lockIfPresent('orderFormOrderId', o?.orderCode);
+    lockIfPresent('receivedAmount', l?.advancedPaymentAmount);
+    lockIfPresent('wayOfPayment', latestPayment?.paymentMethod);
+    lockIfPresent('paymentReceiverAC', latestPayment?.paymentMethod === 'Cash' ? '' : latestPayment?.bankAccountName);
+    lockIfPresent('paymentDate', latestPayment?.paymentDate);
+    setLockedFields(lockSet);
   };
 
   const applyExistingForm = (f) => {
@@ -256,6 +282,7 @@ export default function OrderFormModal({ open, onOpenChange, orderId, order, lea
     // hiddenCharge is preserved so a previously-folded-in additional charge
     // stays hidden on re-view/edit too, not just at first fill.
     setItems(f.items?.length ? f.items.map(it => ({ ...it, locked: false, hiddenCharge: !!it.hiddenCharge })) : [blankItem()]);
+    setLockedFields(new Set());
   };
 
   // ─── Load data whenever the modal opens ───────────────────────────────────
@@ -268,6 +295,7 @@ export default function OrderFormModal({ open, onOpenChange, orderId, order, lea
     setRevealedCash(new Set());
     setTotalCashRevealed(false);
     setBomCostByCode({});
+    setLockedFields(new Set());
 
     (async () => {
       try {
@@ -522,23 +550,23 @@ export default function OrderFormModal({ open, onOpenChange, orderId, order, lea
 
               {/* ── Customer block ── */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <Field label="Customer Name" value={fields.customerName} onChange={v => setField('customerName', v)} disabled={disabled} />
-                <Field label="Mobile" value={fields.mobile} onChange={v => setField('mobile', v)} disabled={disabled} />
-                <Field label="Email" value={fields.email} onChange={v => setField('email', v)} disabled={disabled} />
-                <Field label="Company Name" value={fields.companyName} onChange={v => setField('companyName', v)} disabled={disabled} />
-                <Field label="GST No" value={fields.gstNumber} onChange={v => setField('gstNumber', v)} disabled={disabled} />
-                <Field label="State" value={fields.state} onChange={v => setField('state', v)} disabled={disabled} />
-                <Field label="Company Address" value={fields.companyAddress} onChange={v => setField('companyAddress', v)} disabled={disabled} className="md:col-span-2" />
-                <Field label="Pin" value={fields.pin} onChange={v => setField('pin', v)} disabled={disabled} />
+                <Field label="Customer Name" value={fields.customerName} onChange={v => setField('customerName', v)} disabled={disabled || lockedFields.has('customerName')} />
+                <Field label="Mobile" value={fields.mobile} onChange={v => setField('mobile', v)} disabled={disabled || lockedFields.has('mobile')} />
+                <Field label="Email" value={fields.email} onChange={v => setField('email', v)} disabled={disabled || lockedFields.has('email')} />
+                <Field label="Company Name" value={fields.companyName} onChange={v => setField('companyName', v)} disabled={disabled || lockedFields.has('companyName')} />
+                <Field label="GST No" value={fields.gstNumber} onChange={v => setField('gstNumber', v)} disabled={disabled || lockedFields.has('gstNumber')} />
+                <Field label="State" value={fields.state} onChange={v => setField('state', v)} disabled={disabled || lockedFields.has('state')} />
+                <Field label="Company Address" value={fields.companyAddress} onChange={v => setField('companyAddress', v)} disabled={disabled || lockedFields.has('companyAddress')} className="md:col-span-2" />
+                <Field label="Pin" value={fields.pin} onChange={v => setField('pin', v)} disabled={disabled || lockedFields.has('pin')} />
               </div>
 
               <div className="h-px bg-gray-200" />
 
               {/* ── Order meta block ── */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <Field label="Quotation No" value={fields.quotationNo} onChange={v => setField('quotationNo', v)} disabled={disabled} />
+                <Field label="Quotation No" value={fields.quotationNo} onChange={v => setField('quotationNo', v)} disabled={disabled || lockedFields.has('quotationNo')} />
                 <SelectField label="Order Type" value={fields.orderType} onChange={v => setField('orderType', v)} disabled={disabled} options={ORDER_TYPES} />
-                <Field label="Order ID" value={fields.orderFormOrderId} onChange={v => setField('orderFormOrderId', v)} disabled={disabled} />
+                <Field label="Order ID" value={fields.orderFormOrderId} onChange={v => setField('orderFormOrderId', v)} disabled={disabled || lockedFields.has('orderFormOrderId')} />
                 <Field type="date" label="Order Date" value={fields.orderDate} onChange={v => setField('orderDate', v)} disabled={disabled} />
                 <Field type="date" label="Delivery Date" value={fields.deliveryDate} onChange={v => setField('deliveryDate', v)} disabled={disabled} />
                 <Field type="date" label="Issue Date" value={fields.issueDate} onChange={v => setField('issueDate', v)} disabled={disabled} />
@@ -549,7 +577,7 @@ export default function OrderFormModal({ open, onOpenChange, orderId, order, lea
               {/* ── Payment Details block ── */}
               <p className="text-sm font-semibold text-gray-700">Payment Details</p>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <Field type="number" label="Received Amount (INR)" value={fields.receivedAmount} onChange={v => setField('receivedAmount', v)} disabled={disabled} required />
+                <Field type="number" label="Received Amount (INR)" value={fields.receivedAmount} onChange={v => setField('receivedAmount', v)} disabled={disabled || lockedFields.has('receivedAmount')} required />
                 <SelectField label="Payment Type" value={fields.paymentType} onChange={v => setField('paymentType', v)} disabled={disabled} options={PAYMENT_TYPES} />
                 <div>
                   <Field
@@ -563,9 +591,9 @@ export default function OrderFormModal({ open, onOpenChange, orderId, order, lea
                     <p className="text-[10px] text-gray-400 mt-1">= (Bill Amt + GST + Cash Amount) − Discount − Received Amount</p>
                   )}
                 </div>
-                <SelectField label="Way of Payment" value={fields.wayOfPayment} onChange={v => setField('wayOfPayment', v)} disabled={disabled} options={WAY_OF_PAYMENT_OPTIONS} />
-                <Field label="Payment Receiver (A/C)" value={fields.paymentReceiverAC} onChange={v => setField('paymentReceiverAC', v)} disabled={disabled} />
-                <Field type="date" label="Payment Date" value={fields.paymentDate} onChange={v => setField('paymentDate', v)} disabled={disabled} />
+                <SelectField label="Way of Payment" value={fields.wayOfPayment} onChange={v => setField('wayOfPayment', v)} disabled={disabled || lockedFields.has('wayOfPayment')} options={WAY_OF_PAYMENT_OPTIONS} />
+                <Field label="Payment Receiver (A/C)" value={fields.paymentReceiverAC} onChange={v => setField('paymentReceiverAC', v)} disabled={disabled || lockedFields.has('paymentReceiverAC')} />
+                <Field type="date" label="Payment Date" value={fields.paymentDate} onChange={v => setField('paymentDate', v)} disabled={disabled || lockedFields.has('paymentDate')} />
               </div>
 
               <div className="h-px bg-gray-200" />
@@ -623,6 +651,15 @@ export default function OrderFormModal({ open, onOpenChange, orderId, order, lea
                           <TableCell className="align-top"><QtyCell value={it.qty} onChange={v => setItemField(originalIdx, 'qty', v)} disabled={lockedDisabled} /></TableCell>
                           <TableCell className="align-top">
                             <CellInput type="number" value={it.billAmount} onChange={v => setItemField(originalIdx, 'billAmount', v)} disabled={disabled} className="text-right" size="lg" />
+                            {!disabled && num(it.quotationAmount) > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => setItemField(originalIdx, 'billAmount', it.quotationAmount)}
+                                className="mt-1 text-[10px] text-blue-500 hover:text-blue-700 underline"
+                              >
+                                Same as Quotation
+                              </button>
+                            )}
                             <BomCostHint bomInfo={bomCostByCode[(it.mcCode || '').trim()]} billAmount={it.billAmount} qty={it.qty} />
                           </TableCell>
                           <TableCell className="align-top"><CellInput type="number" value={it.gstAmount} onChange={() => {}} disabled title="Auto: 18% of Bill Amt" className="text-right" size="lg" /></TableCell>
