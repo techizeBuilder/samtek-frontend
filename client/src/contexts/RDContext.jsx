@@ -114,6 +114,13 @@ export function RDProvider({ children }) {
   const invProductionRequests = inv('rd-production-requests');
   const invMasterOptions = inv('rd-master-options');
   const invCustomFieldTemplates = inv('rd-custom-field-templates');
+  // 'sheet-metal-groups' is its own query (BOMCreationTab.jsx, keyed by
+  // bomId) separate from 'rd-boms' — any mutation that can change a
+  // material's dimensionVariantId or its isSheetMetal/discontinued state
+  // must invalidate this too, or the Sheet Metal Plan modal keeps reading
+  // a stale dimensionVariantId and 'save plan' 400s with "no matching
+  // material line" even though the BOM itself already has the fresh one.
+  const invSheetMetalGroups = inv('sheet-metal-groups');
 
   // ── Machine mutations ────────────────────────────────────────────────────────
   const createMachineMut = useMutation({ mutationFn: (d) => apiRequest('POST', `${BASE}/machines`, d), onSuccess: invMachines });
@@ -138,12 +145,12 @@ export function RDProvider({ children }) {
 
   // ── BOM mutations ────────────────────────────────────────────────────────────
   const createBOMMut = useMutation({ mutationFn: (d) => apiRequest('POST', `${BASE}/boms`, d), onSuccess: invBOMs });
-  const addMaterialMut = useMutation({ mutationFn: ({ bomId, mat }) => apiRequest('POST', `${BASE}/boms/${bomId}/materials`, mat), onSuccess: invBOMs });
-  const updateMaterialMut = useMutation({ mutationFn: ({ bomId, matId, data }) => apiRequest('PUT', `${BASE}/boms/${bomId}/materials/${matId}`, data), onSuccess: invBOMs });
-  const deleteMaterialMut = useMutation({ mutationFn: ({ bomId, matId }) => apiRequest('DELETE', `${BASE}/boms/${bomId}/materials/${matId}`), onSuccess: invBOMs });
+  const addMaterialMut = useMutation({ mutationFn: ({ bomId, mat }) => apiRequest('POST', `${BASE}/boms/${bomId}/materials`, mat), onSuccess: () => { invBOMs(); invSheetMetalGroups(); } });
+  const updateMaterialMut = useMutation({ mutationFn: ({ bomId, matId, data }) => apiRequest('PUT', `${BASE}/boms/${bomId}/materials/${matId}`, data), onSuccess: () => { invBOMs(); invSheetMetalGroups(); } });
+  const deleteMaterialMut = useMutation({ mutationFn: ({ bomId, matId }) => apiRequest('DELETE', `${BASE}/boms/${bomId}/materials/${matId}`), onSuccess: () => { invBOMs(); invSheetMetalGroups(); } });
   const lockBOMMut = useMutation({ mutationFn: (bomId) => apiRequest('PUT', `${BASE}/boms/${bomId}/lock`), onSuccess: invBOMs });
-  const discontinueMaterialMut = useMutation({ mutationFn: ({ bomId, matId }) => apiRequest('PUT', `${BASE}/boms/${bomId}/materials/${matId}/discontinue`), onSuccess: invBOMs });
-  const reactivateMaterialMut = useMutation({ mutationFn: ({ bomId, matId }) => apiRequest('PUT', `${BASE}/boms/${bomId}/materials/${matId}/reactivate`), onSuccess: invBOMs });
+  const discontinueMaterialMut = useMutation({ mutationFn: ({ bomId, matId }) => apiRequest('PUT', `${BASE}/boms/${bomId}/materials/${matId}/discontinue`), onSuccess: () => { invBOMs(); invSheetMetalGroups(); } });
+  const reactivateMaterialMut = useMutation({ mutationFn: ({ bomId, matId }) => apiRequest('PUT', `${BASE}/boms/${bomId}/materials/${matId}/reactivate`), onSuccess: () => { invBOMs(); invSheetMetalGroups(); } });
   const updateProductionCostMut = useMutation({ mutationFn: ({ bomId, productionCost, productionExpense }) => apiRequest('PUT', `${BASE}/boms/${bomId}/production-cost`, { productionCost, productionExpense }), onSuccess: invBOMs });
 
   // ── Prototype mutations ──────────────────────────────────────────────────────

@@ -26,6 +26,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { HoverCard, HoverCardTrigger, HoverCardContent } from '@/components/ui/hover-card';
 import {
   Table,
   TableBody,
@@ -78,6 +79,34 @@ const StatusChip = ({ status }) => {
     </span>
   );
 };
+
+// BOM raw-material availability badge ("Available"/"Needs Purchase") — a
+// Radix HoverCard, not the hand-rolled group/group-hover CSS popover this
+// used before. That version was clipped by the row list's overflow-hidden
+// wrapper and had no viewport collision detection, so on rows near the
+// bottom of the screen the panel opened partly (or entirely) off-screen —
+// unreachable, so moving the cursor toward it just looked like the popover
+// "closed". HoverCard's Portal renders outside that wrapper, and
+// avoidCollisions (on by default) flips/repositions it to stay on-screen;
+// its own trigger-to-content grace area is what actually fixes "moving the
+// cursor onto the panel shouldn't close it".
+const MaterialAvailabilityBadge = ({ icon, label, count, colorClasses, children }) => (
+  <HoverCard openDelay={100} closeDelay={150}>
+    <HoverCardTrigger asChild>
+      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium cursor-pointer ${colorClasses}`}>
+        {icon} {label} ({count})
+      </span>
+    </HoverCardTrigger>
+    <HoverCardContent
+      side="bottom"
+      align="start"
+      collisionPadding={12}
+      className="w-72 whitespace-normal break-words bg-slate-900 text-slate-100 text-xs p-3 rounded-lg shadow-xl border border-slate-800"
+    >
+      {children}
+    </HoverCardContent>
+  </HoverCard>
+);
 
 // When can an item be (re-)checked? Same rules as the old single-item flow.
 const itemCheckState = (qcStatus, lastRejectionSource) => {
@@ -468,58 +497,54 @@ const StoreOrders = () => {
                               )}
                               {/* BOM raw-material availability — In-house items only, once computed
                                   (see materialAvailabilityService.js). Separate from the finished-
-                                  product Availability chip above. Same hover-popover pattern as
-                                  PackedOrders.jsx's "Packed Machines" tooltip — hand-rolled group/
-                                  group-hover, not Radix, matching this app's own established style
-                                  for this exact visual. Each needs its own `group` wrapper since
-                                  Tailwind's group-hover scoping is per nearest ancestor. */}
+                                  product Availability chip above. */}
                               {row.productType === 'In-house Manufactured' && row.materialAvailability?.computedAt && (
                                 <>
                                   {row.materialAvailability.available?.length > 0 && (
-                                    <div className="relative inline-block group cursor-pointer">
-                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-teal-50 text-teal-700 border border-teal-200">
-                                        📦 Available ({row.materialAvailability.available.length})
-                                      </span>
-                                      <div className="absolute left-0 top-full invisible opacity-0 -translate-y-1 group-hover:visible group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-150 z-50 bg-slate-900 text-slate-100 text-xs p-3 rounded-lg shadow-xl w-72 whitespace-normal break-words border border-slate-800">
-                                        <div className="font-semibold text-slate-400 mb-1.5 sticky top-0 bg-slate-900">
-                                          Available Material ({row.materialAvailability.available.length}):
-                                        </div>
-                                        <div className="space-y-1.5 max-h-56 overflow-y-auto">
-                                          {row.materialAvailability.available.map((m, idx) => (
-                                            <div key={idx} className="leading-normal flex justify-between gap-2">
-                                              <div>
-                                                <div className="font-medium text-slate-100">{m.name}</div>
-                                                <div className="text-slate-400 text-[10px]">{m.code}</div>
-                                              </div>
-                                              <div className="text-teal-400 text-right whitespace-nowrap">{m.availableQty} / {m.neededQty} {m.unit}</div>
-                                            </div>
-                                          ))}
-                                        </div>
+                                    <MaterialAvailabilityBadge
+                                      icon="📦"
+                                      label="Available"
+                                      count={row.materialAvailability.available.length}
+                                      colorClasses="bg-teal-50 text-teal-700 border border-teal-200"
+                                    >
+                                      <div className="font-semibold text-slate-400 mb-1.5">
+                                        Available Material ({row.materialAvailability.available.length}):
                                       </div>
-                                    </div>
+                                      <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1 dark-popover-scrollbar">
+                                        {row.materialAvailability.available.map((m, idx) => (
+                                          <div key={idx} className="leading-normal flex justify-between gap-2">
+                                            <div>
+                                              <div className="font-medium text-slate-100">{m.name}</div>
+                                              <div className="text-slate-400 text-[10px]">{m.code}</div>
+                                            </div>
+                                            <div className="text-teal-400 text-right whitespace-nowrap">{m.availableQty} / {m.neededQty} {m.unit}</div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </MaterialAvailabilityBadge>
                                   )}
                                   {row.materialAvailability.needsPurchase?.length > 0 && (
-                                    <div className="relative inline-block group cursor-pointer">
-                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">
-                                        🛒 Needs Purchase ({row.materialAvailability.needsPurchase.length})
-                                      </span>
-                                      <div className="absolute left-0 top-full invisible opacity-0 -translate-y-1 group-hover:visible group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-150 z-50 bg-slate-900 text-slate-100 text-xs p-3 rounded-lg shadow-xl w-72 whitespace-normal break-words border border-slate-800">
-                                        <div className="font-semibold text-slate-400 mb-1.5 sticky top-0 bg-slate-900">
-                                          Needs Purchase ({row.materialAvailability.needsPurchase.length}):
-                                        </div>
-                                        <div className="space-y-1.5 max-h-56 overflow-y-auto">
-                                          {row.materialAvailability.needsPurchase.map((m, idx) => (
-                                            <div key={idx} className="leading-normal flex justify-between gap-2">
-                                              <div>
-                                                <div className="font-medium text-slate-100">{m.name}</div>
-                                                <div className="text-slate-400 text-[10px]">{m.code}{m.purchaseRequestId ? ` · ${m.purchaseRequestId}` : ''}</div>
-                                              </div>
-                                              <div className="text-amber-400 text-right whitespace-nowrap">short {m.shortfallQty} {m.unit}</div>
-                                            </div>
-                                          ))}
-                                        </div>
+                                    <MaterialAvailabilityBadge
+                                      icon="🛒"
+                                      label="Needs Purchase"
+                                      count={row.materialAvailability.needsPurchase.length}
+                                      colorClasses="bg-amber-50 text-amber-700 border border-amber-200"
+                                    >
+                                      <div className="font-semibold text-slate-400 mb-1.5">
+                                        Needs Purchase ({row.materialAvailability.needsPurchase.length}):
                                       </div>
-                                    </div>
+                                      <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1 dark-popover-scrollbar">
+                                        {row.materialAvailability.needsPurchase.map((m, idx) => (
+                                          <div key={idx} className="leading-normal flex justify-between gap-2">
+                                            <div>
+                                              <div className="font-medium text-slate-100">{m.name}</div>
+                                              <div className="text-slate-400 text-[10px]">{m.code}{m.purchaseRequestId ? ` · ${m.purchaseRequestId}` : ''}</div>
+                                            </div>
+                                            <div className="text-amber-400 text-right whitespace-nowrap">short {m.shortfallQty} {m.unit}</div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </MaterialAvailabilityBadge>
                                   )}
                                 </>
                               )}
