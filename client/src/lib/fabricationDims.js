@@ -64,3 +64,25 @@ export const formatAreaMm2 = (areaMm2) => {
     ? `${(areaMm2 / 1e6).toFixed(3)} m²`
     : `${Math.round(areaMm2).toLocaleString()} mm²`;
 };
+
+const AREA_UNIT_ABBR = { 'Millimeter Square': 'mm²', 'Centimeter Square': 'cm²', 'Meter Square': 'm²', 'Inch Square': 'in²', 'Foot Square': 'ft²' };
+const AREA_UNIT_DECIMALS = { 'Millimeter Square': 0, 'Centimeter Square': 2, 'Meter Square': 3, 'Inch Square': 2, 'Foot Square': 3 };
+
+// Converts + formats an mm² figure into a SPECIFIC unit (a material's own
+// configured Used Unit — for a sheet_plate item this is itself an area
+// unit, e.g. "Centimeter Square") instead of auto-picking mm²/m² per figure
+// like formatAreaMm2 above. Used so every area figure on one Sheet Metal
+// group's card shares one consistent unit — the one R&D actually configured
+// for that material — rather than each figure independently switching
+// between mm²/m² by its own magnitude (which could show 4 different units
+// on the same card). Falls back to formatAreaMm2's auto-scale when `unit`
+// isn't a recognized area unit (e.g. older data saved before Used Unit was
+// enforced to be an area unit for sheet_plate items).
+export const formatAreaInUnit = (areaMm2, unit) => {
+  if (areaMm2 == null || isNaN(areaMm2)) return '—';
+  const factor = AREA_UNIT_TO_MM2[unit];
+  if (!factor) return formatAreaMm2(areaMm2);
+  const converted = areaMm2 / factor;
+  const decimals = AREA_UNIT_DECIMALS[unit] ?? 2;
+  return `${converted.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals })} ${AREA_UNIT_ABBR[unit]}`;
+};

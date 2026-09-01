@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
+import { showSmartToast } from '@/lib/toast-utils';
 
 const ProductionContext = createContext(null);
 
@@ -118,18 +119,27 @@ export function ProductionProvider({ children }) {
     mutationFn: ({ orderId, stepIndex, teamId, unitNumber = 1 }) =>
       apiRequest('PUT', `${BASE}/orders/${orderId}/processes/${stepIndex}/assign-team?unit=${unitNumber}`, { teamId }),
     onSuccess: invalidateOrders,
+    // Job Work can now genuinely reject this (material not yet received —
+    // confirmed 2026-09-01) where it almost never used to fail before, and
+    // this whole context has no other error feedback of its own — without
+    // this the button would just silently do nothing.
+    onError: (e) => showSmartToast(e, 'Failed to assign team'),
   });
 
   const startProcessMutation = useMutation({
     mutationFn: ({ orderId, stepIndex, unitNumber = 1 }) =>
       apiRequest('PUT', `${BASE}/orders/${orderId}/processes/${stepIndex}/start?unit=${unitNumber}`),
     onSuccess: invalidateOrders,
+    onError: (e) => showSmartToast(e, 'Failed to start'),
   });
 
   const markProcessCompleteMutation = useMutation({
     mutationFn: ({ orderId, stepIndex, unitNumber = 1 }) =>
       apiRequest('PUT', `${BASE}/orders/${orderId}/processes/${stepIndex}/complete?unit=${unitNumber}`),
     onSuccess: invalidateOrders,
+    // Final Testing can now genuinely reject this too (checklist not filled
+    // yet — confirmed 2026-09-02), same reasoning as assignTeam/startProcess above.
+    onError: (e) => showSmartToast(e, 'Failed to mark complete'),
   });
 
   const approveQCMutation = useMutation({

@@ -18,7 +18,7 @@ import FilePreviewModal from './FilePreviewModal';
 import { formatCatalogFieldValue, formatUnitWeight } from '@/utils/bomFieldFormat';
 import FabricationVariantAmountFields from '@/components/inventory/FabricationVariantAmountFields';
 import UnitAmountField, { AMOUNT_UNIT_TYPES, rowNeedsAmount as sharedRowNeedsAmount } from '@/components/inventory/UnitAmountField';
-import { formatAreaMm2 } from '@/lib/fabricationDims';
+import { formatAreaInUnit } from '@/lib/fabricationDims';
 
 // Fabrication Master materials (fabricationRef set) price by weight, not a
 // flat purchaseCost — the user picks which catalog dimensionVariant this
@@ -484,7 +484,8 @@ export default function BOMCreationTab({ product }) {
   // Deliberately NOT including leftoverValue here (or anywhere in BOM
   // Management) — per the client, the returnable leftover isn't shown or
   // added into this product's cost at all, only the true (unrecoverable)
-  // scrap is.
+  // scrap is: the leftover goes back to Store and is reused on a future
+  // order, so it was never actually consumed by this one.
   const totalScrapCost = sheetMetalGroups.reduce((sum, g) => sum + (g.scrapCost || 0), 0);
   const totalBOMCost = materialsCost + totalScrapCost + (bom?.productionCost || 0) + (bom?.productionExpense || 0);
 
@@ -842,19 +843,19 @@ export default function BOMCreationTab({ product }) {
                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2">
                               <div className="bg-slate-50 rounded px-2 py-1.5">
                                 <p className="text-[10px] text-slate-400 uppercase">Catalog Sheet Area</p>
-                                <p className="text-xs font-semibold text-slate-700">{formatAreaMm2(g.sheetAreaMm2)}</p>
+                                <p className="text-xs font-semibold text-slate-700">{formatAreaInUnit(g.sheetAreaMm2, g.unit)}</p>
                               </div>
                               <div className="bg-slate-50 rounded px-2 py-1.5">
                                 <p className="text-[10px] text-slate-400 uppercase">Used by Child Parts</p>
-                                <p className="text-xs font-semibold text-slate-700">{formatAreaMm2(g.requiredAreaMm2)}</p>
+                                <p className="text-xs font-semibold text-slate-700">{formatAreaInUnit(g.requiredAreaMm2, g.unit)}</p>
                               </div>
                               <div className="bg-blue-50 rounded px-2 py-1.5">
                                 <p className="text-[10px] text-blue-500 uppercase">Laser-Cutting Area</p>
-                                <p className="text-xs font-semibold text-blue-700">{g.existingPlan ? formatAreaMm2(g.existingPlan.plannedAreaMm2) : '—'}</p>
+                                <p className="text-xs font-semibold text-blue-700">{g.existingPlan ? formatAreaInUnit(g.existingPlan.plannedAreaMm2, g.unit) : '—'}</p>
                               </div>
                               <div className="bg-amber-50 rounded px-2 py-1.5">
                                 <p className="text-[10px] text-amber-600 uppercase">Scrap Area</p>
-                                <p className="text-xs font-semibold text-amber-700">{g.existingPlan ? formatAreaMm2(g.scrapAreaMm2) : '—'}</p>
+                                <p className="text-xs font-semibold text-amber-700">{g.existingPlan ? formatAreaInUnit(g.scrapAreaMm2, g.unit) : '—'}</p>
                               </div>
                             </div>
                             {g.existingPlan ? (

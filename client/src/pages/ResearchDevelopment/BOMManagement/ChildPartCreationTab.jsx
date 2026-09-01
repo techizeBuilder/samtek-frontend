@@ -265,7 +265,7 @@ export default function ChildPartCreationTab({ product }) {
               </div>
             </div>
             <div>
-              <Label className="text-xs font-semibold text-slate-600 mb-1 block">Design File</Label>
+              <Label className="text-xs font-semibold text-slate-600 mb-1 block">Design File <span className="text-red-500">*</span></Label>
               <div className="flex items-center gap-2">
                 {cpImage ? (
                   isPdfUrl(cpImage) ? (
@@ -285,7 +285,7 @@ export default function ChildPartCreationTab({ product }) {
             </div>
           </div>
           {canAdd && (
-            <Button size="sm" onClick={handleAddChildPart} disabled={!cpName || !cpCode || createChildPartMutation.isPending} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">
+            <Button size="sm" onClick={handleAddChildPart} disabled={!cpName || !cpCode || !cpImage || createChildPartMutation.isPending} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">
               <Plus className="h-4 w-4 mr-1" /> Add Child Part
             </Button>
           )}
@@ -399,7 +399,7 @@ export default function ChildPartCreationTab({ product }) {
                           </div>
                         </div>
                         <div className="flex-shrink-0">
-                          <Label className="text-[11px] text-slate-500 mb-1 block">Design File</Label>
+                          <Label className="text-[11px] text-slate-500 mb-1 block">Design File <span className="text-red-500">*</span></Label>
                           <div className="flex items-center gap-1.5 h-8">
                             {subForm.image ? (
                               isPdfUrl(subForm.image) ? (
@@ -417,7 +417,7 @@ export default function ChildPartCreationTab({ product }) {
                           </div>
                         </div>
                         <Button size="sm" className="h-8 bg-gradient-to-r from-blue-600 to-purple-600 text-white"
-                          disabled={!subForm.name || !subForm.code || addSubChildPartMutation.isPending}
+                          disabled={!subForm.name || !subForm.code || !subForm.image || addSubChildPartMutation.isPending}
                           onClick={() => addSubChildPartMutation.mutate({ childPartId: cp._id, data: subForm })}>
                           <Plus className="h-3.5 w-3.5 mr-1" /> Add
                         </Button>

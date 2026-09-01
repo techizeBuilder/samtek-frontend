@@ -132,7 +132,13 @@ export const MODULES = [
       { key: 'toolProcess', label: 'Tool & Process' },
       { key: 'prototype', label: 'Prototype' },
       { key: 'changeManagement', label: 'Change Management' },
-      { key: 'qualityParameters', label: 'Quality Parameters' },
+      // Replaces the old single 'qualityParameters' feature — client asked
+      // for the sidebar split three ways (see
+      // server/docs/qc-module-restructure-client-request.md). Each becomes
+      // its own reusable-checklist module, one at a time.
+      { key: 'qcInventory', label: 'Inventory QC' },
+      { key: 'qcProductMaster', label: 'Product Master QC' },
+      { key: 'qcMotorMaster', label: 'Motor Master QC' },
       { key: 'documentation', label: 'Documentation' },
       { key: 'expenses', label: 'Expenses' },
       { key: 'lms', label: 'LMS' }

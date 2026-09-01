@@ -23,6 +23,15 @@ export default function FabricationRFQDialog({ pr, onClose, onFinalized }) {
   // lines: [{ values, quantity }]
   const [lines, setLines] = useState([]);
   const [manualQty, setManualQty] = useState('');
+  // Was the label's own claim a lie until now: this field only ever showed
+  // the computed weight as a *placeholder* (ghost text), never as a real
+  // value — so an untouched field submitted the correct total (finalQuantity
+  // below falls back to preview.resolvedQuantity when manualQty is empty),
+  // but visually looked blank, and it's trivial to click into what looks
+  // like an empty box and type something — which is exactly how a real
+  // request went out with "2" instead of the actual 45.6kg (caught
+  // 2026-09-02). Now genuinely pre-filled — see the effect below.
+  const [manualQtyTouched, setManualQtyTouched] = useState(false);
   const [addingVariantId, setAddingVariantId] = useState('');
 
   // itemId is preferred: an order-form-raised fabrication request stores a
@@ -76,6 +85,17 @@ export default function FabricationRFQDialog({ pr, onClose, onFinalized }) {
     enabled: allQtyValid,
   });
   const preview = previewRes?.data;
+
+  // Genuinely pre-fills the field (not just a placeholder) with the computed
+  // weight — re-syncs as the dimension lines change, but only until the user
+  // actually edits it themselves, so a deliberate override isn't silently
+  // clobbered by the next recompute.
+  useEffect(() => {
+    if (!manualQtyTouched && isMassUnit && preview?.resolvedQuantity != null) {
+      setManualQty(String(preview.resolvedQuantity));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [manualQtyTouched, isMassUnit, preview?.resolvedQuantity]);
 
   const finalQuantity = manualQty ? Number(manualQty) : (isMassUnit ? preview?.resolvedQuantity : null);
   const finalUnit = (isMassUnit ? preview?.resolvedUnit : null) || purchaseUnit;
@@ -165,9 +185,9 @@ export default function FabricationRFQDialog({ pr, onClose, onFinalized }) {
             </label>
             <Input
               type="number" min="0.001" step="0.001"
-              placeholder={isMassUnit ? (preview?.resolvedQuantity != null ? String(preview.resolvedQuantity) : '') : `Enter amount in ${purchaseUnit || 'the purchase unit'}`}
+              placeholder={isMassUnit ? '' : `Enter amount in ${purchaseUnit || 'the purchase unit'}`}
               value={manualQty}
-              onChange={(e) => setManualQty(e.target.value)}
+              onChange={(e) => { setManualQty(e.target.value); setManualQtyTouched(true); }}
               // Scoped override — the shared Input's default focus ring uses
               // the app's global --ring var (near-black), which reads as a
               // harsh box on a full-width field next to this dialog's much

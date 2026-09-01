@@ -14,6 +14,8 @@ import {
   CheckCircle2, XCircle, Clock, AlertTriangle, ChevronLeft,
   Play, Send, Package, Factory, ShoppingCart, Plus, Trash2, RefreshCw
 } from 'lucide-react';
+import SubChildPartQCReview from '@/components/qc/SubChildPartQCReview';
+import ProductionCheckReviewRow from '@/components/qc/ProductionCheckReviewRow';
 
 const statusColor = {
   Pending: 'bg-amber-100 text-amber-700',
@@ -24,15 +26,60 @@ const statusColor = {
 
 const itemStatusColor = { Pending: 'text-slate-400', Pass: 'text-emerald-600', Fail: 'text-red-600' };
 
-function ChecklistRow({ item, jobStatus, onUpdate, canEdit }) {
-  const [local, setLocal] = useState({ actualValue: item.actualValue || '', status: item.status || 'Pending', remarks: item.remarks || '' });
+// `productionFilled` is true only for a manufactured job's Final Check
+// (job.partChecks.length > 0) — Production already recorded actualValue/
+// status/remarks (saveFinalChecklist) before this ever reaches QC, so QC
+// reviews that read-only via ProductionCheckReviewRow and records its own
+// separate qcStatus/qcRemarks, never touching Production's fields (confirmed
+// 2026-09-02). Every other job type has no Production layer at all — this
+// row IS QC's one and only record, exactly as before this change.
+function ChecklistRow({ item, jobStatus, onUpdate, canEdit, productionFilled }) {
+  const [local, setLocal] = useState(
+    productionFilled
+      ? { qcStatus: item.qcStatus || 'Pending', qcRemarks: item.qcRemarks || '' }
+      : { actualValue: item.actualValue || '', status: item.status || 'Pending', remarks: item.remarks || '' }
+  );
   const [saving, setSaving] = useState(false);
   const editable = jobStatus === 'In Progress' && canEdit;
 
-  const save = async () => {
+  const save = async (patch) => {
+    const next = { ...local, ...patch };
+    setLocal(next);
     setSaving(true);
-    try { await onUpdate(item._id, local); } finally { setSaving(false); }
+    try { await onUpdate(item._id, next); } finally { setSaving(false); }
   };
+
+  if (productionFilled) {
+    // A Pass carries no extra input to confirm, so it saves itself the
+    // moment it's clicked — no separate button (confirmed 2026-09-02: that
+    // extra click was pure friction). A Fail needs a reason typed first, so
+    // it only updates local state here and waits for the explicit Save
+    // below — same as before, just no longer shown for the common Pass case.
+    const handleVerdictChange = async (patch) => {
+      const next = { ...local, ...patch };
+      setLocal(next);
+      if (patch.qcStatus === 'Pass') {
+        setSaving(true);
+        try { await onUpdate(item._id, { qcStatus: 'Pass', qcRemarks: '' }); } finally { setSaving(false); }
+      }
+    };
+    return (
+      <div className="space-y-2">
+        <ProductionCheckReviewRow
+          row={{ ...item, qcStatus: local.qcStatus, qcRemarks: local.qcRemarks }}
+          canEdit={editable}
+          onChange={handleVerdictChange}
+        />
+        {editable && local.qcStatus === 'Fail' && (
+          <div className="flex justify-end">
+            <Button size="sm" className="h-8 px-3 text-xs" onClick={() => save({})} disabled={saving || !local.qcRemarks?.trim()}>
+              {saving ? 'Saving…' : 'Save QC Verdict'}
+            </Button>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   // Dynamically set placeholder based on the type of check
   const isVisualCheck = item.standardValue === 'Visual Inspection';
@@ -63,11 +110,11 @@ function ChecklistRow({ item, jobStatus, onUpdate, canEdit }) {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
           <div>
             <Label className="text-xs text-slate-500">Actual Value</Label>
-            <Input 
-              className="mt-1 h-9 text-sm" 
-              value={local.actualValue} 
-              onChange={e => setLocal(l => ({ ...l, actualValue: e.target.value }))} 
-              placeholder={actualValuePlaceholder} 
+            <Input
+              className="mt-1 h-9 text-sm"
+              value={local.actualValue}
+              onChange={e => setLocal(l => ({ ...l, actualValue: e.target.value }))}
+              placeholder={actualValuePlaceholder}
             />
           </div>
           <div>
@@ -84,13 +131,13 @@ function ChecklistRow({ item, jobStatus, onUpdate, canEdit }) {
           <div>
             <Label className="text-xs text-slate-500">Remarks {local.status === 'Fail' && <span className="text-red-500">*</span>}</Label>
             <div className="flex gap-2 mt-1">
-              <Input 
-                className="h-9 text-sm flex-1" 
-                value={local.remarks} 
-                onChange={e => setLocal(l => ({ ...l, remarks: e.target.value }))} 
-                placeholder={local.status === 'Fail' ? 'Reason required' : 'Optional'} 
+              <Input
+                className="h-9 text-sm flex-1"
+                value={local.remarks}
+                onChange={e => setLocal(l => ({ ...l, remarks: e.target.value }))}
+                placeholder={local.status === 'Fail' ? 'Reason required' : 'Optional'}
               />
-              <Button size="sm" className="h-9 px-3 shrink-0" onClick={save} disabled={saving}>
+              <Button size="sm" className="h-9 px-3 shrink-0" onClick={() => save({})} disabled={saving}>
                 {saving ? '...' : 'Save'}
               </Button>
             </div>
@@ -259,9 +306,18 @@ export default function QCInspection() {
   if (!job) return <div className="p-6 text-slate-500">QC Job not found</div>;
 
   const cl = job.checklist || [];
-  const passCount = cl.filter(c => c.status === 'Pass').length;
-  const failCount = cl.filter(c => c.status === 'Fail').length;
-  const pendingCount = cl.filter(c => c.status === 'Pending').length;
+  // Mirrors the backend gate in getQCJob/syncRDToQCJob: a manufactured
+  // job's Final checklist is empty on purpose until Production submits it.
+  const finalCheckReady = !job.partChecks?.length || !!job.finalCheckFilledAt;
+  // A manufactured job's Final Check rows are Production's own self-check —
+  // QC's real progress lives in the separate qcStatus field (see
+  // ChecklistRow/updateChecklistItem's productionFilled branch); every other
+  // job's `status` field IS QC's own record, unchanged.
+  const productionFilled = job.partChecks?.length > 0;
+  const statusField = productionFilled ? 'qcStatus' : 'status';
+  const passCount = cl.filter(c => c[statusField] === 'Pass').length;
+  const failCount = cl.filter(c => c[statusField] === 'Fail').length;
+  const pendingCount = cl.filter(c => c[statusField] === 'Pending').length;
   const allInspected = cl.length > 0 && pendingCount === 0;
   const hasAnyFail = failCount > 0;
 
@@ -320,6 +376,13 @@ export default function QCInspection() {
         </Card>
       )}
 
+      {/* Sub Child Parts — in-house/outsource manufactured products only
+          (renders nothing otherwise, see SubChildPartQCReview's own
+          comment). The Checklist/Decision below is this SAME job's Final
+          Check, gated server-side (submitDecision) until every part here
+          is Approved. */}
+      <SubChildPartQCReview jobId={id} partChecks={job.partChecks} canEdit={canEdit} onRefetch={refetch} />
+
       {/* Checklist */}
       <Card className="border-none shadow-sm">
         <CardContent className="p-5">
@@ -333,8 +396,11 @@ export default function QCInspection() {
               )}
             </div>
 
-            {/* Sync R&D Data Button */}
-            {(job.status === 'Pending' || job.status === 'In Progress') && canEdit && (
+            {/* Sync R&D Data Button — hidden for a manufactured job until
+                Production has actually submitted the Final checklist (see
+                getQCJob's finalCheckReady gate); pulling early would just
+                400 now, and the button would be pointless before then. */}
+            {(job.status === 'Pending' || job.status === 'In Progress') && canEdit && finalCheckReady && (
               <Button
                 variant="outline"
                 size="sm"
@@ -349,12 +415,14 @@ export default function QCInspection() {
           </div>
 
           {cl.length === 0 ? (
-            <p className="text-sm text-slate-400 py-4">No checklist items defined</p>
+            <p className="text-sm text-slate-400 py-4">
+              {finalCheckReady ? 'No checklist items defined' : 'Waiting for Production to complete and submit the Final Testing checklist.'}
+            </p>
           ) : (
             <div className="space-y-3">
               {cl.map(item => (
                 <div key={item._id} className="relative group">
-                  <ChecklistRow item={item} jobStatus={job.status} onUpdate={handleUpdateItem} canEdit={canEdit} />
+                  <ChecklistRow item={item} jobStatus={job.status} onUpdate={handleUpdateItem} canEdit={canEdit} productionFilled={productionFilled} />
                   {job.status === 'In Progress' && canDeleteItem && (
                     <button
                       onClick={() => handleRemoveItem(item._id)}

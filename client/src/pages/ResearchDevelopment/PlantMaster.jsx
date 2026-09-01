@@ -131,13 +131,21 @@ export default function PlantMaster() {
     onError: (e) => showSmartToast(e, 'Failed to update status'),
   });
 
+  // Defensive normalize, mirroring the per-row onBlur — quantity can still
+  // be an empty/partial string here if the user clicks straight to "Add
+  // Plant"/"Save Changes" without ever blurring the quantity field.
+  const withNormalizedQuantities = (f) => ({
+    ...f,
+    machines: f.machines.map(e => ({ ...e, quantity: Math.max(1, Math.floor(Number(e.quantity)) || 1) })),
+    motors: f.motors.map(e => ({ ...e, quantity: Math.max(1, Math.floor(Number(e.quantity)) || 1) })),
+  });
   const handleAdd = () => {
     if (!form.category || !form.subCategory || !form.name) return;
-    createMutation.mutate(form);
+    createMutation.mutate(withNormalizedQuantities(form));
   };
   const handleEditSave = () => {
     if (!editForm.category || !editForm.subCategory || !editForm.name) return;
-    updateMutation.mutate({ id: selected._id, data: editForm });
+    updateMutation.mutate({ id: selected._id, data: withNormalizedQuantities(editForm) });
   };
 
   const openEdit = (p) => {
@@ -224,7 +232,16 @@ export default function PlantMaster() {
       const exists = f[listKey].some(e => e.item === id);
       return { ...f, [listKey]: exists ? f[listKey].filter(e => e.item !== id) : [...f[listKey], { item: id, quantity: 1 }] };
     });
-    const setQty = (id, qty) => setState(f => ({ ...f, [listKey]: f[listKey].map(e => e.item === id ? { ...e, quantity: Math.max(1, Number(qty) || 1) } : e) }));
+    // Keep whatever the user actually typed (including a momentarily empty
+    // string) while they're editing — clamping to >=1 on every keystroke
+    // meant clearing the field to type a fresh number always snapped
+    // straight back to "1" before a second digit could ever be entered.
+    // Only normalized back to a real number on blur (below) and again,
+    // defensively, at submit time (handleAdd/handleEditSave) in case the
+    // field is left empty and blur never fires (e.g. clicking "Add Plant"
+    // directly).
+    const setQty = (id, qty) => setState(f => ({ ...f, [listKey]: f[listKey].map(e => e.item === id ? { ...e, quantity: qty } : e) }));
+    const normalizeQty = (id) => setState(f => ({ ...f, [listKey]: f[listKey].map(e => e.item === id ? { ...e, quantity: Math.max(1, Math.floor(Number(e.quantity)) || 1) } : e) }));
     const remove = (id) => setState(f => ({ ...f, [listKey]: f[listKey].filter(e => e.item !== id) }));
 
     return (
@@ -255,7 +272,7 @@ export default function PlantMaster() {
                     <span className="font-mono font-semibold text-blue-700">{it?.code || '—'}</span> {it?.name || '(item no longer available)'}
                   </span>
                   <div className="flex items-center gap-2 flex-shrink-0">
-                    <Input type="number" min="1" className="w-16 h-7 text-xs bg-white" value={entry.quantity} onChange={e => setQty(entry.item, e.target.value)} />
+                    <Input type="number" min="1" className="w-16 h-7 text-xs bg-white" value={entry.quantity} onChange={e => setQty(entry.item, e.target.value)} onBlur={() => normalizeQty(entry.item)} />
                     <button type="button" onClick={() => remove(entry.item)} className="text-slate-400 hover:text-red-500"><XCircle className="h-3.5 w-3.5" /></button>
                   </div>
                 </div>

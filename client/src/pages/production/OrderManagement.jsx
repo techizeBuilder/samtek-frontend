@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { HoverCard, HoverCardTrigger, HoverCardContent } from '@/components/ui/hover-card';
 import {
   ClipboardList, Plus, CheckCircle, AlertTriangle, Clock, Package,
-  ChevronRight, FileCheck, Wrench, Send, Search, Filter, FileText, ExternalLink, ShoppingCart, ArrowDownToLine, Eye, Layers, Pencil
+  ChevronRight, FileCheck, Wrench, Send, Search, Filter, FileText, ExternalLink, ShoppingCart, ArrowDownToLine, Eye, Layers, Pencil, CalendarClock
 } from 'lucide-react';
 import { useProduction as useProd } from '@/contexts/ProductionContext';
 import { apiRequest } from '@/lib/queryClient';
@@ -45,6 +45,50 @@ const statusIcon = {
   'In Progress': <ChevronRight className="h-3.5 w-3.5" />,
   'Completed': <CheckCircle className="h-3.5 w-3.5" />,
 };
+
+// Material List's "Availability" column — live per-row check computed
+// server-side (productionMfgController.js's computeLiveMaterialAvailability),
+// only present for a row currently sitting on an outstanding quantity (never
+// issued, or freshly re-Requested after an Adjust Qty approval — see that
+// function's own comment for exactly which demand states qualify). A row
+// with no availability entry (already In Transit/Issued/Pending R&D/etc.)
+// renders nothing here — the question is moot once Store's already acted.
+function AvailabilityCell({ availability }) {
+  if (!availability) return <span className="text-slate-300">—</span>;
+  const { state, availableQty } = availability;
+
+  if (state === 'available') {
+    return (
+      <span className="flex items-center gap-1 text-emerald-700 font-semibold">
+        <CheckCircle className="h-3 w-3" /> In Stock ({availableQty})
+      </span>
+    );
+  }
+  if (state === 'short_eta') {
+    const eta = availability.expectedDeliveryDate ? new Date(availability.expectedDeliveryDate) : null;
+    return (
+      <span className="flex items-center gap-1 text-blue-700 font-semibold" title={availability.purchaseRequestId ? `Purchase Request: ${availability.purchaseRequestId}` : ''}>
+        <CalendarClock className="h-3 w-3 flex-shrink-0" />
+        {eta ? <>Available by {eta.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}, {eta.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}</> : 'Vendor selected, ETA pending'}
+      </span>
+    );
+  }
+  if (state === 'short_pr_pending') {
+    return (
+      <span className="flex items-center gap-1 text-amber-700 font-semibold" title={availability.purchaseRequestId ? `Purchase Request: ${availability.purchaseRequestId}` : ''}>
+        <Clock className="h-3 w-3" /> Purchase in progress ({availableQty} in stock)
+      </span>
+    );
+  }
+  if (state === 'short_no_pr') {
+    return (
+      <span className="flex items-center gap-1 text-red-600 font-semibold">
+        <AlertTriangle className="h-3 w-3" /> Short ({availableQty} in stock)
+      </span>
+    );
+  }
+  return <span className="text-slate-300">—</span>;
+}
 
 const emptyOrder = { machineCode: '', machineName: '', priority: 'Normal', deliveryDate: '', source: 'Stock' };
 // Fabrication Master materials only (fabricationRef set) — same shape as
@@ -982,6 +1026,7 @@ export default function OrderManagement() {
                           <th className="text-left px-3 py-2 text-slate-500 font-semibold">Material</th>
                           <th className="text-left px-3 py-2 text-slate-500 font-semibold">Qty</th>
                           <th className="text-left px-3 py-2 text-slate-500 font-semibold">Status</th>
+                          <th className="text-left px-3 py-2 text-slate-500 font-semibold">Availability</th>
                           <th className="text-left px-3 py-2 text-slate-500 font-semibold">Action</th>
                         </tr>
                       </thead>
@@ -1028,6 +1073,7 @@ export default function OrderManagement() {
                                 <td className="px-3 py-2">
                                   <span className="px-1.5 py-0.5 rounded text-xs font-semibold bg-slate-100 text-slate-500">Not Issued</span>
                                 </td>
+                                <td className="px-3 py-2"><AvailabilityCell availability={row.availability} /></td>
                                 <td className="px-3 py-2">
                                   <div className="flex gap-2">
                                     <button
@@ -1108,6 +1154,8 @@ export default function OrderManagement() {
                                         m.status === 'R&D Rejected' ? 'bg-red-100 text-red-700' :
                                           'bg-slate-100 text-slate-600'}`}>{m.status}</span>
                               </td>
+
+                              <td className="px-3 py-2"><AvailabilityCell availability={row.availability} /></td>
 
                               <td className="px-3 py-2">
                                 <div className="flex gap-2">

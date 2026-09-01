@@ -41,7 +41,7 @@ export default function RDDashboard() {
     { label: 'Tool & Process', path: '/r&d/tool-process', icon: Cog, desc: 'Manufacturing process steps', color: 'text-orange-600', bg: 'bg-orange-50' },
     { label: 'Prototype', path: '/r&d/prototype', icon: Beaker, desc: `${inProgressPrototypes.length} in testing`, color: 'text-teal-600', bg: 'bg-teal-50', badge: inProgressPrototypes.length },
     { label: 'Change Management', path: '/r&d/change-management', icon: AlertTriangle, desc: `${stats.openChangeRequests} open requests`, color: 'text-red-600', bg: 'bg-red-50', badge: stats.openChangeRequests },
-    { label: 'Quality Parameters', path: '/r&d/quality-parameters', icon: ShieldAlert, desc: 'QC standards & checklists', color: 'text-indigo-600', bg: 'bg-indigo-50' },
+    { label: 'Quality Parameters', path: '/r&d/inventory-qc', icon: ShieldAlert, desc: 'QC standards & checklists', color: 'text-indigo-600', bg: 'bg-indigo-50' },
     { label: 'Documentation', path: '/r&d/documentation', icon: FolderOpen, desc: 'Design files & manuals', color: 'text-slate-600', bg: 'bg-slate-100' },
   ];
 

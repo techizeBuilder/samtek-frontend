@@ -450,7 +450,20 @@ const rdMenuItems = [
   { label: 'Tool & Process', path: '/r&d/tool-process', icon: Cog, module: 'rnd', feature: 'toolProcess' },
   { label: 'Prototype', path: '/r&d/prototype', icon: Beaker, module: 'rnd', feature: 'prototype' },
   { label: 'Change Management', path: '/r&d/change-management', icon: AlertTriangle, module: 'rnd', feature: 'changeManagement' },
-  { label: 'Quality Parameters', path: '/r&d/quality-parameters', icon: ShieldAlert, module: 'rnd', feature: 'qualityParameters' },
+  {
+    label: 'Quality Parameters',
+    path: '/r&d/inventory-qc',
+    icon: ShieldAlert,
+    module: 'rnd',
+    // No top-level `feature` — same convention as "Product Management" above:
+    // access is governed per-submodule, one reusable-checklist module at a
+    // time (see server/docs/qc-module-restructure-client-request.md).
+    submodules: [
+      { label: 'Inventory QC', path: '/r&d/inventory-qc', feature: 'qcInventory' },
+      { label: 'Product Master QC', path: '/r&d/product-master-qc', feature: 'qcProductMaster' },
+      { label: 'Motor Master QC', path: '/r&d/motor-master-qc', feature: 'qcMotorMaster' },
+    ]
+  },
   { label: 'Documentation', path: '/r&d/documentation', icon: FolderOpen, module: 'rnd', feature: 'documentation' },
   { label: 'Expenses', path: '/r&d/expenses', icon: Receipt, module: 'rnd', feature: 'expenses' },
   {
@@ -700,12 +713,22 @@ function buildRoutePermissionIndex() {
 
   for (const menuArray of ALL_MENU_ARRAYS) {
     for (const item of menuArray) {
-      add(item.path, item.module, item.feature);
+      // Submodules first: a parent whose own `path` is just an alias for its
+      // first submodule (e.g. "Product Management" / "Quality Parameters" —
+      // both intentionally featureless at the top level, see their comments
+      // above) would otherwise have that submodule's real feature permanently
+      // shadowed by the parent's blank one, since `add` keeps whichever value
+      // reaches a given path first. That silently downgraded the shadowed
+      // path to a bare module-level check (any 'rnd' access, no matter what
+      // the feature checkbox says) instead of the feature-level check its own
+      // sidebar entry advertises — caught 2026-08-31 when a real per-role
+      // grant correctly 403'd on the OTHER submodules but not this one.
       if (item.submodules) {
         for (const sub of item.submodules) {
           add(sub.path, item.module, sub.feature);
         }
       }
+      add(item.path, item.module, item.feature);
     }
   }
   return index;

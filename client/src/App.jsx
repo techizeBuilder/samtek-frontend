@@ -204,7 +204,9 @@ import BOMManagement from "@/pages/ResearchDevelopment/BOMManagement";
 import ToolProcess from "@/pages/ResearchDevelopment/ToolProcess";
 import Prototype from "@/pages/ResearchDevelopment/Prototype";
 import ChangeManagement from "@/pages/ResearchDevelopment/ChangeManagement";
-import QualityParameters from "@/pages/ResearchDevelopment/QualityParameters";
+import InventoryQC from "@/pages/ResearchDevelopment/InventoryQC";
+import ProductMasterQC from "@/pages/ResearchDevelopment/ProductMasterQC";
+import MotorMasterQC from "@/pages/ResearchDevelopment/MotorMasterQC";
 import Documentation from "@/pages/ResearchDevelopment/Documentation";
 import RDExpenses from "@/pages/ResearchDevelopment/Expenses";
 
@@ -719,9 +721,19 @@ function Router() {
           <ChangeManagement />
         </ProtectedRoute>
       </Route>
-      <Route path="/r&d/quality-parameters">
+      <Route path="/r&d/inventory-qc">
         <ProtectedRoute requiredRole={["Research & Development Head", "Research Development Employee"]}>
-          <QualityParameters />
+          <InventoryQC />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/r&d/product-master-qc">
+        <ProtectedRoute requiredRole={["Research & Development Head", "Research Development Employee"]}>
+          <ProductMasterQC />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/r&d/motor-master-qc">
+        <ProtectedRoute requiredRole={["Research & Development Head", "Research Development Employee"]}>
+          <MotorMasterQC />
         </ProtectedRoute>
       </Route>
       <Route path="/r&d/documentation">

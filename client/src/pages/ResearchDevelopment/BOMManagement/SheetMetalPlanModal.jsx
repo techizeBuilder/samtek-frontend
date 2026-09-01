@@ -3,33 +3,30 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Loader2, Upload, FileText } from 'lucide-react';
+import { Loader2, Upload, FileText, Plus, X } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { config } from '@/config/environment';
-import { LENGTH_UNITS, formatAreaMm2 } from '@/lib/fabricationDims';
+import { LENGTH_UNITS, toMm, formatAreaInUnit } from '@/lib/fabricationDims';
 import FilePreviewModal from './FilePreviewModal';
+
+const blankSheet = () => ({ lengthValue: '', lengthUnit: 'Millimeter', widthValue: '', widthUnit: 'Millimeter' });
 
 // R&D's real-world sheet-nesting decision for one {item, catalog dimension}
 // group used across a whole BOM — see server/models/SheetMetalPlan.js and
-// the sheet-metal-bom-planning.md doc for the full reasoning. R&D enters the
-// actual Length x Width of their laser-cutting layout (each its own unit,
-// mm base — same convention as every other fabrication dimension in this
-// app, e.g. Fabrication Master's sheet_plate category) — the AREA is always
-// DERIVED from these two, server-side, never entered directly. Deliberately
-// never shows the raw required-area number before the user has entered
-// their own dimensions: the required area is only the theoretical
-// part-area sum (kerf/margins/non-tiling shapes always push the real
-// cutting area higher), so showing it first would anchor R&D into typing it
-// back as if it were the real target instead of forming their own layout
-// judgement.
+// the sheet-metal-bom-planning.md doc for the full reasoning. One entry per
+// physical catalog sheet actually purchased — each with its own Length x
+// Width for how much of THAT sheet gets used (each independently unit-
+// picked, mm base — same convention as every other fabrication dimension in
+// this app). AREA is always DERIVED from these, server-side, never entered
+// directly. sheetsNeededPerUnit is simply the number of entries, not a
+// division-derived guess — R&D explicitly says how many sheets and how much
+// of each, rather than the system assuming everything tiles evenly across
+// identical sheets.
 export default function SheetMetalPlanModal({ open, onClose, bomId, group }) {
   const qc = useQueryClient();
   const [selectedKey, setSelectedKey] = useState('');
-  const [plannedLengthValue, setPlannedLengthValue] = useState('');
-  const [plannedLengthUnit, setPlannedLengthUnit] = useState('Millimeter');
-  const [plannedWidthValue, setPlannedWidthValue] = useState('');
-  const [plannedWidthUnit, setPlannedWidthUnit] = useState('Millimeter');
+  const [sheets, setSheets] = useState([blankSheet()]);
   const [laserFileUrl, setLaserFileUrl] = useState('');
   const [laserFileName, setLaserFileName] = useState('');
   const [uploading, setUploading] = useState(false);
@@ -46,13 +43,17 @@ export default function SheetMetalPlanModal({ open, onClose, bomId, group }) {
   const groups = groupsResponse?.data || [];
 
   const prefillFromPlan = (plan) => {
-    setPlannedLengthValue(plan ? String(plan.plannedLengthValue) : '');
-    setPlannedLengthUnit(plan?.plannedLengthUnit || 'Millimeter');
-    setPlannedWidthValue(plan ? String(plan.plannedWidthValue) : '');
-    setPlannedWidthUnit(plan?.plannedWidthUnit || 'Millimeter');
+    setSheets(plan?.sheets?.length ? plan.sheets.map(s => ({ ...s })) : [blankSheet()]);
     setLaserFileUrl(plan?.laserFileUrl || '');
     setLaserFileName(plan?.laserFileName || '');
   };
+
+  const updateSheet = (index, patch) => {
+    setSheets(prev => prev.map((s, i) => i === index ? { ...s, ...patch } : s));
+    setSaveResult(null);
+  };
+  const addSheet = () => setSheets(prev => [...prev, blankSheet()]);
+  const removeSheet = (index) => setSheets(prev => prev.length > 1 ? prev.filter((_, i) => i !== index) : prev);
 
   useEffect(() => {
     if (!open) return;
@@ -102,20 +103,35 @@ export default function SheetMetalPlanModal({ open, onClose, bomId, group }) {
   };
 
   const selected = groups.find(g => `${g.itemCode}#${g.dimensionVariantId}` === selectedKey);
-  const dimsValid = Number(plannedLengthValue) > 0 && Number(plannedWidthValue) > 0;
+  const catalogLengthMm = selected?.catalogLengthMm;
+  const catalogWidthMm = selected?.catalogWidthMm;
+
+  // Same fit check the server runs authoritatively — shown live per row so
+  // R&D doesn't have to hit Save to find out a sheet doesn't fit. Returns
+  // null while a row's own inputs aren't complete yet (nothing to flag) or
+  // the catalog size hasn't loaded, never blocking on an incomplete state.
+  const sheetErrorMessage = (s) => {
+    const lengthMm = toMm(s.lengthValue, s.lengthUnit);
+    const widthMm = toMm(s.widthValue, s.widthUnit);
+    if (lengthMm == null || widthMm == null || !catalogLengthMm || !catalogWidthMm) return null;
+    const fits = (lengthMm <= catalogLengthMm && widthMm <= catalogWidthMm) || (lengthMm <= catalogWidthMm && widthMm <= catalogLengthMm);
+    return fits ? null : `Doesn't fit within this item's catalog sheet size (${Math.round(catalogLengthMm)}mm × ${Math.round(catalogWidthMm)}mm).`;
+  };
+  const sheetIsValid = (s) => toMm(s.lengthValue, s.lengthUnit) != null && toMm(s.widthValue, s.widthUnit) != null && !sheetErrorMessage(s);
+  const dimsValid = sheets.length > 0 && sheets.every(sheetIsValid);
 
   const handleSave = async () => {
-    if (!selected || !dimsValid) return;
+    if (!selected || !dimsValid || !laserFileUrl) return;
     setSaving(true);
     setError('');
     try {
       const res = await apiRequest('POST', `/api/rd/boms/${bomId}/sheet-metal-plans`, {
         itemCode: selected.itemCode,
         dimensionVariantId: selected.dimensionVariantId,
-        plannedLengthValue: Number(plannedLengthValue),
-        plannedLengthUnit,
-        plannedWidthValue: Number(plannedWidthValue),
-        plannedWidthUnit,
+        sheets: sheets.map(s => ({
+          lengthValue: Number(s.lengthValue), lengthUnit: s.lengthUnit,
+          widthValue: Number(s.widthValue), widthUnit: s.widthUnit,
+        })),
         laserFileUrl,
         laserFileName,
       });
@@ -166,52 +182,74 @@ export default function SheetMetalPlanModal({ open, onClose, bomId, group }) {
 
               <div>
                 <Label className="text-xs font-semibold text-slate-600 mb-1 block">
-                  Planned Dimensions (your real laser-cutting layout for ONE unit of the machine) *
+                  Sheets (one entry per physical catalog sheet you're actually buying) *
                 </Label>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label className="text-[10px] text-slate-500 uppercase block mb-1">Length</Label>
-                    <div className="flex gap-2">
-                      <Input
-                        type="number" min="0" placeholder="0" className="flex-1"
-                        value={plannedLengthValue}
-                        onChange={e => { setPlannedLengthValue(e.target.value); setSaveResult(null); }}
-                      />
-                      <select
-                        className="w-28 border border-slate-200 rounded-lg px-2 text-sm"
-                        value={plannedLengthUnit}
-                        onChange={e => setPlannedLengthUnit(e.target.value)}
-                      >
-                        {LENGTH_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
-                      </select>
-                    </div>
-                  </div>
-                  <div>
-                    <Label className="text-[10px] text-slate-500 uppercase block mb-1">Width</Label>
-                    <div className="flex gap-2">
-                      <Input
-                        type="number" min="0" placeholder="0" className="flex-1"
-                        value={plannedWidthValue}
-                        onChange={e => { setPlannedWidthValue(e.target.value); setSaveResult(null); }}
-                      />
-                      <select
-                        className="w-28 border border-slate-200 rounded-lg px-2 text-sm"
-                        value={plannedWidthUnit}
-                        onChange={e => setPlannedWidthUnit(e.target.value)}
-                      >
-                        {LENGTH_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
-                      </select>
-                    </div>
-                  </div>
+                <div className="space-y-3">
+                  {sheets.map((s, i) => {
+                    const rowError = sheetErrorMessage(s);
+                    return (
+                      <div key={i} className="border border-slate-200 rounded-lg p-2.5">
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-[11px] font-semibold text-slate-500">Sheet {i + 1}</span>
+                          {sheets.length > 1 && (
+                            <button type="button" onClick={() => removeSheet(i)} className="text-slate-400 hover:text-red-500">
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <Label className="text-[10px] text-slate-500 uppercase block mb-1">Length</Label>
+                            <div className="flex gap-2">
+                              <Input
+                                type="number" min="0" placeholder="0" className="flex-1"
+                                value={s.lengthValue}
+                                onChange={e => updateSheet(i, { lengthValue: e.target.value })}
+                              />
+                              <select
+                                className="w-28 border border-slate-200 rounded-lg px-2 text-sm"
+                                value={s.lengthUnit}
+                                onChange={e => updateSheet(i, { lengthUnit: e.target.value })}
+                              >
+                                {LENGTH_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                              </select>
+                            </div>
+                          </div>
+                          <div>
+                            <Label className="text-[10px] text-slate-500 uppercase block mb-1">Width</Label>
+                            <div className="flex gap-2">
+                              <Input
+                                type="number" min="0" placeholder="0" className="flex-1"
+                                value={s.widthValue}
+                                onChange={e => updateSheet(i, { widthValue: e.target.value })}
+                              />
+                              <select
+                                className="w-28 border border-slate-200 rounded-lg px-2 text-sm"
+                                value={s.widthUnit}
+                                onChange={e => updateSheet(i, { widthUnit: e.target.value })}
+                              >
+                                {LENGTH_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                              </select>
+                            </div>
+                          </div>
+                        </div>
+                        {rowError && <p className="text-[11px] text-red-500 mt-1.5">{rowError}</p>}
+                      </div>
+                    );
+                  })}
                 </div>
-                <p className="text-[11px] text-slate-400 mt-1">
-                  Enter the actual sheet size you'll lay out and cut — not the raw part-area total. It's normal
-                  for the resulting area to be somewhat more than the parts strictly need (kerf, margins, nesting).
+                <Button type="button" variant="outline" size="sm" className="mt-2" onClick={addSheet}>
+                  <Plus className="h-3.5 w-3.5 mr-1" /> Add Sheet
+                </Button>
+                <p className="text-[11px] text-slate-400 mt-2">
+                  Enter the actual size you'll lay out and cut on each sheet — not the raw part-area total. It's
+                  normal for the total to be somewhat more than the parts strictly need (kerf, margins, nesting).
+                  Add another sheet if one isn't enough to fit everything.
                 </p>
               </div>
 
               <div>
-                <Label className="text-xs font-semibold text-slate-600 mb-1 block">Laser File</Label>
+                <Label className="text-xs font-semibold text-slate-600 mb-1 block">Laser File <span className="text-red-500">*</span></Label>
                 {laserFileUrl ? (
                   <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
                     <button
@@ -235,13 +273,13 @@ export default function SheetMetalPlanModal({ open, onClose, bomId, group }) {
               {saveResult && (
                 <div className="text-xs bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 space-y-1">
                   <p className="text-slate-700">
-                    Cutting area: <strong>{formatAreaMm2(saveResult.plannedAreaMm2)}</strong> →{' '}
+                    Cutting area: <strong>{formatAreaInUnit(saveResult.plannedAreaMm2, selected?.unit)}</strong> →{' '}
                     <strong>{saveResult.sheetsNeededPerUnit}</strong> sheet(s) needed per unit.
                   </p>
                   {saveResult.warningBelowRequired ? (
                     <p className="text-amber-700 font-medium">
                       ⚠ This is less than what the child parts using this size actually need
-                      ({formatAreaMm2(saveResult.requiredAreaMm2)}). Saved anyway — this is advisory,
+                      ({formatAreaInUnit(saveResult.requiredAreaMm2, selected?.unit)}). Saved anyway — this is advisory,
                       review and increase it if needed.
                     </p>
                   ) : (
@@ -258,7 +296,7 @@ export default function SheetMetalPlanModal({ open, onClose, bomId, group }) {
           <Button variant="outline" onClick={onClose}>Close</Button>
           <Button
             onClick={handleSave}
-            disabled={!selected || !dimsValid || saving}
+            disabled={!selected || !dimsValid || !laserFileUrl || saving}
             className="bg-gradient-to-r from-blue-600 to-purple-600 text-white"
           >
             {saving ? 'Saving...' : 'Save Plan'}

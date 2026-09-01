@@ -9,6 +9,8 @@ import {
   Cog, Play, CheckCircle, XCircle, AlertTriangle, ChevronDown, Lock,
   Clock, Users, RotateCcw, ThumbsUp, ThumbsDown, Package, Search
 } from 'lucide-react';
+import SubChildPartQCPanel from '@/components/production/SubChildPartQCPanel';
+import FinalChecklistPanel from '@/components/production/FinalChecklistPanel';
 
 // Fresh, all-Pending process steps for a unit the backend hasn't
 // materialized into `extraUnits` yet — mirrors ProductionContext's
@@ -62,7 +64,6 @@ export default function ProcessExecution() {
     orders, teams, getTeamById,
     assignTeam, startProcess, markProcessComplete,
     approveQC, rejectQC, updateProcessNotes,
-    addSubEntry, completeSubEntry, qcSubEntry,
   } = useProduction();
   const { hasFeatureAccess } = usePermissions();
   const canEdit = hasFeatureAccess('production', 'orders', 'edit');
@@ -84,12 +85,6 @@ export default function ProcessExecution() {
   const [productionExpense, setProductionExpense] = useState('');
   const [notesDialog, setNotesDialog] = useState(null); // { step, notes }
   const [notesValue, setNotesValue] = useState('');
-  const [subEntryDialog, setSubEntryDialog] = useState(null); // { step }
-  const [subEntryForm, setSubEntryForm] = useState({ parentPart: '', childPart: '', assignedMember: '', fabricationType: '' });
-  const [customFabricationType, setCustomFabricationType] = useState('');
-  const [subQcDialog, setSubQcDialog] = useState(null); // { step, subEntryId, action: 'approve'|'reject' }
-  const [subQcBy, setSubQcBy] = useState('');
-  const [subRejectReason, setSubRejectReason] = useState('');
   const [assignDialog, setAssignDialog] = useState(null); // { step }
   const [selectedTeam, setSelectedTeam] = useState('');
 
@@ -163,19 +158,6 @@ export default function ProcessExecution() {
     setRejectReason('');
     setProductionCost('');
     setProductionExpense('');
-  };
-
-  const handleSubQCSubmit = () => {
-    if (!subQcBy.trim()) return;
-    if (subQcDialog.action === 'reject' && !subRejectReason.trim()) return;
-    qcSubEntry(
-      selectedOrderId, subQcDialog.step, subQcDialog.subEntryId,
-      subQcDialog.action === 'approve' ? 'Approved' : 'Rejected',
-      subQcBy, subRejectReason, activeUnit
-    );
-    setSubQcDialog(null);
-    setSubQcBy('');
-    setSubRejectReason('');
   };
 
   const handleSaveNotes = () => {
@@ -441,22 +423,27 @@ export default function ProcessExecution() {
                             {proc.qcDate && <span>QC: <strong>{proc.qcDate}</strong> by {proc.qcBy}</span>}
                           </div>
 
-                          {/* Team Assignment */}
-                          <div className="mt-2 flex items-center gap-2">
-                            {team ? (
-                              <span className="flex items-center gap-1.5 text-xs text-slate-700 bg-white border border-slate-200 px-2.5 py-1 rounded-full">
-                                <Users className="h-3.5 w-3.5 text-blue-500" />
-                                {team.name} — Supervisor: {team.supervisor}
-                              </span>
-                            ) : (
-                              <span className="text-xs text-slate-400">No team assigned</span>
-                            )}
-                            {proc.status !== 'Completed' && (
-                              <Button size="sm" variant="ghost" className="h-6 text-xs text-blue-600 px-2" onClick={() => { setAssignDialog({ step: proc.step }); setSelectedTeam(String(proc.assignedTeam?._id || proc.assignedTeam || '')); }}>
-                                {team ? 'Change Team' : '+ Assign Team'}
-                              </Button>
-                            )}
-                          </div>
+                          {/* Team Assignment — not for Fabrication: work now
+                              begins per Sub Child Part (each with its own
+                              team/start below), so the stage itself has no
+                              single team to assign anymore (2026-09-02). */}
+                          {proc.step !== 'Fabrication' && (
+                            <div className="mt-2 flex items-center gap-2">
+                              {team ? (
+                                <span className="flex items-center gap-1.5 text-xs text-slate-700 bg-white border border-slate-200 px-2.5 py-1 rounded-full">
+                                  <Users className="h-3.5 w-3.5 text-blue-500" />
+                                  {team.name} — Supervisor: {team.supervisor}
+                                </span>
+                              ) : (
+                                <span className="text-xs text-slate-400">No team assigned</span>
+                              )}
+                              {proc.status !== 'Completed' && (
+                                <Button size="sm" variant="ghost" className="h-6 text-xs text-blue-600 px-2" onClick={() => { setAssignDialog({ step: proc.step }); setSelectedTeam(String(proc.assignedTeam?._id || proc.assignedTeam || '')); }}>
+                                  {team ? 'Change Team' : '+ Assign Team'}
+                                </Button>
+                              )}
+                            </div>
+                          )}
 
                           {/* Notes & Reworks */}
                           {proc.reworks.length > 0 && (
@@ -472,42 +459,40 @@ export default function ProcessExecution() {
 
                       {/* Actions */}
                       <div className="flex flex-wrap gap-2 flex-shrink-0">
-                        {(() => {
-                          const isFabricationLocked = proc.step === 'Fabrication' && (
-                            !proc.subEntries || proc.subEntries.length === 0 ||
-                            proc.subEntries.some(se => se.status !== 'Completed' || se.qcStatus !== 'Approved')
-                          );
-                          
-                          return (
-                            <>
-                              {proc.status === 'Pending' && unlocked && canEdit && (
-                                <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white text-xs" onClick={() => startProcess(selectedOrderId, proc.step, activeUnit)}>
-                                  <Play className="h-3.5 w-3.5 mr-1" /> Start
-                                </Button>
-                              )}
-                              {proc.status === 'In Progress' && canEdit && (
-                                <>
-                                  <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white text-xs" onClick={() => markProcessComplete(selectedOrderId, proc.step, activeUnit)} disabled={isFabricationLocked}>
-                                    <CheckCircle className="h-3.5 w-3.5 mr-1" /> Mark Complete
-                                  </Button>
-                                  <Button size="sm" variant="outline" className="text-xs" onClick={() => { setNotesDialog({ step: proc.step }); setNotesValue(proc.notes); }}>
-                                    Notes
-                                  </Button>
-                                </>
-                              )}
-                              {proc.status === 'QC Pending' && canEdit && (
-                                <>
-                                  <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs" onClick={() => setQcDialog({ step: proc.step, action: 'approve' })} disabled={isFabricationLocked}>
-                                    <ThumbsUp className="h-3.5 w-3.5 mr-1" /> Approve QC
-                                  </Button>
-                                  <Button size="sm" className="bg-red-600 hover:bg-red-700 text-white text-xs" onClick={() => setQcDialog({ step: proc.step, action: 'reject' })}>
-                                    <ThumbsDown className="h-3.5 w-3.5 mr-1" /> Reject QC
-                                  </Button>
-                                </>
-                              )}
-                            </>
-                          );
-                        })()}
+                        {/* Fabrication has no manual Start — it auto-advances
+                            to In Progress once Job Work completes, so work
+                            can begin per Sub Child Part right away
+                            (2026-09-02). Mark Complete/Approve QC stay —
+                            those still self-approve the stage as a whole,
+                            now correctly gated server-side on every Sub
+                            Child Part being QC-approved first
+                            (markProcessComplete), so no client-side
+                            pre-disable is needed here anymore either. */}
+                        {proc.status === 'Pending' && unlocked && canEdit && proc.step !== 'Fabrication' && (
+                          <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white text-xs" onClick={() => startProcess(selectedOrderId, proc.step, activeUnit)}>
+                            <Play className="h-3.5 w-3.5 mr-1" /> Start
+                          </Button>
+                        )}
+                        {proc.status === 'In Progress' && canEdit && (
+                          <>
+                            <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white text-xs" onClick={() => markProcessComplete(selectedOrderId, proc.step, activeUnit)}>
+                              <CheckCircle className="h-3.5 w-3.5 mr-1" /> Mark Complete
+                            </Button>
+                            <Button size="sm" variant="outline" className="text-xs" onClick={() => { setNotesDialog({ step: proc.step }); setNotesValue(proc.notes); }}>
+                              Notes
+                            </Button>
+                          </>
+                        )}
+                        {proc.status === 'QC Pending' && canEdit && (
+                          <>
+                            <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs" onClick={() => setQcDialog({ step: proc.step, action: 'approve' })}>
+                              <ThumbsUp className="h-3.5 w-3.5 mr-1" /> Approve QC
+                            </Button>
+                            <Button size="sm" className="bg-red-600 hover:bg-red-700 text-white text-xs" onClick={() => setQcDialog({ step: proc.step, action: 'reject' })}>
+                              <ThumbsDown className="h-3.5 w-3.5 mr-1" /> Reject QC
+                            </Button>
+                          </>
+                        )}
 
                         {proc.status === 'Completed' && (
                           <span className="flex items-center gap-1 text-xs text-emerald-600 font-semibold px-2 py-1">
@@ -517,81 +502,27 @@ export default function ProcessExecution() {
                       </div>
                     </div>
 
-                    {/* Fabrication Sub Entries Section */}
-                    {proc.step === 'Fabrication' && proc.status !== 'Pending' && (
+                    {/* Sub Child Part QC — in-house/outsource manufactured
+                        products only (renders nothing otherwise, see
+                        SubChildPartQCPanel's own comment). Deliberately not
+                        gated on proc.status the way the old Sub Entries
+                        section below is — parts are independent of the
+                        stage's own Start button and of each other, any part
+                        can be worked whenever its own material is ready
+                        (confirmed 2026-09-01). */}
+                    {proc.step === 'Fabrication' && (
                       <div className="w-full mt-4 pt-4 border-t border-slate-100">
-                        <div className="flex items-center justify-between mb-3">
-                          <h4 className="text-sm font-bold text-slate-800 flex items-center gap-1.5"><Cog className="h-4 w-4 text-slate-500" /> Fabrication Sub-Processes</h4>
-                          {proc.status === 'In Progress' && (
-                            <Button size="sm" variant="outline" className="h-7 text-xs bg-white text-blue-600 border-blue-200 hover:bg-blue-50" onClick={() => {
-                              setSubEntryForm({ parentPart: '', childPart: '', assignedMember: '', fabricationType: '' });
-                              setCustomFabricationType('');
-                              setSubEntryDialog({ step: proc.step });
-                            }}>
-                              + Add Entry
-                            </Button>
-                          )}
-                        </div>
-                        
-                        {proc.subEntries && proc.subEntries.length > 0 ? (
-                          <div className="space-y-2">
-                            {proc.subEntries.map(se => (
-                              <div key={se._id || se.id} className="bg-slate-50 border border-slate-200 rounded-lg p-3">
-                                <div className="flex flex-wrap md:flex-nowrap items-center justify-between gap-3">
-                                  <div className="flex items-center gap-4 w-full md:w-auto">
-                                    <div>
-                                      <p className="text-xs text-slate-500 mb-0.5">Parent Part</p>
-                                      <p className="text-sm font-semibold text-slate-800">{se.parentPart}</p>
-                                    </div>
-                                    <div>
-                                      <p className="text-xs text-slate-500 mb-0.5">Child Part</p>
-                                      <p className="text-sm font-semibold text-slate-800">{se.childPart}</p>
-                                    </div>
-                                    <div>
-                                      <p className="text-xs text-slate-500 mb-0.5">Fabrication Type</p>
-                                      <span className="text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-full">{se.fabricationType || 'Other'}</span>
-                                    </div>
-                                    <div>
-                                      <p className="text-xs text-slate-500 mb-0.5">Assigned To</p>
-                                      <p className="text-sm font-medium text-slate-700">{se.assignedMember}</p>
-                                    </div>
-                                  </div>
-
-                                  <div className="flex items-center gap-2">
-                                    {se.status === 'Pending' ? (
-                                      <Button size="sm" className="h-7 text-xs bg-amber-600 hover:bg-amber-700 text-white" onClick={() => completeSubEntry(selectedOrderId, proc.step, se._id || se.id, activeUnit)}>
-                                        <CheckCircle className="h-3 w-3 mr-1" /> Mark Done
-                                      </Button>
-                                    ) : se.qcStatus === 'Pending' ? (
-                                      <div className="flex flex-wrap items-center gap-2">
-                                        <span className="text-xs font-semibold text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-200">Done - Pending QC</span>
-                                        <Button size="sm" className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => setSubQcDialog({ step: proc.step, subEntryId: se._id || se.id, action: 'approve' })}>
-                                          <ThumbsUp className="h-3 w-3 mr-1" /> QC Approve
-                                        </Button>
-                                        <Button size="sm" className="h-7 text-xs bg-red-600 hover:bg-red-700 text-white" onClick={() => setSubQcDialog({ step: proc.step, subEntryId: se._id || se.id, action: 'reject' })}>
-                                          <ThumbsDown className="h-3 w-3 mr-1" /> Reject
-                                        </Button>
-                                      </div>
-                                    ) : se.qcStatus === 'Approved' ? (
-                                      <span className="flex items-center gap-1 text-xs text-emerald-600 font-semibold px-2 py-1 bg-emerald-50 rounded border border-emerald-200">
-                                        <CheckCircle className="h-3 w-3" /> Approved
-                                      </span>
-                                    ) : null}
-                                  </div>
-                                </div>
-
-                                {se.reworks && se.reworks.length > 0 && (
-                                  <div className="mt-2 p-2 bg-red-50 border border-red-100 rounded text-xs text-red-700">
-                                    <strong>Reworks ({se.reworks.length}):</strong> {se.reworks.map(r => r.reason).join('; ')}
-                                  </div>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-xs text-slate-500 italic">No sub-processes added yet.</p>
-                        )}
+                        <SubChildPartQCPanel orderId={selectedOrderId} canEdit={canEdit} teams={teams} />
                       </div>
+                    )}
+
+                    {/* Final Testing checklist — every order, not just
+                        manufactured ones (see FinalChecklistPanel's own
+                        comment). Shown once the step is actually reached,
+                        same gate the old Sub Entries section below already
+                        used. */}
+                    {proc.step === 'Final Testing' && proc.status !== 'Pending' && (
+                      <FinalChecklistPanel orderId={selectedOrderId} canEdit={canEdit} procStatus={proc.status} />
                     )}
 
                   </CardContent>
@@ -670,46 +601,6 @@ export default function ProcessExecution() {
         </DialogContent>
       </Dialog>
 
-      {/* Sub-Entry QC Dialog */}
-      <Dialog open={!!subQcDialog} onOpenChange={() => setSubQcDialog(null)}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle className={subQcDialog?.action === 'approve' ? 'text-emerald-700' : 'text-red-700'}>
-              {subQcDialog?.action === 'approve' ? <ThumbsUp className="inline h-4 w-4 mr-2" /> : <ThumbsDown className="inline h-4 w-4 mr-2" />}
-              {subQcDialog?.action === 'approve' ? 'Approve Sub-Process QC' : 'Reject Sub-Process QC'}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3 py-2">
-            <div>
-              <label className="text-xs font-semibold text-slate-600 mb-1 block">Supervisor Name *</label>
-              <Input placeholder="Enter your name" value={subQcBy} onChange={e => setSubQcBy(e.target.value)} />
-            </div>
-            {subQcDialog?.action === 'reject' && (
-              <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Rejection Reason *</label>
-                <textarea
-                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                  rows={3}
-                  placeholder="Describe the issue requiring rework..."
-                  value={subRejectReason}
-                  onChange={e => setSubRejectReason(e.target.value)}
-                />
-              </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setSubQcDialog(null)}>Cancel</Button>
-            <Button
-              onClick={handleSubQCSubmit}
-              disabled={!subQcBy.trim() || (subQcDialog?.action === 'reject' && !subRejectReason.trim())}
-              className={subQcDialog?.action === 'approve' ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : 'bg-red-600 hover:bg-red-700 text-white'}
-            >
-              {subQcDialog?.action === 'approve' ? 'Approve' : 'Reject & Send for Rework'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       {/* Assign Team Dialog */}
       <Dialog open={!!assignDialog} onOpenChange={() => setAssignDialog(null)}>
         <DialogContent className="max-w-sm">
@@ -754,96 +645,6 @@ export default function ProcessExecution() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setNotesDialog(null)}>Cancel</Button>
             <Button onClick={handleSaveNotes} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">Save Notes</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      {/* Add Sub-Entry Dialog */}
-      <Dialog open={!!subEntryDialog} onOpenChange={() => setSubEntryDialog(null)}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-slate-800">
-              <Cog className="h-5 w-5 text-blue-600" /> Add Fabrication Entry
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div>
-              <label className="text-xs font-semibold text-slate-600 mb-1 block">Parent Part</label>
-              <Input placeholder="e.g. Main Chassis" value={subEntryForm.parentPart} onChange={e => setSubEntryForm(f => ({ ...f, parentPart: e.target.value }))} />
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-slate-600 mb-1 block">Child Part</label>
-              <Input placeholder="e.g. Side Panels" value={subEntryForm.childPart} onChange={e => setSubEntryForm(f => ({ ...f, childPart: e.target.value }))} />
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-slate-600 mb-1 block">Fabrication Type</label>
-              <select
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                value={subEntryForm.fabricationType}
-                onChange={e => {
-                  setSubEntryForm(f => ({ ...f, fabricationType: e.target.value }));
-                  if (e.target.value !== 'Other') setCustomFabricationType('');
-                }}
-              >
-                <option value="">-- Select type --</option>
-                <option value="Welding">Welding</option>
-                <option value="Cutting">Cutting</option>
-                <option value="Bending">Bending</option>
-                <option value="Drilling">Drilling</option>
-                <option value="Grinding">Grinding</option>
-                <option value="Painting">Painting</option>
-                <option value="Assembly">Assembly</option>
-                <option value="Other">Other — specify below</option>
-              </select>
-              {subEntryForm.fabricationType === 'Other' && (
-                <div className="mt-2 relative">
-                  <Input
-                    placeholder="e.g. Laser Cutting, Stamping..."
-                    value={customFabricationType}
-                    onChange={e => setCustomFabricationType(e.target.value)}
-                    className="pr-8 border-blue-300 focus:ring-blue-500"
-                    autoFocus
-                  />
-                  {customFabricationType && (
-                    <button
-                      type="button"
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                      onClick={() => setCustomFabricationType('')}
-                    >
-                      ✕
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-slate-600 mb-1 block">Assign Team Member</label>
-              <Input placeholder="Member Name" value={subEntryForm.assignedMember} onChange={e => setSubEntryForm(f => ({ ...f, assignedMember: e.target.value }))} />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setSubEntryDialog(null)}>Cancel</Button>
-            <Button 
-              className="bg-blue-600 hover:bg-blue-700 text-white" 
-              disabled={
-                !subEntryForm.parentPart ||
-                !subEntryForm.childPart ||
-                !subEntryForm.assignedMember ||
-                !subEntryForm.fabricationType ||
-                (subEntryForm.fabricationType === 'Other' && !customFabricationType.trim())
-              }
-              onClick={async () => {
-                try {
-                  const finalType = subEntryForm.fabricationType === 'Other'
-                    ? customFabricationType.trim()
-                    : subEntryForm.fabricationType;
-                  await addSubEntry(selectedOrderId, subEntryDialog.step, { ...subEntryForm, fabricationType: finalType }, activeUnit);
-                  setSubEntryDialog(null);
-                  setCustomFabricationType('');
-                } catch (err) {}
-              }}
-            >
-              Add Entry
-            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
