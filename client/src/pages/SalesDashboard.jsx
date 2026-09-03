@@ -2,20 +2,25 @@ import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { salesApi } from '@/api/salesService';
+import { leadApi } from '@/api/leadService';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { 
-  User, 
-  Calendar, 
-  Package, 
-  CheckCircle, 
-  Clock, 
+import {
+  User,
+  Calendar,
+  Package,
+  CheckCircle,
+  Clock,
   AlertTriangle,
   Eye,
-  ArrowRight
+  ArrowRight,
+  Users,
+  Trophy,
+  XCircle,
+  CalendarClock
 } from 'lucide-react';
 import { useLocation } from 'wouter';
 
@@ -100,6 +105,12 @@ const SalesDashboard = () => {
     }
   });
 
+  const { data: leadStatsData, isLoading: leadStatsLoading } = useQuery({
+    queryKey: ['/api/leads/dashboard-stats'],
+    queryFn: () => leadApi.getDashboardStats(),
+    staleTime: 30000, // 30 seconds
+  });
+
   // Transform API data to match UI expectations
   const orderSummary = summaryLoading ? {
     totalOrders: 0,
@@ -134,6 +145,14 @@ const SalesDashboard = () => {
     setLocation('/sales/orders');
   };
 
+  // Leads Overview card → Leads page, pre-filtered to that card's tab
+  // (e.g. clicking "Today's Follow-up" lands on Leads showing exactly today's
+  // due follow-ups, since Leads.jsx reads the same tab value from ?tab=).
+  const leadStats = leadStatsData?.stats || { total: 0, won: 0, disqualified: 0, todayFollowUp: 0 };
+  const handleLeadCardClick = (tab) => {
+    setLocation(`/sales/leads?tab=${encodeURIComponent(tab)}`);
+  };
+
   // Loading state for better UX
   const isLoading = summaryLoading || ordersLoading;
 
@@ -155,6 +174,72 @@ const SalesDashboard = () => {
               </div>
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* Leads Overview Section */}
+      <div>
+        <h2 className="text-xl font-semibold mb-4">Leads Overview</h2>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <Card
+            className="cursor-pointer transition-shadow hover:shadow-md"
+            onClick={() => handleLeadCardClick('All Active Leads')}
+          >
+            <CardContent className="p-6 text-center">
+              <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                <Users className="h-6 w-6 text-blue-600" />
+              </div>
+              <p className="text-2xl font-bold text-gray-900">
+                {leadStatsLoading ? '...' : leadStats.total}
+              </p>
+              <p className="text-sm font-medium text-gray-600">Total Leads</p>
+            </CardContent>
+          </Card>
+
+          <Card
+            className="cursor-pointer transition-shadow hover:shadow-md"
+            onClick={() => handleLeadCardClick('Won')}
+          >
+            <CardContent className="p-6 text-center">
+              <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                <Trophy className="h-6 w-6 text-green-600" />
+              </div>
+              <p className="text-2xl font-bold text-green-600">
+                {leadStatsLoading ? '...' : leadStats.won}
+              </p>
+              <p className="text-sm font-medium text-gray-600">Leads Won</p>
+            </CardContent>
+          </Card>
+
+          <Card
+            className="cursor-pointer transition-shadow hover:shadow-md"
+            onClick={() => handleLeadCardClick('Disqualified')}
+          >
+            <CardContent className="p-6 text-center">
+              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                <XCircle className="h-6 w-6 text-red-600" />
+              </div>
+              <p className="text-2xl font-bold text-red-600">
+                {leadStatsLoading ? '...' : leadStats.disqualified}
+              </p>
+              <p className="text-sm font-medium text-gray-600">Disqualified</p>
+            </CardContent>
+          </Card>
+
+          <Card
+            className="cursor-pointer transition-shadow hover:shadow-md"
+            onClick={() => handleLeadCardClick("Today's Follow-up")}
+          >
+            <CardContent className="p-6 text-center">
+              <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                <CalendarClock className="h-6 w-6 text-orange-600" />
+              </div>
+              <p className="text-2xl font-bold text-orange-600">
+                {leadStatsLoading ? '...' : leadStats.todayFollowUp}
+              </p>
+              <p className="text-sm font-medium text-gray-600">Today's Follow-up</p>
+            </CardContent>
+          </Card>
         </div>
       </div>
 
