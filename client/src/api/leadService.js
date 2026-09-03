@@ -47,6 +47,26 @@ export const leadApi = {
     });
   },
 
+  // List of every quotation ever sent for this lead (metadata only, no PDF).
+  getQuotationHistory: (id) => {
+    const token = localStorage.getItem('token');
+    return apiRequest(`/leads/${id}/quotation-history`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+  },
+
+  // One past quotation's full PDF content, fetched on demand.
+  getQuotationHistoryItem: (id, historyId) => {
+    const token = localStorage.getItem('token');
+    return apiRequest(`/leads/${id}/quotation-history/${historyId}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+  },
+
   update: (id, updateData) => {
     const token = localStorage.getItem('token');
     return apiRequest(`/leads/${id}`, {
@@ -82,6 +102,17 @@ export const leadApi = {
   getUsers: () => {
     const token = localStorage.getItem('token');
     return apiRequest('/leads/users', {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+  },
+
+  // Lead counts (Won / Disqualified / Today's & Pending & Upcoming Follow-up) for
+  // the Sales Dashboard's "Leads Overview" cards.
+  getDashboardStats: () => {
+    const token = localStorage.getItem('token');
+    return apiRequest('/leads/dashboard-stats', {
       headers: {
         'Authorization': `Bearer ${token}`
       }

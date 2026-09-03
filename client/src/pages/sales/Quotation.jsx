@@ -16,6 +16,7 @@ import {
   Users,
   Building,
   CheckCircle2,
+  History,
   X
 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
@@ -36,7 +37,9 @@ import { toast } from "@/hooks/use-toast";
 import { generateQuotationPDF } from '@/utils/generateQuotationPDF';
 import { buildQuotationNumber } from '@/utils/quotationNumber';
 import { leadApi } from '@/api/leadService';
+import { salesItemRequestApi } from '@/api/salesItemRequestApi';
 import html2canvas from 'html2canvas';
+import QuotationHistoryModal from '@/components/sales/QuotationHistoryModal';
 
 // Dummy Products Data
 // Helper to convert number to words
@@ -63,6 +66,7 @@ const Quotation = () => {
   const leadId = queryParams.get('lead_id');
 
   const [step, setStep] = useState('select_type'); // select_type, product_selection, builder, preview, price_list_selection, price_list_preview
+  const [isQuotationHistoryOpen, setIsQuotationHistoryOpen] = useState(false);
   const [quotationType, setQuotationType] = useState('Customer'); // Price List, Dealer, Customer, PI
   const [selectedItems, setSelectedItems] = useState([]);
 
@@ -177,26 +181,13 @@ const Quotation = () => {
   const [selectedNotes, setSelectedNotes] = useState([]);
   const [showNotesPicker, setShowNotesPicker] = useState(false);
   const [notePickerChecked, setNotePickerChecked] = useState({});
-  const [newProduct, setNewProduct] = useState({
-    name: '',
-    variant: '',
-    code: '',
-    group: '',
-    category: '',
-    subCategory: '',
-    unit: '',
-    salePrice: '',
-    dealerPrice: '',
-    hsn: '',
-    gst: '18',
-    currency: 'INR',
-    unitType: 'Nos',
-    description: '',
-    uses: '',
-    otherInfo: '',
-    minOrderQty: '1',
-    specifications: [{ key: '', value: '' }]
+  // "Add Request" — Sales asks R&D to add a new product (not a direct Item
+  // create anymore); Lead Id + request date are auto-filled, read-only.
+  const [newItemRequest, setNewItemRequest] = useState({
+    productName: '', production: '', category: '', application: '', quantity: '1'
   });
+  const [newItemRequestImage, setNewItemRequestImage] = useState(null);
+  const [isSubmittingItemRequest, setIsSubmittingItemRequest] = useState(false);
 
   // Fetch Real Items for Price List (Dynamic Data)
   const { data: priceListResponse, isLoading: priceListLoading } = useQuery({
@@ -381,85 +372,50 @@ const Quotation = () => {
     }
   });
 
-  const handleAddProduct = async (e) => {
+  const handleAddItemRequest = async (e) => {
     e.preventDefault();
+    if (!newItemRequest.productName.trim()) {
+      toast({ title: "Required", description: "Product Name is required", variant: "destructive" });
+      return;
+    }
+    setIsSubmittingItemRequest(true);
     try {
-      const token = localStorage.getItem('token');
-      const formData = new FormData();
+      await salesItemRequestApi.createRequest({
+        leadId,
+        leadCode: leadData?.leadCode || '',
+        productName: newItemRequest.productName,
+        production: newItemRequest.production,
+        category: newItemRequest.category,
+        application: newItemRequest.application,
+        quantity: newItemRequest.quantity,
+      }, newItemRequestImage);
 
-      // Append all fields to FormData
-      Object.keys(newProduct).forEach(key => {
-        if (key === 'specifications') {
-          formData.append(key, JSON.stringify(newProduct[key]));
-        } else if (key === 'photo' || key === 'brochure') {
-          if (newProduct[key]) {
-            formData.append(key === 'photo' ? 'image' : 'brochure', newProduct[key]);
-          }
-        } else {
-          formData.append(key, newProduct[key]);
-        }
-      });
-
-      const res = await axios.post(`${import.meta.env.VITE_API_URL || '/api'}/sales/create-item`, formData, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'multipart/form-data'
-        }
-      });
-
-      if (res.data.success) {
-        toast({ title: "Success", description: "Product added to inventory" });
-        setIsAddProductModalOpen(false);
-        refetchItems();
-        // Reset form
-        setNewProduct({
-          name: '',
-          variant: '',
-          code: '',
-          group: '',
-          category: '',
-          subCategory: '',
-          unit: '',
-          salePrice: '',
-          dealerPrice: '',
-          hsn: '',
-          gst: '18',
-          currency: 'INR',
-          unitType: 'Nos',
-          description: '',
-          uses: '',
-          otherInfo: '',
-          minOrderQty: '1',
-          specifications: [{ key: '', value: '' }],
-          photo: null,
-          brochure: null
-        });
-      }
+      toast({ title: "Sent to R&D", description: "Your product request has been submitted for approval." });
+      setNewItemRequest({ productName: '', production: '', category: '', application: '', quantity: '1' });
+      setNewItemRequestImage(null);
+      queryClient.invalidateQueries({ queryKey: ['sales-item-requests', leadId] });
     } catch (error) {
-      toast({
-        title: "Error",
-        description: error.response?.data?.message || "Failed to add product",
-        variant: "destructive"
-      });
+      toast({ title: "Error", description: error.message || "Failed to send request", variant: "destructive" });
+    } finally {
+      setIsSubmittingItemRequest(false);
     }
   };
 
-  useEffect(() => {
-    if (isAddProductModalOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'unset';
-    }
-    return () => {
-      document.body.style.overflow = 'unset';
-    };
-  }, [isAddProductModalOpen]);
-
-  const photoInputRef = useRef(null);
-  const brochureInputRef = useRef(null);
+  const { data: itemRequestsData } = useQuery({
+    queryKey: ['sales-item-requests', leadId],
+    queryFn: () => salesItemRequestApi.listRequests({ leadId }),
+    enabled: !!leadId && isAddProductModalOpen,
+  });
+  const itemRequests = itemRequestsData?.requests || [];
 
   const renderAddProductModal = () => {
     if (!isAddProductModalOpen) return null;
+
+    const REQUEST_STATUS_STYLE = {
+      Pending: 'bg-amber-50 text-amber-700 border-amber-200',
+      Approved: 'bg-green-50 text-green-700 border-green-200',
+      Rejected: 'bg-red-50 text-red-700 border-red-200',
+    };
 
     return createPortal(
       <div className="fixed inset-0 z-[50] overflow-hidden flex items-center justify-center">
@@ -471,397 +427,119 @@ const Quotation = () => {
 
         {/* Modal Content */}
         <div
-          className="relative bg-white rounded-xl w-full max-w-5xl shadow-2xl overflow-hidden flex flex-col h-full max-h-[90vh] z-[51]"
+          className="relative bg-white rounded-xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] z-[51]"
           onClick={(e) => e.stopPropagation()}
         >
           <div className="px-6 py-4 flex justify-between items-center border-b bg-gray-50 flex-shrink-0">
             <h2 className="text-xl font-bold flex items-center gap-2 text-gray-800">
-              <Package className="h-5 w-5 text-orange-600" /> Add A New Product
+              <Package className="h-5 w-5 text-orange-600" /> Request New Product from R&D
             </h2>
             <button onClick={() => setIsAddProductModalOpen(false)} className="hover:bg-gray-200 p-1 rounded-full transition-colors text-gray-500">
               <X className="h-6 w-6" />
             </button>
           </div>
 
-          <form onSubmit={handleAddProduct} className="p-8 overflow-y-auto custom-scrollbar flex-1 min-h-0">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {/* Basic Details */}
+          <form onSubmit={handleAddItemRequest} className="p-6 overflow-y-auto custom-scrollbar flex-1 min-h-0 space-y-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label className="text-gray-700 font-semibold">Select Group *</Label>
-                <Select
-                  value={newProduct.group}
-                  onValueChange={(v) => setNewProduct({ ...newProduct, group: v })}
-                >
-                  <SelectTrigger className="border-gray-300">
-                    <SelectValue placeholder="--Select Group--" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="FLOUR MILL PLANT">FLOUR MILL PLANT</SelectItem>
-                    <SelectItem value="GRAIN PROCESSING">GRAIN PROCESSING</SelectItem>
-                    <SelectItem value="OIL EXTRACTION">OIL EXTRACTION</SelectItem>
-                    <SelectItem value="PACKAGING MACHINERY">PACKAGING MACHINERY</SelectItem>
-                    <SelectItem value="SPARE PARTS">SPARE PARTS</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Label className="text-gray-700 font-semibold">Lead Id</Label>
+                <Input value={leadData?.leadCode || leadId || ''} disabled className="bg-gray-100 border-gray-300" />
               </div>
-
               <div className="space-y-2">
-                <Label className="text-gray-700 font-semibold">Select Category *</Label>
-                <Select
-                  value={newProduct.category}
-                  onValueChange={(v) => setNewProduct({ ...newProduct, category: v })}
-                >
-                  <SelectTrigger className="border-gray-300">
-                    <SelectValue placeholder="--Select Category--" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Automatic Flour Mill">Automatic Flour Mill</SelectItem>
-                    <SelectItem value="Pulverizer Machine">Pulverizer Machine</SelectItem>
-                    <SelectItem value="Stone Crusher">Stone Crusher</SelectItem>
-                    <SelectItem value="Seed Cleaner">Seed Cleaner</SelectItem>
-                    <SelectItem value="Gravity Separator">Gravity Separator</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-gray-700 font-semibold">Select Sub Category</Label>
-                <Select
-                  value={newProduct.subCategory}
-                  onValueChange={(v) => setNewProduct({ ...newProduct, subCategory: v })}
-                >
-                  <SelectTrigger className="border-gray-300">
-                    <SelectValue placeholder="--Select Sub Category--" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Mini Plant">Mini Plant</SelectItem>
-                    <SelectItem value="Commercial Grade">Commercial Grade</SelectItem>
-                    <SelectItem value="Industrial Heavy Duty">Industrial Heavy Duty</SelectItem>
-                    <SelectItem value="Portable Unit">Portable Unit</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Label className="text-gray-700 font-semibold">Request Date</Label>
+                <Input value={new Date().toLocaleDateString()} disabled className="bg-gray-100 border-gray-300" />
               </div>
 
               <div className="space-y-2">
                 <Label className="text-gray-700 font-semibold">Product Name *</Label>
                 <Input
                   placeholder="Enter Product Name"
-                  value={newProduct.name}
-                  onChange={(e) => setNewProduct({ ...newProduct, name: e.target.value })}
-                  className="border-gray-300 focus:ring-orange-500"
+                  value={newItemRequest.productName}
+                  onChange={(e) => setNewItemRequest({ ...newItemRequest, productName: e.target.value })}
+                  className="border-gray-300"
                   required
                 />
               </div>
-
               <div className="space-y-2">
-                <Label className="text-gray-700 font-semibold">Product Varient</Label>
+                <Label className="text-gray-700 font-semibold">Production</Label>
                 <Input
-                  placeholder="Enter Product Varient"
-                  value={newProduct.variant}
-                  onChange={(e) => setNewProduct({ ...newProduct, variant: e.target.value })}
+                  placeholder="e.g. In-house / Outsourced"
+                  value={newItemRequest.production}
+                  onChange={(e) => setNewItemRequest({ ...newItemRequest, production: e.target.value })}
                   className="border-gray-300"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label className="text-gray-700 font-semibold">Product Code *</Label>
+                <Label className="text-gray-700 font-semibold">Product Category</Label>
                 <Input
-                  placeholder="Product Code"
-                  value={newProduct.code}
-                  onChange={(e) => setNewProduct({ ...newProduct, code: e.target.value })}
+                  placeholder="e.g. Flour Mill Plant"
+                  value={newItemRequest.category}
+                  onChange={(e) => setNewItemRequest({ ...newItemRequest, category: e.target.value })}
                   className="border-gray-300"
-                  required
                 />
               </div>
-
               <div className="space-y-2">
-                <Label className="text-gray-700 font-semibold">HSN/ SAC Code *</Label>
-                <Input
-                  placeholder="HSN/ SAC Code"
-                  value={newProduct.hsn}
-                  onChange={(e) => setNewProduct({ ...newProduct, hsn: e.target.value })}
-                  className="border-gray-300"
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-gray-700 font-semibold">GST% *</Label>
+                <Label className="text-gray-700 font-semibold">Quantity</Label>
                 <Input
                   type="number"
-                  placeholder="GST"
-                  value={newProduct.gst}
-                  onChange={(e) => setNewProduct({ ...newProduct, gst: e.target.value })}
+                  min="1"
+                  value={newItemRequest.quantity}
+                  onChange={(e) => setNewItemRequest({ ...newItemRequest, quantity: e.target.value })}
                   className="border-gray-300"
-                  required
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label className="text-gray-700 font-semibold">Selling Price *</Label>
-                <div className="flex gap-2">
-                  <Input
-                    type="number"
-                    placeholder="e.g:100000"
-                    value={newProduct.salePrice}
-                    onChange={(e) => setNewProduct({ ...newProduct, salePrice: e.target.value })}
-                    className="border-gray-300 flex-1"
-                    required
-                  />
-                  <Select
-                    value={newProduct.currency}
-                    onValueChange={(v) => setNewProduct({ ...newProduct, currency: v })}
-                  >
-                    <SelectTrigger className="border-gray-300 w-32">
-                      <SelectValue placeholder="Currency" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="INR">INR</SelectItem>
-                      <SelectItem value="USD">USD</SelectItem>
-                      <SelectItem value="EUR">EUR</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-gray-700 font-semibold">Dealer Selling Price *</Label>
+              <div className="space-y-2 md:col-span-2">
+                <Label className="text-gray-700 font-semibold">Application</Label>
                 <Input
-                  type="number"
-                  placeholder="e.g:100000"
-                  value={newProduct.dealerPrice}
-                  onChange={(e) => setNewProduct({ ...newProduct, dealerPrice: e.target.value })}
-                  className="border-gray-300"
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-gray-700 font-semibold">Unit *</Label>
-                <div className="flex gap-2">
-                  <Input
-                    type="text"
-                    placeholder="e.g:1"
-                    value={newProduct.unit}
-                    onChange={(e) => setNewProduct({ ...newProduct, unit: e.target.value })}
-                    className="border-gray-300 flex-1"
-                    required
-                  />
-                  <Select
-                    value={newProduct.unitType}
-                    onValueChange={(v) => setNewProduct({ ...newProduct, unitType: v })}
-                  >
-                    <SelectTrigger className="border-gray-300 w-32">
-                      <SelectValue placeholder="Type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Nos">Nos</SelectItem>
-                      <SelectItem value="Box">Box</SelectItem>
-                      <SelectItem value="Pieces">Pieces</SelectItem>
-                      <SelectItem value="Set">Set</SelectItem>
-                      <SelectItem value="Kg">Kg</SelectItem>
-                      <SelectItem value="Unit">Unit</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-gray-700 font-semibold">Min. Order Quantity *</Label>
-                <Input
-                  type="number"
-                  placeholder="Order Quantity"
-                  value={newProduct.minOrderQty}
-                  onChange={(e) => setNewProduct({ ...newProduct, minOrderQty: e.target.value })}
-                  className="border-gray-300"
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-gray-700 font-semibold">Product Video Link</Label>
-                <Input
-                  placeholder="Product Video Link"
-                  value={newProduct.videoUrl || ''}
-                  onChange={(e) => setNewProduct({ ...newProduct, videoUrl: e.target.value })}
+                  placeholder="Where/how this product will be used"
+                  value={newItemRequest.application}
+                  onChange={(e) => setNewItemRequest({ ...newItemRequest, application: e.target.value })}
                   className="border-gray-300"
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label className="text-gray-700 font-semibold">Add Product Photo</Label>
+              <div className="space-y-2 md:col-span-2">
+                <Label className="text-gray-700 font-semibold">Image</Label>
                 <input
                   type="file"
                   accept="image/*"
-                  className="hidden"
-                  ref={photoInputRef}
-                  onChange={(e) => {
-                    const file = e.target.files[0];
-                    if (file) {
-                      setNewProduct({ ...newProduct, photo: file });
-                    }
-                  }}
+                  onChange={(e) => setNewItemRequestImage(e.target.files[0] || null)}
+                  className="block w-full text-sm text-gray-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100"
                 />
-                <div
-                  className="border-2 border-dashed border-gray-300 rounded-lg p-4 flex flex-col items-center justify-center bg-gray-50 hover:bg-gray-100 cursor-pointer transition-colors h-[80px]"
-                  onClick={() => photoInputRef.current.click()}
-                >
-                  {newProduct.photo ? (
-                    <div className="flex items-center gap-2">
-                      <CheckCircle2 className="h-5 w-5 text-green-500" />
-                      <span className="text-xs font-medium text-gray-700">{newProduct.photo.name.substring(0, 15)}...</span>
-                    </div>
-                  ) : (
-                    <>
-                      <Plus className="h-6 w-6 text-gray-400" />
-                      <span className="text-xs text-gray-500 mt-1">Add Photo</span>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-gray-700 font-semibold">Add Product Brochure</Label>
-                <input
-                  type="file"
-                  accept="application/pdf"
-                  className="hidden"
-                  ref={brochureInputRef}
-                  onChange={(e) => {
-                    const file = e.target.files[0];
-                    if (file) {
-                      setNewProduct({ ...newProduct, brochure: file });
-                    }
-                  }}
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  className={`w-full ${newProduct.brochure ? 'bg-green-500 hover:bg-green-600' : 'bg-cyan-500 hover:bg-cyan-600'} text-white border-none h-[80px]`}
-                  onClick={() => brochureInputRef.current.click()}
-                >
-                  {newProduct.brochure ? (
-                    <div className="flex flex-col items-center">
-                      <CheckCircle2 className="h-6 w-6 mb-1" />
-                      <span>Brochure Added</span>
-                    </div>
-                  ) : (
-                    "Add PDF Brochure"
-                  )}
-                </Button>
+                {newItemRequestImage && (
+                  <img src={URL.createObjectURL(newItemRequestImage)} alt="preview" className="h-16 w-16 object-cover rounded border" />
+                )}
               </div>
             </div>
 
-            {/* Full Width Fields */}
-            <div className="mt-8 space-y-6">
-              <div className="space-y-2">
-                <Label className="text-gray-700 font-semibold">Description *</Label>
-                <textarea
-                  className="w-full min-h-[100px] p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none transition-all"
-                  placeholder="Enter description..."
-                  value={newProduct.description}
-                  onChange={(e) => setNewProduct({ ...newProduct, description: e.target.value })}
-                  required
-                />
-                <p className="text-xs text-gray-400">Note: Use ", " (comma and space) to insert a new line.</p>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <Label className="text-gray-700 font-semibold">Product Uses *</Label>
-                  <textarea
-                    className="w-full min-h-[80px] p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none"
-                    placeholder="Enter Product Uses..."
-                    value={newProduct.uses}
-                    onChange={(e) => setNewProduct({ ...newProduct, uses: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-gray-700 font-semibold">Product Other Info *</Label>
-                  <textarea
-                    className="w-full min-h-[80px] p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none"
-                    placeholder="Enter Product Other Info..."
-                    value={newProduct.otherInfo}
-                    onChange={(e) => setNewProduct({ ...newProduct, otherInfo: e.target.value })}
-                  />
-                </div>
-              </div>
-
-              {/* Specifications */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <Label className="text-gray-700 font-bold">Product Specifications</Label>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="text-orange-600 border-orange-600 hover:bg-orange-50"
-                    onClick={() => setNewProduct({
-                      ...newProduct,
-                      specifications: [...newProduct.specifications, { key: '', value: '' }]
-                    })}
-                  >
-                    <Plus className="h-4 w-4 mr-1" /> Add More Specification
-                  </Button>
-                </div>
-
-                {newProduct.specifications.map((spec, index) => (
-                  <div key={index} className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50 p-4 rounded-lg border border-dashed border-gray-300">
-                    <div className="space-y-2">
-                      <Label className="text-xs font-medium uppercase text-gray-500">Specification Key</Label>
-                      <Input
-                        placeholder="e.g. Motor Power"
-                        value={spec.key}
-                        onChange={(e) => {
-                          const newSpecs = [...newProduct.specifications];
-                          newSpecs[index].key = e.target.value;
-                          setNewProduct({ ...newProduct, specifications: newSpecs });
-                        }}
-                        className="bg-white"
-                      />
-                    </div>
-                    <div className="space-y-2 flex gap-2 items-end">
-                      <div className="flex-1">
-                        <Label className="text-xs font-medium uppercase text-gray-500">Specification Value</Label>
-                        <Input
-                          placeholder="e.g. 3 HP"
-                          value={spec.value}
-                          onChange={(e) => {
-                            const newSpecs = [...newProduct.specifications];
-                            newSpecs[index].value = e.target.value;
-                            setNewProduct({ ...newProduct, specifications: newSpecs });
-                          }}
-                          className="bg-white"
-                        />
-                      </div>
-                      {index > 0 && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="text-red-500 hover:bg-red-50"
-                          onClick={() => {
-                            const newSpecs = newProduct.specifications.filter((_, i) => i !== index);
-                            setNewProduct({ ...newProduct, specifications: newSpecs });
-                          }}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="mt-10 flex justify-end gap-4 border-t pt-6">
+            <div className="flex justify-end gap-3 border-t pt-4">
               <Button type="button" variant="ghost" onClick={() => setIsAddProductModalOpen(false)}>
                 Cancel
               </Button>
-              <Button type="submit" className="bg-orange-600 hover:bg-orange-700 px-12 py-6 text-lg font-bold shadow-lg shadow-orange-200">
-                Add Product
+              <Button type="submit" disabled={isSubmittingItemRequest} className="bg-orange-600 hover:bg-orange-700">
+                {isSubmittingItemRequest ? 'Sending...' : 'Send Request to R&D'}
               </Button>
             </div>
+
+            {/* Past requests for this lead — surfaces status back to Sales */}
+            {itemRequests.length > 0 && (
+              <div className="border-t pt-4 space-y-2">
+                <p className="text-sm font-semibold text-gray-700">Requests for this lead</p>
+                {itemRequests.map((r) => (
+                  <div key={r._id} className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg border border-gray-200 bg-gray-50">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-gray-800 truncate">{r.productName}</p>
+                      <p className="text-[11px] text-gray-400">{new Date(r.createdAt).toLocaleString()}</p>
+                    </div>
+                    <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border shrink-0 ${REQUEST_STATUS_STYLE[r.status]}`}>
+                      {r.status}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </form>
         </div>
       </div>,
@@ -1485,14 +1163,7 @@ const Quotation = () => {
           <Button variant="ghost" onClick={() => setStep('select_type')} className="gap-2">
             <ArrowLeft className="h-4 w-4" /> Back
           </Button>
-          <div className="flex items-center gap-4">
-            <Badge variant="outline" className="text-lg py-1 px-4">{quotationType}</Badge>
-            {selectedItems.length > 0 && (
-              <Button onClick={() => setStep('builder')} className="bg-blue-600">
-                Proceed with {selectedItems.length} items <ChevronRight className="h-4 w-4 ml-2" />
-              </Button>
-            )}
-          </div>
+          <Badge variant="outline" className="text-lg py-1 px-4">{quotationType}</Badge>
         </div>
 
         <Card>
@@ -1505,7 +1176,7 @@ const Quotation = () => {
             </div>
             <div className="flex items-center gap-4">
               <Button onClick={() => setIsAddProductModalOpen(true)} className="bg-orange-500 hover:bg-orange-600">
-                <Plus className="h-4 w-4 mr-2" /> Add Product
+                <Plus className="h-4 w-4 mr-2" /> Add Request
               </Button>
             </div>
           </CardHeader>
@@ -1751,6 +1422,14 @@ const Quotation = () => {
             </div>
           </CardContent>
         </Card>
+
+        {selectedItems.length > 0 && (
+          <div className="flex justify-end">
+            <Button onClick={() => setStep('builder')} className="bg-blue-600" size="lg">
+              Proceed with {selectedItems.length} items <ChevronRight className="h-4 w-4 ml-2" />
+            </Button>
+          </div>
+        )}
       </div>
     );
   };
@@ -1760,9 +1439,6 @@ const Quotation = () => {
       <div className="flex items-center justify-between">
         <Button variant="ghost" onClick={() => setStep('product_selection')} className="gap-2">
           <ArrowLeft className="h-4 w-4" /> Back to selection
-        </Button>
-        <Button onClick={() => { persistQuotationSnapshot(); setStep('preview'); }} className="bg-green-600 hover:bg-green-700">
-          Preview Quotation <FileText className="h-4 w-4 ml-2" />
         </Button>
       </div>
 
@@ -2171,6 +1847,12 @@ const Quotation = () => {
           )}
         </CardContent>
       </Card>
+
+      <div className="flex justify-end">
+        <Button onClick={() => { persistQuotationSnapshot(); setStep('preview'); }} className="bg-green-600 hover:bg-green-700" size="lg">
+          Preview Quotation <FileText className="h-4 w-4 ml-2" />
+        </Button>
+      </div>
 
       {/* Notes Picker Modal */}
       {showNotesPicker && (
@@ -2716,17 +2398,33 @@ const Quotation = () => {
     <div className="container mx-auto px-4 py-8 bg-gray-50 min-h-screen">
       <Card className="mb-8 border-none shadow-none bg-transparent">
         <CardContent className="p-0">
-          <div className="flex items-center gap-4 mb-8">
-            <div className="bg-blue-600 p-3 rounded-2xl shadow-blue-200 shadow-xl">
-              <ShoppingCart className="h-8 w-8 text-white" />
+          <div className="flex items-center justify-between gap-4 mb-8">
+            <div className="flex items-center gap-4">
+              <div className="bg-blue-600 p-3 rounded-2xl shadow-blue-200 shadow-xl">
+                <ShoppingCart className="h-8 w-8 text-white" />
+              </div>
+              <div>
+                <h2 className="text-3xl font-black text-gray-800 tracking-tight">Generate Quotation</h2>
+                <p className="text-gray-500 font-medium">Create and send professional quotes to your leads</p>
+              </div>
             </div>
-            <div>
-              <h2 className="text-3xl font-black text-gray-800 tracking-tight">Generate Quotation</h2>
-              <p className="text-gray-500 font-medium">Create and send professional quotes to your leads</p>
-            </div>
+            {leadId && (
+              <Button variant="outline" size="sm" onClick={() => setIsQuotationHistoryOpen(true)}>
+                <History className="h-4 w-4 mr-2" /> View All Quotations
+              </Button>
+            )}
           </div>
         </CardContent>
       </Card>
+
+      {leadId && (
+        <QuotationHistoryModal
+          leadId={leadId}
+          leadCode={leadData?.leadCode}
+          open={isQuotationHistoryOpen}
+          onOpenChange={setIsQuotationHistoryOpen}
+        />
+      )}
 
       {step === 'select_type' && renderSelectType()}
       {step === 'price_list_selection' && renderPriceListSelection()}

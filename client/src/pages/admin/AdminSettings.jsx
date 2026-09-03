@@ -11,7 +11,7 @@ import { Switch } from '@/components/ui/switch';
 import {
   Building2, Settings, Globe, Mail, Zap, PhoneCall, Eye, EyeOff, Megaphone, Facebook, MessageCircle,
   Plus, Pencil, Trash2, Save, RefreshCw, Info, Key, Phone, CheckCircle2,
-  FileText, Tag, List, Layers, DollarSign, StickyNote, Target, Upload,
+  FileText, Layers, DollarSign, StickyNote, Upload,
   ChevronRight, Truck, ClipboardList,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
@@ -337,7 +337,7 @@ export default function AdminSettings() {
   const isSuperAdmin = user?.role === 'Super Admin';
 
   const [category, setCategory] = useState('company');   // 'company' | 'general' | 'api'
-  const [generalSection, setGeneralSection] = useState('smtp'); // 'smtp' | 'lead' | 'quotation' | 'other'
+  const [generalSection, setGeneralSection] = useState('smtp'); // 'smtp' | 'quotation' | 'dispatch' | 'hrms' | 'other'
 
   // SMTP form
   const [smtpForm, setSmtpForm] = useState({ department: 'SALES', provider: 'Gmail', mailServer: 'smtp.gmail.com', port: 587, email: '', password: '' });
@@ -359,16 +359,10 @@ export default function AdminSettings() {
     enabled: !!user?.companyId,
   });
   const settings      = data?.settings || {};
-  const leadStages    = settings.leadStages || [];
-  const leadSources   = settings.leadSources || [];
-  const businessTypes = settings.businessTypes || [];
-  const documentTypes = settings.documentTypes || [];
-  const leadRejectReasons = settings.leadRejectReasons || [];
   const terms         = settings.termsAndConditions || [];
   const charges       = settings.additionalCharges || [];
   const notes         = settings.quotationNotes || [];
   const dispatchChecklist = settings.dispatchChecklist || [];
-  const salesChecklist = settings.salesChecklist || [];
   const quotationNumberSettings = settings.quotationNumberSettings || [];
   const hrmsDocumentTypes = settings.hrmsDocumentTypes || [];
   const roles = settings.roles || [];
@@ -386,26 +380,6 @@ export default function AdminSettings() {
   const invSmtp = () => qc.invalidateQueries({ queryKey: ['global-smtp'] });
   const addSmtpM    = useMutation({ mutationFn: b => adminSettingsApi.addSmtp(b), onSuccess: () => { invSmtp(); toast({ title: 'SMTP added' }); setSmtpForm({ department: 'SALES', provider: 'Gmail', mailServer: 'smtp.gmail.com', port: 587, email: '', password: '' }); }, onError: e => toast({ title: 'Error', description: e.message, variant: 'destructive' }) });
   const delSmtpM    = useMutation({ mutationFn: id => adminSettingsApi.deleteSmtp(id), onSuccess: () => { invSmtp(); toast({ title: 'SMTP deleted' }); }, onError: e => toast({ title: 'Error', description: e.message, variant: 'destructive' }) });
-
-  // Lead stages
-  const addStageM   = useMutation(m(b => adminSettingsApi.addLeadStage(b), 'Stage added'));
-  const updStageM   = useMutation(m(({ id, body }) => adminSettingsApi.updateLeadStage(id, body), 'Stage updated'));
-  const delStageM   = useMutation(m(id => adminSettingsApi.deleteLeadStage(id), 'Stage deleted'));
-
-  // Lead sources
-  const addSourceM  = useMutation(m(b => adminSettingsApi.addLeadSource(b), 'Source added'));
-  const updSourceM  = useMutation(m(({ id, body }) => adminSettingsApi.updateLeadSource(id, body), 'Source updated'));
-  const delSourceM  = useMutation(m(id => adminSettingsApi.deleteLeadSource(id), 'Source deleted'));
-
-  // Business types
-  const addBizM     = useMutation(m(b => adminSettingsApi.addBusinessType(b), 'Business type added'));
-  const updBizM     = useMutation(m(({ id, body }) => adminSettingsApi.updateBusinessType(id, body), 'Business type updated'));
-  const delBizM     = useMutation(m(id => adminSettingsApi.deleteBusinessType(id), 'Business type deleted'));
-
-  // Document types
-  const addDocM     = useMutation(m(b => adminSettingsApi.addDocumentType(b), 'Document type added'));
-  const updDocM     = useMutation(m(({ id, body }) => adminSettingsApi.updateDocumentType(id, body), 'Document type updated'));
-  const delDocM     = useMutation(m(id => adminSettingsApi.deleteDocumentType(id), 'Document type deleted'));
 
   // Terms
   const addTermM    = useMutation(m(b => adminSettingsApi.addTerm(b), 'Term added'));
@@ -426,16 +400,6 @@ export default function AdminSettings() {
   const addChecklistM = useMutation(m(b => adminSettingsApi.addDispatchChecklistItem(b), 'Checklist item added'));
   const updChecklistM = useMutation(m(({ id, body }) => adminSettingsApi.updateDispatchChecklistItem(id, body), 'Checklist item updated'));
   const delChecklistM = useMutation(m(id => adminSettingsApi.deleteDispatchChecklistItem(id), 'Checklist item deleted'));
-
-  // Sales Checklist
-  const addSalesChecklistM = useMutation(m(b => adminSettingsApi.addSalesChecklistItem(b), 'Checklist point added'));
-  const updSalesChecklistM = useMutation(m(({ id, body }) => adminSettingsApi.updateSalesChecklistItem(id, body), 'Checklist point updated'));
-  const delSalesChecklistM = useMutation(m(id => adminSettingsApi.deleteSalesChecklistItem(id), 'Checklist point deleted'));
-
-  // Lead Reject Reasons
-  const addRejectReasonM = useMutation(m(b => adminSettingsApi.addLeadRejectReason(b), 'Reject reason added'));
-  const updRejectReasonM = useMutation(m(({ id, body }) => adminSettingsApi.updateLeadRejectReason(id, body), 'Reject reason updated'));
-  const delRejectReasonM = useMutation(m(id => adminSettingsApi.deleteLeadRejectReason(id), 'Reject reason deleted'));
 
   // Quotation Number Settings
   const addNumberSettingM = useMutation(m(b => adminSettingsApi.addQuotationNumberSetting(b), 'Number setting added'));
@@ -575,17 +539,6 @@ export default function AdminSettings() {
   // General sub-items — some have flyout children
   const genNav = [
     { id: 'smtp',      label: 'SMTP Settings',     icon: Mail     },
-    {
-      id: 'lead', label: 'Lead Settings', icon: Target,
-      children: [
-        { id: 'lead_stage',    label: 'Lead Stage'    },
-        { id: 'lead_source',   label: 'Lead Source'   },
-        { id: 'business_type', label: 'Business Type' },
-        { id: 'document_type', label: 'Document Type' },
-        { id: 'lead_reject_reason', label: 'Lead Reject Reason' },
-        { id: 'sales_checklist', label: 'Sales Checklist' },
-      ]
-    },
     {
       id: 'quotation', label: 'Quotation Settings', icon: FileText,
       children: [
@@ -845,96 +798,6 @@ export default function AdminSettings() {
                 </div>
                 </>
                 )}
-              </>
-            )}
-
-            {/* ── Lead Settings — each child is its own section ── */}
-            {generalSection === 'lead_stage' && (
-              <>
-                <h1 className="text-xl font-semibold text-gray-900">Lead Stage</h1>
-                <div className="bg-white rounded-lg border border-gray-200 p-5">
-                  <CrudSection title="Lead Stage" icon={List} items={leadStages} defaultOpen
-                    fields={[{ key: 'name', label: 'Stage Name', placeholder: 'e.g. Contacted', primary: true }]}
-                    addLabel="Add Stage"
-                    onAdd={f => addStageM.mutate(f)}
-                    onUpdate={(id, f) => updStageM.mutate({ id, body: f })}
-                    onDelete={id => delStageM.mutate(id)}
-                    emptyText="No stages yet."
-                  />
-                </div>
-              </>
-            )}
-            {generalSection === 'lead_source' && (
-              <>
-                <h1 className="text-xl font-semibold text-gray-900">Lead Source</h1>
-                <div className="bg-white rounded-lg border border-gray-200 p-5">
-                  <CrudSection title="Lead Source" icon={Tag} items={leadSources} defaultOpen
-                    fields={[{ key: 'name', label: 'Source Name', placeholder: 'e.g. IndiaMART', primary: true }]}
-                    addLabel="Add Source"
-                    onAdd={f => addSourceM.mutate(f)}
-                    onUpdate={(id, f) => updSourceM.mutate({ id, body: f })}
-                    onDelete={id => delSourceM.mutate(id)}
-                    emptyText="No sources yet."
-                  />
-                </div>
-              </>
-            )}
-            {generalSection === 'business_type' && (
-              <>
-                <h1 className="text-xl font-semibold text-gray-900">Business Type</h1>
-                <div className="bg-white rounded-lg border border-gray-200 p-5">
-                  <CrudSection title="Business Type" icon={Layers} items={businessTypes} defaultOpen
-                    fields={[{ key: 'name', label: 'Business Type', placeholder: 'e.g. Distributor', primary: true }]}
-                    addLabel="Add Type"
-                    onAdd={f => addBizM.mutate(f)}
-                    onUpdate={(id, f) => updBizM.mutate({ id, body: f })}
-                    onDelete={id => delBizM.mutate(id)}
-                    emptyText="No business types yet."
-                  />
-                </div>
-              </>
-            )}
-            {generalSection === 'document_type' && (
-              <>
-                <h1 className="text-xl font-semibold text-gray-900">Document Type</h1>
-                <div className="bg-white rounded-lg border border-gray-200 p-5">
-                  <CrudSection title="Document Type" icon={FileText} items={documentTypes} defaultOpen
-                    fields={[{ key: 'name', label: 'Document Type', placeholder: 'e.g. Aadhaar', primary: true }]}
-                    addLabel="Add Document Type"
-                    onAdd={f => addDocM.mutate(f)}
-                    onUpdate={(id, f) => updDocM.mutate({ id, body: f })}
-                    onDelete={id => delDocM.mutate(id)}
-                    emptyText="No document types yet."
-                  />
-                </div>
-              </>
-            )}
-            {generalSection === 'lead_reject_reason' && (
-              <>
-                <h1 className="text-xl font-semibold text-gray-900">Lead Reject Reason</h1>
-                <p className="text-sm text-gray-500 -mt-3">These appear when disqualifying a lead (thumb-down) on the Leads page.</p>
-                <div className="bg-white rounded-lg border border-gray-200 p-5">
-                  <CrudSection title="Lead Reject Reason" icon={Tag} items={leadRejectReasons} defaultOpen
-                    fields={[{ key: 'label', label: 'Reason', placeholder: 'e.g. Quoted Price Is High', primary: true }]}
-                    addLabel="Add Reason"
-                    onAdd={f => addRejectReasonM.mutate(f)}
-                    onUpdate={(id, f) => updRejectReasonM.mutate({ id, body: f })}
-                    onDelete={id => delRejectReasonM.mutate(id)}
-                    emptyText="No reject reasons yet."
-                  />
-                </div>
-              </>
-            )}
-            {generalSection === 'sales_checklist' && (
-              <>
-                <h1 className="text-xl font-semibold text-gray-900">Sales Checklist</h1>
-                <p className="text-sm text-gray-500 -mt-3">These points appear in the "Deal Won" checklist on the Leads page and are verified one-by-one by the Service team.</p>
-                <SalesChecklistSection
-                  items={salesChecklist}
-                  onAdd={f => addSalesChecklistM.mutate(f)}
-                  onUpdate={(id, f) => updSalesChecklistM.mutate({ id, body: f })}
-                  onDelete={id => delSalesChecklistM.mutate(id)}
-                />
               </>
             )}
 

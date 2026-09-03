@@ -187,6 +187,7 @@ import AdminDashboard from "@/pages/lms/AdminDashboard";
 
 import CompanyAdminDashboard from "@/pages/hrms/CompanyAdmin/CompanyAdminDashboard";
 import CompanyAdminLayout from "@/pages/hrms/CompanyAdmin/CompanyAdminLayout";
+import LeadSettingRequests from "@/pages/hrms/CompanyAdmin/LeadSettingRequests";
 import ManagerLeaves from "@/pages/hrms/Manager/LeavesEmployee";
 import PerformanceMetrics from "@/pages/hrms/Manager/PerformanceMetrics";
 import RDDashboard from "@/pages/ResearchDevelopment/Dashboard";
@@ -253,6 +254,7 @@ import MISSettings from "@/pages/mis/MISSettings";
 
 // rnd
 import RDProductionQueue from "@/pages/ResearchDevelopment/RDProductionQueue";
+import SalesItemRequests from "@/pages/ResearchDevelopment/SalesItemRequests";
 
 import { Route, Switch } from "wouter";
 
@@ -601,6 +603,7 @@ function Router() {
             <Route exact path="/hrms/CompanyAdmin/designations" component={HRMSDesignation} />
             <Route exact path="/hrms/CompanyAdmin/user-management" component={RolePermissionManagement} />
             <Route exact path="/hrms/CompanyAdmin/task-management" component={HRMSTaskManagement} />
+            <Route exact path="/hrms/CompanyAdmin/lead-settings" component={LeadSettingRequests} />
             <Route component={NotFound} />
           </Switch>
         </ProtectedRoute>
@@ -620,6 +623,11 @@ function Router() {
       <Route path="/r&d/approve-requests">
         <ProtectedRoute requiredRole={["Research & Development Head", "Research Development Employee"]}>
           <RDProductionQueue />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/r&d/sales-item-requests">
+        <ProtectedRoute requiredRole={["Research & Development Head", "Research Development Employee"]}>
+          <SalesItemRequests />
         </ProtectedRoute>
       </Route>
 

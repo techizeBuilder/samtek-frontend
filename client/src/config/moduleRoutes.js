@@ -4,7 +4,7 @@ import {
   PieChart, ShoppingCart, CreditCard, RotateCcw, Calendar, FileText, CheckCircle,
   BarChart, Clock, AlertTriangle, History, Target, Star, MessageSquare, Briefcase,
   ClipboardList, CalendarCheck, CheckSquare, UserCircle, Beaker, ShieldAlert,
-  FolderOpen, Upload, Pen, User, Bell, Megaphone, Inbox, ShieldCheck, Image
+  FolderOpen, Upload, Pen, User, Bell, Megaphone, Inbox, ShieldCheck, Image, PackagePlus
 } from 'lucide-react';
 
 // ============================================================
@@ -424,7 +424,16 @@ const companyAdminMenuItems = [
   { label: 'Departments', path: '/hrms/CompanyAdmin/departments', icon: Users, module: 'hrms', feature: 'departments' },
   { label: 'Designations', path: '/hrms/CompanyAdmin/designations', icon: Briefcase, module: 'hrms', feature: 'designations' },
   { label: 'Roles & Permissions', path: '/hrms/CompanyAdmin/user-management', icon: Shield, module: 'hrms', feature: 'rolePermissions' },
-  { label: 'Task Management', path: '/hrms/CompanyAdmin/task-management', icon: CheckSquare, module: 'hrms', feature: 'taskManagement' }
+  { label: 'Task Management', path: '/hrms/CompanyAdmin/task-management', icon: CheckSquare, module: 'hrms', feature: 'taskManagement' },
+  // No `feature` key on purpose — a freshly-created Company Admin's seeded
+  // permissions (companyController.js createCompany) only grant the bare
+  // 'hrms' module with an empty features list, so any feature-gated item
+  // here stays invisible until someone manually edits their permissions.
+  // This is a role-defining capability (every Company Admin reviews their
+  // own company's Lead Setting requests), not a togglable feature, so it's
+  // gated by role alone — same convention as Sidebar.jsx's `item.feature ?
+  // hasFeatureAccess(...) : true` fallback for module-level items.
+  { label: 'Lead Setting', path: '/hrms/CompanyAdmin/lead-settings', icon: ClipboardList, module: 'hrms' },
 ];
 
 const rdMenuItems = [
@@ -481,6 +490,7 @@ const rdMenuItems = [
   { label: 'Task Management', path: '/r&d/task-management', icon: CheckSquare, module: 'rnd' },
   { label: 'My Task', path: '/r&d/my-task', icon: CheckSquare, module: 'rnd' },
   { label: 'Training', path: '/lms/training', icon: Pen, module: 'rnd', feature: 'traineeDashboard' },
+  { label: 'Sales Item Request', path: '/r&d/sales-item-requests', icon: PackagePlus, module: 'rnd' },
 ];
 
 const complaintHeadMenuItems = [

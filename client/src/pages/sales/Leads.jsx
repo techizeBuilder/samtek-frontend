@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useLocation } from 'wouter';
+import { useLocation, useSearch } from 'wouter';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
@@ -7,6 +7,7 @@ import { sendWhatsApp } from '@/lib/whatsapp';
 import { usePermissions } from '@/hooks/usePermissions';
 import { leadApi } from '@/api/leadService';
 import { orderApi } from '@/api/orderService';
+import { Country, State, City } from 'country-state-city';
 import {
   Card,
   CardContent,
@@ -31,6 +32,9 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
+import { Calendar as CalendarPicker } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import {
   Search,
   Plus,
@@ -75,13 +79,60 @@ import {
   Handshake,
   Download,
   Stamp,
-  CalendarClock
+  CalendarClock,
+  Check,
+  ChevronsUpDown
 } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import OrderFormModal from '@/components/sales/OrderFormModal';
 import DeliveryEstimatorModal from '@/components/sales/DeliveryEstimatorModal';
 import SendEmailModal from '@/components/email/SendEmailModal';
+import LeadSettingsRequestPanel from '@/components/sales/LeadSettingsRequestPanel';
+import QuotationHistoryModal from '@/components/sales/QuotationHistoryModal';
+
+// Searchable single-select dropdown (Popover + Command) — used for the
+// Advanced Filters' State/City pickers so a long India-wide list stays
+// typeable instead of a giant scroll.
+function SearchableSelect({ value, onSelect, options, placeholder, searchPlaceholder, disabled }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          role="combobox"
+          disabled={disabled}
+          className="w-full justify-between font-normal border-gray-300"
+        >
+          <span className={cn("truncate", !value && "text-gray-400")}>{value || placeholder}</span>
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+        <Command>
+          <CommandInput placeholder={searchPlaceholder} />
+          <CommandList>
+            <CommandEmpty>No results found.</CommandEmpty>
+            <CommandGroup>
+              {options.map(opt => (
+                <CommandItem
+                  key={opt}
+                  value={opt}
+                  onSelect={() => { onSelect(opt); setOpen(false); }}
+                >
+                  <Check className={cn("mr-2 h-4 w-4", value === opt ? "opacity-100" : "opacity-0")} />
+                  {opt}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 const Leads = () => {
   const { user } = useAuth();
@@ -92,9 +143,17 @@ const Leads = () => {
   const canAddLead = hasFeatureAccess('sales', 'leads', 'add');
   const canEditLead = hasFeatureAccess('sales', 'leads', 'edit');
   const [location, setLocation] = useLocation();
+  const searchString = useSearch(); // e.g. "tab=Won" — set when navigating in from the Sales Dashboard's lead cards
+  const tabFromUrl = new URLSearchParams(searchString).get('tab');
 
   // States
-  const [activeTab, setActiveTab] = useState('All Active Leads');
+  const [activeTab, setActiveTab] = useState(tabFromUrl || 'All Active Leads');
+
+  // Re-sync the tab whenever the URL's ?tab= changes (e.g. clicking a different
+  // dashboard card while already on this page) so navigation always reflects it.
+  useEffect(() => {
+    if (tabFromUrl) setActiveTab(tabFromUrl);
+  }, [tabFromUrl]);
   const [searchTerm, setSearchTerm] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEstimatorOpen, setIsEstimatorOpen] = useState(false);
@@ -168,6 +227,8 @@ const Leads = () => {
   
   // Advanced Filter State
   const [isFilterDialogOpen, setIsFilterDialogOpen] = useState(false);
+  const [isLeadSettingsOpen, setIsLeadSettingsOpen] = useState(false);
+  const [quotationHistoryLead, setQuotationHistoryLead] = useState(null);
   const [limit, setLimit] = useState("20");
   const [sortBy, setSortBy] = useState("date");
   const [filters, setFilters] = useState({
@@ -175,6 +236,7 @@ const Leads = () => {
     city: '',
     source: '',
     customerType: '',
+    leadStatus: '',
     enquiryDateFrom: '',
     enquiryDateTo: '',
     nextFollowUpDateFrom: '',
@@ -183,6 +245,10 @@ const Leads = () => {
   });
   const [appliedFilters, setAppliedFilters] = useState({});
   const [page, setPage] = useState(1);
+  // Tracks the ISO code of the State picked in Advanced Filters (India-only)
+  // so City's options can be looked up for that state — filters.state/city
+  // themselves stay plain names, same as before, for the backend regex query.
+  const [filterStateIso, setFilterStateIso] = useState('');
 
   // Jump back to page 1 whenever any filter/search/sort/page-size changes —
   // otherwise you could land on, say, page 4 of a now much smaller result set.
@@ -676,6 +742,8 @@ const Leads = () => {
     'Today\'s Follow-up',
     'Pending Follow-up',
     'Upcoming Follow-up',
+    'Won',
+    'Disqualified',
     'Lead Observer',
     'Customer',
     'Dealer'
@@ -739,6 +807,18 @@ const assignableUsers = (usersData?.users || []).filter(
   });
 
   const [showProductDropdown, setShowProductDropdown] = useState(false);
+  // Add Lead: multiple products can be added to one lead — the search box
+  // stays local, picks are appended to selectedProducts and joined with
+  // ", " into formData.productRequired (still a plain string on the Lead
+  // model, so no backend change needed to show/store multiple products).
+  const [selectedProducts, setSelectedProducts] = useState([]);
+  const [productSearchText, setProductSearchText] = useState('');
+  // Add Lead: Country -> State -> City cascade (country-state-city package).
+  // formData.country/state/city keep holding plain names (unchanged Lead
+  // schema); these ISO codes are only used locally to look up the next
+  // dropdown's options.
+  const [countryIso, setCountryIso] = useState('IN');
+  const [stateIso, setStateIso] = useState('');
 
   // Fetch leads
   const { data: leadsData, isLoading, refetch } = useQuery({
@@ -1162,6 +1242,10 @@ const assignableUsers = (usersData?.users || []).filter(
       profile: '',
       reference: ''
     });
+    setSelectedProducts([]);
+    setProductSearchText('');
+    setCountryIso('IN');
+    setStateIso('');
     setExistingLead(null);
   };
 
@@ -1410,6 +1494,7 @@ const assignableUsers = (usersData?.users || []).filter(
       city: '',
       source: '',
       customerType: '',
+      leadStatus: '',
       enquiryDateFrom: '',
       enquiryDateTo: '',
       nextFollowUpDateFrom: '',
@@ -1418,6 +1503,7 @@ const assignableUsers = (usersData?.users || []).filter(
     };
     setFilters(emptyFilters);
     setAppliedFilters(emptyFilters);
+    setFilterStateIso('');
     setIsFilterDialogOpen(false);
   };
 
@@ -1480,6 +1566,19 @@ const assignableUsers = (usersData?.users || []).filter(
             <RefreshCw className={cn("h-4 w-4 mr-2", syncIndiamartMutation.isPending && "animate-spin")} />
             Sync IndiaMart
           </Button>
+
+          {isSalesHead && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="bg-white border-gray-300 text-gray-700 hover:bg-gray-50"
+              onClick={() => setIsLeadSettingsOpen(true)}
+              title="Propose changes to Lead Stage / Source / Business Type / Document Type / Reject Reason / Sales Checklist — a Company Admin must approve before they go live"
+            >
+              <Settings className="h-4 w-4 mr-2" />
+              Settings
+            </Button>
+          )}
 
           <div className="flex items-center gap-2 ml-auto">
             <span className="text-sm text-gray-500">Show Result</span>
@@ -1561,7 +1660,7 @@ const assignableUsers = (usersData?.users || []).filter(
                 <div className="flex flex-col lg:flex-row p-4 gap-6">
                   {/* Left Section - Core Details */}
                   <div className="flex-1 flex flex-col">
-                    <div className="flex flex-wrap gap-x-8 gap-y-2 text-sm mb-4">
+                    <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm mb-4">
                       <div className="flex flex-col">
                         <span className="text-gray-500 text-xs">Lead ID</span>
                         <div className="flex items-center gap-1.5 mt-0.5">
@@ -1596,10 +1695,11 @@ const assignableUsers = (usersData?.users || []).filter(
                         <span className="text-gray-500 text-xs">Quotation</span>
                         <div className="flex items-center h-5">
                           {lead.hasQuotation ? (
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
-                              className="h-6 px-2 text-blue-600 hover:bg-blue-50 text-[10px] -ml-2"
+                            <>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 px-1.5 text-blue-600 hover:bg-blue-50 text-[10px] -ml-2"
                               onClick={async () => {
                                 // Open window FIRST (must be synchronous during click event)
                                 // so the browser doesn't block it as a popup
@@ -1634,8 +1734,23 @@ const assignableUsers = (usersData?.users || []).filter(
                                 }
                               }}
                             >
-                              <Eye className="w-3 h-3 mr-1" /> View
+                              <Eye className="w-3 h-3 mr-0.5" /> View
+                              {lead.quotationCount > 0 && (
+                                <span className="ml-1 inline-flex items-center justify-center h-3.5 min-w-[14px] px-1 rounded-full bg-blue-600 text-white text-[9px] font-bold">
+                                  {lead.quotationCount}
+                                </span>
+                              )}
                             </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-5 w-5 p-0 shrink-0 text-gray-400 hover:text-blue-600 hover:bg-blue-50"
+                              title="View all quotations sent for this lead"
+                              onClick={() => setQuotationHistoryLead(lead)}
+                            >
+                              <History className="w-2.5 h-2.5" />
+                            </Button>
+                            </>
                           ) : (
                             <span className="text-gray-400 text-xs font-medium">N/A</span>
                           )}
@@ -2013,10 +2128,32 @@ const assignableUsers = (usersData?.users || []).filter(
                 <div className="bg-gray-50 p-2 border-t border-gray-100 grid grid-cols-2 md:grid-cols-8 gap-2">
                   <div className="flex flex-col">
                     <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Next Follow-up</span>
-                    <div className="flex items-center gap-1 text-xs text-gray-700">
-                      <span>{lead.nextFollowUpDate ? new Date(lead.nextFollowUpDate).toLocaleDateString() : 'dd-mm-yyyy'}</span>
-                      <Calendar className="h-3 w-3 text-gray-400" />
-                    </div>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <button
+                          type="button"
+                          className="flex items-center gap-1 text-xs text-gray-700 hover:text-blue-600 w-fit"
+                          title="Click to change next follow-up date"
+                        >
+                          <span>{lead.nextFollowUpDate ? new Date(lead.nextFollowUpDate).toLocaleDateString() : 'dd-mm-yyyy'}</span>
+                          <Calendar className="h-3 w-3 text-gray-400" />
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <CalendarPicker
+                          mode="single"
+                          selected={lead.nextFollowUpDate ? new Date(lead.nextFollowUpDate) : new Date()}
+                          defaultMonth={lead.nextFollowUpDate ? new Date(lead.nextFollowUpDate) : new Date()}
+                          onSelect={(date) => {
+                            if (!date) return;
+                            updateLeadMutation.mutate(
+                              { id: lead._id, data: { nextFollowUpDate: date } },
+                              { onSuccess: () => toast({ title: 'Updated', description: 'Next follow-up date updated' }) }
+                            );
+                          }}
+                        />
+                      </PopoverContent>
+                    </Popover>
                   </div>
                   <div className="flex flex-col">
                     <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Assigned to</span>
@@ -2251,13 +2388,34 @@ const assignableUsers = (usersData?.users || []).filter(
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2 md:col-span-2 relative">
                     <Label className="font-bold">Product / Service Required <span className="text-red-500">*</span></Label>
+
+                    {selectedProducts.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mb-1">
+                        {selectedProducts.map((p, i) => (
+                          <span key={`${p}-${i}`} className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 border border-blue-200 rounded-full pl-2.5 pr-1 py-0.5 text-xs font-medium">
+                            {p}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const next = selectedProducts.filter((_, idx) => idx !== i);
+                                setSelectedProducts(next);
+                                setFormData(prev => ({ ...prev, productRequired: next.join(', ') }));
+                              }}
+                              className="rounded-full hover:bg-blue-200 p-0.5"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
                     <div className="relative">
                       <Input
-                        name="productRequired"
-                        placeholder="Search Product..."
-                        value={formData.productRequired}
+                        placeholder={selectedProducts.length ? "Search to add more..." : "Search Product..."}
+                        value={productSearchText}
                         onChange={(e) => {
-                          handleInputChange(e);
+                          setProductSearchText(e.target.value);
                           setShowProductDropdown(true);
                         }}
                         onFocus={() => setShowProductDropdown(true)}
@@ -2272,15 +2430,25 @@ const assignableUsers = (usersData?.users || []).filter(
                     </div>
 
                     {showProductDropdown && (() => {
-                      const q = formData.productRequired.toLowerCase();
+                      const q = productSearchText.toLowerCase();
+                      const addProduct = (name) => {
+                        const next = [...selectedProducts, name];
+                        setSelectedProducts(next);
+                        setFormData(prev => ({ ...prev, productRequired: next.join(', ') }));
+                        setProductSearchText('');
+                      };
                       const filteredPlants = availablePlants.filter(plant =>
-                        plant.name.toLowerCase().includes(q) ||
-                        (plant.category || '').toLowerCase().includes(q) ||
-                        (plant.subCategory || '').toLowerCase().includes(q)
+                        !selectedProducts.includes(plant.name) && (
+                          plant.name.toLowerCase().includes(q) ||
+                          (plant.category || '').toLowerCase().includes(q) ||
+                          (plant.subCategory || '').toLowerCase().includes(q)
+                        )
                       );
                       const filteredItems = availableItems.filter(item =>
-                        item.name.toLowerCase().includes(q) ||
-                        item.code.toLowerCase().includes(q)
+                        !selectedProducts.includes(item.name) && (
+                          item.name.toLowerCase().includes(q) ||
+                          item.code.toLowerCase().includes(q)
+                        )
                       );
                       return (
                         <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
@@ -2298,8 +2466,7 @@ const assignableUsers = (usersData?.users || []).filter(
                                   onMouseDown={(e) => {
                                     // Prevent input from losing focus immediately
                                     e.preventDefault();
-                                    setFormData(prev => ({ ...prev, productRequired: plant.name }));
-                                    setShowProductDropdown(false);
+                                    addProduct(plant.name);
                                   }}
                                 >
                                   <span className="text-sm font-medium text-gray-800">{plant.name}</span>
@@ -2317,8 +2484,7 @@ const assignableUsers = (usersData?.users || []).filter(
                                   onMouseDown={(e) => {
                                     // Prevent input from losing focus immediately
                                     e.preventDefault();
-                                    setFormData(prev => ({ ...prev, productRequired: item.name }));
-                                    setShowProductDropdown(false);
+                                    addProduct(item.name);
                                   }}
                                 >
                                   <span className="text-sm font-medium text-gray-800">{item.name}</span>
@@ -2332,7 +2498,7 @@ const assignableUsers = (usersData?.users || []).filter(
                             </>
                           ) : (
                             <div className="px-4 py-3 text-sm text-gray-500 text-center">
-                              {formData.productRequired ? `No products found matching "${formData.productRequired}"` : "No products available"}
+                              {selectedProducts.length > 0 ? 'All matching products already added' : (productSearchText ? `No products found matching "${productSearchText}"` : "No products available")}
                             </div>
                           )}
                         </div>
@@ -2409,14 +2575,22 @@ const assignableUsers = (usersData?.users || []).filter(
 
                   <div className="space-y-2">
                     <Label className="font-bold">Select Country <span className="text-red-500">*</span></Label>
-                    <Select value={formData.country} onValueChange={(val) => setFormData(p => ({ ...p, country: val }))}>
+                    <Select
+                      value={countryIso}
+                      onValueChange={(val) => {
+                        const c = Country.getCountryByCode(val);
+                        setCountryIso(val);
+                        setStateIso('');
+                        setFormData(p => ({ ...p, country: c?.name || val, state: '', city: '' }));
+                      }}
+                    >
                       <SelectTrigger className="border-gray-300">
                         <SelectValue placeholder="-- Select Country --" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="India">India</SelectItem>
-                        <SelectItem value="USA">USA</SelectItem>
-                        <SelectItem value="UK">UK</SelectItem>
+                        {Country.getAllCountries().map(c => (
+                          <SelectItem key={c.isoCode} value={c.isoCode}>{c.name}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -2442,26 +2616,57 @@ const assignableUsers = (usersData?.users || []).filter(
 
                   <div className="space-y-2">
                     <Label className="font-bold">Select State</Label>
-                    <Input
-                      name="state"
-                      placeholder="Enter State (sirf text)"
-                      value={formData.state}
-                      onChange={handleInputChange}
-                      className="border-gray-300"
-                      autoComplete="off"
-                    />
+                    <Select
+                      value={stateIso}
+                      disabled={!countryIso}
+                      onValueChange={(val) => {
+                        const s = State.getStateByCodeAndCountry(val, countryIso);
+                        setStateIso(val);
+                        setFormData(p => ({ ...p, state: s?.name || val, city: '' }));
+                      }}
+                    >
+                      <SelectTrigger className="border-gray-300">
+                        <SelectValue placeholder="-- Select State --" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {State.getStatesOfCountry(countryIso).map(s => (
+                          <SelectItem key={s.isoCode} value={s.isoCode}>{s.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
 
                   <div className="space-y-2">
                     <Label className="font-bold">Select City</Label>
-                    <Input
-                      name="city"
-                      placeholder="Enter City (sirf text)"
-                      value={formData.city}
-                      onChange={handleInputChange}
-                      className="border-gray-300"
-                      autoComplete="off"
-                    />
+                    {(() => {
+                      const cities = (countryIso && stateIso) ? City.getCitiesOfState(countryIso, stateIso) : [];
+                      return cities.length > 0 ? (
+                        <Select
+                          value={formData.city}
+                          disabled={!stateIso}
+                          onValueChange={(val) => setFormData(p => ({ ...p, city: val }))}
+                        >
+                          <SelectTrigger className="border-gray-300">
+                            <SelectValue placeholder="-- Select City --" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {cities.map(c => (
+                              <SelectItem key={c.name} value={c.name}>{c.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <Input
+                          name="city"
+                          placeholder={stateIso ? "Enter City (not in list)" : "Select a state first"}
+                          value={formData.city}
+                          onChange={handleInputChange}
+                          disabled={!stateIso}
+                          className="border-gray-300"
+                          autoComplete="off"
+                        />
+                      );
+                    })()}
                   </div>
 
                   <div className="space-y-2">
@@ -2602,12 +2807,12 @@ const assignableUsers = (usersData?.users || []).filter(
 
                   <div className="space-y-2">
                     <Label className="font-bold">Select State</Label>
-                    <Input name="state" value={formData.state} onChange={handleInputChange} className="border-gray-300" autoComplete="off" />
+                    <Input value={formData.state} disabled className="bg-gray-100 border-gray-300" />
                   </div>
 
                   <div className="space-y-2">
                     <Label className="font-bold">Select City</Label>
-                    <Input name="city" value={formData.city} onChange={handleInputChange} className="border-gray-300" autoComplete="off" />
+                    <Input value={formData.city} disabled className="bg-gray-100 border-gray-300" />
                   </div>
 
                   <div className="space-y-2">
@@ -2901,6 +3106,25 @@ const assignableUsers = (usersData?.users || []).filter(
           </div>
         </DialogContent>
       </Dialog>
+      {/* Quotation send-history */}
+      <QuotationHistoryModal
+        leadId={quotationHistoryLead?._id}
+        leadCode={quotationHistoryLead?.leadCode}
+        open={!!quotationHistoryLead}
+        onOpenChange={(open) => { if (!open) setQuotationHistoryLead(null); }}
+      />
+
+      {/* Lead Settings — Sales Head proposes changes, Company Admin approves */}
+      <Dialog open={isLeadSettingsOpen} onOpenChange={setIsLeadSettingsOpen}>
+        <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Lead Settings</DialogTitle>
+            <DialogDescription>Propose add/edit/delete changes — your Company Admin approves before they go live.</DialogDescription>
+          </DialogHeader>
+          <LeadSettingsRequestPanel />
+        </DialogContent>
+      </Dialog>
+
       {/* Filter Dialog */}
       <Dialog open={isFilterDialogOpen} onOpenChange={setIsFilterDialogOpen}>
         <DialogContent className="max-w-4xl">
@@ -2912,18 +3136,27 @@ const assignableUsers = (usersData?.users || []).filter(
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 py-4">
             <div className="space-y-2">
               <Label>State</Label>
-              <Input 
-                placeholder="Search state..." 
-                value={filters.state} 
-                onChange={(e) => handleFilterChange('state', e.target.value)}
+              <SearchableSelect
+                value={filters.state}
+                placeholder="Select state..."
+                searchPlaceholder="Search state..."
+                options={State.getStatesOfCountry('IN').map(s => s.name)}
+                onSelect={(name) => {
+                  const s = State.getStatesOfCountry('IN').find(s => s.name === name);
+                  setFilterStateIso(s?.isoCode || '');
+                  setFilters(prev => ({ ...prev, state: name, city: '' }));
+                }}
               />
             </div>
             <div className="space-y-2">
               <Label>City</Label>
-              <Input 
-                placeholder="Search city..." 
-                value={filters.city} 
-                onChange={(e) => handleFilterChange('city', e.target.value)}
+              <SearchableSelect
+                value={filters.city}
+                placeholder={filterStateIso ? "Select city..." : "Select a state first"}
+                searchPlaceholder="Search city..."
+                disabled={!filterStateIso}
+                options={filterStateIso ? City.getCitiesOfState('IN', filterStateIso).map(c => c.name) : []}
+                onSelect={(name) => handleFilterChange('city', name)}
               />
             </div>
             <div className="space-y-2">
@@ -2948,6 +3181,19 @@ const assignableUsers = (usersData?.users || []).filter(
                 <SelectContent>
                   {(dynBizTypes || ['Distributor', 'Retailer', 'Wholesaler', 'End User']).map(bt => (
                     <SelectItem key={bt} value={bt}>{bt}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Lead Status</Label>
+              <Select value={filters.leadStatus} onValueChange={(val) => handleFilterChange('leadStatus', val)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  {STATUSES.map(s => (
+                    <SelectItem key={s} value={s}>{s}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
