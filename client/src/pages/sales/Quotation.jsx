@@ -11,6 +11,7 @@ import {
   FileText,
   Printer,
   ChevronRight,
+  ChevronDown,
   Package,
   ShoppingCart,
   Users,
@@ -105,6 +106,9 @@ const Quotation = () => {
   const [buyerType, setBuyerType] = useState('Customer'); // Dealer or Customer
   const [selectedPriceListCategory, setSelectedPriceListCategory] = useState(null);
   const [isAddProductModalOpen, setIsAddProductModalOpen] = useState(false);
+  // Which past item request (by _id) is expanded to show its full details
+  // in the "Requests for this lead" list — null means none expanded.
+  const [expandedItemRequestId, setExpandedItemRequestId] = useState(null);
 
   // ─── Terms & Conditions state ────────────────────────────────
   // Fetch dynamic quotation settings
@@ -228,6 +232,8 @@ const Quotation = () => {
 
   const pdfRef = useRef();
   const pageRefs = useRef([]); // refs for individual page blocks
+  // Guards the lead-auto-select effect below so it only ever runs once.
+  const autoSelectedFromLeadRef = useRef(false);
   // Fetch Lead Data
   const { data: leadResponse } = useQuery({
     queryKey: ['lead', leadId],
@@ -334,11 +340,15 @@ const Quotation = () => {
   // Fetch Plants (Plant Master) — used purely as a filter to narrow the item
   // list down to just the machines/motors mapped into a selected plant. A
   // plant has no Item of its own to sell, so it's never a selectable row.
-  const { data: plantsResponse } = useQuery({
+  const { data: plantsResponse, isLoading: plantsLoading } = useQuery({
     queryKey: ['rd-plants'],
     queryFn: async () => {
       const token = localStorage.getItem('token');
-      const res = await axios.get(`${import.meta.env.VITE_API_URL || '/api'}/rd/plants?discontinued=false`, {
+      // Sales-scoped read, not R&D's own /rd/plants — Sales roles were
+      // never granted rnd.plantMaster.view, so this 403'd for every real
+      // Sales user and the filter silently showed no plants (confirmed
+      // 2026-09-03).
+      const res = await axios.get(`${import.meta.env.VITE_API_URL || '/api'}/sales/plants?discontinued=false`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       return res.data;
@@ -523,21 +533,66 @@ const Quotation = () => {
               </Button>
             </div>
 
-            {/* Past requests for this lead — surfaces status back to Sales */}
+            {/* Past requests for this lead — surfaces status back to Sales.
+                Click a row to expand its full details (production/category/
+                quantity/application/image, who requested it, and R&D's own
+                review remarks once decided) — previously just a status
+                badge with no way to see anything else about the request
+                (confirmed 2026-09-03). */}
             {itemRequests.length > 0 && (
               <div className="border-t pt-4 space-y-2">
                 <p className="text-sm font-semibold text-gray-700">Requests for this lead</p>
-                {itemRequests.map((r) => (
-                  <div key={r._id} className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg border border-gray-200 bg-gray-50">
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-gray-800 truncate">{r.productName}</p>
-                      <p className="text-[11px] text-gray-400">{new Date(r.createdAt).toLocaleString()}</p>
+                {itemRequests.map((r) => {
+                  const isExpanded = expandedItemRequestId === r._id;
+                  const imageUrl = r.image
+                    ? (r.image.startsWith('http') ? r.image : `${(import.meta.env.VITE_API_URL || 'http://localhost:5000').replace('/api', '')}${r.image}`)
+                    : null;
+                  return (
+                    <div key={r._id} className="rounded-lg border border-gray-200 bg-gray-50 overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => setExpandedItemRequestId(isExpanded ? null : r._id)}
+                        className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left hover:bg-gray-100 transition-colors"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-gray-800 truncate">{r.productName}</p>
+                          <p className="text-[11px] text-gray-400">{new Date(r.createdAt).toLocaleString()}</p>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${REQUEST_STATUS_STYLE[r.status]}`}>
+                            {r.status}
+                          </span>
+                          <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                        </div>
+                      </button>
+                      {isExpanded && (
+                        <div className="px-3 pb-3 pt-1 border-t border-gray-200 bg-white space-y-2">
+                          <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                            <div><span className="text-gray-400">Production:</span> <span className="text-gray-700">{r.production || '—'}</span></div>
+                            <div><span className="text-gray-400">Category:</span> <span className="text-gray-700">{r.category || '—'}</span></div>
+                            <div><span className="text-gray-400">Quantity:</span> <span className="text-gray-700">{r.quantity ?? '—'}</span></div>
+                            <div><span className="text-gray-400">Requested By:</span> <span className="text-gray-700">{r.requestedBy?.fullName || r.requestedBy?.username || '—'}</span></div>
+                          </div>
+                          {r.application && (
+                            <div className="text-xs"><span className="text-gray-400">Application:</span> <span className="text-gray-700">{r.application}</span></div>
+                          )}
+                          {imageUrl && (
+                            <img src={imageUrl} alt={r.productName} className="h-16 w-16 object-cover rounded border border-gray-200" />
+                          )}
+                          {r.status !== 'Pending' && (
+                            <div className="text-xs pt-1.5 border-t border-gray-100">
+                              <span className="text-gray-400">{r.status} by:</span> <span className="text-gray-700">{r.reviewedBy?.fullName || r.reviewedBy?.username || '—'}</span>
+                              {r.reviewedAt && <span className="text-gray-400"> on {new Date(r.reviewedAt).toLocaleString()}</span>}
+                              {r.reviewRemarks && (
+                                <p className="text-gray-700 mt-1 bg-gray-50 border border-gray-100 rounded px-2 py-1.5">{r.reviewRemarks}</p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
-                    <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border shrink-0 ${REQUEST_STATUS_STYLE[r.status]}`}>
-                      {r.status}
-                    </span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </form>
@@ -653,6 +708,67 @@ const Quotation = () => {
   const handleRemoveItem = (id) => {
     setSelectedItems(selectedItems.filter(item => item.id !== id));
   };
+
+  // Auto-select this lead's own picks (machines and/or plants, however many
+  // — Leads' ProductPlantPicker allows any mix) the first time this
+  // quotation's catalog data is ready, same shape handleAddItem produces so
+  // these rows behave identically to a manual pick. A plant pick expands
+  // into ALL of its machines AND motors (motors only ever enter a quotation
+  // through a plant, never standalone — confirmed 2026-09-03), each at the
+  // plant's own recorded quantity; a machine pick is added directly at
+  // quantity 1. Guarded by autoSelectedFromLeadRef so it only ever runs
+  // once — a restored draft (the mount-time effect above) already leaves
+  // selectedItems non-empty by the time this fires, so it naturally skips.
+  useEffect(() => {
+    if (autoSelectedFromLeadRef.current) return;
+    if (!leadId || !leadData?.productRequired) return;
+    if (selectedItems.length > 0) return;
+    // Wait for BOTH queries to actually settle — checking array length alone
+    // (previous version) fired the moment either one had ANY data, even
+    // while the other was still empty/mid-fetch, so a lead mixing a plant
+    // with a standalone machine only ever got the plant's items: allPlants
+    // would resolve first, the guard let the effect through with
+    // productsList still [], and the ref flag then blocked it from ever
+    // retrying once productsList actually loaded (real bug, caught
+    // 2026-09-03).
+    if (itemsLoading || plantsLoading) return;
+
+    const names = leadData.productRequired.split(',').map(s => s.trim()).filter(Boolean);
+    if (names.length === 0) return;
+
+    const picked = [];
+    const pickedIds = new Set();
+    const addPicked = (product, quantity) => {
+      if (!product || pickedIds.has(product._id)) return;
+      pickedIds.add(product._id);
+      picked.push({
+        ...product,
+        id: product._id,
+        price: buyerType === 'Dealer' ? (product.dealerPrice || product.mrp || 0) : (product.mrp || 0),
+        quantity: quantity || 1,
+        gst: 18,
+      });
+    };
+
+    names.forEach(name => {
+      const plant = allPlants.find(pl => pl.name === name);
+      if (plant) {
+        (plant.machines || []).forEach(m => { if (m.item) addPicked(m.item, m.quantity); });
+        (plant.motors || []).forEach(m => { if (m.item) addPicked(m.item, m.quantity); });
+        return;
+      }
+      const item = productsList.find(p => p.name === name);
+      if (item) addPicked(item, 1);
+    });
+
+    if (picked.length > 0) {
+      setSelectedItems(picked);
+    }
+    // Mark done regardless of whether any name actually matched, so a lead
+    // whose picks don't resolve to real catalog rows (renamed/discontinued
+    // since) doesn't keep retrying every time productsList/allPlants refetch.
+    autoSelectedFromLeadRef.current = true;
+  }, [leadId, leadData, productsList, allPlants, selectedItems, buyerType, itemsLoading, plantsLoading]);
 
   const handleUpdateItem = (id, field, value) => {
     setSelectedItems(selectedItems.map(item =>

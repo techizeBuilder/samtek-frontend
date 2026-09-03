@@ -130,7 +130,10 @@ export const leadApi = {
 
   getPlants: () => {
     const token = localStorage.getItem('token');
-    return apiRequest('/rd/plants?discontinued=false', {
+    // Sales-scoped read, not R&D's own /rd/plants — Sales roles were never
+    // granted rnd.plantMaster.view, so that endpoint 403'd for every real
+    // Sales user (confirmed 2026-09-03).
+    return apiRequest('/sales/plants?discontinued=false', {
       headers: {
         'Authorization': `Bearer ${token}`
       }

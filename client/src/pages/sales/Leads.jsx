@@ -6,6 +6,7 @@ import { useToast } from '@/hooks/use-toast';
 import { sendWhatsApp } from '@/lib/whatsapp';
 import { usePermissions } from '@/hooks/usePermissions';
 import { leadApi } from '@/api/leadService';
+import { apiRequest } from '@/lib/queryClient';
 import { orderApi } from '@/api/orderService';
 import { Country, State, City } from 'country-state-city';
 import {
@@ -131,6 +132,188 @@ function SearchableSelect({ value, onSelect, options, placeholder, searchPlaceho
         </Command>
       </PopoverContent>
     </Popover>
+  );
+}
+
+// Restricted-to-real-data, multi-select product/plant picker for
+// "Product / Service Required" — replaces free typing entirely (confirmed
+// 2026-09-03: a lead's product field must only ever hold real Product
+// Master machines or Plant Master plants, never arbitrary text). Type
+// toggle first (Machine/Plant), then Category + Sub Category narrow the
+// list — Machine's own Category/Sub Category come from Product Master's
+// classification (P-Type/Category), Plant's from Plant Master's own
+// (PlantCategory/PlantSubCategory); motors are never shown regardless.
+// `selected` is the same plain name-string array both call sites already
+// used; `onChange` receives the next array, still joined with ", " by the
+// caller into the Lead's own productRequired string field — no schema
+// change. Self-contained (own queries) so it drops into both the Add Lead
+// form and the Edit Lead Title modal unchanged.
+function ProductPlantPicker({ selected, onChange }) {
+  const [pickerType, setPickerType] = useState('Machine');
+  const [filterCategory, setFilterCategory] = useState('');
+  const [filterSubCategory, setFilterSubCategory] = useState('');
+  const [search, setSearch] = useState('');
+  const [showDropdown, setShowDropdown] = useState(false);
+
+  const { data: masterOptionsResponse } = useQuery({
+    queryKey: ['rd-master-options'],
+    queryFn: () => apiRequest('GET', '/api/rd/master-options'),
+  });
+  const masterOptions = masterOptionsResponse?.data || {};
+
+  const { data: itemsData, isLoading: itemsLoading } = useQuery({
+    queryKey: ['sales-items'],
+    queryFn: () => leadApi.getItems(),
+  });
+  const allItems = itemsData?.items || [];
+
+  const { data: plantsData, isLoading: plantsLoading } = useQuery({
+    queryKey: ['lead-plants'],
+    queryFn: () => leadApi.getPlants(),
+  });
+  const allPlants = (plantsData?.data || []).map((plant) => {
+    const machineTotal = (plant.machines || []).reduce((sum, m) => sum + (m.item?.mrp || 0) * (m.quantity || 1), 0);
+    const motorTotal = (plant.motors || []).reduce((sum, m) => sum + (m.item?.mrp || 0) * (m.quantity || 1), 0);
+    return { ...plant, combinedPrice: machineTotal + motorTotal };
+  });
+
+  const categoryOptions = pickerType === 'Machine' ? (masterOptions.PType || []) : (masterOptions.PlantCategory || []);
+  const subCategoryOptions = pickerType === 'Machine'
+    ? (masterOptions.Category || []).filter(o => o.parentValue === filterCategory)
+    : (masterOptions.PlantSubCategory || []).filter(o => o.parentValue === filterCategory);
+
+  const selectType = (type) => {
+    setPickerType(type);
+    setFilterCategory('');
+    setFilterSubCategory('');
+  };
+
+  const q = search.trim().toLowerCase();
+  const results = pickerType === 'Machine'
+    ? allItems.filter(it =>
+        it.productKind !== 'Motor' &&
+        !selected.includes(it.name) &&
+        (!filterCategory || it.category === filterCategory) &&
+        (!filterSubCategory || it.subCategory === filterSubCategory) &&
+        (!q || it.name.toLowerCase().includes(q) || (it.code || '').toLowerCase().includes(q))
+      )
+    : allPlants.filter(p =>
+        !selected.includes(p.name) &&
+        (!filterCategory || p.category === filterCategory) &&
+        (!filterSubCategory || p.subCategory === filterSubCategory) &&
+        (!q || p.name.toLowerCase().includes(q))
+      );
+
+  const addPick = (name) => {
+    onChange([...selected, name]);
+    setSearch('');
+  };
+  const removePick = (idx) => onChange(selected.filter((_, i) => i !== idx));
+
+  return (
+    <div>
+      {selected.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          {selected.map((p, i) => (
+            <span key={`${p}-${i}`} className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 border border-blue-200 rounded-full pl-2.5 pr-1 py-0.5 text-xs font-medium">
+              {p}
+              <button type="button" onClick={() => removePick(i)} className="rounded-full hover:bg-blue-200 p-0.5">
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
+      <div className="flex gap-2 mb-2">
+        {['Machine', 'Plant'].map(type => (
+          <button
+            key={type} type="button" onClick={() => selectType(type)}
+            className={`px-3 py-1.5 rounded-md text-xs font-semibold border transition-colors ${pickerType === type ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-300 hover:border-blue-300'}`}
+          >
+            {type}
+          </button>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 mb-2">
+        <select
+          className="border border-gray-300 rounded-md px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          value={filterCategory}
+          onChange={e => { setFilterCategory(e.target.value); setFilterSubCategory(''); }}
+        >
+          <option value="">All Categories</option>
+          {categoryOptions.map(o => <option key={o.value} value={o.value}>{o.value}</option>)}
+        </select>
+        <select
+          className="border border-gray-300 rounded-md px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-400"
+          value={filterSubCategory}
+          disabled={!filterCategory}
+          onChange={e => setFilterSubCategory(e.target.value)}
+        >
+          <option value="">{filterCategory ? 'All Sub Categories' : 'Select Category first'}</option>
+          {subCategoryOptions.map(o => <option key={o.value} value={o.value}>{o.value}</option>)}
+        </select>
+      </div>
+
+      <div className="relative">
+        <Input
+          placeholder={selected.length ? "Search to add more..." : `Search ${pickerType.toLowerCase()}...`}
+          value={search}
+          onChange={(e) => { setSearch(e.target.value); setShowDropdown(true); }}
+          onFocus={() => setShowDropdown(true)}
+          onBlur={() => setTimeout(() => setShowDropdown(false), 200)}
+          className="border-gray-300"
+          autoComplete="off"
+        />
+        <Search className="absolute right-3 top-2.5 h-4 w-4 text-gray-400" />
+      </div>
+
+      {showDropdown && (
+        <div className="relative z-50">
+          <div className="absolute w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
+            {itemsLoading || plantsLoading ? (
+              <div className="px-4 py-3 text-sm text-gray-500 text-center flex items-center justify-center gap-2">
+                <div className="h-4 w-4 border-2 border-blue-600 border-t-transparent animate-spin rounded-full" />
+                Loading...
+              </div>
+            ) : results.length > 0 ? (
+              pickerType === 'Plant' ? results.map((plant) => (
+                <div
+                  key={plant._id}
+                  className="px-4 py-2 hover:bg-blue-50 cursor-pointer flex flex-col border-b border-gray-50 last:border-0"
+                  onMouseDown={(e) => { e.preventDefault(); addPick(plant.name); }}
+                >
+                  <span className="text-sm font-medium text-gray-800">{plant.name}</span>
+                  <div className="flex items-center gap-2 mt-1">
+                    <Badge variant="outline" className="text-[10px] h-4 bg-purple-50 text-purple-700 border-purple-200">Plant</Badge>
+                    <span className="text-[10px] text-gray-500">{[plant.category, plant.subCategory].filter(Boolean).join(' / ')}</span>
+                    {plant.combinedPrice > 0 && <span className="text-[10px] text-blue-600 font-bold ml-auto">₹{plant.combinedPrice.toLocaleString()}</span>}
+                  </div>
+                </div>
+              )) : results.map((item) => (
+                <div
+                  key={item._id}
+                  className="px-4 py-2 hover:bg-blue-50 cursor-pointer flex flex-col border-b border-gray-50 last:border-0"
+                  onMouseDown={(e) => { e.preventDefault(); addPick(item.name); }}
+                >
+                  <span className="text-sm font-medium text-gray-800">{item.name}</span>
+                  <div className="flex items-center gap-2 mt-1">
+                    <Badge variant="outline" className="text-[10px] h-4 bg-gray-50">{item.code}</Badge>
+                    <span className="text-[10px] text-gray-500">{[item.category, item.subCategory].filter(Boolean).join(' / ')}</span>
+                    {item.mrp > 0 && <span className="text-[10px] text-blue-600 font-bold ml-auto">₹{item.mrp}</span>}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="px-4 py-3 text-sm text-gray-500 text-center">
+                {search ? `No ${pickerType.toLowerCase()}s found matching "${search}"` : `No ${pickerType.toLowerCase()}s available for this filter`}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -594,6 +777,10 @@ const Leads = () => {
     productRequired: '',
     describeRequirements: ''
   });
+  // Edit Lead Title modal's own picks — same array-of-names shape
+  // selectedProducts uses for Add Lead, kept separate since it's a
+  // different dialog/lead-editing session.
+  const [editSelectedProducts, setEditSelectedProducts] = useState([]);
 
   // View Checklist Modal (for Sales Employee to see verification status)
   const [isViewChecklistModalOpen, setIsViewChecklistModalOpen] = useState(false);
@@ -781,38 +968,12 @@ const assignableUsers = (usersData?.users || []).filter(
     user.role === "Sales Employee"
 );
 
-  // Fetch items for product selection
-  const { data: itemsData, isLoading: itemsLoading } = useQuery({
-    queryKey: ['sales-items'],
-    queryFn: () => leadApi.getItems(),
-  });
-
-  const availableItems = itemsData?.items || [];
-
-  // Fetch Plants (Plant Master, R&D) for the product picker. Unlike
-  // Quotation's picker — where a plant is filter-only and never a priced
-  // line item, since a formal quotation needs accurate per-item pricing —
-  // a Lead is just an informal capture of interest with a single free-text
-  // product field, so here the plant itself is a selectable option, shown
-  // with the combined MRP of its mapped machines + motors.
-  const { data: plantsData, isLoading: plantsLoading } = useQuery({
-    queryKey: ['lead-plants'],
-    queryFn: () => leadApi.getPlants(),
-  });
-
-  const availablePlants = (plantsData?.data || []).map((plant) => {
-    const machineTotal = (plant.machines || []).reduce((sum, m) => sum + (m.item?.mrp || 0) * (m.quantity || 1), 0);
-    const motorTotal = (plant.motors || []).reduce((sum, m) => sum + (m.item?.mrp || 0) * (m.quantity || 1), 0);
-    return { ...plant, combinedPrice: machineTotal + motorTotal };
-  });
-
-  const [showProductDropdown, setShowProductDropdown] = useState(false);
-  // Add Lead: multiple products can be added to one lead — the search box
-  // stays local, picks are appended to selectedProducts and joined with
-  // ", " into formData.productRequired (still a plain string on the Lead
-  // model, so no backend change needed to show/store multiple products).
+  // Add Lead: multiple products can be added to one lead — ProductPlantPicker
+  // (self-contained, fetches its own items/plants) appends picks here,
+  // joined with ", " into formData.productRequired (still a plain string on
+  // the Lead model, so no backend change needed to show/store multiple
+  // products).
   const [selectedProducts, setSelectedProducts] = useState([]);
-  const [productSearchText, setProductSearchText] = useState('');
   // Add Lead: Country -> State -> City cascade (country-state-city package).
   // formData.country/state/city keep holding plain names (unchanged Lead
   // schema); these ISO codes are only used locally to look up the next
@@ -1200,6 +1361,10 @@ const assignableUsers = (usersData?.users || []).filter(
       productRequired: lead.productRequired || '',
       describeRequirements: lead.describeRequirements || ''
     });
+    // productRequired is still just a ", "-joined string on the Lead —
+    // split it back into a plain array for ProductPlantPicker's own
+    // selected/onChange contract.
+    setEditSelectedProducts((lead.productRequired || '').split(',').map(s => s.trim()).filter(Boolean));
     setIsEditReqModalOpen(true);
   };
 
@@ -1243,7 +1408,6 @@ const assignableUsers = (usersData?.users || []).filter(
       reference: ''
     });
     setSelectedProducts([]);
-    setProductSearchText('');
     setCountryIso('IN');
     setStateIso('');
     setExistingLead(null);
@@ -2388,122 +2552,13 @@ const assignableUsers = (usersData?.users || []).filter(
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2 md:col-span-2 relative">
                     <Label className="font-bold">Product / Service Required <span className="text-red-500">*</span></Label>
-
-                    {selectedProducts.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 mb-1">
-                        {selectedProducts.map((p, i) => (
-                          <span key={`${p}-${i}`} className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 border border-blue-200 rounded-full pl-2.5 pr-1 py-0.5 text-xs font-medium">
-                            {p}
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const next = selectedProducts.filter((_, idx) => idx !== i);
-                                setSelectedProducts(next);
-                                setFormData(prev => ({ ...prev, productRequired: next.join(', ') }));
-                              }}
-                              className="rounded-full hover:bg-blue-200 p-0.5"
-                            >
-                              <X className="h-3 w-3" />
-                            </button>
-                          </span>
-                        ))}
-                      </div>
-                    )}
-
-                    <div className="relative">
-                      <Input
-                        placeholder={selectedProducts.length ? "Search to add more..." : "Search Product..."}
-                        value={productSearchText}
-                        onChange={(e) => {
-                          setProductSearchText(e.target.value);
-                          setShowProductDropdown(true);
-                        }}
-                        onFocus={() => setShowProductDropdown(true)}
-                        onBlur={() => {
-                          // Delay hiding to allow click event on dropdown items
-                          setTimeout(() => setShowProductDropdown(false), 200);
-                        }}
-                        className="border-gray-300"
-                        autoComplete="off"
-                      />
-                      <Search className="absolute right-3 top-2.5 h-4 w-4 text-gray-400" />
-                    </div>
-
-                    {showProductDropdown && (() => {
-                      const q = productSearchText.toLowerCase();
-                      const addProduct = (name) => {
-                        const next = [...selectedProducts, name];
+                    <ProductPlantPicker
+                      selected={selectedProducts}
+                      onChange={(next) => {
                         setSelectedProducts(next);
                         setFormData(prev => ({ ...prev, productRequired: next.join(', ') }));
-                        setProductSearchText('');
-                      };
-                      const filteredPlants = availablePlants.filter(plant =>
-                        !selectedProducts.includes(plant.name) && (
-                          plant.name.toLowerCase().includes(q) ||
-                          (plant.category || '').toLowerCase().includes(q) ||
-                          (plant.subCategory || '').toLowerCase().includes(q)
-                        )
-                      );
-                      const filteredItems = availableItems.filter(item =>
-                        !selectedProducts.includes(item.name) && (
-                          item.name.toLowerCase().includes(q) ||
-                          item.code.toLowerCase().includes(q)
-                        )
-                      );
-                      return (
-                        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
-                          {itemsLoading || plantsLoading ? (
-                            <div className="px-4 py-3 text-sm text-gray-500 text-center flex items-center justify-center gap-2">
-                              <div className="h-4 w-4 border-2 border-blue-600 border-t-transparent animate-spin rounded-full" />
-                              Loading items...
-                            </div>
-                          ) : (filteredPlants.length > 0 || filteredItems.length > 0) ? (
-                            <>
-                              {filteredPlants.map((plant) => (
-                                <div
-                                  key={plant._id}
-                                  className="px-4 py-2 hover:bg-blue-50 cursor-pointer flex flex-col border-b border-gray-50 last:border-0"
-                                  onMouseDown={(e) => {
-                                    // Prevent input from losing focus immediately
-                                    e.preventDefault();
-                                    addProduct(plant.name);
-                                  }}
-                                >
-                                  <span className="text-sm font-medium text-gray-800">{plant.name}</span>
-                                  <div className="flex items-center gap-2 mt-1">
-                                    <Badge variant="outline" className="text-[10px] h-4 bg-purple-50 text-purple-700 border-purple-200">Plant</Badge>
-                                    <span className="text-[10px] text-gray-500">{[plant.category, plant.subCategory].filter(Boolean).join(' / ')}</span>
-                                    {plant.combinedPrice > 0 && <span className="text-[10px] text-blue-600 font-bold ml-auto">₹{plant.combinedPrice.toLocaleString()}</span>}
-                                  </div>
-                                </div>
-                              ))}
-                              {filteredItems.map((item) => (
-                                <div
-                                  key={item._id}
-                                  className="px-4 py-2 hover:bg-blue-50 cursor-pointer flex flex-col border-b border-gray-50 last:border-0"
-                                  onMouseDown={(e) => {
-                                    // Prevent input from losing focus immediately
-                                    e.preventDefault();
-                                    addProduct(item.name);
-                                  }}
-                                >
-                                  <span className="text-sm font-medium text-gray-800">{item.name}</span>
-                                  <div className="flex items-center gap-2 mt-1">
-                                    <Badge variant="outline" className="text-[10px] h-4 bg-gray-50">{item.code}</Badge>
-                                    <span className="text-[10px] text-gray-500">{item.category}</span>
-                                    {item.mrp > 0 && <span className="text-[10px] text-blue-600 font-bold ml-auto">₹{item.mrp}</span>}
-                                  </div>
-                                </div>
-                              ))}
-                            </>
-                          ) : (
-                            <div className="px-4 py-3 text-sm text-gray-500 text-center">
-                              {selectedProducts.length > 0 ? 'All matching products already added' : (productSearchText ? `No products found matching "${productSearchText}"` : "No products available")}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })()}
+                      }}
+                    />
                   </div>
 
                   <div className="space-y-2">
@@ -3068,11 +3123,12 @@ const assignableUsers = (usersData?.users || []).filter(
           <div className="p-6 space-y-5 bg-white">
             <div className="space-y-2">
               <Label className="text-sm font-semibold text-gray-600 uppercase tracking-wide">Lead Title:</Label>
-              <Input 
-                value={reqFormData.productRequired} 
-                onChange={(e) => setReqFormData(p => ({ ...p, productRequired: e.target.value }))}
-                className="h-10 border-gray-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                placeholder="Product name or lead title"
+              <ProductPlantPicker
+                selected={editSelectedProducts}
+                onChange={(next) => {
+                  setEditSelectedProducts(next);
+                  setReqFormData(p => ({ ...p, productRequired: next.join(', ') }));
+                }}
               />
             </div>
 

@@ -8,7 +8,10 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { CheckCircle2, Clock, XCircle, AlertCircle, ArrowRight, FileText, Eye, ExternalLink } from 'lucide-react';
+import { CheckCircle2, Clock, XCircle, AlertCircle, ArrowRight, FileText, Eye, Download } from 'lucide-react';
+
+const IMAGE_EXTS = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'];
+const fileExt = (url) => (url || '').split('.').pop()?.toLowerCase().split('?')[0] || '';
 
 const STATUS_TABS = ['All', 'Draft', 'Testing', 'Approved', 'Rejected'];
 
@@ -31,6 +34,11 @@ export default function DesignApproval() {
   const [rejectOpen, setRejectOpen] = useState(false);
   const [sendTestOpen, setSendTestOpen] = useState(false);
   const [selected, setSelected] = useState(null);
+  // Which attached design file (if any) is open in the inline preview
+  // popup — was previously a plain target="_blank" link that navigated
+  // away to a whole new tab/page instead of showing it here (confirmed
+  // 2026-09-03).
+  const [previewFile, setPreviewFile] = useState(null);
   const [rejectNote, setRejectNote] = useState('');
 
   // Reset to page 1 whenever the tab/search changes so the user doesn't
@@ -240,10 +248,11 @@ export default function DesignApproval() {
                           )}
                         </div>
                         {file.fileUrl && (
-                          <Button variant="ghost" size="icon" className="h-6 w-6 text-blue-600 hover:bg-blue-50" asChild>
-                            <a href={file.fileUrl} target="_blank" rel="noopener noreferrer">
-                              <ExternalLink className="h-3.5 w-3.5" />
-                            </a>
+                          <Button
+                            variant="ghost" size="icon" className="h-6 w-6 text-blue-600 hover:bg-blue-50"
+                            onClick={() => setPreviewFile(file)}
+                          >
+                            <Eye className="h-3.5 w-3.5" />
                           </Button>
                         )}
                       </div>
@@ -272,6 +281,37 @@ export default function DesignApproval() {
             </div>
           )}
           <DialogFooter><Button variant="outline" onClick={() => setViewOpen(false)}>Close</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Design File Preview — shows the file inline on this same page
+          instead of navigating away to a new tab (confirmed 2026-09-03).
+          Images/PDFs render directly; anything else (.dwg, .docx, .zip...)
+          can't be shown in a browser, so it falls back to an explicit
+          download link instead of a blank/broken preview. */}
+      <Dialog open={!!previewFile} onOpenChange={(open) => !open && setPreviewFile(null)}>
+        <DialogContent className="max-w-3xl max-h-[85vh] flex flex-col">
+          <DialogHeader><DialogTitle className="truncate">{previewFile?.name}</DialogTitle></DialogHeader>
+          {previewFile && (
+            <div className="flex-1 min-h-0 overflow-auto flex items-center justify-center bg-slate-50 rounded-lg border border-slate-100">
+              {IMAGE_EXTS.includes(fileExt(previewFile.fileUrl)) ? (
+                <img src={previewFile.fileUrl} alt={previewFile.name} className="max-w-full max-h-[65vh] object-contain" />
+              ) : fileExt(previewFile.fileUrl) === 'pdf' ? (
+                <iframe src={previewFile.fileUrl} title={previewFile.name} className="w-full h-[65vh] border-0" />
+              ) : (
+                <div className="text-center py-10 px-6">
+                  <FileText className="h-10 w-10 text-slate-300 mx-auto mb-3" />
+                  <p className="text-sm text-slate-500 mb-3">This file type can't be previewed here.</p>
+                  <Button variant="outline" size="sm" asChild>
+                    <a href={previewFile.fileUrl} target="_blank" rel="noopener noreferrer">
+                      <Download className="h-3.5 w-3.5 mr-1.5" /> Open File
+                    </a>
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter><Button variant="outline" onClick={() => setPreviewFile(null)}>Close</Button></DialogFooter>
         </DialogContent>
       </Dialog>
 
