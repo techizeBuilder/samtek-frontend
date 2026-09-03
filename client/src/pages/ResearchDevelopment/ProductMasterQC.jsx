@@ -29,6 +29,17 @@ const STAGE_LABELS = { initial: 'Initial Checklist', process: 'Process Checklist
 
 const resolveMediaUrl = (url) => (!url ? '' : (url.startsWith('http') || url.startsWith('data:')) ? url : `${config.baseURL}${url}`);
 
+// Same cascade Product Master's own list filter uses (categoryOptionsFor/
+// pSourceOptionsFor there) — mirrored here so this page's product picker can
+// be narrowed by Category/Sub Category/Product Source Type too (confirmed
+// 2026-09-02). Note the field-name quirk carried over from toMachineResponse:
+// a machine's own `pType` is the UI's "Category", `category` is "Sub
+// Category".
+const categoryOptionsFor = (pTypeVal, masterOptions) =>
+  (masterOptions.Category || []).filter(o => o.parentValue === pTypeVal);
+const pSourceOptionsFor = (categoryVal, masterOptions) =>
+  (masterOptions.PSourceType || []).filter(o => o.parentValue === categoryVal);
+
 export default function ProductMasterQC() {
   const qc = useQueryClient();
   const { hasFeatureAccess } = usePermissions();
@@ -39,6 +50,15 @@ export default function ProductMasterQC() {
   const [masterDialogOpen, setMasterDialogOpen] = useState(false);
   const [masterTab, setMasterTab] = useState('initial');
   const [picker, setPicker] = useState(null); // { stage, targetPath, title }
+  const [filterPType, setFilterPType] = useState('');
+  const [filterCategory, setFilterCategory] = useState('');
+  const [filterPSourceType, setFilterPSourceType] = useState('');
+
+  const { data: masterOptionsResponse } = useQuery({
+    queryKey: ['rd-master-options'],
+    queryFn: () => apiRequest('GET', '/api/rd/master-options'),
+  });
+  const masterOptions = masterOptionsResponse?.data || {};
 
   // No page/limit params -> full unfiltered list, same convention the old
   // QualityParameters.jsx page relied on for its Product Master group.
@@ -47,6 +67,11 @@ export default function ProductMasterQC() {
     queryFn: () => apiRequest('GET', '/api/rd/machines'),
   });
   const products = (productsResponse?.data || []).filter(p => !p.isDiscontinued);
+  const visibleProducts = products.filter(p =>
+    (!filterPType || p.pType === filterPType) &&
+    (!filterCategory || p.category === filterCategory) &&
+    (!filterPSourceType || p.pSourceType === filterPSourceType)
+  );
   const selectedProduct = products.find(p => String(p._id) === selectedProductId);
 
   const { data: partsResponse, isLoading: partsLoading } = useQuery({
@@ -95,7 +120,45 @@ export default function ProductMasterQC() {
 
       <Card className="border-none shadow-sm">
         <CardContent className="p-5">
-          <label className="text-sm font-semibold text-slate-700 mb-2 block">Select Product</label>
+          <div className="flex flex-col md:flex-row md:items-center gap-2 pb-3 border-b border-slate-100">
+            <span className="text-xs font-semibold text-slate-500 flex-shrink-0">Filter by:</span>
+            <select
+              className="border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              value={filterPType}
+              onChange={e => { setFilterPType(e.target.value); setFilterCategory(''); setFilterPSourceType(''); setSelectedProductId(''); }}
+            >
+              <option value="">All Categories</option>
+              {(masterOptions.PType || []).map(o => <option key={o.value} value={o.value}>{o.value}</option>)}
+            </select>
+            <select
+              className="border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-400"
+              value={filterCategory}
+              disabled={!filterPType}
+              onChange={e => { setFilterCategory(e.target.value); setFilterPSourceType(''); setSelectedProductId(''); }}
+            >
+              <option value="">{filterPType ? 'All Sub Categories' : 'Select Category first'}</option>
+              {categoryOptionsFor(filterPType, masterOptions).map(o => <option key={o.value} value={o.value}>{o.value}</option>)}
+            </select>
+            <select
+              className="border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-400"
+              value={filterPSourceType}
+              disabled={!filterCategory}
+              onChange={e => { setFilterPSourceType(e.target.value); setSelectedProductId(''); }}
+            >
+              <option value="">{filterCategory ? 'All Product Source Types' : 'Select Sub Category first'}</option>
+              {pSourceOptionsFor(filterCategory, masterOptions).map(o => <option key={o.value} value={o.value}>{o.value}</option>)}
+            </select>
+            {(filterPType || filterCategory || filterPSourceType) && (
+              <button
+                onClick={() => { setFilterPType(''); setFilterCategory(''); setFilterPSourceType(''); }}
+                className="text-xs font-semibold text-blue-600 hover:text-blue-800 px-2 py-1"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+
+          <label className="text-sm font-semibold text-slate-700 mb-2 mt-3 block">Select Product</label>
           <div className="relative max-w-sm">
             <select
               className="w-full border border-slate-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white appearance-none pr-8"
@@ -103,7 +166,7 @@ export default function ProductMasterQC() {
               onChange={e => setSelectedProductId(e.target.value)}
             >
               <option value="">-- Select a product --</option>
-              {products.map(p => <option key={p._id} value={p._id}>{p.code} — {p.name}</option>)}
+              {visibleProducts.map(p => <option key={p._id} value={p._id}>{p.code} — {p.name}</option>)}
             </select>
             <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
           </div>

@@ -233,7 +233,11 @@ export default function DesignApproval() {
                         <div className="flex items-center gap-2 overflow-hidden">
                           <FileText className="h-4 w-4 text-blue-500 flex-shrink-0" />
                           <span className="text-sm font-medium text-slate-700 truncate">{file.name}</span>
-                          <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded flex-shrink-0">{file.version}</span>
+                          {file.source === 'BOM Part' ? (
+                            <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded flex-shrink-0">BOM Part</span>
+                          ) : file.version && (
+                            <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded flex-shrink-0">{file.version}</span>
+                          )}
                         </div>
                         {file.fileUrl && (
                           <Button variant="ghost" size="icon" className="h-6 w-6 text-blue-600 hover:bg-blue-50" asChild>
@@ -303,7 +307,9 @@ export default function DesignApproval() {
                     <div key={f._id} className="text-xs text-slate-600 flex items-center gap-2">
                       <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 flex-shrink-0" />
                       <span className="truncate font-medium">{f.name}</span>
-                      <span className="text-slate-400">({f.version})</span>
+                      {f.source === 'BOM Part' ? (
+                        <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded flex-shrink-0">BOM Part</span>
+                      ) : f.version && <span className="text-slate-400">({f.version})</span>}
                     </div>
                   ))}
                 </div>

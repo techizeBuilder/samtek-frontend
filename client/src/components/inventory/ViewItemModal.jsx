@@ -110,6 +110,7 @@ export default function ViewItemModal({ isOpen, onClose, item }) {
             </CardHeader>
             <CardContent className="space-y-1">
               <InfoRow icon={Tag} label="Item Type" value={item.itemType} />
+              <InfoRow icon={Tag} label="Item Process Type" value={item.itemProcessType} />
               <InfoRow icon={Tag} label="Source Type" value={item.sourceType} />
               <InfoRow icon={Tag} label="Item Source Type" value={item.itemSourceType} />
               {Array.isArray(item.itemCategories) && item.itemCategories.length > 0 && (
@@ -201,6 +202,17 @@ export default function ViewItemModal({ isOpen, onClose, item }) {
                   icon={BarChart3}
                   label="Purchase Unit"
                   value={item.purchaseUnitType ? `${item.purchaseUnit} (${item.purchaseUnitType})` : item.purchaseUnit}
+                />
+              )}
+              {/* Only shown for a fabrication item — Receive Unit otherwise
+                  always mirrors Used Unit (already shown above as "Unit"),
+                  so showing it again for every plain item would be
+                  redundant noise. */}
+              {item.itemProcessType === 'Fabrication Item' && (item.receiveUnit || item.receiveUnitType) && (
+                <InfoRow
+                  icon={BarChart3}
+                  label="Receive Unit"
+                  value={item.receiveUnitType ? `${item.receiveUnit} (${item.receiveUnitType})` : item.receiveUnit}
                 />
               )}
               <div className="py-2">

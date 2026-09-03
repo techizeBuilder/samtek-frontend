@@ -277,6 +277,22 @@ function SortableRow({
       </TableCell>
       <TableCell className="py-4 text-gray-600">{item.brand || '-'}</TableCell>
       <TableCell className="py-4">
+        {item.materialFlow ? (
+          <Badge
+            variant="outline"
+            className={
+              item.materialFlow === 'High Flow' ? 'bg-red-50 text-red-700 border-red-200' :
+              item.materialFlow === 'Medium Flow' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+              'bg-slate-50 text-slate-600 border-slate-200'
+            }
+          >
+            {item.materialFlow}
+          </Badge>
+        ) : (
+          <span className="text-gray-400 text-sm">—</span>
+        )}
+      </TableCell>
+      <TableCell className="py-4">
         <div className="font-medium text-gray-900">{itemDisplayQty(item)} {itemDisplayUnit(item)}</div>
       </TableCell>
       <TableCell className="py-4">
@@ -956,6 +972,7 @@ export default function ModernInventoryUI() {
                     <TableHead className="font-semibold text-gray-900">Name / Code</TableHead>
                     <TableHead className="font-semibold text-gray-900">Item Type</TableHead>
                     <TableHead className="font-semibold text-gray-900">Brand</TableHead>
+                    <TableHead className="font-semibold text-gray-900">Material Flow</TableHead>
                     <TableHead className="font-semibold text-gray-900">Stock</TableHead>
                     <TableHead className="font-semibold text-gray-900">Status</TableHead>
                     <TableHead className="w-[100px] font-semibold text-gray-900">Actions</TableHead>
@@ -973,13 +990,13 @@ export default function ModernInventoryUI() {
                     >
                       {itemsLoading ? (
                         <TableRow>
-                          <TableCell colSpan={inventoryPermissions.canDelete ? 11 : 10} className="text-center py-8">
+                          <TableCell colSpan={inventoryPermissions.canDelete ? 12 : 11} className="text-center py-8">
                             Loading items...
                           </TableCell>
                         </TableRow>
                       ) : localItems.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={inventoryPermissions.canDelete ? 11 : 10} className="text-center py-8 text-muted-foreground">
+                          <TableCell colSpan={inventoryPermissions.canDelete ? 12 : 11} className="text-center py-8 text-muted-foreground">
                             No items found. Add your first inventory item to get started.
                           </TableCell>
                         </TableRow>

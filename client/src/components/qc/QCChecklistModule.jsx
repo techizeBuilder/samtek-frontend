@@ -27,6 +27,7 @@ export default function QCChecklistModule({ module, featureKey, title, descripti
   const canEdit = hasFeatureAccess('rnd', featureKey, 'edit');
 
   const [selectedItemId, setSelectedItemId] = useState('');
+  const [itemTypeFilter, setItemTypeFilter] = useState('');
   const [masterDialogOpen, setMasterDialogOpen] = useState(false);
   const [itemDialogOpen, setItemDialogOpen] = useState(false);
 
@@ -35,6 +36,14 @@ export default function QCChecklistModule({ module, featureKey, title, descripti
     queryFn: () => apiRequest('GET', itemsEndpoint),
   });
   const items = (itemsResponse?.items || itemsResponse?.data || []).filter(i => !i.isDiscontinued);
+  // Derived from whatever's actually in this module's item list, not a
+  // separate master-option fetch — so it's never out of sync with what's
+  // really selectable, and quietly does nothing for a module (e.g. Motor
+  // Master QC, which shares this component) whose items don't carry an
+  // Item Type at all (confirmed 2026-09-02, requested for Inventory QC's
+  // long item list specifically).
+  const itemTypes = [...new Set(items.map(i => i.itemType).filter(Boolean))].sort();
+  const visibleItems = itemTypeFilter ? items.filter(i => i.itemType === itemTypeFilter) : items;
   const selectedItem = items.find(i => String(i._id) === selectedItemId);
   const targetPath = selectedItemId ? `item/${selectedItemId}` : null;
 
@@ -62,17 +71,37 @@ export default function QCChecklistModule({ module, featureKey, title, descripti
       {/* Item Selector */}
       <Card className="border-none shadow-sm">
         <CardContent className="p-5">
-          <label className="text-sm font-semibold text-slate-700 mb-2 block">Select Item</label>
-          <div className="relative max-w-sm">
-            <select
-              className="w-full border border-slate-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white appearance-none pr-8"
-              value={selectedItemId}
-              onChange={e => setSelectedItemId(e.target.value)}
-            >
-              <option value="">-- Select an item --</option>
-              {items.map(i => <option key={i._id} value={i._id}>{i.code} — {i.name}</option>)}
-            </select>
-            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+          <div className="flex flex-col sm:flex-row gap-4">
+            {itemTypes.length > 0 && (
+              <div className="w-full sm:w-56 flex-shrink-0">
+                <label className="text-sm font-semibold text-slate-700 mb-2 block">Item Type</label>
+                <div className="relative">
+                  <select
+                    className="w-full border border-slate-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white appearance-none pr-8"
+                    value={itemTypeFilter}
+                    onChange={e => { setItemTypeFilter(e.target.value); setSelectedItemId(''); }}
+                  >
+                    <option value="">All Item Types</option>
+                    {itemTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+                </div>
+              </div>
+            )}
+            <div className="w-full max-w-sm">
+              <label className="text-sm font-semibold text-slate-700 mb-2 block">Select Item</label>
+              <div className="relative">
+                <select
+                  className="w-full border border-slate-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white appearance-none pr-8"
+                  value={selectedItemId}
+                  onChange={e => setSelectedItemId(e.target.value)}
+                >
+                  <option value="">-- Select an item --</option>
+                  {visibleItems.map(i => <option key={i._id} value={i._id}>{i.code} — {i.name}</option>)}
+                </select>
+                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+              </div>
+            </div>
           </div>
         </CardContent>
       </Card>

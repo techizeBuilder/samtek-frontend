@@ -98,7 +98,7 @@ export function RDProvider({ children }) {
   const toolProcesses = toolProcessesData?.data || [];
   const qualityParams = qualityParamsData?.data || [];
   const documents = documentsData?.data || [];
-  const masterOptions = masterOptionsData?.data || { Category: [], PType: [], PSourceType: [], Metrology: [], MaterialType: [] };
+  const masterOptions = masterOptionsData?.data || { Category: [], PType: [], PSourceType: [], Metrology: [], MaterialType: [], ProductName: [], ProductVariant: [] };
   const customFieldTemplates = customFieldTemplatesData?.data || [];
   const productionRequests = productionRequestsData?.data || [];
   const productionRequestsPagination = productionRequestsData?.pagination || { page: 1, pages: 1, total: 0, limit: 20 };

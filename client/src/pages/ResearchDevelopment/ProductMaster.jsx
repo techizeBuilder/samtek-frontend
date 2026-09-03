@@ -40,10 +40,21 @@ const categoryOptionsFor = (pTypeVal, masterOptions) =>
   (masterOptions.Category || []).filter(o => o.parentValue === pTypeVal);
 const pSourceOptionsFor = (categoryVal, masterOptions) =>
   (masterOptions.PSourceType || []).filter(o => o.parentValue === categoryVal);
+// Full linear chain: Category -> Sub Category -> Product Name -> Variant ->
+// Product Source Type. Product Name is scoped to Sub Category (categoryVal
+// here — transitively linked to Category too, since Sub Category is itself
+// scoped to Category); Product Source Type keeps its own existing Sub
+// Category scope unchanged, just moved later in display order (confirmed
+// 2026-09-02).
+const productNameOptionsFor = (categoryVal, masterOptions) =>
+  (masterOptions.ProductName || []).filter(o => o.parentValue === categoryVal);
+const productVariantOptionsFor = (nameVal, masterOptions) =>
+  (masterOptions.ProductVariant || []).filter(o => o.parentValue === nameVal);
 
 const FIELD_KEY_MAP = {
   'P-Type': 'pType', 'Category': 'category', 'P-SourceType': 'pSourceType', 'Metrology': 'metrology',
   'MaterialGrade': 'materialGrade', 'PowerSource': 'powerSource',
+  'ProductName': 'productName', 'ProductVariant': 'productVariant',
 };
 
 const machineTypeBadge = (type) => {
@@ -83,7 +94,7 @@ const emptyForm = {
   stdCost: '', purchaseCost: '', salePrice: '', mrp: '', gst: '', qty: '', minStock: '',
 };
 
-const emptyTemplateForm = { pType: '', category: '', pSourceType: '', groups: [] };
+const emptyTemplateForm = { pType: '', category: '', pSourceType: '', productName: '', productVariant: '', groups: [] };
 
 export default function ProductMaster() {
   const {
@@ -117,7 +128,7 @@ export default function ProductMaster() {
   const [newOptionModal, setNewOptionModal] = useState({ open: false, field: '', value: '', parentValue: '' });
   const [templateManagerOpen, setTemplateManagerOpen] = useState(false);
   const [templateForm, setTemplateForm] = useState(emptyTemplateForm);
-  const [hierarchyInputs, setHierarchyInputs] = useState({ pType: '', category: '', pSourceType: '' });
+  const [hierarchyInputs, setHierarchyInputs] = useState({ pType: '', category: '', pSourceType: '', productName: '', productVariant: '' });
   const [editOptionModal, setEditOptionModal] = useState({ open: false, option: null, value: '' });
   const [deleteOptionConfirm, setDeleteOptionConfirm] = useState(null);
 
@@ -624,8 +635,15 @@ export default function ProductMaster() {
   const selectHierarchyValue = (fieldKey, value) => {
     setTemplateForm(f => {
       const next = { ...f, [fieldKey]: value };
-      if (fieldKey === 'pType') { next.category = ''; next.pSourceType = ''; }
-      if (fieldKey === 'category') { next.pSourceType = ''; }
+      // Full linear chain: pType -> category -> productName -> productVariant
+      // -> pSourceType. productName/pSourceType are BOTH scoped to category
+      // (siblings), so a category change resets everything downstream of it,
+      // including pSourceType — even though pSourceType displays after
+      // productName/productVariant now, its scope was never changed
+      // (confirmed 2026-09-02).
+      if (fieldKey === 'pType') { next.category = ''; next.pSourceType = ''; next.productName = ''; next.productVariant = ''; }
+      if (fieldKey === 'category') { next.pSourceType = ''; next.productName = ''; next.productVariant = ''; }
+      if (fieldKey === 'productName') { next.productVariant = ''; }
       return next;
     });
   };
@@ -674,9 +692,10 @@ export default function ProductMaster() {
       const fieldKey = FIELD_KEY_MAP[option.field];
       if (fieldKey && templateForm[fieldKey] === option.value) {
         setTemplateForm(f => {
-          if (fieldKey === 'pType') return { ...f, pType: '', category: '', pSourceType: '' };
-          if (fieldKey === 'category') return { ...f, category: '', pSourceType: '' };
-          return { ...f, pSourceType: '' };
+          if (fieldKey === 'pType') return { ...f, pType: '', category: '', pSourceType: '', productName: '', productVariant: '' };
+          if (fieldKey === 'category') return { ...f, category: '', pSourceType: '', productName: '', productVariant: '' };
+          if (fieldKey === 'productName') return { ...f, productName: '', productVariant: '' };
+          return { ...f, [fieldKey]: '' };
         });
       }
       showSuccessToast('Option Deleted', `"${option.value}" removed`);
@@ -979,29 +998,24 @@ export default function ProductMaster() {
             <div className="p-4 bg-slate-50 rounded-lg border border-slate-100 space-y-2">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {renderDropdownWithAdd('Category', 'P-Type', 'pType', masterOptions.PType, form, setForm, {
-                  resetKeys: ['category', 'pSourceType'], showAddButton: false
+                  resetKeys: ['category', 'pSourceType', 'name', 'variant'], showAddButton: false
                 })}
                 {renderDropdownWithAdd('Sub Category', 'Category', 'category', categoryOptionsFor(form.pType, masterOptions), form, setForm, {
-                  disabled: !form.pType, disabledHint: 'Select Category first', resetKeys: ['pSourceType'], showAddButton: false
+                  disabled: !form.pType, disabledHint: 'Select Category first', resetKeys: ['pSourceType', 'name', 'variant'], showAddButton: false
+                })}
+                {renderDropdownWithAdd('Product Name', 'ProductName', 'name', productNameOptionsFor(form.category, masterOptions), form, setForm, {
+                  disabled: !form.category, disabledHint: 'Select Sub Category first', resetKeys: ['variant'], showAddButton: false
+                })}
+                {renderDropdownWithAdd('Product Variant', 'ProductVariant', 'variant', productVariantOptionsFor(form.name, masterOptions), form, setForm, {
+                  disabled: !form.name, disabledHint: 'Select Product Name first', required: false, showAddButton: false
                 })}
                 {renderDropdownWithAdd('Product Source Type', 'P-SourceType', 'pSourceType', pSourceOptionsFor(form.category, masterOptions), form, setForm, {
                   disabled: !form.category, disabledHint: 'Select Sub Category first', showAddButton: false
                 })}
               </div>
               <p className="text-xs text-slate-400">
-                Don't see the Category / Sub Category / Product Source Type you need? Add it via <strong>Manage Custom Fields</strong> above.
+                Don't see the Category / Sub Category / Product Name / Variant / Product Source Type you need? Add it via <strong>Manage Custom Fields</strong> above.
               </p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Product Name *</label>
-                <Input className="bg-white" placeholder="Enter product name" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Product Variant</label>
-                <Input className="bg-white" placeholder="e.g. 6x12, 200 KG/hr" value={form.variant} onChange={e => setForm(f => ({ ...f, variant: e.target.value }))} />
-              </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1130,29 +1144,24 @@ export default function ProductMaster() {
             <div className="p-4 bg-slate-50 rounded-lg border border-slate-100 space-y-2">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {renderDropdownWithAdd('Category', 'P-Type', 'pType', masterOptions.PType, editForm, setEditForm, {
-                  resetKeys: ['category', 'pSourceType'], showAddButton: false
+                  resetKeys: ['category', 'pSourceType', 'name', 'variant'], showAddButton: false
                 })}
                 {renderDropdownWithAdd('Sub Category', 'Category', 'category', categoryOptionsFor(editForm.pType, masterOptions), editForm, setEditForm, {
-                  disabled: !editForm.pType, disabledHint: 'Select Category first', resetKeys: ['pSourceType'], showAddButton: false
+                  disabled: !editForm.pType, disabledHint: 'Select Category first', resetKeys: ['pSourceType', 'name', 'variant'], showAddButton: false
+                })}
+                {renderDropdownWithAdd('Product Name', 'ProductName', 'name', productNameOptionsFor(editForm.category, masterOptions), editForm, setEditForm, {
+                  disabled: !editForm.category, disabledHint: 'Select Sub Category first', resetKeys: ['variant'], showAddButton: false
+                })}
+                {renderDropdownWithAdd('Product Variant', 'ProductVariant', 'variant', productVariantOptionsFor(editForm.name, masterOptions), editForm, setEditForm, {
+                  disabled: !editForm.name, disabledHint: 'Select Product Name first', required: false, showAddButton: false
                 })}
                 {renderDropdownWithAdd('Product Source Type', 'P-SourceType', 'pSourceType', pSourceOptionsFor(editForm.category, masterOptions), editForm, setEditForm, {
                   disabled: !editForm.category, disabledHint: 'Select Sub Category first', showAddButton: false
                 })}
               </div>
               <p className="text-xs text-slate-400">
-                Don't see the Category / Sub Category / Product Source Type you need? Add it via <strong>Manage Custom Fields</strong> above.
+                Don't see the Category / Sub Category / Product Name / Variant / Product Source Type you need? Add it via <strong>Manage Custom Fields</strong> above.
               </p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Product Name *</label>
-                <Input className="bg-white" value={editForm.name} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))} />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Product Variant</label>
-                <Input className="bg-white" placeholder="e.g. 6x12, 200 KG/hr" value={editForm.variant} onChange={e => setEditForm(f => ({ ...f, variant: e.target.value }))} />
-              </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1589,17 +1598,18 @@ export default function ProductMaster() {
 
       {/* Manage Custom Fields (Template Editor) Dialog */}
       <Dialog open={templateManagerOpen} onOpenChange={(open) => { setTemplateManagerOpen(open); if (!open) setTemplateForm(emptyTemplateForm); }}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-w-6xl max-h-[85vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Manage Classifications &amp; Custom Fields</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
             <p className="text-xs text-slate-500">
-              This is the only place Category, Sub Category and Product Source Type values are created. Click a Category to select it, which unlocks
-              its Sub Categories; click a Sub Category to unlock its Product Source Types. Use the input under each column to add a new value scoped
-              to whatever is selected in the column to its left. Once a full combination is selected below, you can also define extra
-              fields that appear when creating a product with that exact combination.
+              This is the only place Category, Sub Category, Product Name, Variant and Product Source Type values are created. Click a Category to
+              select it, which unlocks its Sub Categories; click a Sub Category to unlock its Product Names and Product Source Types; click a Product
+              Name to unlock its Variants. Use the input under each column to add a new value scoped to whatever is selected in the column(s) it
+              depends on. Once a full Category / Sub Category / Product Source Type combination is selected below, you can also define extra fields
+              that appear when creating a product with that exact combination.
             </p>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
               {renderHierarchyColumn({
                 fieldLabel: 'Category', field: 'P-Type', fieldKey: 'pType',
                 options: masterOptions.PType || [], disabled: false, parentValue: null
@@ -1610,15 +1620,25 @@ export default function ProductMaster() {
                 disabled: !templateForm.pType, disabledHint: 'Select a Category first', parentValue: templateForm.pType
               })}
               {renderHierarchyColumn({
+                fieldLabel: 'Product Name', field: 'ProductName', fieldKey: 'productName',
+                options: productNameOptionsFor(templateForm.category, masterOptions),
+                disabled: !templateForm.category, disabledHint: 'Select a Sub Category first', parentValue: templateForm.category
+              })}
+              {renderHierarchyColumn({
+                fieldLabel: 'Variant', field: 'ProductVariant', fieldKey: 'productVariant',
+                options: productVariantOptionsFor(templateForm.productName, masterOptions),
+                disabled: !templateForm.productName, disabledHint: 'Select a Product Name first', parentValue: templateForm.productName
+              })}
+              {renderHierarchyColumn({
                 fieldLabel: 'Product Source Type', field: 'P-SourceType', fieldKey: 'pSourceType',
                 options: pSourceOptionsFor(templateForm.category, masterOptions),
                 disabled: !templateForm.category, disabledHint: 'Select a Sub Category first', parentValue: templateForm.category
               })}
             </div>
 
-            {(templateForm.pType || templateForm.category || templateForm.pSourceType) && (
+            {(templateForm.pType || templateForm.category || templateForm.productName || templateForm.productVariant || templateForm.pSourceType) && (
               <p className="text-xs text-slate-500 bg-slate-50 border border-slate-100 rounded-lg px-3 py-2">
-                Selected: <strong>{templateForm.pType || '—'}</strong> / <strong>{templateForm.category || '—'}</strong> / <strong>{templateForm.pSourceType || '—'}</strong>
+                Selected: <strong>{templateForm.pType || '—'}</strong> / <strong>{templateForm.category || '—'}</strong> / <strong>{templateForm.productName || '—'}</strong> / <strong>{templateForm.productVariant || '—'}</strong> / <strong>{templateForm.pSourceType || '—'}</strong>
               </p>
             )}
 
