@@ -51,20 +51,9 @@ export const adminSettingsApi = {
   updateLeadRejectReason: (id, body) => apiFetch(`/lead-reject-reasons/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   deleteLeadRejectReason: (id) => apiFetch(`/lead-reject-reasons/${id}`, { method: 'DELETE' }),
 
-  // Terms & Conditions
-  addTerm: (body) => apiFetch('/terms', { method: 'POST', body: JSON.stringify(body) }),
-  updateTerm: (id, body) => apiFetch(`/terms/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
-  deleteTerm: (id) => apiFetch(`/terms/${id}`, { method: 'DELETE' }),
-
-  // Additional Charges
-  addCharge: (body) => apiFetch('/charges', { method: 'POST', body: JSON.stringify(body) }),
-  updateCharge: (id, body) => apiFetch(`/charges/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
-  deleteCharge: (id) => apiFetch(`/charges/${id}`, { method: 'DELETE' }),
-
-  // Quotation Notes
-  addNote: (body) => apiFetch('/notes', { method: 'POST', body: JSON.stringify(body) }),
-  updateNote: (id, body) => apiFetch(`/notes/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
-  deleteNote: (id) => apiFetch(`/notes/${id}`, { method: 'DELETE' }),
+  // Terms & Conditions / Additional Charges / Quotation Notes / Quotation
+  // Number Setting are per-company now — proposed by a Sales Head and approved
+  // by a Company Admin via leadSettingRequestApi, not edited here.
 
   // Dispatch Checklist
   addDispatchChecklistItem: (body) => apiFetch('/dispatch-checklist', { method: 'POST', body: JSON.stringify(body) }),
@@ -75,11 +64,6 @@ export const adminSettingsApi = {
   addSalesChecklistItem: (body) => apiFetch('/sales-checklist', { method: 'POST', body: JSON.stringify(body) }),
   updateSalesChecklistItem: (id, body) => apiFetch(`/sales-checklist/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   deleteSalesChecklistItem: (id) => apiFetch(`/sales-checklist/${id}`, { method: 'DELETE' }),
-
-  // Quotation Number Settings
-  addQuotationNumberSetting: (body) => apiFetch('/quotation-number-settings', { method: 'POST', body: JSON.stringify(body) }),
-  updateQuotationNumberSetting: (id, body) => apiFetch(`/quotation-number-settings/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
-  deleteQuotationNumberSetting: (id) => apiFetch(`/quotation-number-settings/${id}`, { method: 'DELETE' }),
 
   // HRMS: Upload Document Settings
   addHrmsDocumentType: (body) => apiFetch('/hrms-document-types', { method: 'POST', body: JSON.stringify(body) }),

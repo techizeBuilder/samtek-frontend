@@ -164,9 +164,13 @@ export default function PackagingQueue() {
           {filtered.map((order) => {
             const finalTest = order.processes?.find(p => p.step === 'Final Testing');
             const readiness = order.readiness;
+            // Per-unit Machine job (2026-09-24): listed as soon as its first
+            // unit is done — still locked until every unit is.
+            const unitsTotal = order.unitsTotal || 1;
+            const unitsPending = order.unitsReady != null && order.unitsReady < unitsTotal;
             // Locked when the sales order is known and some of its items are not QC-approved yet
-            const isLocked = readiness && !readiness.allReady;
-            const pendingItems = isLocked
+            const isLocked = (readiness && !readiness.allReady) || unitsPending;
+            const pendingItems = isLocked && readiness
               ? readiness.items.filter(i => !i.ready)
               : [];
 
@@ -185,7 +189,7 @@ export default function PackagingQueue() {
                     </div>
                     {isLocked ? (
                       <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-amber-100 text-amber-700 flex items-center gap-1">
-                        <Lock className="h-3 w-3" /> {readiness.readyCount}/{readiness.totalCount} items
+                        <Lock className="h-3 w-3" /> {readiness ? `${readiness.readyCount}/${readiness.totalCount} items` : `${order.unitsReady}/${unitsTotal} units`}
                       </span>
                     ) : (
                       <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700">
@@ -199,7 +203,12 @@ export default function PackagingQueue() {
                       <Package className="h-3.5 w-3.5 text-slate-400" />
                       <span>{order.machineCode}</span>
                     </div>
-                    {finalTest && (
+                    {unitsPending ? (
+                      <div className="flex items-center gap-2 text-slate-600">
+                        <Clock className="h-3.5 w-3.5 text-amber-500" />
+                        <span>{order.unitsReady} of {unitsTotal} units ready</span>
+                      </div>
+                    ) : finalTest && (
                       <div className="flex items-center gap-2 text-slate-600">
                         <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
                         <span>Final Testing: {finalTest.qcStatus}</span>
@@ -212,7 +221,7 @@ export default function PackagingQueue() {
                   </div>
 
                   {/* Pending items of the same order — why packing is locked */}
-                  {isLocked && (
+                  {pendingItems.length > 0 && (
                     <div className="mb-3 p-2.5 bg-amber-50 border border-amber-100 rounded-lg">
                       <p className="text-[11px] font-semibold text-amber-700 uppercase tracking-wide mb-1">
                         Waiting for order items

@@ -176,6 +176,7 @@ const accountsMenuItems = [
     feature: 'purchases',
     submodules: [
       { label: 'Vendor Master', path: '/accounts/purchases/vendors', feature: 'purchases' },
+      { label: 'Outsource Work', path: '/accounts/purchases/sub-child-job-work', feature: 'purchases' },
       { label: 'Inventory', path: '/accounts/purchases/inventory', feature: 'purchases' },
       { label: 'Purchase Request', path: '/accounts/purchases/requests', feature: 'purchases' },
       { label: 'RFQ Management', path: '/accounts/purchases/rfq', feature: 'purchases' },
@@ -430,10 +431,10 @@ const companyAdminMenuItems = [
   // 'hrms' module with an empty features list, so any feature-gated item
   // here stays invisible until someone manually edits their permissions.
   // This is a role-defining capability (every Company Admin reviews their
-  // own company's Lead Setting requests), not a togglable feature, so it's
-  // gated by role alone — same convention as Sidebar.jsx's `item.feature ?
-  // hasFeatureAccess(...) : true` fallback for module-level items.
-  { label: 'Lead Setting', path: '/hrms/CompanyAdmin/lead-settings', icon: ClipboardList, module: 'hrms' },
+  // own company's Lead & Quotation Setting requests), not a togglable feature,
+  // so it's gated by role alone — same convention as Sidebar.jsx's
+  // `item.feature ? hasFeatureAccess(...) : true` fallback for module-level items.
+  { label: 'Lead & Quotation Settings', path: '/hrms/CompanyAdmin/lead-settings', icon: ClipboardList, module: 'hrms' },
 ];
 
 const rdMenuItems = [

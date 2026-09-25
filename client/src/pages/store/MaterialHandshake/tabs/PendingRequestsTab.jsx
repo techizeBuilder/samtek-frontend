@@ -400,6 +400,8 @@ export default function PendingRequestsTab() {
   // FabricationPurchaseDialog above.
   const [fabTransferRequest, setFabTransferRequest] = useState(null); // { order, material }
   const [fabPurchaseRequest, setFabPurchaseRequest] = useState(null); // { order, material }
+  // Which of the 3 order-kind sub-tabs is active — see `orders` below.
+  const [orderKindTab, setOrderKindTab] = useState('SubChildPart');
 
   const { data: fabricationCategoriesResponse } = useQuery({
     queryKey: ['fabrication-categories'],
@@ -664,6 +666,23 @@ export default function PendingRequestsTab() {
   };
 
   const orders = data?.data || [];
+  // Split into 3 sub-tabs by order kind — purely a client-side filter over
+  // the same already-fetched list (the backend already returns every kind
+  // unfiltered, and none of the transfer endpoints branch on orderKind
+  // either — see getPendingRequests/transferMaterialToProduction and
+  // siblings). Child Part and Machine sub-tabs show exactly today's
+  // existing behavior, just scoped to their own kind; only Sub Child Part
+  // is new here, and needs nothing different on the transfer mechanics.
+  const ORDER_KIND_TABS = [
+    ['SubChildPart', 'Sub Child Part'],
+    ['ChildPart', 'Child Part'],
+    ['Machine', 'Machine'],
+  ];
+  const ordersByKind = ORDER_KIND_TABS.reduce((acc, [kind]) => {
+    acc[kind] = orders.filter(o => (o.orderKind || 'Machine') === kind);
+    return acc;
+  }, {});
+  const visibleOrders = ordersByKind[orderKindTab] || [];
 
   return (
     <div className="space-y-6">
@@ -694,6 +713,20 @@ export default function PendingRequestsTab() {
         </div>
       </div>
 
+      <div className="flex gap-2 flex-wrap">
+        {ORDER_KIND_TABS.map(([kind, label]) => (
+          <Button
+            key={kind}
+            size="sm"
+            variant={orderKindTab === kind ? 'default' : 'outline'}
+            onClick={() => setOrderKindTab(kind)}
+            className={orderKindTab === kind ? 'bg-blue-600 hover:bg-blue-700' : 'bg-white'}
+          >
+            {label} ({ordersByKind[kind]?.length || 0})
+          </Button>
+        ))}
+      </div>
+
       {isLoading ? (
         <div className="flex justify-center py-12 text-slate-400">
           <RefreshCw className="h-8 w-8 animate-spin text-blue-500" />
@@ -702,7 +735,7 @@ export default function PendingRequestsTab() {
         <div className="bg-red-50 text-red-600 p-6 rounded-xl border border-red-100 text-center">
           Failed to load pending requests.
         </div>
-      ) : orders.length === 0 ? (
+      ) : visibleOrders.length === 0 ? (
         <div className="bg-white rounded-xl border border-slate-200 p-12 text-center text-slate-500 shadow-sm">
           <CheckCircle2 className="h-12 w-12 mx-auto text-emerald-400 mb-4" />
           <p className="text-lg font-medium text-slate-700">All Caught Up!</p>
@@ -710,7 +743,7 @@ export default function PendingRequestsTab() {
         </div>
       ) : (
         <div className="space-y-6">
-          {orders.map(order => (
+          {visibleOrders.map(order => (
             <Card key={order._id} className="border-slate-200 shadow-sm overflow-hidden">
               <CardHeader className="bg-blue-50/50 border-b border-slate-100 pb-4">
                 <div className="flex justify-between items-start">
@@ -719,10 +752,20 @@ export default function PendingRequestsTab() {
                       <Hash className="h-5 w-5 text-blue-500" />
                       Production Order: {order.orderId || order._id}
                     </CardTitle>
-                    <div className="flex items-center gap-4 text-sm text-slate-500">
+                    <div className="flex items-center gap-2 text-sm text-slate-500 flex-wrap">
                       <span className="font-medium text-blue-700 bg-blue-100/50 px-2 rounded-md">
                         {order.machineCode} - {order.machineName}
                       </span>
+                      {order.orderKind === 'ChildPart' && (
+                        <span className="text-[11px] font-semibold text-teal-700 bg-teal-50 border border-teal-200 px-2 py-0.5 rounded-full">
+                          Child Part
+                        </span>
+                      )}
+                      {order.orderKind === 'SubChildPart' && (
+                        <span className="text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+                          Sub Child Part
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
@@ -761,6 +804,12 @@ export default function PendingRequestsTab() {
                         <td className="px-6 py-4">
                           <div className="font-medium text-slate-800 flex items-center gap-1.5">
                             {mat.materialName}
+                            {mat.isSubChildPart && (
+                              <span className="px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-semibold">Sub Child Part</span>
+                            )}
+                            {mat.isChildPart && (
+                              <span className="px-1.5 py-0.5 rounded-full bg-teal-100 text-teal-700 text-[10px] font-semibold">Child Part</span>
+                            )}
                             {mat.sheetMetalPlanId ? (
                               <span className="px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700 text-[10px] font-semibold">Sheet Metal — flat sheets</span>
                             ) : mat.fabricationCategory && !(mat.bomDimensions && Object.keys(mat.bomDimensions).length > 0) ? (

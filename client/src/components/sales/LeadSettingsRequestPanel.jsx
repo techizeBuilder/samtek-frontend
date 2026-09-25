@@ -4,22 +4,53 @@ import { adminSettingsApi } from '@/api/adminSettingsApi';
 import { leadSettingRequestApi } from '@/api/leadSettingRequestApi';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
-import { List, Tag, Layers, FileText, ClipboardList, Plus, Pencil, Trash2, X, RefreshCw } from 'lucide-react';
+import { buildQuotationNumber } from '@/utils/quotationNumber';
+import { List, Tag, Layers, FileText, ClipboardList, DollarSign, StickyNote, Hash, Plus, Pencil, Trash2, X, RefreshCw } from 'lucide-react';
 
-// Same 6 categories as the old Super Admin "Lead Settings" dropdown — now
-// per-company, and every add/edit/delete here creates a pending request
-// instead of saving directly. Company Admin approves/rejects it from
-// /hrms/CompanyAdmin/lead-settings (LeadSettingRequests.jsx).
+// The 6 Lead Setting categories + the 4 Quotation Setting categories — all
+// per-company AdminSettings arrays. Every add/edit/delete here creates a
+// pending request instead of saving directly; Company Admin approves/rejects
+// from /hrms/CompanyAdmin/lead-settings (LeadSettingRequests.jsx).
+//
+// Single-value categories use `primaryKey`; multi-field categories use
+// `fields: [{ key, label, type?, placeholder?, options?, default? }]` (the
+// first field is the required one). `salesChecklist` stays bespoke.
 const CATEGORIES = [
-  { id: 'leadStages', label: 'Lead Stage', icon: List, primaryKey: 'name', placeholder: 'e.g. Contacted', addLabel: 'Add Stage' },
-  { id: 'leadSources', label: 'Lead Source', icon: Tag, primaryKey: 'name', placeholder: 'e.g. IndiaMART', addLabel: 'Add Source' },
-  { id: 'businessTypes', label: 'Business Type', icon: Layers, primaryKey: 'name', placeholder: 'e.g. Distributor', addLabel: 'Add Type' },
-  { id: 'documentTypes', label: 'Document Type', icon: FileText, primaryKey: 'name', placeholder: 'e.g. Aadhaar', addLabel: 'Add Document Type' },
-  { id: 'leadRejectReasons', label: 'Lead Reject Reason', icon: Tag, primaryKey: 'label', placeholder: 'e.g. Quoted Price Is High', addLabel: 'Add Reason' },
-  { id: 'salesChecklist', label: 'Sales Checklist', icon: ClipboardList, primaryKey: 'label', addLabel: 'Add Point' },
+  { id: 'leadStages', label: 'Lead Stage', icon: List, group: 'lead', primaryKey: 'name', placeholder: 'e.g. Contacted', addLabel: 'Add Stage' },
+  { id: 'leadSources', label: 'Lead Source', icon: Tag, group: 'lead', primaryKey: 'name', placeholder: 'e.g. IndiaMART', addLabel: 'Add Source' },
+  { id: 'businessTypes', label: 'Business Type', icon: Layers, group: 'lead', primaryKey: 'name', placeholder: 'e.g. Distributor', addLabel: 'Add Type' },
+  { id: 'documentTypes', label: 'Document Type', icon: FileText, group: 'lead', primaryKey: 'name', placeholder: 'e.g. Aadhaar', addLabel: 'Add Document Type' },
+  { id: 'leadRejectReasons', label: 'Lead Reject Reason', icon: Tag, group: 'lead', primaryKey: 'label', placeholder: 'e.g. Quoted Price Is High', addLabel: 'Add Reason' },
+  { id: 'salesChecklist', label: 'Sales Checklist', icon: ClipboardList, group: 'lead', primaryKey: 'label', addLabel: 'Add Point' },
+  { id: 'termsAndConditions', label: 'Terms & Conditions', icon: FileText, group: 'quotation', addLabel: 'Add Term', fields: [
+    { key: 'heading', label: 'Heading', placeholder: 'e.g. Payment Terms' },
+    { key: 'text', label: 'Content', placeholder: 'Full terms text...', type: 'textarea' },
+  ] },
+  { id: 'additionalCharges', label: 'Additional Charges', icon: DollarSign, group: 'quotation', addLabel: 'Add Charge', fields: [
+    { key: 'name', label: 'Charge Name', placeholder: 'e.g. Installation Charges' },
+    { key: 'price', label: 'Price (₹)', placeholder: '0', type: 'number' },
+    { key: 'gst', label: 'GST %', placeholder: '18', type: 'number', default: 18 },
+  ] },
+  { id: 'quotationNotes', label: 'Notes', icon: StickyNote, group: 'quotation', addLabel: 'Add Note', fields: [
+    { key: 'text', label: 'Note Text', placeholder: 'Enter note...', type: 'textarea' },
+  ] },
+  { id: 'quotationNumberSettings', label: 'Number Setting', icon: Hash, group: 'quotation', addLabel: 'Add Format', fields: [
+    { key: 'prefix', label: 'Prefix', placeholder: 'e.g. SAM' },
+    { key: 'suffix', label: 'Suffix', placeholder: 'e.g. 0011' },
+    { key: 'bifurcateWith', label: 'Bifurcate With', type: 'select', default: '-', options: ['-', '/', '_', 'None'] },
+    { key: 'financialYearPosition', label: 'Financial Year', type: 'select', default: 'none', options: [
+      { value: 'none', label: '== None ==' }, { value: 'before_prefix', label: 'Before Prefix' }, { value: 'after_prefix', label: 'After Prefix' },
+    ] },
+  ] },
+];
+
+const CATEGORY_GROUPS = [
+  { id: 'lead', label: 'Lead Settings' },
+  { id: 'quotation', label: 'Quotation Settings' },
 ];
 
 const VALUE_TYPE_OPTIONS = [
@@ -28,22 +59,50 @@ const VALUE_TYPE_OPTIONS = [
   { value: 'number', label: 'Number value' },
 ];
 
-const describeItem = (categoryId, item) => {
-  if (!item) return '';
-  return categoryId === 'salesChecklist' ? item.label : (item.name ?? item.label ?? '');
+const truncate = (s, n = 60) => {
+  const str = String(s ?? '');
+  return str.length > n ? `${str.slice(0, n)}…` : str;
 };
 
-const emptyFormFor = (category) => category.id === 'salesChecklist'
-  ? { label: '', valueType: 'text', valueLabel: '', valuePlaceholder: '' }
-  : { [category.primaryKey]: '' };
+const describeItem = (categoryId, item) => {
+  if (!item) return '';
+  switch (categoryId) {
+    case 'salesChecklist': return item.label ?? '';
+    case 'termsAndConditions': return item.heading ?? '';
+    case 'additionalCharges': return item.name ?? '';
+    case 'quotationNotes': return truncate(item.text);
+    case 'quotationNumberSettings': return buildQuotationNumber(item, 'LD-0001');
+    default: return item.name ?? item.label ?? '';
+  }
+};
 
-const formFromItem = (category, item) => category.id === 'salesChecklist'
-  ? { label: item.label || '', valueType: item.valueType || 'text', valueLabel: item.valueLabel || '', valuePlaceholder: item.valuePlaceholder || '' }
-  : { [category.primaryKey]: item[category.primaryKey] || '' };
+const emptyFormFor = (category) => {
+  if (category.id === 'salesChecklist') return { label: '', valueType: 'text', valueLabel: '', valuePlaceholder: '' };
+  if (category.fields) {
+    const f = {};
+    category.fields.forEach(fd => { f[fd.key] = fd.default ?? ''; });
+    return f;
+  }
+  return { [category.primaryKey]: '' };
+};
 
-const isFormFilled = (category, form) => category.id === 'salesChecklist'
-  ? !!form.label?.trim()
-  : !!form[category.primaryKey]?.trim();
+const formFromItem = (category, item) => {
+  if (category.id === 'salesChecklist') return { label: item.label || '', valueType: item.valueType || 'text', valueLabel: item.valueLabel || '', valuePlaceholder: item.valuePlaceholder || '' };
+  if (category.fields) {
+    const f = {};
+    category.fields.forEach(fd => { f[fd.key] = item[fd.key] ?? fd.default ?? ''; });
+    return f;
+  }
+  return { [category.primaryKey]: item[category.primaryKey] || '' };
+};
+
+const isFormFilled = (category, form) => {
+  if (category.id === 'salesChecklist') return !!form.label?.trim();
+  if (category.id === 'quotationNumberSettings') return true;               // every field optional / defaulted
+  if (category.id === 'termsAndConditions') return !!form.heading?.trim() && !!form.text?.trim();
+  if (category.fields) return !!String(form[category.fields[0].key] ?? '').trim();
+  return !!form[category.primaryKey]?.trim();
+};
 
 function InlineForm({ category, form, setForm, onCancel, onSubmit, submitLabel }) {
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -65,6 +124,28 @@ function InlineForm({ category, form, setForm, onCancel, onSubmit, submitLabel }
               <Input className="h-8 text-sm bg-white" placeholder="Value field label" value={form.valueLabel} onChange={e => set('valueLabel', e.target.value)} />
               <Input className="h-8 text-sm bg-white" placeholder="Value placeholder" value={form.valuePlaceholder} onChange={e => set('valuePlaceholder', e.target.value)} />
             </>
+          )}
+        </>
+      ) : category.fields ? (
+        <>
+          {category.fields.map(fd => (
+            <div key={fd.key} className="space-y-1">
+              <label className="text-[11px] font-medium text-gray-500">{fd.label}</label>
+              {fd.type === 'textarea' ? (
+                <Textarea rows={2} className="text-sm bg-white" placeholder={fd.placeholder || ''} value={form[fd.key] ?? ''} onChange={e => set(fd.key, e.target.value)} />
+              ) : fd.type === 'select' ? (
+                <select className="h-8 w-full text-sm border border-gray-300 rounded px-2 bg-white" value={form[fd.key] ?? fd.default ?? ''} onChange={e => set(fd.key, e.target.value)}>
+                  {fd.options.map(o => (typeof o === 'string'
+                    ? <option key={o} value={o}>{o}</option>
+                    : <option key={o.value} value={o.value}>{o.label}</option>))}
+                </select>
+              ) : (
+                <Input type={fd.type || 'text'} className="h-8 text-sm bg-white" placeholder={fd.placeholder || ''} value={form[fd.key] ?? ''} onChange={e => set(fd.key, e.target.value)} />
+              )}
+            </div>
+          ))}
+          {category.id === 'quotationNumberSettings' && (
+            <p className="text-[11px] text-gray-500">Example: <span className="font-medium text-gray-700">{buildQuotationNumber(form, 'LD-0001')}</span></p>
           )}
         </>
       ) : (
@@ -284,24 +365,29 @@ export default function LeadSettingsRequestPanel() {
         <div className="flex items-center justify-center py-16"><RefreshCw className="h-6 w-6 animate-spin text-gray-400" /></div>
       ) : view === 'manage' ? (
         <div className="flex flex-col md:flex-row gap-4 min-h-[55vh]">
-          {/* Category nav */}
-          <div className="w-full md:w-48 shrink-0 space-y-0.5">
-            {CATEGORIES.map(c => {
-              const Icon = c.icon;
-              const count = pendingRequests.filter(r => r.field === c.id).length;
-              return (
-                <button
-                  key={c.id}
-                  onClick={() => switchCategory(c.id)}
-                  className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-md text-sm transition-colors ${activeCategory === c.id ? 'bg-gray-100 text-gray-900 font-medium' : 'text-gray-600 hover:bg-gray-50'}`}
-                >
-                  <span className="flex items-center gap-2"><Icon className="h-3.5 w-3.5 shrink-0" />{c.label}</span>
-                  {count > 0 && (
-                    <Badge variant="outline" className="text-[10px] h-4 px-1.5 border-amber-300 text-amber-700 bg-amber-50">{count}</Badge>
-                  )}
-                </button>
-              );
-            })}
+          {/* Category nav — grouped: Lead Settings + Quotation Settings */}
+          <div className="w-full md:w-48 shrink-0 space-y-2">
+            {CATEGORY_GROUPS.map(group => (
+              <div key={group.id} className="space-y-0.5">
+                <p className="px-3 pt-1 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-gray-400">{group.label}</p>
+                {CATEGORIES.filter(c => c.group === group.id).map(c => {
+                  const Icon = c.icon;
+                  const count = pendingRequests.filter(r => r.field === c.id).length;
+                  return (
+                    <button
+                      key={c.id}
+                      onClick={() => switchCategory(c.id)}
+                      className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-md text-sm transition-colors ${activeCategory === c.id ? 'bg-gray-100 text-gray-900 font-medium' : 'text-gray-600 hover:bg-gray-50'}`}
+                    >
+                      <span className="flex items-center gap-2"><Icon className="h-3.5 w-3.5 shrink-0" />{c.label}</span>
+                      {count > 0 && (
+                        <Badge variant="outline" className="text-[10px] h-4 px-1.5 border-amber-300 text-amber-700 bg-amber-50">{count}</Badge>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
           </div>
 
           {/* Category content */}

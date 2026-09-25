@@ -309,7 +309,13 @@ class APIService {
     const headers = { ...this.getAuthHeaders() };
     delete headers['Content-Type'];
 
-    const inventoryPath = this.getInventoryApiPath();
+    // Unlike /items, /categories etc. (mounted bare for the default role),
+    // the base inventoryRoutes.js bakes a literal '/inventory' segment into
+    // this specific route ('/inventory/items/import') — see getInventoryStats
+    // below for the full explanation. Super Admin/Unit Head already have
+    // '/inventory' in their prefix, so `|| '/inventory'` only ever kicks in
+    // for the default (empty-prefix) role.
+    const inventoryPath = this.getInventoryApiPath() || '/inventory';
     return this.request(`${inventoryPath}/items/import`, {
       method: 'POST',
       body: formData,
@@ -412,12 +418,22 @@ class APIService {
   }
 
   async getInventoryStats() {
-    const inventoryPath = this.getInventoryApiPath();
+    // inventoryRoutes.js (the default/base role's router, mounted bare at
+    // '/api') is NOT uniformly prefixed the way super-admin/unit-head's own
+    // route files are — /items, /categories, /customer-categories are bare,
+    // but /stats, /low-stock and items/import specifically have a literal
+    // '/inventory' segment baked into the route pattern itself
+    // (router.get('/inventory/stats', ...) etc). getInventoryApiPath()
+    // returns '' for the default role (correct for the bare endpoints), so
+    // these three call sites fall back to '/inventory' explicitly instead —
+    // for Super Admin/Unit Head, getInventoryApiPath() already includes
+    // '/inventory' in its prefix, so the fallback never applies there.
+    const inventoryPath = this.getInventoryApiPath() || '/inventory';
     return this.get(`${inventoryPath}/stats`);
   }
 
   async getLowStockItems() {
-    const inventoryPath = this.getInventoryApiPath();
+    const inventoryPath = this.getInventoryApiPath() || '/inventory';
     return this.get(`${inventoryPath}/low-stock`);
   }
 
@@ -458,7 +474,9 @@ class APIService {
   }
 
   async importItems(file) {
-    const inventoryPath = this.getInventoryApiPath();
+    // See getInventoryStats() above — this endpoint also needs the '/inventory'
+    // fallback for the default role.
+    const inventoryPath = this.getInventoryApiPath() || '/inventory';
     const formData = new FormData();
     formData.append('file', file);
 

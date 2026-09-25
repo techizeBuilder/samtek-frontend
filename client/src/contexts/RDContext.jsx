@@ -33,12 +33,6 @@ export function RDProvider({ children }) {
     enabled: isAuthenticated,
   });
 
-  const { data: bomsData, isLoading: bomsLoading } = useQuery({
-    queryKey: ['rd-boms'],
-    queryFn: () => apiRequest('GET', `${BASE}/boms`),
-    enabled: isAuthenticated,
-  });
-
   const { data: prototypesData, isLoading: prototypesLoading } = useQuery({
     queryKey: ['rd-prototypes'],
     queryFn: () => apiRequest('GET', `${BASE}/prototypes`),
@@ -92,7 +86,6 @@ export function RDProvider({ children }) {
   });
 
   const machines = machinesData?.data || [];
-  const boms = bomsData?.data || [];
   const prototypes = prototypesData?.data || [];
   const changeRequests = changeRequestsData?.data || [];
   const toolProcesses = toolProcessesData?.data || [];
@@ -105,7 +98,6 @@ export function RDProvider({ children }) {
 
   const inv = (key) => () => qc.invalidateQueries({ queryKey: [key] });
   const invMachines = inv('rd-machines');
-  const invBOMs = inv('rd-boms');
   const invPrototypes = inv('rd-prototypes');
   const invChangeRequests = inv('rd-change-requests');
   const invToolProcesses = inv('rd-tool-processes');
@@ -114,23 +106,17 @@ export function RDProvider({ children }) {
   const invProductionRequests = inv('rd-production-requests');
   const invMasterOptions = inv('rd-master-options');
   const invCustomFieldTemplates = inv('rd-custom-field-templates');
-  // 'sheet-metal-groups' is its own query (BOMCreationTab.jsx, keyed by
-  // bomId) separate from 'rd-boms' — any mutation that can change a
-  // material's dimensionVariantId or its isSheetMetal/discontinued state
-  // must invalidate this too, or the Sheet Metal Plan modal keeps reading
-  // a stale dimensionVariantId and 'save plan' 400s with "no matching
-  // material line" even though the BOM itself already has the fresh one.
-  const invSheetMetalGroups = inv('sheet-metal-groups');
 
   // ── Machine mutations ────────────────────────────────────────────────────────
   const createMachineMut = useMutation({ mutationFn: (d) => apiRequest('POST', `${BASE}/machines`, d), onSuccess: invMachines });
   const updateMachineMut = useMutation({ mutationFn: ({ id, data }) => apiRequest('PUT', `${BASE}/machines/${id}`, data), onSuccess: invMachines });
   const addMasterOptionMut = useMutation({ mutationFn: (data) => apiRequest('POST', `${BASE}/master-options`, data), onSuccess: invMasterOptions });
-  // Renaming/deleting an option cascades server-side into machines, BOM material snapshots and
-  // custom field templates, so all of those caches need invalidating too, not just the option list.
+  // Renaming/deleting an option cascades server-side into machines and
+  // custom field templates, so both caches need invalidating too, not just
+  // the option list.
   const updateMasterOptionMut = useMutation({
     mutationFn: ({ id, value }) => apiRequest('PUT', `${BASE}/master-options/${id}`, { value }),
-    onSuccess: () => { invMasterOptions(); invMachines(); invBOMs(); invCustomFieldTemplates(); }
+    onSuccess: () => { invMasterOptions(); invMachines(); invCustomFieldTemplates(); }
   });
   const deleteMasterOptionMut = useMutation({
     mutationFn: (id) => apiRequest('DELETE', `${BASE}/master-options/${id}`),
@@ -143,26 +129,13 @@ export function RDProvider({ children }) {
   const discontinueMachineMut = useMutation({ mutationFn: (id) => apiRequest('PUT', `${BASE}/machines/${id}/discontinue`), onSuccess: invMachines });
   const reactivateMachineMut = useMutation({ mutationFn: (id) => apiRequest('PUT', `${BASE}/machines/${id}/reactivate`), onSuccess: invMachines });
 
-  // ── BOM mutations ────────────────────────────────────────────────────────────
-  const createBOMMut = useMutation({ mutationFn: (d) => apiRequest('POST', `${BASE}/boms`, d), onSuccess: invBOMs });
-  const addMaterialMut = useMutation({ mutationFn: ({ bomId, mat }) => apiRequest('POST', `${BASE}/boms/${bomId}/materials`, mat), onSuccess: () => { invBOMs(); invSheetMetalGroups(); } });
-  const updateMaterialMut = useMutation({ mutationFn: ({ bomId, matId, data }) => apiRequest('PUT', `${BASE}/boms/${bomId}/materials/${matId}`, data), onSuccess: () => { invBOMs(); invSheetMetalGroups(); } });
-  const deleteMaterialMut = useMutation({ mutationFn: ({ bomId, matId }) => apiRequest('DELETE', `${BASE}/boms/${bomId}/materials/${matId}`), onSuccess: () => { invBOMs(); invSheetMetalGroups(); } });
-  const lockBOMMut = useMutation({ mutationFn: (bomId) => apiRequest('PUT', `${BASE}/boms/${bomId}/lock`), onSuccess: invBOMs });
-  const discontinueMaterialMut = useMutation({ mutationFn: ({ bomId, matId }) => apiRequest('PUT', `${BASE}/boms/${bomId}/materials/${matId}/discontinue`), onSuccess: () => { invBOMs(); invSheetMetalGroups(); } });
-  const reactivateMaterialMut = useMutation({ mutationFn: ({ bomId, matId }) => apiRequest('PUT', `${BASE}/boms/${bomId}/materials/${matId}/reactivate`), onSuccess: () => { invBOMs(); invSheetMetalGroups(); } });
-  const updateProductionCostMut = useMutation({ mutationFn: ({ bomId, productionCost, productionExpense }) => apiRequest('PUT', `${BASE}/boms/${bomId}/production-cost`, { productionCost, productionExpense }), onSuccess: invBOMs });
-
   // ── Prototype mutations ──────────────────────────────────────────────────────
   const createPrototypeMut = useMutation({ mutationFn: (d) => apiRequest('POST', `${BASE}/prototypes`, d), onSuccess: invPrototypes });
   const updatePrototypeMut = useMutation({ mutationFn: ({ id, data }) => apiRequest('PUT', `${BASE}/prototypes/${id}`, data), onSuccess: invPrototypes });
 
   // ── Change request mutations ─────────────────────────────────────────────────
   const createCRMut = useMutation({ mutationFn: (d) => apiRequest('POST', `${BASE}/change-requests`, d), onSuccess: invChangeRequests });
-  // Approving a change request unlocks the target BOM server-side, so the
-  // cached BOM list must be invalidated too — otherwise BOM Management keeps
-  // showing it as locked until something else happens to refetch it.
-  const resolveCRMut = useMutation({ mutationFn: ({ id, approved, notes }) => apiRequest('PUT', `${BASE}/change-requests/${id}/resolve`, { approved, notes }), onSuccess: () => { invChangeRequests(); invBOMs(); } });
+  const resolveCRMut = useMutation({ mutationFn: ({ id, approved, notes }) => apiRequest('PUT', `${BASE}/change-requests/${id}/resolve`, { approved, notes }), onSuccess: invChangeRequests });
 
   // ── Tool process mutations ───────────────────────────────────────────────────
   const addToolMut = useMutation({ mutationFn: ({ machineId, tool }) => apiRequest('POST', `${BASE}/tool-processes/${machineId}/tools`, tool), onSuccess: invToolProcesses });
@@ -195,30 +168,6 @@ export function RDProvider({ children }) {
   const updateReleaseStatus = useCallback((id, status) => releaseStatusMut.mutateAsync({ id, status }), []);
   const discontinueMachine = useCallback((id) => discontinueMachineMut.mutate(id), []);
   const reactivateMachine = useCallback((id) => reactivateMachineMut.mutate(id), []);
-
-  const getBOMForMachine = useCallback((machineId) => {
-    const mid = String(machineId);
-    return boms.find(b => String(b.machine?._id || b.machine) === mid) || null;
-  }, [boms]);
-
-  const addBOM = useCallback((machineId, variant) => createBOMMut.mutate({ machineId, variant }), []);
-  const addMaterial = useCallback((bomId, mat) => addMaterialMut.mutate({ bomId, mat }), []);
-  // A Child Part/Sub Child Part is typically built from several raw
-  // materials, not just one — this adds each of them as its own material
-  // row, sequentially, so the BOM Creation form can submit a whole batch in
-  // one "Add to BOM" action instead of forcing one dialog round-trip per item.
-  const addMaterials = useCallback(async (bomId, mats) => {
-    for (const mat of mats) {
-      await addMaterialMut.mutateAsync({ bomId, mat });
-    }
-  }, []);
-  const updateMaterial = useCallback((bomId, matId, data) => updateMaterialMut.mutate({ bomId, matId, data }), []);
-  const deleteMaterial = useCallback((bomId, matId) => deleteMaterialMut.mutate({ bomId, matId }), []);
-  const lockBOM = useCallback((bomId) => lockBOMMut.mutate(bomId), []);
-  const discontinueMaterial = useCallback((bomId, matId) => discontinueMaterialMut.mutate({ bomId, matId }), []);
-  const reactivateMaterial = useCallback((bomId, matId) => reactivateMaterialMut.mutate({ bomId, matId }), []);
-  const updateProductionCost = useCallback((bomId, productionCost, productionExpense) =>
-    updateProductionCostMut.mutateAsync({ bomId, productionCost, productionExpense }), []);
 
   const addPrototype = useCallback((data) => createPrototypeMut.mutate(data), []);
   const updatePrototype = useCallback((id, data) => updatePrototypeMut.mutate({ id, data }), []);
@@ -313,7 +262,7 @@ export function RDProvider({ children }) {
 
   return (
     <RDContext.Provider value={{
-      machines, boms, prototypes, changeRequests, toolProcesses, qualityParams, documents, stats,
+      machines, prototypes, changeRequests, toolProcesses, qualityParams, documents, stats,
       masterOptions, masterOptionsLoading, addMasterOption, updateMasterOption, deleteMasterOption,
       customFieldTemplates, customFieldTemplatesLoading, saveCustomFieldTemplate, deleteCustomFieldTemplate, getCustomFieldTemplate,
 
@@ -326,10 +275,9 @@ export function RDProvider({ children }) {
       processProductionRequest,
       fetchProductionRequestReviewData,
 
-      machinesLoading, bomsLoading, prototypesLoading, changeRequestsLoading,
+      machinesLoading, prototypesLoading, changeRequestsLoading,
       toolProcessesLoading, qualityParamsLoading, documentsLoading,
       addMachine, updateMachine, updateDesignStatus, updateReleaseStatus, discontinueMachine, reactivateMachine,
-      getBOMForMachine, addBOM, addMaterial, addMaterials, updateMaterial, deleteMaterial, lockBOM, discontinueMaterial, reactivateMaterial, updateProductionCost,
       addPrototype, updatePrototype,
       addChangeRequest, resolveChangeRequest,
       getToolsProcess, addTool, removeTool, discontinueTool, reactivateTool, addProcess, removeProcess,

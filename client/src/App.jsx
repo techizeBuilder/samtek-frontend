@@ -15,6 +15,7 @@ import DispatchDashboard from "@/pages/DispatchDashboard";
 import Sales from "@/pages/Sales";
 import Accounts from "@/pages/Accounts";
 import ModernInventoryUI from "@/components/inventory/ModernInventoryUI";
+import InventoryHome from "@/pages/ResearchDevelopment/InventoryHome";
 import StoreInventory from "@/pages/store/Inventory";
 import Customers from "@/pages/Customers";
 import Suppliers from "@/pages/Suppliers";
@@ -70,6 +71,7 @@ import VendorPayments from "@/pages/accounts/VendorPayments";
 import PayableAgeing from "@/pages/accounts/PayableAgeing";
 import PurchaseExpenses from "@/pages/accounts/PurchaseExpenses";
 import PurchaseInventory from "@/pages/accounts/PurchaseInventory";
+import SubChildJobWork from "@/pages/accounts/SubChildJobWork";
 import GSTAndTDS from "@/pages/accounts/GSTAndTDS";
 import DamageAndExpiry from "@/pages/accounts/DamageAndExpiry";
 import SalesmanSettlement from "@/pages/accounts/SalesmanSettlement";
@@ -617,7 +619,7 @@ function Router() {
       </Route>
       <Route path="/r&d/inventory">
         <ProtectedRoute requiredRole={["Research & Development Head", "Research Development Employee"]}>
-          <ModernInventoryUI />
+          <InventoryHome />
         </ProtectedRoute>
       </Route>
       <Route path="/r&d/approve-requests">
@@ -1164,6 +1166,11 @@ function Router() {
       <Route path="/accounts/purchases/vendors">
         <ProtectedRoute requiredRole="Accounts">
           <VendorMaster />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/accounts/purchases/sub-child-job-work">
+        <ProtectedRoute requiredRole="Accounts">
+          <SubChildJobWork />
         </ProtectedRoute>
       </Route>
       <Route path="/accounts/purchases/inventory">

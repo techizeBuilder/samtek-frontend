@@ -19,7 +19,7 @@ import ChecklistPickerDialog from './ChecklistPickerDialog';
 // be its own page (ProductMasterQC.jsx), but it reuses the same
 // MasterChecklistPanel/ChecklistPickerDialog primitives this component is
 // built from, so a fix to either helps every module at once.
-export default function QCChecklistModule({ module, featureKey, title, description, icon: Icon = Package, itemsEndpoint }) {
+export default function QCChecklistModule({ module, featureKey, title, description, icon: Icon = Package, itemsEndpoint, embedded = false }) {
   const stage = 'default';
   const API = `/api/rd/qc-checklist/${module}/${stage}`;
   const { hasFeatureAccess } = usePermissions();
@@ -55,18 +55,26 @@ export default function QCChecklistModule({ module, featureKey, title, descripti
   const selectedRows = itemChecklistResponse?.data?.selected || [];
 
   return (
-    <div className="p-6 space-y-6 bg-slate-50 min-h-screen">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-            <Icon className="h-6 w-6 text-blue-600" /> {title}
-          </h1>
-          <p className="text-slate-500 text-sm mt-0.5">{description}</p>
+    <div className={embedded ? 'space-y-6' : 'p-6 space-y-6 bg-slate-50 min-h-screen'}>
+      {embedded ? (
+        <div className="flex justify-end">
+          <Button variant="outline" onClick={() => setMasterDialogOpen(true)}>
+            <ClipboardList className="h-4 w-4 mr-1.5" /> Manage Master Checklist
+          </Button>
         </div>
-        <Button variant="outline" onClick={() => setMasterDialogOpen(true)}>
-          <ClipboardList className="h-4 w-4 mr-1.5" /> Manage Master Checklist
-        </Button>
-      </div>
+      ) : (
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
+              <Icon className="h-6 w-6 text-blue-600" /> {title}
+            </h1>
+            <p className="text-slate-500 text-sm mt-0.5">{description}</p>
+          </div>
+          <Button variant="outline" onClick={() => setMasterDialogOpen(true)}>
+            <ClipboardList className="h-4 w-4 mr-1.5" /> Manage Master Checklist
+          </Button>
+        </div>
+      )}
 
       {/* Item Selector */}
       <Card className="border-none shadow-sm">

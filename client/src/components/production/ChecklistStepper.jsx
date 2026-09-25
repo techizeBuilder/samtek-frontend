@@ -10,7 +10,7 @@ import { CheckCircle, XCircle, ChevronLeft } from 'lucide-react';
 // box only shows for a row whose master type is 'value' (a real measured
 // spec, not a plain checkbox); a remarks box only appears once that row is
 // marked Fail (confirmed 2026-09-02).
-export default function ChecklistStepper({ rows, setRows, canEdit, onSave, saving, saveLabel }) {
+export default function ChecklistStepper({ rows, setRows, canEdit, onSave, saving, saveLabel, extraDisabled = false }) {
   const [index, setIndex] = useState(0);
   const total = rows.length;
   const safeIndex = Math.min(index, total - 1);
@@ -96,7 +96,7 @@ export default function ChecklistStepper({ rows, setRows, canEdit, onSave, savin
         ) : canEdit ? (
           <Button
             size="sm" className="bg-gradient-to-r from-blue-600 to-purple-600 text-white"
-            disabled={!allDecided || failMissingRemarks || saving}
+            disabled={!allDecided || failMissingRemarks || saving || extraDisabled}
             onClick={onSave}
           >
             {saving ? 'Saving…' : saveLabel}

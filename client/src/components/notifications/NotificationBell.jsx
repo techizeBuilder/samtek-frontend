@@ -131,6 +131,7 @@ export const getNavigationUrl = (notification, userRole = '') => {
     return '/accounts/sales/order-forms';
   }
 
+  if (type === 'purchase' && data?.orderId?.startsWith('SCJW-')) return '/accounts/purchases/sub-child-job-work';
   if (data?.orderId) return `/sales/orders?highlight=${data.orderId}`;
   if (type === 'lead' && data?.leadId) return `/sales/leads?highlight=${data.leadId}`;
   if (type === 'account' && data?.orderCode) return `/accounts/sales/packed-orders`;

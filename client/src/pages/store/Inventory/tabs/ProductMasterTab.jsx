@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
+import { useAuth } from '@/hooks/useAuth';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Search, Eye, Package } from 'lucide-react';
+import { Search, Eye, Package, ClipboardCheck, History } from 'lucide-react';
+import StockAuditModal from '@/components/inventory/StockAuditModal';
+import StockAuditHistoryModal from '@/components/inventory/StockAuditHistoryModal';
 
 // Read-only view of Product Master for Store — same underlying data
 // (GET /api/rd/machines) and classification filters R&D uses, but no
@@ -30,6 +33,9 @@ const releaseStatusBadge = (status) => status === 'Released'
   : 'bg-slate-100 text-slate-500 border-slate-200';
 
 export default function ProductMasterTab() {
+  const { user } = useAuth();
+  const isStoreHead = user?.role === 'Store Head';
+  const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('All');
   const [filterRelease, setFilterRelease] = useState('All');
@@ -40,6 +46,10 @@ export default function ProductMasterTab() {
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState(null);
   const [viewOpen, setViewOpen] = useState(false);
+  const [auditItem, setAuditItem] = useState(null);
+  const [auditOpen, setAuditOpen] = useState(false);
+  const [historyItem, setHistoryItem] = useState(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   useEffect(() => { setPage(1); }, [search, filterStatus, filterRelease, showDiscontinued, filterPType, filterCategory, filterPSourceType]);
 
@@ -172,7 +182,19 @@ export default function ProductMasterTab() {
                     </td>
                     <td className="px-5 py-3.5 text-slate-600 text-xs">{m.qty ?? 0} {m.unit || ''}</td>
                     <td className="px-5 py-3.5">
-                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-blue-600" onClick={() => { setSelected(m); setViewOpen(true); }}><Eye className="h-3.5 w-3.5" /></Button>
+                      <div className="flex items-center gap-1">
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-blue-600" onClick={() => { setSelected(m); setViewOpen(true); }}><Eye className="h-3.5 w-3.5" /></Button>
+                        {isStoreHead && (
+                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-blue-600" title="Verify Stock" onClick={() => { setAuditItem(m); setAuditOpen(true); }}>
+                            <ClipboardCheck className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                        {isStoreHead && (
+                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-slate-700" title="Audit History" onClick={() => { setHistoryItem(m); setHistoryOpen(true); }}>
+                            <History className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -266,6 +288,25 @@ export default function ProductMasterTab() {
           )}
         </DialogContent>
       </Dialog>
+
+      <StockAuditModal
+        open={auditOpen}
+        onOpenChange={(open) => { setAuditOpen(open); if (!open) setAuditItem(null); }}
+        item={auditItem ? {
+          id: auditItem._id,
+          code: auditItem.code,
+          name: auditItem.name,
+          qty: auditItem.qty ?? 0,
+          unit: auditItem.outputUnit || '',
+        } : null}
+        onSuccess={() => qc.invalidateQueries({ queryKey: ['store-rd-machines'] })}
+      />
+
+      <StockAuditHistoryModal
+        open={historyOpen}
+        onOpenChange={(open) => { setHistoryOpen(open); if (!open) setHistoryItem(null); }}
+        item={historyItem ? { id: historyItem._id, code: historyItem.code, name: historyItem.name } : null}
+      />
     </div>
   );
 }

@@ -1,20 +1,23 @@
 import React from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Warehouse, Package, Cog } from 'lucide-react';
+import { Warehouse, Package, Cog, Layers, Boxes } from 'lucide-react';
 import InventoryTab from './tabs/InventoryTab';
 import ProductMasterTab from './tabs/ProductMasterTab';
 import MotorMasterTab from './tabs/MotorMasterTab';
+import ChildPartTab from './tabs/ChildPartTab';
+import SubChildPartMasterTab from './tabs/SubChildPartMasterTab';
 
 // Store's Inventory tracks raw material stock only (Item.productKind:null) —
-// Product Master machines and Motor Master motors live in the same Item
-// collection but are owned/edited by R&D. These two tabs give Store
-// read-only visibility into that data (e.g. to know what finished
-// goods/motors exist) without granting create/edit/discontinue access.
+// Product Master machines, Motor Master motors, and Sub Child Part Inventory
+// live in the same Item collection but are owned/edited by R&D. These tabs
+// give Store read-only visibility into that data (e.g. to know what
+// finished goods/motors/built parts exist) without granting
+// create/edit/discontinue access.
 export default function StoreInventory() {
   return (
     <div className="p-6 space-y-6 bg-slate-50 min-h-screen">
       <Tabs defaultValue="inventory" className="w-full">
-        <TabsList className="grid w-full grid-cols-3 max-w-2xl bg-white border border-slate-200 h-12 p-1 rounded-xl shadow-sm">
+        <TabsList className="grid w-full grid-cols-5 max-w-4xl bg-white border border-slate-200 h-12 p-1 rounded-xl shadow-sm">
           <TabsTrigger value="inventory" className="rounded-lg data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700 data-[state=active]:shadow-sm">
             <Warehouse className="w-4 h-4 mr-2" />
             Inventory
@@ -26,6 +29,14 @@ export default function StoreInventory() {
           <TabsTrigger value="motor-master" className="rounded-lg data-[state=active]:bg-amber-50 data-[state=active]:text-amber-700 data-[state=active]:shadow-sm">
             <Cog className="w-4 h-4 mr-2" />
             Motor Master
+          </TabsTrigger>
+          <TabsTrigger value="sub-child-parts" className="rounded-lg data-[state=active]:bg-teal-50 data-[state=active]:text-teal-700 data-[state=active]:shadow-sm">
+            <Layers className="w-4 h-4 mr-2" />
+            Child Part Inventory
+          </TabsTrigger>
+          <TabsTrigger value="sub-child-part-master" className="rounded-lg data-[state=active]:bg-indigo-50 data-[state=active]:text-indigo-700 data-[state=active]:shadow-sm">
+            <Boxes className="w-4 h-4 mr-2" />
+            Sub Child Part Inventory
           </TabsTrigger>
         </TabsList>
 
@@ -40,6 +51,14 @@ export default function StoreInventory() {
 
           <TabsContent value="motor-master" className="m-0 focus-visible:outline-none focus-visible:ring-0">
             <MotorMasterTab />
+          </TabsContent>
+
+          <TabsContent value="sub-child-parts" className="m-0 focus-visible:outline-none focus-visible:ring-0">
+            <ChildPartTab />
+          </TabsContent>
+
+          <TabsContent value="sub-child-part-master" className="m-0 focus-visible:outline-none focus-visible:ring-0">
+            <SubChildPartMasterTab />
           </TabsContent>
         </div>
       </Tabs>

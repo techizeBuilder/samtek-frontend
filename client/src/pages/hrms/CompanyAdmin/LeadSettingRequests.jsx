@@ -7,20 +7,38 @@ import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { CheckCircle2, XCircle, Clock, RefreshCw, Settings2 } from 'lucide-react';
+import { buildQuotationNumber } from '@/utils/quotationNumber';
 
 const FIELD_LABELS = {
+  // Lead Settings
   leadStages: 'Lead Stage',
   leadSources: 'Lead Source',
   businessTypes: 'Business Type',
   documentTypes: 'Document Type',
   leadRejectReasons: 'Lead Reject Reason',
   salesChecklist: 'Sales Checklist',
+  // Quotation Settings
+  termsAndConditions: 'Terms & Conditions',
+  additionalCharges: 'Additional Charge',
+  quotationNotes: 'Quotation Note',
+  quotationNumberSettings: 'Quotation Number Setting',
+};
+
+const truncate = (s, n = 80) => {
+  const str = String(s ?? '');
+  return str.length > n ? `${str.slice(0, n)}…` : str;
 };
 
 const describeItem = (field, item) => {
   if (!item) return '(deleted)';
-  if (field === 'salesChecklist') return item.label;
-  return item.name ?? item.label ?? '';
+  switch (field) {
+    case 'salesChecklist': return item.label ?? '';
+    case 'termsAndConditions': return item.heading ?? '';
+    case 'additionalCharges': return item.name ?? '';
+    case 'quotationNotes': return truncate(item.text);
+    case 'quotationNumberSettings': return buildQuotationNumber(item, 'LD-0001');
+    default: return item.name ?? item.label ?? '';
+  }
 };
 
 const TABS = [
@@ -143,10 +161,10 @@ export default function LeadSettingRequests() {
     <div className="container mx-auto px-4 py-6 max-w-4xl">
       <div className="flex items-center gap-2 mb-1">
         <Settings2 className="h-5 w-5 text-gray-500" />
-        <h1 className="text-2xl font-bold text-gray-800">Lead Setting Requests</h1>
+        <h1 className="text-2xl font-bold text-gray-800">Lead &amp; Quotation Setting Requests</h1>
       </div>
       <p className="text-sm text-gray-500 mb-5">
-        Changes to Lead Stage / Source / Business Type / Document Type / Reject Reason / Sales Checklist proposed by your Sales Head — nothing goes live until approved here.
+        Changes to Lead settings (Stage / Source / Business Type / Document Type / Reject Reason / Sales Checklist) and Quotation settings (Terms &amp; Conditions / Additional Charges / Notes / Number Setting) proposed by your Sales Head — nothing goes live until approved here.
       </p>
 
       <div className="flex gap-1 mb-4 border-b border-gray-200">

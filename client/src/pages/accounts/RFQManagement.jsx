@@ -61,6 +61,17 @@ export default function RFQManagement() {
 
   const [manualModal, setManualModal] = useState(false);
   const [manualPR, setManualPR] = useState(null);
+  // The already-resolved order quantity for manualPR (fabrication's own
+  // computed total, or the plain Purchase-Unit modal's entry) — captured
+  // once, right alongside manualPR itself, the moment sendRFQ is called,
+  // so handleManualSend (used when auto-match fails and Purchase falls back
+  // to picking vendors by hand) can carry it forward correctly instead of
+  // reading pqQty, a DIFFERENT dialog's own state that has nothing to do
+  // with whichever PR actually failed to auto-match (real bug, confirmed
+  // 2026-09-17 — pqQty being left over from an unrelated earlier send was
+  // silently overwriting a correctly-computed fabrication total with
+  // whatever number happened to still be sitting in that other box).
+  const [manualPRQuantity, setManualPRQuantity] = useState(null);
   const [manualVendorList, setManualVendorList] = useState([]);
   const [manualVendorIds, setManualVendorIds] = useState([]);
   const [manualRequiredByDate, setManualRequiredByDate] = useState('');
@@ -179,6 +190,7 @@ export default function RFQManagement() {
       }
       setManualModal(false);
       setManualPR(null);
+      setManualPRQuantity(null);
       setManualVendorIds([]);
       invalidateAll();
     },
@@ -193,6 +205,13 @@ export default function RFQManagement() {
     const requiredByDate = defaultDate.toISOString().split('T')[0];
 
     setManualPR(pr);
+    // Same resolved quantity/unit this call is about to send on the
+    // auto-match attempt — kept alongside manualPR so the manual fallback
+    // (handleManualSend) can reuse the SAME value if auto-match fails,
+    // instead of a different dialog's own leftover state.
+    setManualPRQuantity(purchaseQuantity > 0 && pr.item?.purchaseUnit
+      ? { quantity: purchaseQuantity, unit: pr.item.purchaseUnit }
+      : null);
     setManualRequiredByDate(requiredByDate);
     setManualNotes('');
     setSendingPRId(pr._id);
@@ -228,6 +247,12 @@ export default function RFQManagement() {
     if (!pqPR || !(Number(pqQty) > 0)) return;
     setPqModalOpen(false);
     sendRFQ(pqPR, Number(pqQty));
+    // Cleared right after use — this value has already been carried forward
+    // via sendRFQ's own manualPRQuantity capture for anything that still
+    // needs it (the manual-send fallback), so leaving it sitting in state
+    // serves no purpose and was the direct cause of the bug fixed above.
+    setPqQty('');
+    setPqPR(null);
   };
 
   const handleManualSend = () => {
@@ -237,8 +262,12 @@ export default function RFQManagement() {
       requiredByDate: manualRequiredByDate,
       notes: manualNotes,
       vendorIds: manualVendorIds,
-      ...(manualPR.item?.purchaseUnit && Number(pqQty) > 0
-        ? { purchaseQuantity: Number(pqQty), purchaseUnit: manualPR.item.purchaseUnit }
+      // manualPRQuantity, not pqQty — see its own declaration comment. This
+      // is the same quantity the earlier auto-match attempt for THIS PR
+      // already tried to send (fabrication's own computed total, or the
+      // plain Purchase-Unit modal's entry), captured when sendRFQ ran.
+      ...(manualPRQuantity
+        ? { purchaseQuantity: manualPRQuantity.quantity, purchaseUnit: manualPRQuantity.unit }
         : {})
     });
   };

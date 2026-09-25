@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { config } from '@/config/environment';
 import { itemDisplayQty, itemDisplayUnit } from '@/lib/fabricationDims';
+import { AMOUNT_UNIT_TYPES } from './UnitAmountField';
 
 const resolveMediaUrl = (url) => (!url ? '' : (url.startsWith('http') || url.startsWith('data:')) ? url : `${config.baseURL}${url}`);
 
@@ -110,6 +111,7 @@ export default function ViewItemModal({ isOpen, onClose, item }) {
             </CardHeader>
             <CardContent className="space-y-1">
               <InfoRow icon={Tag} label="Item Type" value={item.itemType} />
+              {item.jobWorkType && <InfoRow icon={Tag} label="Job Work Type" value={item.jobWorkType} />}
               <InfoRow icon={Tag} label="Item Process Type" value={item.itemProcessType} />
               <InfoRow icon={Tag} label="Source Type" value={item.sourceType} />
               <InfoRow icon={Tag} label="Item Source Type" value={item.itemSourceType} />
@@ -155,7 +157,13 @@ export default function ViewItemModal({ isOpen, onClose, item }) {
                 {item.fabricationRef && <InfoRow icon={Tag} label="Material Type" value={item.isSheetMetal ? 'Sheet Metal' : 'Non Sheet Metal'} />}
                 <InfoRow icon={Tag} label="Size" value={item.size} />
                 {(item.unitWeightValue !== null && item.unitWeightValue !== undefined && item.unitWeightValue !== '') && (
-                  <InfoRow icon={BarChart3} label="Unit Weight" value={`${item.unitWeightValue} ${item.unitWeightUnit || ''}`.trim()} />
+                  <InfoRow
+                    icon={BarChart3}
+                    label="Unit Weight"
+                    value={AMOUNT_UNIT_TYPES.includes(item.unitType)
+                      ? `${item.unitWeightValue} kg / ${item.unitWeightUnit || '?'}`
+                      : `${item.unitWeightValue} ${item.unitWeightUnit || ''}`.trim()}
+                  />
                 )}
               </CardContent>
             </Card>

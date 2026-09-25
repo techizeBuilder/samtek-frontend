@@ -139,6 +139,11 @@ export const MODULES = [
       { key: 'qcInventory', label: 'Inventory QC' },
       { key: 'qcProductMaster', label: 'Product Master QC' },
       { key: 'qcMotorMaster', label: 'Motor Master QC' },
+      // New independent modules (2026-09-14) — Inventory QC page's own
+      // Child Part / Sub Child Part tabs, decoupled from qcProductMaster
+      // (see server/docs/qc-module-restructure-client-request.md's follow-on).
+      { key: 'qcChildPart', label: 'Child Part QC' },
+      { key: 'qcSubChildPart', label: 'Sub Child Part QC' },
       { key: 'documentation', label: 'Documentation' },
       { key: 'expenses', label: 'Expenses' },
       { key: 'lms', label: 'LMS' }
@@ -241,7 +246,12 @@ export const ROLE_MODULE_MAP = {
   'Accounts Head': ['accounts'],
   'Research & Development Head': ['rnd'],
   'Complaint Management Head': ['complaints'],
-  'Store Head': ['Store'],
+  // Store also gets 'rnd' here (view-only, on Product Master + BOM
+  // Management — see getDefaultModulesForRole below) so those checkboxes
+  // are actually visible/editable on this page for a Store role: Store's own
+  // Inventory page reads Product Master and Sub Child Part Inventory
+  // (the latter lives under BOM Management's endpoints) read-only.
+  'Store Head': ['Store', 'rnd'],
   'QC Head': ['quality-control'],
   'Marketing Head': ['marketing'],
   'MIS Admin': ['mis'],
@@ -252,7 +262,7 @@ export const ROLE_MODULE_MAP = {
   'Account Employee': ['accounts'],
   'Research Development Employee': ['rnd'],
   'Complaint Management Employee': ['complaints'],
-  'Store Employee': ['Store'],
+  'Store Employee': ['Store', 'rnd'],
   'QC Employee': ['quality-control'],
   'Marketing Employee': ['marketing'],
 };
@@ -513,6 +523,18 @@ export const getDefaultModulesForRole = (role) => {
             { key: 'defectiveInventory', view: true, add: true, edit: true, delete: true },
             { key: 'lms', label: 'LMS', view: true, add: false, edit: false, delete: false }
           ]
+        },
+        // Read-only into two R&D catalogs Store's own Inventory page shows
+        // (Product Master tab, Sub Child Parts tab — the latter's endpoints
+        // live under BOM Management). Everything else in rnd stays
+        // unchecked/inaccessible.
+        {
+          name: 'rnd',
+          dashboard: false,
+          features: [
+            { key: 'productMaster', view: true, add: false, edit: false, delete: false },
+            { key: 'bomManagement', view: true, add: false, edit: false, delete: false }
+          ]
         }
       ];
 
@@ -569,7 +591,18 @@ export const getDefaultModulesForRole = (role) => {
         )
       }];
     case 'Store Employee':
-      return [{ name: 'Store', dashboard: true, features: employeeDefaultFeatures('Store') }];
+      return [
+        { name: 'Store', dashboard: true, features: employeeDefaultFeatures('Store') },
+        // Same read-only rnd grant as Store Head — see that case above.
+        {
+          name: 'rnd',
+          dashboard: false,
+          features: [
+            { key: 'productMaster', view: true, add: false, edit: false, delete: false },
+            { key: 'bomManagement', view: true, add: false, edit: false, delete: false }
+          ]
+        }
+      ];
     case 'QC Employee':
       return [{ name: 'quality-control', dashboard: true, features: employeeDefaultFeatures('quality-control') }];
     case 'Marketing Employee':

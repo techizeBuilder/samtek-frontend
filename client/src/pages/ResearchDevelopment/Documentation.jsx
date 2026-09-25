@@ -1,7 +1,5 @@
 import React, { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { useRD } from '@/contexts/RDContext';
-import { apiRequest } from '@/lib/queryClient';
 import { usePermissions } from '@/hooks/usePermissions';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -40,51 +38,32 @@ export default function Documentation() {
   const activeMachines = machines.filter(m => !m.isDiscontinued);
   const selectedMachine = activeMachines.find(m => String(m._id) === selectedMachineId);
 
-  // Child Part / Sub Child Part design files (uploaded from BOM Management →
-  // Child Part Creation) aren't stored as RDDocument rows — they're pulled
-  // in live here and shown under Design Files, tagged with the (sub) child
-  // part's name, so there's no duplicate copy to keep in sync.
-  const { data: childPartsResp } = useQuery({
-    queryKey: ['rd-child-parts-for-docs', selectedMachineId],
-    queryFn: () => apiRequest('GET', `/api/rd/child-parts?productId=${selectedMachineId}`),
-    enabled: !!selectedMachineId,
-    retry: false,
-  });
-  const childPartDocs = (childPartsResp?.data || [])
-    .filter(cp => cp.image)
-    .map(cp => {
-      const ext = (cp.image.split('.').pop() || '').toUpperCase();
+  // Child Part / Sub Child Part design files — full cutover (2026-09-14):
+  // resolved server-side by walking the NEW Machine BOM -> Child Part ->
+  // Sub Child Part reference chain (rdController.js's buildMachineDesignFiles/
+  // getMachines), not the OLD RDChildPart structure. Already attached as
+  // `designFiles` on each machine by the same GET /api/rd/machines this
+  // page's own machine dropdown (`machines`) already comes from — no
+  // second, separate query needed. A machine with no Machine BOM yet (still
+  // on the legacy per-machine flow) simply has no 'BOM Part' entries here.
+  const bomPartDocs = (selectedMachine?.designFiles || [])
+    .filter(d => d.source === 'BOM Part')
+    .map(d => {
+      const ext = (d.fileUrl.split('.').pop() || '').toUpperCase();
       return {
-        _id: `child-part-${cp._id}`,
-        name: `${cp.name} (${cp.code})`,
+        _id: d._id,
+        name: d.name,
         type: 'Design Files',
         size: '',
-        uploadedAt: (cp.updatedAt || cp.createdAt || '').split('T')[0],
-        uploadedBy: 'Child Part Creation',
-        fileUrl: cp.image,
-        originalName: `${cp.name}.${ext.toLowerCase() || 'file'}`,
-        isChildPartFile: true,
-      };
-    });
-  const subChildPartDocs = (childPartsResp?.data || [])
-    .flatMap(cp => (cp.subChildParts || []).map(sub => ({ ...sub, parentName: cp.name })))
-    .filter(sub => sub.image)
-    .map(sub => {
-      const ext = (sub.image.split('.').pop() || '').toUpperCase();
-      return {
-        _id: `sub-child-part-${sub._id}`,
-        name: `${sub.parentName} > ${sub.name} (${sub.code})`,
-        type: 'Design Files',
-        size: '',
-        uploadedAt: (sub.updatedAt || sub.createdAt || '').split('T')[0],
-        uploadedBy: 'Child Part Creation',
-        fileUrl: sub.image,
-        originalName: `${sub.name}.${ext.toLowerCase() || 'file'}`,
+        uploadedAt: '',
+        uploadedBy: 'BOM Management',
+        fileUrl: d.fileUrl,
+        originalName: `${d.name}.${ext.toLowerCase() || 'file'}`,
         isChildPartFile: true,
       };
     });
 
-  const allDocs = selectedMachineId ? [...getDocumentsForMachine(selectedMachineId), ...childPartDocs, ...subChildPartDocs] : [];
+  const allDocs = selectedMachineId ? [...getDocumentsForMachine(selectedMachineId), ...bomPartDocs] : [];
 
   const typeCounts = DOC_TYPES.reduce((acc, t) => ({ ...acc, [t]: allDocs.filter(d => d.type === t).length }), {});
 
@@ -104,19 +83,28 @@ export default function Documentation() {
       rows.push({ kind: 'header', label: 'General', level: 0 });
       generalDocs.forEach(doc => rows.push({ kind: 'doc', doc }));
     }
-    // childPartDocs/subChildPartDocs are already Design Files only, so a
-    // non-matching filterType just hides every Child Part group at once.
+    // bomPartDocs are already Design Files only, so a non-matching
+    // filterType just hides every Child Part group at once.
     if (filterType !== 'All' && filterType !== 'Design Files') return rows;
-    (childPartsResp?.data || []).forEach(cp => {
-      const cpDoc = childPartDocs.find(d => d._id === `child-part-${cp._id}`) || null;
-      const subEntries = (cp.subChildParts || [])
-        .map(sub => ({ sub, doc: subChildPartDocs.find(d => d._id === `sub-child-part-${sub._id}`) || null }))
-        .filter(e => e.doc);
-      if (!cpDoc && subEntries.length === 0) return;
-      rows.push({ kind: 'header', label: `${cp.name} (${cp.code})`, level: 0 });
-      if (cpDoc) rows.push({ kind: 'doc', doc: cpDoc });
-      subEntries.forEach(({ sub, doc }) => {
-        rows.push({ kind: 'header', label: `${sub.name} (${sub.code})`, level: 1 });
+
+    // Grouped by parsing each doc's own name — a Child Part's own doc name
+    // is "Name (Code)"; a Sub Child Part's own doc name is "Name (Code) >
+    // SubName (SubCode)", built server-side with the identical parent
+    // prefix on purpose, so splitting on ' > ' always yields a grouping key
+    // that matches the Child Part's own doc exactly (see
+    // rdController.js's buildMachineDesignFiles/getMachines).
+    const groups = new Map(); // parent label -> { cpDoc, subDocs: [] }
+    bomPartDocs.forEach(doc => {
+      const [parentLabel, subLabel] = doc.name.split(' > ');
+      if (!groups.has(parentLabel)) groups.set(parentLabel, { cpDoc: null, subDocs: [] });
+      if (subLabel) groups.get(parentLabel).subDocs.push({ label: subLabel, doc });
+      else groups.get(parentLabel).cpDoc = doc;
+    });
+    groups.forEach((group, label) => {
+      rows.push({ kind: 'header', label, level: 0 });
+      if (group.cpDoc) rows.push({ kind: 'doc', doc: group.cpDoc });
+      group.subDocs.forEach(({ label: subLabel, doc }) => {
+        rows.push({ kind: 'header', label: subLabel, level: 1 });
         rows.push({ kind: 'doc', doc });
       });
     });

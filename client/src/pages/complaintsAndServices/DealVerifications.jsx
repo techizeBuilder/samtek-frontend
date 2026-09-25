@@ -342,7 +342,7 @@ const DealVerifications = () => {
                         </div>
                         <div className="flex flex-col">
                           <span className="text-gray-400 text-xs">Deal Value</span>
-                          <span className="font-semibold text-green-700">{fmtAmt(order.totalAmount)}</span>
+                          <span className="font-semibold text-green-700">{fmtAmt(order.leadId?.dealValue)}</span>
                         </div>
                         <div className="flex flex-col">
                           <span className="text-gray-400 text-xs">Priority</span>
@@ -761,7 +761,7 @@ const DealVerifications = () => {
                     <div>
                       <p className="text-base font-bold text-blue-900">{c.name || 'N/A'}</p>
                       <p className="text-xs text-blue-700 font-semibold mt-1">Order: #{verifyModal.order.orderCode}</p>
-                      <p className="text-xs text-blue-700 font-semibold">Deal Value: {fmtAmt(verifyModal.order.totalAmount)}</p>
+                      <p className="text-xs text-blue-700 font-semibold">Deal Value: {fmtAmt(verifyModal.order.leadId?.dealValue)}</p>
                     </div>
                     <div className="flex gap-1">
                       <Button variant="ghost" size="icon" className="h-8 w-8 text-blue-700 hover:bg-blue-100" title="Call"

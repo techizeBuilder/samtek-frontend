@@ -15,6 +15,7 @@ import {
   Play, Send, Package, Factory, ShoppingCart, Plus, Trash2, RefreshCw
 } from 'lucide-react';
 import SubChildPartQCReview from '@/components/qc/SubChildPartQCReview';
+import ChildPartUnitQCReview from '@/components/qc/ChildPartUnitQCReview';
 import ProductionCheckReviewRow from '@/components/qc/ProductionCheckReviewRow';
 
 const statusColor = {
@@ -306,14 +307,35 @@ export default function QCInspection() {
   if (!job) return <div className="p-6 text-slate-500">QC Job not found</div>;
 
   const cl = job.checklist || [];
-  // Mirrors the backend gate in getQCJob/syncRDToQCJob: a manufactured
-  // job's Final checklist is empty on purpose until Production submits it.
-  const finalCheckReady = !job.partChecks?.length || !!job.finalCheckFilledAt;
+  // Mirrors the backend gate in getQCJob — job.isManufacturedMachine (the
+  // item's own productSourceType, resolved server-side) decides whether
+  // Production must submit the Final checklist first, NOT
+  // job.partChecks.length. A MachineBOM-driven manufactured order
+  // legitimately has zero partChecks (its Child Parts each pass their own
+  // QC before ever reaching this order) but still must have Production fill
+  // the Final checklist first, same as every other manufactured Machine —
+  // partChecks.length can't tell the two apart (corrected 2026-09-17, same
+  // bug class as the pre-existing 2026-09-02 fix this mirrors, just missed
+  // for the new hierarchy).
+  const finalCheckReady = !job.isManufacturedMachine || !!job.finalCheckFilledAt;
   // A manufactured job's Final Check rows are Production's own self-check —
   // QC's real progress lives in the separate qcStatus field (see
   // ChecklistRow/updateChecklistItem's productionFilled branch); every other
   // job's `status` field IS QC's own record, unchanged.
-  const productionFilled = job.partChecks?.length > 0;
+  const productionFilled = !!job.finalCheckFilledBy;
+  // A Child Part order has no whole-job Final Check at all (unlike a
+  // manufactured Machine's partChecks, which all gate ONE shared Final
+  // Check below) — every real decision here is per-unit, via
+  // ChildPartUnitQCReview. The flat Checklist/Decision cards below are
+  // meaningless for this source (job.checklist never resolves anything for
+  // a Child Part item — see qcChecklistPullService.js's
+  // flatModuleStageForItem) and would let QC accidentally flip the whole
+  // job's top-level status with zero real checks — hidden entirely instead.
+  // Same for a per-unit Machine job (2026-09-24 — dynamic Process
+  // Definition): one whole-job Pass here was what approved a whole
+  // multi-unit order for dispatch off one unit's check. Keyed on having
+  // unitChecks at all, not on source, so both kinds are covered.
+  const isPerUnitJob = job.unitChecks?.length > 0;
   const statusField = productionFilled ? 'qcStatus' : 'status';
   const passCount = cl.filter(c => c[statusField] === 'Pass').length;
   const failCount = cl.filter(c => c[statusField] === 'Fail').length;
@@ -383,7 +405,14 @@ export default function QCInspection() {
           is Approved. */}
       <SubChildPartQCReview jobId={id} partChecks={job.partChecks} canEdit={canEdit} onRefetch={refetch} />
 
-      {/* Checklist */}
+      {/* Child Part order — this job's per-unit review (renders nothing
+          otherwise, see ChildPartUnitQCReview's own comment). No shared
+          Final Check follows it — each unit's own Approval directly unlocks
+          that unit's own Painting step in Production. */}
+      <ChildPartUnitQCReview jobId={id} unitChecks={job.unitChecks} canEdit={canEdit} onRefetch={refetch} singleStage={job.source !== 'ChildPartProduction'} />
+
+      {/* Checklist — meaningless for a per-unit job, see isPerUnitJob. */}
+      {!isPerUnitJob && (
       <Card className="border-none shadow-sm">
         <CardContent className="p-5">
           <div className="flex justify-between items-center mb-4">
@@ -448,9 +477,10 @@ export default function QCInspection() {
           )}
         </CardContent>
       </Card>
+      )}
 
-      {/* Decision panel */}
-      {job.status === 'In Progress' && canEdit && (
+      {/* Decision panel — meaningless for a per-unit job, see isPerUnitJob. */}
+      {job.status === 'In Progress' && canEdit && !isPerUnitJob && (
         <Card className={`border-none shadow-sm border-l-4 ${allInspected ? (hasAnyFail ? 'border-l-red-400' : 'border-l-emerald-400') : 'border-l-slate-300'}`}>
           <CardContent className="p-5">
             <h2 className="font-semibold text-slate-800 mb-1">Final Decision</h2>

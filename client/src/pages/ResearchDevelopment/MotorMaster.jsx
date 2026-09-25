@@ -25,7 +25,7 @@ const emptyForm = {
   // Base Unit and Purchase Unit — not shown on the form; every motor is
   // counted in Pieces, same as Product Master's Purchase/Output Unit.
   unitType: 'Count Unit', unit: 'Pieces', purchaseUnitType: 'Count Unit', purchaseUnit: 'Pieces',
-  stdCost: '', purchaseCost: '', salePrice: '', mrp: '', gst: '', qty: '', minStock: '',
+  stdCost: '', purchaseCost: '', salePrice: '', mrp: '', gst: '', hsn: '', qty: '', minStock: '',
 };
 
 // 1 HP = 0.746 kW — client's requested auto-calculation. Still editable afterward.
@@ -220,7 +220,7 @@ export default function MotorMaster() {
     unitType: m.unitType || 'Count Unit', unit: m.unit || 'Pieces',
     purchaseUnitType: m.purchaseUnitType || 'Count Unit', purchaseUnit: m.purchaseUnit || 'Pieces',
     stdCost: m.stdCost ?? '', purchaseCost: m.purchaseCost ?? '', salePrice: m.salePrice ?? '',
-    mrp: m.mrp ?? '', gst: m.gst ?? '', qty: m.qty ?? '', minStock: m.minStock ?? '',
+    mrp: m.mrp ?? '', gst: m.gst ?? '', hsn: m.hsn ?? '', qty: m.qty ?? '', minStock: m.minStock ?? '',
   });
 
   const openEdit = (m) => { setSelected(m); setEditForm(toFormState(m)); setEditOpen(true); };
@@ -331,12 +331,16 @@ export default function MotorMaster() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-3 gap-3">
         <div>
           <Label className="text-xs font-semibold text-slate-600 mb-1 block">Brand Name</Label>
           <Input value={state.brand} onChange={e => setState(f => ({ ...f, brand: e.target.value }))} placeholder="e.g. Crompton" />
         </div>
         {renderCascadeSelect('Motor Type', 'MotorType', 'motorType', motorTypeOptions, state, setState)}
+        <div>
+          <Label className="text-xs font-semibold text-slate-600 mb-1 block">HSN Code</Label>
+          <Input value={state.hsn} onChange={e => setState(f => ({ ...f, hsn: e.target.value }))} placeholder="e.g. 8501" />
+        </div>
       </div>
 
       <div className="border border-slate-200 rounded-lg p-3 bg-slate-50">
@@ -578,6 +582,7 @@ export default function MotorMaster() {
                 </div>
                 <div className="bg-slate-50 rounded-lg p-3"><p className="text-xs text-slate-500 mb-1">Stock</p><p className="text-sm font-medium text-slate-800">{selected.qty ?? 0} {selected.unit}</p></div>
                 <div className="bg-slate-50 rounded-lg p-3"><p className="text-xs text-slate-500 mb-1">Sale Price</p><p className="text-sm font-medium text-slate-800">₹{Number(selected.salePrice || 0).toLocaleString()}</p></div>
+                <div className="bg-slate-50 rounded-lg p-3"><p className="text-xs text-slate-500 mb-1">HSN Code</p><p className="text-sm font-medium text-slate-800">{selected.hsn || 'N/A'}</p></div>
               </div>
               {selected.description && (
                 <div className="bg-slate-50 rounded-lg p-3"><p className="text-xs text-slate-500 mb-1">Description</p><p className="text-sm text-slate-700">{selected.description}</p></div>

@@ -19,9 +19,7 @@ import {
   RefreshCw,
   ExternalLink,
   Download,
-  Plus,
   CreditCard,
-  Calendar,
   DollarSign
 } from 'lucide-react';
 import {
@@ -53,7 +51,6 @@ import { cn } from '@/lib/utils';
 
 const PaymentVerifications = () => {
   const { hasFeatureAccess } = usePermissions();
-  const canAdd = hasFeatureAccess('accounts', 'sales', 'add');
   const canEdit = hasFeatureAccess('accounts', 'sales', 'edit');
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -76,18 +73,6 @@ const PaymentVerifications = () => {
   const [pdfOpen, setPdfOpen] = useState(false);
   const [pdfUrl, setPdfUrl] = useState('');
   const [pdfLeadCode, setPdfLeadCode] = useState('');
-
-  // Add Payment Modal State
-  const [addPaymentOpen, setAddPaymentOpen] = useState(false);
-  const [addPaymentLeadId, setAddPaymentLeadId] = useState('');
-  const [paymentForm, setPaymentForm] = useState({
-    amount: '',
-    paymentDate: new Date().toISOString().split('T')[0],
-    paymentMethod: 'Bank Transfer',
-    bankAccount: '',
-    transactionId: '',
-    remarks: ''
-  });
 
   // Fetch leads that have payment check requested — paginated + filtered
   // server-side (search matches lead code/company/contact; status filters
@@ -121,20 +106,7 @@ const PaymentVerifications = () => {
     enabled: leadIds.length > 0,
   });
 
-  // Fetch bank accounts for Add Payment modal
-  const { data: bankAccountsData } = useQuery({
-    queryKey: ['bank-accounts-verification'],
-    queryFn: () => {
-      const token = localStorage.getItem('token');
-      return apiRequest('/lead-payments/bank-accounts', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-    },
-    enabled: addPaymentOpen
-  });
-
   const leadPayments = leadPaymentsData?.payments || [];
-  const bankAccounts = bankAccountsData?.bankAccounts || [];
   const pagination = leadsData?.pagination || {};
   const paymentCheckSummary = leadsData?.paymentCheckSummary || {};
 
@@ -153,15 +125,25 @@ const PaymentVerifications = () => {
       ...lead,
       advancedPayments: leadAdvancedPayments,
       totalAdvancedAmount,
-      latestPayment: leadAdvancedPayments.length > 0 ? leadAdvancedPayments[leadAdvancedPayments.length - 1] : null
+      // Display only — the payment the Verify dialog shows. It must be the
+      // one Accounts is actually deciding on: the server's Verify acts on
+      // the newest Pending payment (leadController.updatePaymentCheckStatus),
+      // else fall back to the most recent. /lead-payments returns newest
+      // first, so find() matches the server's pick and [0] is the most
+      // recent (the old [length - 1] showed the OLDEST — 2026-09-25 fix).
+      latestPayment: leadAdvancedPayments.find(p => p.status === 'Pending') || leadAdvancedPayments[0] || null
     };
   });
 
-  // Lead Status Update Mutation
+  // Lead Status Update Mutation — this is now the only verification action;
+  // the backend also verifies/rejects the Sales-submitted LeadPayment and
+  // posts the ledger entry (see leadController.updatePaymentCheckStatus), so
+  // refresh the payments query too.
   const updateStatusMutation = useMutation({
     mutationFn: ({ id, status, remarks }) => leadApi.updatePaymentCheckStatus(id, { status, remarks }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['accounts-payment-verifications'] });
+      queryClient.invalidateQueries({ queryKey: ['lead-payments-verification'] });
       toast({
         title: "Status Updated",
         description: "Payment check status has been successfully updated.",
@@ -181,43 +163,6 @@ const PaymentVerifications = () => {
     }
   });
 
-  // Add Advanced Payment Mutation
-  const addPaymentMutation = useMutation({
-    mutationFn: (paymentData) => {
-      const token = localStorage.getItem('token');
-      return apiRequest('/lead-payments', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(paymentData)
-      });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['lead-payments-verification'] });
-      queryClient.invalidateQueries({ queryKey: ['accounts-payment-verifications'] });
-      toast({ title: "Success", description: "Advanced payment added successfully" });
-      setAddPaymentOpen(false);
-      setAddPaymentLeadId('');
-      setPaymentForm({
-        amount: '',
-        paymentDate: new Date().toISOString().split('T')[0],
-        paymentMethod: 'Bank Transfer',
-        bankAccount: '',
-        transactionId: '',
-        remarks: ''
-      });
-    },
-    onError: (error) => {
-      toast({
-        title: "Error",
-        description: error?.message || "Failed to add payment",
-        variant: "destructive"
-      });
-    }
-  });
-
   const handleUpdateClick = (lead) => {
     setSelectedItem(lead);
     setNewStatus(lead.paymentCheckStatus || 'Paid');
@@ -232,32 +177,6 @@ const PaymentVerifications = () => {
       id: selectedItem._id,
       status: newStatus,
       remarks: remarks
-    });
-  };
-
-  const handleAddPaymentClick = (leadId) => {
-    setAddPaymentLeadId(leadId);
-    setAddPaymentOpen(true);
-  };
-
-  const handleAddPaymentSubmit = () => {
-    if (!addPaymentLeadId || !paymentForm.amount) {
-      toast({ title: "Required", description: "Please select lead and enter amount", variant: "destructive" });
-      return;
-    }
-    const txnNotRequired = ['Cash', 'Cheque'];
-    if (!txnNotRequired.includes(paymentForm.paymentMethod) && !paymentForm.transactionId.trim()) {
-      toast({
-        title: "Required",
-        description: `Transaction ID is required for ${paymentForm.paymentMethod} payments`,
-        variant: "destructive"
-      });
-      return;
-    }
-    addPaymentMutation.mutate({
-      ...paymentForm,
-      leadId: addPaymentLeadId,
-      amount: parseFloat(paymentForm.amount)
     });
   };
 
@@ -553,17 +472,6 @@ const PaymentVerifications = () => {
                               Verify
                             </Button>
                           )}
-                          {canAdd && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="w-full text-xs h-7 gap-1 bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
-                            onClick={() => handleAddPaymentClick(lead._id)}
-                          >
-                            <Plus className="h-3 w-3" />
-                            Add Payment
-                          </Button>
-                          )}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -596,7 +504,9 @@ const PaymentVerifications = () => {
         </CardContent>
       </Card>
 
-      {/* Update Status Modal */}
+      {/* Update Status Modal — the only verification action left; Sales now
+          submits the payment details themselves (Check Payment on the Leads
+          page), so this just reviews what they sent before deciding. */}
       <Dialog open={updateOpen} onOpenChange={setUpdateOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
@@ -605,6 +515,39 @@ const PaymentVerifications = () => {
               Update payment status for <strong>{selectedItem?.companyName}</strong> ({selectedItem?.leadCode})
             </DialogDescription>
           </DialogHeader>
+
+          {selectedItem?.latestPayment && (
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-1.5 text-sm">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide flex items-center gap-1">
+                <DollarSign className="h-3.5 w-3.5" />Submitted by Sales
+              </p>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                <div><span className="text-slate-400">Amount:</span> <span className="font-semibold text-slate-800">{formatCurrency(selectedItem.latestPayment.amount)}</span></div>
+                <div><span className="text-slate-400">Date:</span> <span className="text-slate-700">{formatDate(selectedItem.latestPayment.paymentDate)}</span></div>
+                <div><span className="text-slate-400">Method:</span> <span className="text-slate-700">{selectedItem.latestPayment.paymentMethod}</span></div>
+                {selectedItem.latestPayment.bankAccountName && (
+                  <div><span className="text-slate-400">Bank:</span> <span className="text-slate-700">{selectedItem.latestPayment.bankAccountName}</span></div>
+                )}
+                {selectedItem.latestPayment.transactionId && (
+                  <div className="col-span-2 flex items-center gap-1"><CreditCard className="h-3 w-3 text-slate-400" /><span className="text-slate-400">Txn ID:</span> <span className="text-slate-700">{selectedItem.latestPayment.transactionId}</span></div>
+                )}
+              </div>
+              {selectedItem.latestPayment.remarks && (
+                <p className="text-xs text-slate-500 border-t border-slate-200 pt-1.5">Remarks: {selectedItem.latestPayment.remarks}</p>
+              )}
+              {(() => {
+                const proof = (selectedItem.leadDocuments || []).filter(d => d.url).find(d => d.docType === 'Payment Proof');
+                return proof ? (
+                  <a href={proof.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline pt-1">
+                    <FileText className="h-3 w-3" />View Payment Proof
+                  </a>
+                ) : (
+                  <p className="text-xs text-amber-600 pt-1">No Payment Proof uploaded (Cash payment)</p>
+                );
+              })()}
+            </div>
+          )}
+
           <form onSubmit={handleUpdateSubmit} className="space-y-4 pt-2">
             <div>
               <Label htmlFor="status">Status</Label>
@@ -646,130 +589,6 @@ const PaymentVerifications = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Add Advanced Payment Modal */}
-      <Dialog open={addPaymentOpen} onOpenChange={setAddPaymentOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <DollarSign className="h-5 w-5 text-emerald-600" />
-              Add Advanced Payment
-            </DialogTitle>
-            <DialogDescription>
-              Add an advance payment entry for the selected lead.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 pt-2">
-            <div className="space-y-2">
-              <Label>Select Lead *</Label>
-              <Select value={addPaymentLeadId} onValueChange={setAddPaymentLeadId} disabled>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a lead" />
-                </SelectTrigger>
-                <SelectContent>
-                  {filteredLeads.map((lead) => (
-                    <SelectItem key={lead._id} value={lead._id}>
-                      {lead.leadCode} — {lead.companyName}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Amount *</Label>
-                <Input
-                  type="number"
-                  placeholder="Enter amount"
-                  value={paymentForm.amount}
-                  onChange={(e) => setPaymentForm(p => ({ ...p, amount: e.target.value }))}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label className="flex items-center gap-1"><Calendar className="h-4 w-4" />Payment Date *</Label>
-                <Input
-                  type="date"
-                  value={paymentForm.paymentDate}
-                  onChange={(e) => setPaymentForm(p => ({ ...p, paymentDate: e.target.value }))}
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label className="flex items-center gap-1"><CreditCard className="h-4 w-4" />Payment Method</Label>
-              <Select value={paymentForm.paymentMethod} onValueChange={(v) => setPaymentForm(p => ({ ...p, paymentMethod: v }))}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Cash">Cash</SelectItem>
-                  <SelectItem value="Cheque">Cheque</SelectItem>
-                  <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
-                  <SelectItem value="UPI">UPI</SelectItem>
-                  <SelectItem value="Card">Card</SelectItem>
-                  <SelectItem value="Other">Other</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {paymentForm.paymentMethod !== 'Cash' && (
-              <div className="space-y-2">
-                <Label>Bank Account</Label>
-                <Select value={paymentForm.bankAccount} onValueChange={(v) => setPaymentForm(p => ({ ...p, bankAccount: v }))}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select bank account" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {bankAccounts.length === 0 ? (
-                      <SelectItem value="no-accounts" disabled>No bank accounts found</SelectItem>
-                    ) : (
-                      bankAccounts.map((account) => (
-                        <SelectItem key={account._id} value={account._id}>
-                          {account.bankName} — {account.accountName} ({account.accountNumber})
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            <div className="space-y-2">
-              <Label>
-                Transaction ID / Reference
-                {!['Cash', 'Cheque'].includes(paymentForm.paymentMethod) && <span className="text-red-500 ml-1">*</span>}
-                {['Cash', 'Cheque'].includes(paymentForm.paymentMethod) && <span className="text-slate-400 text-xs ml-1">(Optional)</span>}
-              </Label>
-              <Input
-                placeholder={['Cash', 'Cheque'].includes(paymentForm.paymentMethod) ? 'Enter reference (optional)' : `Enter ${paymentForm.paymentMethod} transaction ID`}
-                value={paymentForm.transactionId}
-                onChange={(e) => setPaymentForm(p => ({ ...p, transactionId: e.target.value }))}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Remarks</Label>
-              <Textarea
-                placeholder="Enter any remarks"
-                value={paymentForm.remarks}
-                onChange={(e) => setPaymentForm(p => ({ ...p, remarks: e.target.value }))}
-              />
-            </div>
-          </div>
-
-          <DialogFooter className="pt-4 border-t">
-            <Button variant="outline" onClick={() => setAddPaymentOpen(false)} disabled={addPaymentMutation.isPending}>
-              Cancel
-            </Button>
-            <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={handleAddPaymentSubmit} disabled={addPaymentMutation.isPending}>
-              {addPaymentMutation.isPending ? (
-                <span className="flex items-center gap-2"><RefreshCw className="h-4 w-4 animate-spin" />Adding...</span>
-              ) : 'Add Payment'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* PDF Viewer Modal */}
       <Dialog open={pdfOpen} onOpenChange={setPdfOpen}>

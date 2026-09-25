@@ -496,8 +496,9 @@ const StoreOrders = () => {
                                 </span>
                               )}
                               {/* BOM raw-material availability — In-house items only, once computed
-                                  (see materialAvailabilityService.js). Separate from the finished-
-                                  product Availability chip above. */}
+                                  (see machineReorderService.js's checkMachineAssemblyMaterialAvailability
+                                  — reads the new MachineBOM hierarchy, 2026-09-16 cutover). Separate
+                                  from the finished-product Availability chip above. */}
                               {row.productType === 'In-house Manufactured' && row.materialAvailability?.computedAt && (
                                 <>
                                   {row.materialAvailability.available?.length > 0 && (
@@ -541,6 +542,34 @@ const StoreOrders = () => {
                                               <div className="text-slate-400 text-[10px]">{m.code}{m.purchaseRequestId ? ` · ${m.purchaseRequestId}` : ''}</div>
                                             </div>
                                             <div className="text-amber-400 text-right whitespace-nowrap">short {m.shortfallQty} {m.unit}</div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </MaterialAvailabilityBadge>
+                                  )}
+                                  {/* Child Part reference lines (MachineBOM.childParts[]) — new
+                                      2026-09-16. A short row raised a real Child Part order (not a
+                                      Purchase Request), so this shows which one instead of a PR id. */}
+                                  {row.materialAvailability.childParts?.length > 0 && (
+                                    <MaterialAvailabilityBadge
+                                      icon="🧩"
+                                      label="Child Part"
+                                      count={row.materialAvailability.childParts.length}
+                                      colorClasses="bg-indigo-50 text-indigo-700 border border-indigo-200"
+                                    >
+                                      <div className="font-semibold text-slate-400 mb-1.5">
+                                        Child Parts ({row.materialAvailability.childParts.length}):
+                                      </div>
+                                      <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1 dark-popover-scrollbar">
+                                        {row.materialAvailability.childParts.map((cp, idx) => (
+                                          <div key={idx} className="leading-normal flex justify-between gap-2">
+                                            <div>
+                                              <div className="font-medium text-slate-100">{cp.name}</div>
+                                              <div className="text-slate-400 text-[10px]">{cp.code}{cp.productionOrderCode ? ` · Order ${cp.productionOrderCode}` : ''}</div>
+                                            </div>
+                                            <div className="text-indigo-400 text-right whitespace-nowrap">
+                                              {cp.shortfallQty > 0 ? `short ${cp.shortfallQty}` : `${cp.availableQty} / ${cp.neededQty}`}
+                                            </div>
                                           </div>
                                         ))}
                                       </div>

@@ -511,10 +511,14 @@ export default function RDProductionQueue() {
                                     )}
                                 </div>
 
-                                {/* BOM */}
+                                {/* BOM — reads the new MachineBOM (2026-09-17 cutover), the
+                                    same lineKind-tagged shape ProcessExecution.jsx's own
+                                    bomViewOpen modal renders: Child Part reference rows
+                                    grouped separately from the Machine's own plain
+                                    materials, instead of one flat undifferentiated list. */}
                                 <div>
-                                    <h3 className="text-sm font-bold text-slate-700 mb-2 border-b pb-1">Master BOM ({reviewModal.data.bom?.materials?.length || 0} items)</h3>
-                                    {reviewModal.data.bom?.materials?.length > 0 ? (
+                                    <h3 className="text-sm font-bold text-slate-700 mb-2 border-b pb-1">Master BOM ({reviewModal.data.materials?.length || 0} items)</h3>
+                                    {reviewModal.data.materials?.length > 0 ? (
                                         <div className="max-h-40 overflow-y-auto border rounded text-sm">
                                             <table className="w-full text-left">
                                                 <thead className="bg-slate-100 sticky top-0">
@@ -526,19 +530,38 @@ export default function RDProductionQueue() {
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y">
-                                                    {reviewModal.data.bom.materials.map((mat, i) => (
-                                                        <tr key={i} className="hover:bg-slate-50">
-                                                            <td className="px-3 py-1 font-mono text-xs">{mat.code}</td>
-                                                            <td className="px-3 py-1">{mat.item}</td>
-                                                            <td className="px-3 py-1 text-xs text-slate-500">{summarizeBomDimensions(mat) || '—'}</td>
-                                                            {/* Fabrication rows: Dimensions already shows the per-piece
-                                                                amount (e.g. "15 Centimeter") — Qty here is a piece count,
-                                                                not another length/area, so mat.unit (the Used Unit) would
-                                                                mislabel it (e.g. "2 Centimeter"). Non-fabrication rows are
-                                                                unaffected — mat.unit is genuinely their counting unit. */}
-                                                            <td className="px-3 py-1 text-right">{mat.quantity} {mat.fabricationCategory ? 'pcs' : mat.unit}</td>
-                                                        </tr>
-                                                    ))}
+                                                    {(() => {
+                                                        const materials = reviewModal.data.materials;
+                                                        const labelFor = { ChildPart: 'Child Part' };
+                                                        const groups = materials.some(m => m.lineKind)
+                                                            ? [
+                                                                { label: labelFor.ChildPart, rows: materials.filter(m => m.lineKind === 'ChildPart') },
+                                                                { label: 'Materials', rows: materials.filter(m => m.lineKind !== 'ChildPart') },
+                                                            ].filter(g => g.rows.length)
+                                                            : [{ label: null, rows: materials }];
+                                                        return groups.map(group => (
+                                                            <React.Fragment key={group.label || 'flat'}>
+                                                                {group.label && (
+                                                                    <tr>
+                                                                        <td colSpan={4} className="px-3 pt-2 pb-1 text-xs font-bold text-slate-500 uppercase bg-slate-50">{group.label}</td>
+                                                                    </tr>
+                                                                )}
+                                                                {group.rows.map((mat, i) => (
+                                                                    <tr key={mat._id || i} className="hover:bg-slate-50">
+                                                                        <td className="px-3 py-1 font-mono text-xs">{mat.code}</td>
+                                                                        <td className="px-3 py-1">{mat.item}</td>
+                                                                        <td className="px-3 py-1 text-xs text-slate-500">{summarizeBomDimensions(mat) || '—'}</td>
+                                                                        {/* Fabrication rows: Dimensions already shows the per-piece
+                                                                            amount (e.g. "15 Centimeter") — Qty here is a piece count,
+                                                                            not another length/area, so mat.unit (the Used Unit) would
+                                                                            mislabel it (e.g. "2 Centimeter"). Non-fabrication rows are
+                                                                            unaffected — mat.unit is genuinely their counting unit. */}
+                                                                        <td className="px-3 py-1 text-right">{mat.quantity} {mat.fabricationCategory ? 'pcs' : mat.unit}</td>
+                                                                    </tr>
+                                                                ))}
+                                                            </React.Fragment>
+                                                        ));
+                                                    })()}
                                                 </tbody>
                                             </table>
                                         </div>

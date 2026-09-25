@@ -6,6 +6,15 @@ import { showSmartToast } from '@/lib/toast-utils';
 const ProductionContext = createContext(null);
 
 export const PROCESS_STEPS = ['Job Work', 'Fabrication', 'Assembly', 'Painting', 'Re-Assembly', 'Final Testing'];
+// A Child Part order stops at Painting — no machine to re-assemble or
+// final-test; finished units go straight into Child Part Inventory. Job Work
+// dropped (2026-09-16) — a Sub Child Part is now independently stocked by
+// its own order flow, so Child Part just receives it from Store like any
+// other material. Mirrors the backend's SUB_CHILD_PART_STEPS
+// (ProductionOrder.js) exactly — keep these two in sync.
+export const SUB_CHILD_PART_STEPS = ['Fabrication', 'Assembly', 'Painting'];
+export const stepsForOrderKind = (orderKind) =>
+  orderKind === 'ChildPart' ? SUB_CHILD_PART_STEPS : PROCESS_STEPS;
 export const PROCESS_TYPE_MAP = {
   'Job Work': 'Outsourcing',
   'Fabrication': 'In-House',
@@ -129,7 +138,12 @@ export function ProductionProvider({ children }) {
   const startProcessMutation = useMutation({
     mutationFn: ({ orderId, stepIndex, unitNumber = 1 }) =>
       apiRequest('PUT', `${BASE}/orders/${orderId}/processes/${stepIndex}/start?unit=${unitNumber}`),
-    onSuccess: invalidateOrders,
+    // Starting a step commits its own unit's material consumption now
+    // (productionMfgController.js's commitStepMaterialConsumption,
+    // 2026-09-24) — also refresh any mounted StepMaterialStatus panel
+    // (client/src/components/production/StepMaterialStatus.jsx) so "on
+    // floor" reflects it immediately, not just on next remount.
+    onSuccess: () => { invalidateOrders(); qc.invalidateQueries({ queryKey: ['step-material-status'] }); },
     onError: (e) => showSmartToast(e, 'Failed to start'),
   });
 
@@ -200,34 +214,67 @@ export function ProductionProvider({ children }) {
   // Process callbacks — convert stepName to stepIndex. Every one takes an
   // optional trailing `unitNumber` (1-based, default 1) so existing call
   // sites that never pass it keep targeting the order's original pipeline.
-  const stepIndex = (stepName) => PROCESS_STEPS.indexOf(stepName);
+  // Resolved against the ORDER'S OWN real processes[] array (Unit 1's —
+  // every extraUnit shares the same step names, just its own instance),
+  // not the static, orderKind-keyed stepsForOrderKind. That static lookup
+  // can only ever return one shape per orderKind, but a Machine order can
+  // now be either the old 6-step pipeline or the new 2-step MachineBOM one
+  // (['Assembly', 'Final Testing'] — see ProductionOrder.js's
+  // MACHINE_BOM_STEPS on the backend) — both share orderKind:'Machine', so
+  // only the real document can tell them apart (corrected 2026-09-17, same
+  // bug class as the 2026-09-16 Child Part fix this comment used to
+  // describe — a static per-orderKind lookup was never going to survive a
+  // SECOND real shape under the same orderKind). Safe even off a stale
+  // `orders` snapshot, since an order's own processes[] step NAMES never
+  // change post-creation (only their status does).
+  //
+  // The one legitimate fallback: a ChildPart order's Unit 1 processes[] is
+  // lazily materialized with exactly one unambiguous shape
+  // (SUB_CHILD_PART_STEPS) — real ChildPart orders now get this populated
+  // for real at creation time (childPartReorderService.js), but existing
+  // legacy orders may still be caught mid-migration. A Sub Child Part
+  // order NEVER uses processes[] at all (empty is its permanent, correct
+  // state — its real UI is the checklist/cost-submission panel), so
+  // falling back to stepsForOrderKind for it (or for Machine, which has no
+  // single correct default anymore) silently manufactured a step index
+  // for a fake pipeline that doesn't exist in the database (real
+  // regression, reintroduced 2026-09-18 by an unrelated ChildPart-only
+  // bug fix that wasn't scoped narrowly enough — fixed again 2026-09-19).
+  const stepIndex = (orderId, stepName) => {
+    const order = orders.find(o => o._id === orderId || o.id === orderId);
+    let procs = order?.processes || [];
+    if (procs.length === 0 && order?.orderKind === 'ChildPart') {
+      procs = stepsForOrderKind(order.orderKind).map(step => ({ step }));
+    }
+    return procs.map(p => p.step).indexOf(stepName);
+  };
 
   const assignTeam = useCallback((orderId, stepName, teamId, unitNumber = 1) =>
-    assignTeamMutation.mutate({ orderId, stepIndex: stepIndex(stepName), teamId, unitNumber }), []);
+    assignTeamMutation.mutate({ orderId, stepIndex: stepIndex(orderId, stepName), teamId, unitNumber }), [orders]);
 
   const startProcess = useCallback((orderId, stepName, unitNumber = 1) =>
-    startProcessMutation.mutate({ orderId, stepIndex: stepIndex(stepName), unitNumber }), []);
+    startProcessMutation.mutate({ orderId, stepIndex: stepIndex(orderId, stepName), unitNumber }), [orders]);
 
   const markProcessComplete = useCallback((orderId, stepName, unitNumber = 1) =>
-    markProcessCompleteMutation.mutate({ orderId, stepIndex: stepIndex(stepName), unitNumber }), []);
+    markProcessCompleteMutation.mutate({ orderId, stepIndex: stepIndex(orderId, stepName), unitNumber }), [orders]);
 
   const approveQC = useCallback((orderId, stepName, qcBy, unitNumber = 1, productionCost, productionExpense) =>
-    approveQCMutation.mutate({ orderId, stepIndex: stepIndex(stepName), qcBy, unitNumber, productionCost, productionExpense }), []);
+    approveQCMutation.mutate({ orderId, stepIndex: stepIndex(orderId, stepName), qcBy, unitNumber, productionCost, productionExpense }), [orders]);
 
   const rejectQC = useCallback((orderId, stepName, qcBy, reason, unitNumber = 1) =>
-    rejectQCMutation.mutate({ orderId, stepIndex: stepIndex(stepName), qcBy, reason, unitNumber }), []);
+    rejectQCMutation.mutate({ orderId, stepIndex: stepIndex(orderId, stepName), qcBy, reason, unitNumber }), [orders]);
 
   const updateProcessNotes = useCallback((orderId, stepName, notes, unitNumber = 1) =>
-    updateProcessNotesMutation.mutate({ orderId, stepIndex: stepIndex(stepName), notes, unitNumber }), []);
+    updateProcessNotesMutation.mutate({ orderId, stepIndex: stepIndex(orderId, stepName), notes, unitNumber }), [orders]);
 
   const addSubEntry = useCallback((orderId, stepName, payload, unitNumber = 1) =>
-    addSubEntryMutation.mutateAsync({ orderId, stepIndex: stepIndex(stepName), payload, unitNumber }), []);
+    addSubEntryMutation.mutateAsync({ orderId, stepIndex: stepIndex(orderId, stepName), payload, unitNumber }), [orders]);
 
   const completeSubEntry = useCallback((orderId, stepName, subEntryId, unitNumber = 1) =>
-    completeSubEntryMutation.mutateAsync({ orderId, stepIndex: stepIndex(stepName), subEntryId, unitNumber }), []);
+    completeSubEntryMutation.mutateAsync({ orderId, stepIndex: stepIndex(orderId, stepName), subEntryId, unitNumber }), [orders]);
 
   const qcSubEntry = useCallback((orderId, stepName, subEntryId, qcStatus, qcBy, reason, unitNumber = 1) =>
-    qcSubEntryMutation.mutateAsync({ orderId, stepIndex: stepIndex(stepName), subEntryId, qcStatus, qcBy, reason, unitNumber }), []);
+    qcSubEntryMutation.mutateAsync({ orderId, stepIndex: stepIndex(orderId, stepName), subEntryId, qcStatus, qcBy, reason, unitNumber }), [orders]);
 
   // ── Multi-unit helpers ─────────────────────────────────────────────────────
   // How many physical machines this order builds (>= 1).
@@ -236,10 +283,11 @@ export function ProductionProvider({ children }) {
     return Math.max(1, Number(order?.orderQuantity) || 1);
   }, [orders]);
 
-  // Fresh, all-Pending process steps — mirrors the backend's buildProcessSteps(),
-  // used as a display-only placeholder for a unit the backend hasn't
-  // materialized into `extraUnits` yet (nothing has been done on it so far).
-  const buildDefaultProcesses = () => PROCESS_STEPS.map(step => ({
+  // Fresh, all-Pending process steps from a plain list of step names —
+  // mirrors the backend's buildStepsFromList (ProductionOrder.js), used as
+  // a display-only placeholder for a unit the backend hasn't materialized
+  // into `extraUnits` yet (nothing has been done on it so far).
+  const buildStepsFromNames = (stepNames) => stepNames.map(step => ({
     step, type: PROCESS_TYPE_MAP[step], status: 'Pending', assignedTeam: null,
     startDate: null, endDate: null, qcStatus: 'Pending', qcBy: null, qcDate: null,
     notes: '', reworks: [], subEntries: [],
@@ -247,12 +295,22 @@ export function ProductionProvider({ children }) {
 
   // Process-steps array for a given 1-based unit number of an order. Unit 1
   // is always `order.processes`; units 2..N come from `order.extraUnits`.
+  // A not-yet-materialized unit previews Unit 1's OWN real step names, not
+  // a static orderKind guess — same reasoning as stepIndex above (a
+  // Machine order can be either the old 6-step pipeline or the new 2-step
+  // MachineBOM one, both under orderKind:'Machine'; only the real document
+  // says which), falling back to the orderKind-keyed default only for the
+  // legacy-data edge case where Unit 1 itself is still empty.
   const getUnitProcesses = useCallback((orderId, unitNumber = 1) => {
     const order = orders.find(o => o._id === orderId || o.id === orderId);
     if (!order) return [];
     if (unitNumber <= 1) return order.processes;
     const extra = order.extraUnits?.[unitNumber - 2];
-    return extra ? extra.processes : buildDefaultProcesses();
+    if (extra) return extra.processes;
+    const template = order.processes?.length
+      ? order.processes.map(p => p.step)
+      : (order.orderKind === 'ChildPart' ? stepsForOrderKind('ChildPart') : []);
+    return buildStepsFromNames(template);
   }, [orders]);
 
   // ── Computed helpers (same interface as before) ───────────────────────────

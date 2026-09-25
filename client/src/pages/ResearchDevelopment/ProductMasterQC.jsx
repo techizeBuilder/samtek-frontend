@@ -226,7 +226,15 @@ export default function ProductMasterQC() {
                 <p className="text-xs text-slate-500 mt-0.5">Initial and Process checks, configured per Sub Child Part — material/grade/brand/qty/design file read live from this product's BOM</p>
               </CardHeader>
               <CardContent className="p-5">
-                {!partsData.hasBOM ? (
+                {partsData.hasMachineBOM ? (
+                  <div className="text-center py-8 text-slate-400 text-sm max-w-md mx-auto">
+                    This machine's BOM is built on the new Machine BOM — its Child Parts are
+                    reusable, independently-stocked units with their own complete QC pipeline,
+                    already checked before any unit ever reaches this machine's build. Nothing
+                    to configure here anymore; manage each Child Part's own checklist under{' '}
+                    <span className="font-medium text-slate-600">Inventory QC → Child Part</span>.
+                  </div>
+                ) : !partsData.hasBOM ? (
                   <div className="text-center py-8 text-slate-400 text-sm">No BOM created yet for this product — build one in BOM Management first.</div>
                 ) : partsData.childParts.length === 0 ? (
                   <div className="text-center py-8 text-slate-400 text-sm">No Child Parts yet — add them in BOM Management first.</div>

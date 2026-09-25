@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useLocation } from 'wouter';
 import { useAuth } from '@/hooks/useAuth';
@@ -51,7 +51,9 @@ import {
   RefreshCw,
   GripVertical,
   Ban,
-  Layers
+  Layers,
+  ClipboardCheck,
+  History
 } from 'lucide-react';
 
 import {
@@ -76,6 +78,8 @@ import ViewItemModal from './ViewItemModal';
 import DeleteConfirmDialog from './DeleteConfirmDialog';
 import GroupManagement from './GroupManagement';
 import UnitTypeManagement from './UnitTypeManagement';
+import StockAuditModal from './StockAuditModal';
+import StockAuditHistoryModal from './StockAuditHistoryModal';
 
 import { apiRequest } from '@/lib/queryClient';
 import { showSmartToast } from '@/lib/toast-utils';
@@ -202,6 +206,9 @@ function SortableRow({
   handleDelete,
   onToggleStatus,
   inventoryPermissions,
+  isStoreHead = false,
+  onVerifyStock,
+  onViewAuditHistory,
   isDraggable = true
 }) {
   const {
@@ -307,6 +314,28 @@ function SortableRow({
           <Button variant="ghost" size="sm" onClick={() => handleView(item)}>
             <Eye className="h-4 w-4" />
           </Button>
+          {isStoreHead && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onVerifyStock(item)}
+              className="text-blue-600 hover:text-blue-700"
+              title="Verify Stock"
+            >
+              <ClipboardCheck className="h-4 w-4" />
+            </Button>
+          )}
+          {isStoreHead && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onViewAuditHistory(item)}
+              className="text-slate-500 hover:text-slate-700"
+              title="Audit History"
+            >
+              <History className="h-4 w-4" />
+            </Button>
+          )}
           {inventoryPermissions.canEdit && (
             <Button variant="ghost" size="sm" onClick={() => handleEdit(item)}>
               <Edit className="h-4 w-4" />
@@ -363,11 +392,20 @@ export default function ModernInventoryUI() {
     canDelete: canPerformAction(moduleName, featureKey, 'delete'),
     canAlter: canPerformAction(moduleName, featureKey, 'alter')
   };
+  // Stock audit is a role-defining Store Head capability, not a togglable
+  // permission — this screen is shared by Unit Head/R&D/Store, and only
+  // Store Head (never Store Employee, even though they share this same
+  // screen) should ever see it. See inventoryController.js's auditStock.
+  const isStoreHead = user?.role === 'Store Head';
 
   // State management
   const [showForm, setShowForm] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [viewItem, setViewItem] = useState(null);
+  const [auditItem, setAuditItem] = useState(null);
+  const [isAuditOpen, setIsAuditOpen] = useState(false);
+  const [historyItem, setHistoryItem] = useState(null);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, item: null });
   const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState({ isOpen: false, items: [] });
   const [selectedItems, setSelectedItems] = useState(new Set());
@@ -644,6 +682,16 @@ export default function ModernInventoryUI() {
     setViewItem(item);
   };
 
+  const handleOpenStockAudit = (item) => {
+    setAuditItem(item);
+    setIsAuditOpen(true);
+  };
+
+  const handleOpenAuditHistory = (item) => {
+    setHistoryItem(item);
+    setIsHistoryOpen(true);
+  };
+
   const handleEdit = (item) => {
     setEditingItem(item);
     setShowForm(true);
@@ -727,6 +775,17 @@ export default function ModernInventoryUI() {
     setCurrentPage(1);
   }, [debouncedSearchTerm, selectedItemType, selectedSourceType, selectedItemSourceType, selectedStore, sortBy, sortOrder, itemsPerPage]);
 
+  // Default the Item Type tabs to the first real category once the options
+  // load, instead of leaving "All Item Types" selected — runs once (guarded
+  // by the ref) so it doesn't override the user manually tabbing back to All.
+  const didDefaultItemType = useRef(false);
+  useEffect(() => {
+    if (!didDefaultItemType.current && itemTypeOptions.length > 0) {
+      setSelectedItemType(itemTypeOptions[0].value);
+      didDefaultItemType.current = true;
+    }
+  }, [itemTypeOptions]);
+
   const handlePageChange = (page) => {
     setCurrentPage(page);
   };
@@ -802,6 +861,22 @@ export default function ModernInventoryUI() {
         </CardHeader>
         <CardContent className="p-6">
           <div className="space-y-6">
+            {/* Item Type — tabs instead of a dropdown, one per configured
+                Item Type plus "All Item Types"; same selectedItemType state
+                and query wiring as before, only the control changed. */}
+            <Tabs value={selectedItemType} onValueChange={setSelectedItemType}>
+              <TabsList className="h-auto flex-wrap justify-start bg-gray-100 p-1 gap-1">
+                <TabsTrigger value="all" className="text-xs px-3 py-1.5">
+                  <Package2 className="h-3.5 w-3.5 mr-1.5" />All Item Types
+                </TabsTrigger>
+                {itemTypeOptions.map((o) => (
+                  <TabsTrigger key={o._id || o.value} value={o.value} className="text-xs px-3 py-1.5">
+                    <Tag className="h-3.5 w-3.5 mr-1.5" />{o.value}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
+
             <div className="flex flex-wrap items-center gap-3 pb-1">
               <div className="flex-1 min-w-[200px] sm:min-w-[240px] relative">
                 <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
@@ -813,27 +888,6 @@ export default function ModernInventoryUI() {
                 />
               </div>
               <div className="flex flex-wrap gap-2">
-                <Select value={selectedItemType} onValueChange={setSelectedItemType}>
-                  <SelectTrigger className="w-[110px] sm:w-[130px] h-9 border-gray-300 focus:border-blue-500 text-xs px-2">
-                    <SelectValue placeholder="All Item Types" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">
-                      <div className="flex items-center gap-2">
-                        <Package2 className="h-4 w-4" />
-                        All Item Types
-                      </div>
-                    </SelectItem>
-                    {itemTypeOptions.map((o) => (
-                      <SelectItem key={o._id || o.value} value={o.value}>
-                        <div className="flex items-center gap-2">
-                          <Tag className="h-4 w-4" />
-                          {o.value}
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
                 <Select value={selectedSourceType} onValueChange={setSelectedSourceType}>
                   <SelectTrigger className="w-[110px] sm:w-[130px] h-9 border-gray-300 focus:border-blue-500 text-xs px-2">
                     <SelectValue placeholder="All Source Types" />
@@ -1014,6 +1068,9 @@ export default function ModernInventoryUI() {
                             handleDelete={handleDelete}
                             onToggleStatus={(it, isDiscontinued) => statusMutation.mutate({ id: it._id, isDiscontinued })}
                             inventoryPermissions={inventoryPermissions}
+                            isStoreHead={isStoreHead}
+                            onVerifyStock={handleOpenStockAudit}
+                            onViewAuditHistory={handleOpenAuditHistory}
                             isDraggable={sortBy === 'newest' && !searchTerm} // Only allow drag when in default view
                           />
                         ))
@@ -1105,6 +1162,29 @@ export default function ModernInventoryUI() {
         isOpen={!!viewItem}
         onClose={() => setViewItem(null)}
         item={viewItem}
+      />
+
+      <StockAuditModal
+        open={isAuditOpen}
+        onOpenChange={(open) => { setIsAuditOpen(open); if (!open) setAuditItem(null); }}
+        item={auditItem ? {
+          id: auditItem._id,
+          code: auditItem.code,
+          name: auditItem.name,
+          qty: itemDisplayQty(auditItem),
+          unit: itemDisplayUnit(auditItem),
+          dimensionVariants: auditItem.dimensionVariants,
+        } : null}
+        onSuccess={() => {
+          queryClient.invalidateQueries([`${apiBasePath}/items`]);
+          queryClient.invalidateQueries([`${apiBasePath}/stats`]);
+        }}
+      />
+
+      <StockAuditHistoryModal
+        open={isHistoryOpen}
+        onOpenChange={(open) => { setIsHistoryOpen(open); if (!open) setHistoryItem(null); }}
+        item={historyItem ? { id: historyItem._id, code: historyItem.code, name: historyItem.name } : null}
       />
 
       {inventoryPermissions.canDelete && (

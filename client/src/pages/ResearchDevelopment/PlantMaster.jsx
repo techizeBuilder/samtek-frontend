@@ -321,14 +321,27 @@ export default function PlantMaster() {
   const normalizeQty = (listKey, state, setState, id) => setState(f => ({ ...f, [listKey]: f[listKey].map(e => e.item === id ? { ...e, quantity: Math.max(1, Math.floor(Number(e.quantity)) || 1) } : e) }));
   const removeEntry = (listKey, setState, id) => setState(f => ({ ...f, [listKey]: f[listKey].filter(e => e.item !== id) }));
 
+  // A machine can now declare several power requirements (e.g. one 5 HP +
+  // one 10 HP motor) — see ProductMaster.jsx's Power Requirements builder.
+  // Machines saved before that existed only have the 4 legacy scalar
+  // fields, so fall back to those as a single entry.
   const powerLine = (m) => {
-    if (!m || (!m.powerSource && !m.powerRequiredHP && !m.powerRequiredKWH && !m.powerRequiredRPM)) return null;
-    const parts = [];
-    if (m.powerSource) parts.push(m.powerSource);
-    if (m.powerRequiredHP) parts.push(`${m.powerRequiredHP} HP`);
-    if (m.powerRequiredKWH) parts.push(`${m.powerRequiredKWH} KWH`);
-    if (m.powerRequiredRPM) parts.push(`${m.powerRequiredRPM} RPM`);
-    return parts.join(' · ');
+    if (!m) return null;
+    const rows = Array.isArray(m.powerRequirements) && m.powerRequirements.length > 0
+      ? m.powerRequirements
+      : (m.powerSource || m.powerRequiredHP || m.powerRequiredKWH || m.powerRequiredRPM)
+        ? [{ powerSource: m.powerSource, hp: m.powerRequiredHP, kwh: m.powerRequiredKWH, rpm: m.powerRequiredRPM }]
+        : [];
+    if (rows.length === 0) return null;
+    const lines = rows.map(pr => {
+      const parts = [];
+      if (pr.powerSource) parts.push(pr.powerSource);
+      if (pr.hp) parts.push(`${pr.hp} HP`);
+      if (pr.kwh) parts.push(`${pr.kwh} KWH`);
+      if (pr.rpm) parts.push(`${pr.rpm} RPM`);
+      return parts.join(' · ');
+    }).filter(Boolean);
+    return lines.length > 0 ? lines.join('; ') : null;
   };
 
   const renderMachineList = (state, setState) => (

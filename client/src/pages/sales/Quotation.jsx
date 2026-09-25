@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { createPortal } from 'react-dom';
 import { useLocation } from 'wouter';
 import {
   ArrowLeft,
@@ -11,7 +10,6 @@ import {
   FileText,
   Printer,
   ChevronRight,
-  ChevronDown,
   Package,
   ShoppingCart,
   Users,
@@ -38,7 +36,6 @@ import { toast } from "@/hooks/use-toast";
 import { generateQuotationPDF } from '@/utils/generateQuotationPDF';
 import { buildQuotationNumber } from '@/utils/quotationNumber';
 import { leadApi } from '@/api/leadService';
-import { salesItemRequestApi } from '@/api/salesItemRequestApi';
 import html2canvas from 'html2canvas';
 import QuotationHistoryModal from '@/components/sales/QuotationHistoryModal';
 
@@ -105,10 +102,6 @@ const Quotation = () => {
   });
   const [buyerType, setBuyerType] = useState('Customer'); // Dealer or Customer
   const [selectedPriceListCategory, setSelectedPriceListCategory] = useState(null);
-  const [isAddProductModalOpen, setIsAddProductModalOpen] = useState(false);
-  // Which past item request (by _id) is expanded to show its full details
-  // in the "Requests for this lead" list — null means none expanded.
-  const [expandedItemRequestId, setExpandedItemRequestId] = useState(null);
 
   // ─── Terms & Conditions state ────────────────────────────────
   // Fetch dynamic quotation settings
@@ -185,13 +178,6 @@ const Quotation = () => {
   const [selectedNotes, setSelectedNotes] = useState([]);
   const [showNotesPicker, setShowNotesPicker] = useState(false);
   const [notePickerChecked, setNotePickerChecked] = useState({});
-  // "Add Request" — Sales asks R&D to add a new product (not a direct Item
-  // create anymore); Lead Id + request date are auto-filled, read-only.
-  const [newItemRequest, setNewItemRequest] = useState({
-    productName: '', production: '', category: '', application: '', quantity: '1'
-  });
-  const [newItemRequestImage, setNewItemRequestImage] = useState(null);
-  const [isSubmittingItemRequest, setIsSubmittingItemRequest] = useState(false);
 
   // Fetch Real Items for Price List (Dynamic Data)
   const { data: priceListResponse, isLoading: priceListLoading } = useQuery({
@@ -272,6 +258,13 @@ const Quotation = () => {
   const companyStampUrl = companyResponse?.company?.stampUrl
     ? `${(import.meta.env.VITE_API_URL || 'http://localhost:5000').replace('/api', '')}${companyResponse.company.stampUrl}`
     : null;
+
+  // Company logo — dynamic per company (whatever the Company Admin uploaded
+  // on My Company), falling back to the default Samtek logo when the company
+  // hasn't uploaded one. Same convention as Sidebar.jsx's companyLogoUrl.
+  const companyLogoUrl = companyResponse?.company?.logoUrl
+    ? `${(import.meta.env.VITE_API_URL || 'http://localhost:5000').replace('/api', '')}${companyResponse.company.logoUrl}`
+    : '/logo Semtek.webp';
 
   // ─── Logged-in salesman data (for Thanks & Regards) ─────────
   const loggedInUser = (() => {
@@ -381,226 +374,6 @@ const Quotation = () => {
       return res.data;
     }
   });
-
-  const handleAddItemRequest = async (e) => {
-    e.preventDefault();
-    if (!newItemRequest.productName.trim()) {
-      toast({ title: "Required", description: "Product Name is required", variant: "destructive" });
-      return;
-    }
-    setIsSubmittingItemRequest(true);
-    try {
-      await salesItemRequestApi.createRequest({
-        leadId,
-        leadCode: leadData?.leadCode || '',
-        productName: newItemRequest.productName,
-        production: newItemRequest.production,
-        category: newItemRequest.category,
-        application: newItemRequest.application,
-        quantity: newItemRequest.quantity,
-      }, newItemRequestImage);
-
-      toast({ title: "Sent to R&D", description: "Your product request has been submitted for approval." });
-      setNewItemRequest({ productName: '', production: '', category: '', application: '', quantity: '1' });
-      setNewItemRequestImage(null);
-      queryClient.invalidateQueries({ queryKey: ['sales-item-requests', leadId] });
-    } catch (error) {
-      toast({ title: "Error", description: error.message || "Failed to send request", variant: "destructive" });
-    } finally {
-      setIsSubmittingItemRequest(false);
-    }
-  };
-
-  const { data: itemRequestsData } = useQuery({
-    queryKey: ['sales-item-requests', leadId],
-    queryFn: () => salesItemRequestApi.listRequests({ leadId }),
-    enabled: !!leadId && isAddProductModalOpen,
-  });
-  const itemRequests = itemRequestsData?.requests || [];
-
-  const renderAddProductModal = () => {
-    if (!isAddProductModalOpen) return null;
-
-    const REQUEST_STATUS_STYLE = {
-      Pending: 'bg-amber-50 text-amber-700 border-amber-200',
-      Approved: 'bg-green-50 text-green-700 border-green-200',
-      Rejected: 'bg-red-50 text-red-700 border-red-200',
-    };
-
-    return createPortal(
-      <div className="fixed inset-0 z-[50] overflow-hidden flex items-center justify-center">
-        {/* Backdrop */}
-        <div
-          className="fixed inset-0 bg-black/40 transition-opacity"
-          onClick={() => setIsAddProductModalOpen(false)}
-        />
-
-        {/* Modal Content */}
-        <div
-          className="relative bg-white rounded-xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] z-[51]"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="px-6 py-4 flex justify-between items-center border-b bg-gray-50 flex-shrink-0">
-            <h2 className="text-xl font-bold flex items-center gap-2 text-gray-800">
-              <Package className="h-5 w-5 text-orange-600" /> Request New Product from R&D
-            </h2>
-            <button onClick={() => setIsAddProductModalOpen(false)} className="hover:bg-gray-200 p-1 rounded-full transition-colors text-gray-500">
-              <X className="h-6 w-6" />
-            </button>
-          </div>
-
-          <form onSubmit={handleAddItemRequest} className="p-6 overflow-y-auto custom-scrollbar flex-1 min-h-0 space-y-5">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label className="text-gray-700 font-semibold">Lead Id</Label>
-                <Input value={leadData?.leadCode || leadId || ''} disabled className="bg-gray-100 border-gray-300" />
-              </div>
-              <div className="space-y-2">
-                <Label className="text-gray-700 font-semibold">Request Date</Label>
-                <Input value={new Date().toLocaleDateString()} disabled className="bg-gray-100 border-gray-300" />
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-gray-700 font-semibold">Product Name *</Label>
-                <Input
-                  placeholder="Enter Product Name"
-                  value={newItemRequest.productName}
-                  onChange={(e) => setNewItemRequest({ ...newItemRequest, productName: e.target.value })}
-                  className="border-gray-300"
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label className="text-gray-700 font-semibold">Production</Label>
-                <Input
-                  placeholder="e.g. In-house / Outsourced"
-                  value={newItemRequest.production}
-                  onChange={(e) => setNewItemRequest({ ...newItemRequest, production: e.target.value })}
-                  className="border-gray-300"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-gray-700 font-semibold">Product Category</Label>
-                <Input
-                  placeholder="e.g. Flour Mill Plant"
-                  value={newItemRequest.category}
-                  onChange={(e) => setNewItemRequest({ ...newItemRequest, category: e.target.value })}
-                  className="border-gray-300"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label className="text-gray-700 font-semibold">Quantity</Label>
-                <Input
-                  type="number"
-                  min="1"
-                  value={newItemRequest.quantity}
-                  onChange={(e) => setNewItemRequest({ ...newItemRequest, quantity: e.target.value })}
-                  className="border-gray-300"
-                />
-              </div>
-
-              <div className="space-y-2 md:col-span-2">
-                <Label className="text-gray-700 font-semibold">Application</Label>
-                <Input
-                  placeholder="Where/how this product will be used"
-                  value={newItemRequest.application}
-                  onChange={(e) => setNewItemRequest({ ...newItemRequest, application: e.target.value })}
-                  className="border-gray-300"
-                />
-              </div>
-
-              <div className="space-y-2 md:col-span-2">
-                <Label className="text-gray-700 font-semibold">Image</Label>
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => setNewItemRequestImage(e.target.files[0] || null)}
-                  className="block w-full text-sm text-gray-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100"
-                />
-                {newItemRequestImage && (
-                  <img src={URL.createObjectURL(newItemRequestImage)} alt="preview" className="h-16 w-16 object-cover rounded border" />
-                )}
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-3 border-t pt-4">
-              <Button type="button" variant="ghost" onClick={() => setIsAddProductModalOpen(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={isSubmittingItemRequest} className="bg-orange-600 hover:bg-orange-700">
-                {isSubmittingItemRequest ? 'Sending...' : 'Send Request to R&D'}
-              </Button>
-            </div>
-
-            {/* Past requests for this lead — surfaces status back to Sales.
-                Click a row to expand its full details (production/category/
-                quantity/application/image, who requested it, and R&D's own
-                review remarks once decided) — previously just a status
-                badge with no way to see anything else about the request
-                (confirmed 2026-09-03). */}
-            {itemRequests.length > 0 && (
-              <div className="border-t pt-4 space-y-2">
-                <p className="text-sm font-semibold text-gray-700">Requests for this lead</p>
-                {itemRequests.map((r) => {
-                  const isExpanded = expandedItemRequestId === r._id;
-                  const imageUrl = r.image
-                    ? (r.image.startsWith('http') ? r.image : `${(import.meta.env.VITE_API_URL || 'http://localhost:5000').replace('/api', '')}${r.image}`)
-                    : null;
-                  return (
-                    <div key={r._id} className="rounded-lg border border-gray-200 bg-gray-50 overflow-hidden">
-                      <button
-                        type="button"
-                        onClick={() => setExpandedItemRequestId(isExpanded ? null : r._id)}
-                        className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left hover:bg-gray-100 transition-colors"
-                      >
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium text-gray-800 truncate">{r.productName}</p>
-                          <p className="text-[11px] text-gray-400">{new Date(r.createdAt).toLocaleString()}</p>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${REQUEST_STATUS_STYLE[r.status]}`}>
-                            {r.status}
-                          </span>
-                          <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-                        </div>
-                      </button>
-                      {isExpanded && (
-                        <div className="px-3 pb-3 pt-1 border-t border-gray-200 bg-white space-y-2">
-                          <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
-                            <div><span className="text-gray-400">Production:</span> <span className="text-gray-700">{r.production || '—'}</span></div>
-                            <div><span className="text-gray-400">Category:</span> <span className="text-gray-700">{r.category || '—'}</span></div>
-                            <div><span className="text-gray-400">Quantity:</span> <span className="text-gray-700">{r.quantity ?? '—'}</span></div>
-                            <div><span className="text-gray-400">Requested By:</span> <span className="text-gray-700">{r.requestedBy?.fullName || r.requestedBy?.username || '—'}</span></div>
-                          </div>
-                          {r.application && (
-                            <div className="text-xs"><span className="text-gray-400">Application:</span> <span className="text-gray-700">{r.application}</span></div>
-                          )}
-                          {imageUrl && (
-                            <img src={imageUrl} alt={r.productName} className="h-16 w-16 object-cover rounded border border-gray-200" />
-                          )}
-                          {r.status !== 'Pending' && (
-                            <div className="text-xs pt-1.5 border-t border-gray-100">
-                              <span className="text-gray-400">{r.status} by:</span> <span className="text-gray-700">{r.reviewedBy?.fullName || r.reviewedBy?.username || '—'}</span>
-                              {r.reviewedAt && <span className="text-gray-400"> on {new Date(r.reviewedAt).toLocaleString()}</span>}
-                              {r.reviewRemarks && (
-                                <p className="text-gray-700 mt-1 bg-gray-50 border border-gray-100 rounded px-2 py-1.5">{r.reviewRemarks}</p>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </form>
-        </div>
-      </div>,
-      document.body
-    );
-  };
 
   const productsList = itemsResponse?.items || [];
   const categories = [...new Set(productsList.map(p => p.category))];
@@ -750,9 +523,14 @@ const Quotation = () => {
       });
     };
 
+    const blockedPlants = [];
     names.forEach(name => {
       const plant = allPlants.find(pl => pl.name === name);
       if (plant) {
+        // Picked on the lead before one of its machines/motors was
+        // discontinued or un-released — same rule as the Plant dropdown:
+        // not selectable now, so its items aren't auto-added either.
+        if (plant.unavailableItems?.length > 0) { blockedPlants.push(plant); return; }
         (plant.machines || []).forEach(m => { if (m.item) addPicked(m.item, m.quantity); });
         (plant.motors || []).forEach(m => { if (m.item) addPicked(m.item, m.quantity); });
         return;
@@ -763,6 +541,13 @@ const Quotation = () => {
 
     if (picked.length > 0) {
       setSelectedItems(picked);
+    }
+    if (blockedPlants.length > 0) {
+      toast({
+        title: 'Plant not available',
+        description: blockedPlants.map(pl => `${pl.name}: ${pl.unavailableItems.map(u => `${u.name} (${u.code}) is ${u.reason === 'Discontinued' ? 'discontinued' : 'not released'}`).join('; ')}`).join(' · '),
+        variant: 'destructive',
+      });
     }
     // Mark done regardless of whether any name actually matched, so a lead
     // whose picks don't resolve to real catalog rows (renamed/discontinued
@@ -893,7 +678,7 @@ const Quotation = () => {
     toast({ title: "Generating PDF...", description: "Creating quotation layout..." });
     try {
       await generateQuotationPDF({
-        logoDataUrl: '/logo Semtek.webp',
+        logoDataUrl: companyLogoUrl,
         stampDataUrl: companyStampUrl,
         companyData,
         leadData,
@@ -956,7 +741,7 @@ const Quotation = () => {
     toast({ title: "Preparing print...", description: "Creating quotation layout..." });
     try {
       const dataUri = await generateQuotationPDF({
-        logoDataUrl: '/logo Semtek.webp',
+        logoDataUrl: companyLogoUrl,
         stampDataUrl: companyStampUrl,
         companyData,
         leadData,
@@ -1020,7 +805,7 @@ const Quotation = () => {
         pdfBase64 = await captureHTMLToPDF(true);
       } else {
         pdfBase64 = await generateQuotationPDF({
-          logoDataUrl: '/logo Semtek.webp',
+          logoDataUrl: companyLogoUrl,
           stampDataUrl: companyStampUrl,
           companyData,
           leadData,
@@ -1283,17 +1068,12 @@ const Quotation = () => {
         </div>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
+          <CardHeader>
             <div>
               <CardTitle>Select Type And View Data</CardTitle>
               <p className="text-sm text-blue-600 font-bold mt-1">
                 Requirement For: {leadData?.productRequired || 'Items'} (Lead #{leadData?.leadCode || 'N/A'})
               </p>
-            </div>
-            <div className="flex items-center gap-4">
-              <Button onClick={() => setIsAddProductModalOpen(true)} className="bg-orange-500 hover:bg-orange-600">
-                <Plus className="h-4 w-4 mr-2" /> Add Request
-              </Button>
             </div>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -1350,8 +1130,18 @@ const Quotation = () => {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="All">All Plants</SelectItem>
+                    {/* A plant with a discontinued / not-yet-released machine
+                        or motor inside is listed but can't be chosen
+                        (server's getSalesPlants → unavailableItems). */}
                     {allPlants.map(pl => (
-                      <SelectItem key={pl._id} value={pl._id}>{pl.name}</SelectItem>
+                      <SelectItem key={pl._id} value={pl._id} disabled={pl.unavailableItems?.length > 0}>
+                        {pl.name}
+                        {pl.unavailableItems?.length > 0 && (
+                          <span className="block text-[10px] text-amber-700">
+                            Not available — {pl.unavailableItems.map(u => `${u.name} (${u.code}) is ${u.reason === 'Discontinued' ? 'discontinued' : 'not released'}`).join('; ')}
+                          </span>
+                        )}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -2067,7 +1857,7 @@ const Quotation = () => {
             <div className="flex border-b border-gray-400">
               {/* Logo Column */}
               <div className="w-[18%] p-4 border-r border-gray-400 flex items-center justify-center">
-                <img src="/logo Semtek.webp" alt="Logo" className="h-16 w-auto object-contain" />
+                <img src={companyLogoUrl} alt="Logo" className="h-16 w-auto object-contain" />
               </div>
               {/* Address Column */}
               <div className="w-[52%] p-4 border-r border-gray-400 space-y-1 flex flex-col justify-center">
@@ -2369,7 +2159,7 @@ const Quotation = () => {
           <div className="bg-blue-800 text-white p-4 flex justify-between items-center">
             <div className="flex items-center gap-4">
               <div className="bg-white p-1 rounded">
-                <img src="/logo Semtek.webp" alt="Samtek Logo" className="h-12 w-auto object-contain" />
+                <img src={companyLogoUrl} alt="Samtek Logo" className="h-12 w-auto object-contain" />
               </div>
               <div>
                 <div className="text-2xl font-black tracking-tight">{companyName.toUpperCase()}</div>
@@ -2548,7 +2338,6 @@ const Quotation = () => {
       {step === 'builder' && renderBuilder()}
       {step === 'preview' && renderPreview()}
       {step === 'price_list_preview' && renderPriceListPreview()}
-      {renderAddProductModal()}
     </div>
   );
 };

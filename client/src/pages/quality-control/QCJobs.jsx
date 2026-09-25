@@ -6,7 +6,7 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { ClipboardList, Plus, Clock, CheckCircle2, XCircle, AlertTriangle, Factory, ShoppingCart, Package } from 'lucide-react';
+import { ClipboardList, Plus, Clock, CheckCircle2, XCircle, AlertTriangle, Factory, ShoppingCart, Package, Layers } from 'lucide-react';
 
 const statusColor = {
   Pending: 'bg-amber-100 text-amber-700',
@@ -22,7 +22,8 @@ const statusIcon = {
   Rejected: XCircle,
 };
 
-const sourceIcon = { Purchase: ShoppingCart, Production: Factory, Store: Package };
+const sourceIcon = { Purchase: ShoppingCart, Production: Factory, Store: Package, SubChildPartJobWork: Layers, ChildPartProduction: Layers };
+const sourceLabel = { SubChildPartJobWork: 'Sub Child Part QC', ChildPartProduction: 'Child Part QC' };
 
 export default function QCJobs() {
   const { hasFeatureAccess } = usePermissions();
@@ -48,7 +49,20 @@ export default function QCJobs() {
   useEffect(() => { setPage(1); }, [search, statusFilter, sourceFilter]);
 
   const statuses = ['all', 'Pending', 'In Progress', 'Approved', 'Rejected'];
-  const sources = ['all', 'Purchase', 'Production', 'Store'];
+  // 'all' means literally every source, Sub Child Part QC and Child Part QC
+  // included — their own pills remain as a convenience filter, not an
+  // exclusion from the default view.
+  const sources = ['all', 'Purchase', 'Production', 'Store', 'SubChildPartJobWork', 'ChildPartProduction'];
+  // "Sub Child Part QC" is ONE pill (kept as the single 'SubChildPartJobWork'
+  // value everywhere else — labels, active-state styling, counts) but spans
+  // TWO real `source` values: Purchase's own Job Work route
+  // (source:'SubChildPartJobWork') and Production's in-house route
+  // (source:'SubChildPartProduction') — same tier, just two different
+  // production methods (which one an Item uses is its own
+  // subChildPartDetails.jobWork flag). Expanded only at request-build time
+  // so the pill itself doesn't need to change shape (confirmed 2026-09-19:
+  // this pill was silently only ever showing the Purchase half).
+  const sourceQueryValue = (filter) => filter === 'SubChildPartJobWork' ? 'SubChildPartJobWork,SubChildPartProduction' : filter;
 
   const { data: jobsResponse, isLoading: jobsLoading } = useQuery({
     queryKey: ['qc-jobs', 'list', { page, search, statusFilter, sourceFilter }],
@@ -56,7 +70,7 @@ export default function QCJobs() {
       const params = new URLSearchParams({ page: String(page), limit: '20', withStatusCounts: 'true' });
       if (search) params.set('search', search);
       if (statusFilter !== 'all') params.set('status', statusFilter);
-      if (sourceFilter !== 'all') params.set('source', sourceFilter);
+      if (sourceFilter !== 'all') params.set('source', sourceQueryValue(sourceFilter));
       return apiRequest('GET', `/api/qc/jobs?${params.toString()}`);
     },
     keepPreviousData: true,
@@ -131,7 +145,7 @@ export default function QCJobs() {
                 sourceFilter === s ? 'bg-blue-600 text-white' : 'bg-white text-slate-500 border border-slate-200 hover:border-slate-300'
               }`}
             >
-              {s === 'all' ? 'All Sources' : s}
+              {s === 'all' ? 'All Sources' : (sourceLabel[s] || s)}
             </button>
           ))}
         </div>
@@ -169,7 +183,7 @@ export default function QCJobs() {
                         </div>
                         <div className="flex items-center gap-3 mt-1 flex-wrap text-xs text-slate-500">
                           {job.orderCode && <><span>QC ID: {job.qcJobId}</span><span>·</span></>}
-                          <span>{job.source}</span>
+                          <span>{sourceLabel[job.source] || job.source}</span>
                           <span>·</span>
                           <span>{job.category}</span>
                           {job.sourceRefId && <><span>·</span><span>{job.sourceRefId}</span></>}

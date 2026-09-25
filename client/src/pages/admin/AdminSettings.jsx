@@ -11,13 +11,12 @@ import { Switch } from '@/components/ui/switch';
 import {
   Building2, Settings, Globe, Mail, Zap, PhoneCall, Eye, EyeOff, Megaphone, Facebook, MessageCircle,
   Plus, Pencil, Trash2, Save, RefreshCw, Info, Key, Phone, CheckCircle2,
-  FileText, Layers, DollarSign, StickyNote, Upload,
+  Layers, Upload,
   ChevronRight, Truck, ClipboardList,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { apiRequest } from '@/lib/queryClient';
-import { buildQuotationNumber } from '@/utils/quotationNumber';
 
 // ─── Reusable inline-edit list item ──────────────────────────────────────────
 function ListItem({ item, onSave, onDelete, fields }) {
@@ -129,113 +128,7 @@ function CrudSection({ title, icon: Icon, items = [], fields, addLabel, onAdd, o
   );
 }
 
-// ─── Quotation Number Setting — bespoke form + table (dropdowns + live example,
-//     which the generic CrudSection/ListItem above don't support) ─────────────
-const BIFURCATE_OPTIONS = ['-', '/', '_', 'None'];
-const FY_POSITION_OPTIONS = [
-  { value: 'none', label: '== Select ==' },
-  { value: 'before_prefix', label: 'Before Prefix' },
-  { value: 'after_prefix', label: 'After Prefix' },
-];
 const selectClass = 'h-9 w-full rounded-md border border-gray-300 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300';
-
-function QuotationNumberSettingSection({ items = [], onAdd, onUpdate, onDelete }) {
-  const emptyForm = { prefix: '', suffix: '', bifurcateWith: '-', financialYearPosition: 'none' };
-  const [form, setForm] = useState(emptyForm);
-  const [editingId, setEditingId] = useState(null);
-
-  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
-  const example = buildQuotationNumber(form, 'LD-0001');
-
-  const startEdit = (item) => {
-    setEditingId(item._id);
-    setForm({
-      prefix: item.prefix || '',
-      suffix: item.suffix || '',
-      bifurcateWith: item.bifurcateWith || '-',
-      financialYearPosition: item.financialYearPosition || 'none',
-    });
-  };
-  const cancelEdit = () => { setEditingId(null); setForm(emptyForm); };
-  const handleSave = () => {
-    if (editingId) onUpdate(editingId, form);
-    else onAdd(form);
-    setForm(emptyForm);
-    setEditingId(null);
-  };
-
-  return (
-    <div className="bg-white rounded-lg border border-gray-200">
-      {/* Form */}
-      <div className="p-5 border-b border-gray-100">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 items-end">
-          <div className="space-y-1.5">
-            <Label className="text-sm">Prefix</Label>
-            <Input value={form.prefix} onChange={e => set('prefix', e.target.value)} placeholder="e.g. SAM" />
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-sm">Suffix</Label>
-            <Input value={form.suffix} onChange={e => set('suffix', e.target.value)} placeholder="e.g. 0011" />
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-sm">Bifurcate With</Label>
-            <select className={selectClass} value={form.bifurcateWith} onChange={e => set('bifurcateWith', e.target.value)}>
-              {BIFURCATE_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
-            </select>
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-sm">Add Financial Year (eg. 25-26)</Label>
-            <select className={selectClass} value={form.financialYearPosition} onChange={e => set('financialYearPosition', e.target.value)}>
-              {FY_POSITION_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-          </div>
-        </div>
-        <div className="flex items-center justify-between mt-4">
-          <p className="text-sm text-gray-600"><span className="font-semibold text-gray-800">For Example:</span> {example}</p>
-          <div className="flex gap-2">
-            {editingId && <Button size="sm" variant="ghost" onClick={cancelEdit}>Cancel</Button>}
-            <Button size="sm" onClick={handleSave}>{editingId ? 'Update' : 'Save'}</Button>
-          </div>
-        </div>
-      </div>
-
-      {/* Saved settings table */}
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-gray-100 text-left text-gray-500">
-              <th className="px-5 py-3 font-medium">Prefix</th>
-              <th className="px-5 py-3 font-medium">Suffix</th>
-              <th className="px-5 py-3 font-medium">Bifurcate With</th>
-              <th className="px-5 py-3 font-medium">Financial Year Position</th>
-              <th className="px-5 py-3 font-medium">Example</th>
-              <th className="px-5 py-3 font-medium">Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.length === 0 ? (
-              <tr><td colSpan={6} className="px-5 py-6 text-center text-gray-400 italic">No number settings yet — add one above.</td></tr>
-            ) : items.map(item => (
-              <tr key={item._id} className="border-b border-gray-50 last:border-0">
-                <td className="px-5 py-3">{item.prefix || '-'}</td>
-                <td className="px-5 py-3">{item.suffix || '-'}</td>
-                <td className="px-5 py-3">{item.bifurcateWith}</td>
-                <td className="px-5 py-3">{FY_POSITION_OPTIONS.find(o => o.value === item.financialYearPosition)?.label || item.financialYearPosition}</td>
-                <td className="px-5 py-3 font-medium text-gray-800">{buildQuotationNumber(item, 'LD-0001')}</td>
-                <td className="px-5 py-3">
-                  <div className="flex gap-1">
-                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-gray-500 hover:text-gray-800" onClick={() => startEdit(item)}><Pencil className="h-3.5 w-3.5" /></Button>
-                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-400 hover:text-red-600" onClick={() => onDelete(item._id)}><Trash2 className="h-3.5 w-3.5" /></Button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
 
 // ─── Sales Checklist Setting — bespoke because each point needs a Value Type
 //     select (none/text/number) plus fields that only make sense for text/
@@ -359,11 +252,7 @@ export default function AdminSettings() {
     enabled: !!user?.companyId,
   });
   const settings      = data?.settings || {};
-  const terms         = settings.termsAndConditions || [];
-  const charges       = settings.additionalCharges || [];
-  const notes         = settings.quotationNotes || [];
   const dispatchChecklist = settings.dispatchChecklist || [];
-  const quotationNumberSettings = settings.quotationNumberSettings || [];
   const hrmsDocumentTypes = settings.hrmsDocumentTypes || [];
   const roles = settings.roles || [];
 
@@ -381,30 +270,10 @@ export default function AdminSettings() {
   const addSmtpM    = useMutation({ mutationFn: b => adminSettingsApi.addSmtp(b), onSuccess: () => { invSmtp(); toast({ title: 'SMTP added' }); setSmtpForm({ department: 'SALES', provider: 'Gmail', mailServer: 'smtp.gmail.com', port: 587, email: '', password: '' }); }, onError: e => toast({ title: 'Error', description: e.message, variant: 'destructive' }) });
   const delSmtpM    = useMutation({ mutationFn: id => adminSettingsApi.deleteSmtp(id), onSuccess: () => { invSmtp(); toast({ title: 'SMTP deleted' }); }, onError: e => toast({ title: 'Error', description: e.message, variant: 'destructive' }) });
 
-  // Terms
-  const addTermM    = useMutation(m(b => adminSettingsApi.addTerm(b), 'Term added'));
-  const updTermM    = useMutation(m(({ id, body }) => adminSettingsApi.updateTerm(id, body), 'Term updated'));
-  const delTermM    = useMutation(m(id => adminSettingsApi.deleteTerm(id), 'Term deleted'));
-
-  // Charges
-  const addChargeM  = useMutation(m(b => adminSettingsApi.addCharge(b), 'Charge added'));
-  const updChargeM  = useMutation(m(({ id, body }) => adminSettingsApi.updateCharge(id, body), 'Charge updated'));
-  const delChargeM  = useMutation(m(id => adminSettingsApi.deleteCharge(id), 'Charge deleted'));
-
-  // Notes
-  const addNoteM    = useMutation(m(b => adminSettingsApi.addNote(b), 'Note added'));
-  const updNoteM    = useMutation(m(({ id, body }) => adminSettingsApi.updateNote(id, body), 'Note updated'));
-  const delNoteM    = useMutation(m(id => adminSettingsApi.deleteNote(id), 'Note deleted'));
-
   // Dispatch Checklist
   const addChecklistM = useMutation(m(b => adminSettingsApi.addDispatchChecklistItem(b), 'Checklist item added'));
   const updChecklistM = useMutation(m(({ id, body }) => adminSettingsApi.updateDispatchChecklistItem(id, body), 'Checklist item updated'));
   const delChecklistM = useMutation(m(id => adminSettingsApi.deleteDispatchChecklistItem(id), 'Checklist item deleted'));
-
-  // Quotation Number Settings
-  const addNumberSettingM = useMutation(m(b => adminSettingsApi.addQuotationNumberSetting(b), 'Number setting added'));
-  const updNumberSettingM = useMutation(m(({ id, body }) => adminSettingsApi.updateQuotationNumberSetting(id, body), 'Number setting updated'));
-  const delNumberSettingM = useMutation(m(id => adminSettingsApi.deleteQuotationNumberSetting(id), 'Number setting deleted'));
 
   // HRMS: Upload Document Settings
   const addHrmsDocTypeM = useMutation(m(b => adminSettingsApi.addHrmsDocumentType(b), 'Document type added'));
@@ -539,15 +408,9 @@ export default function AdminSettings() {
   // General sub-items — some have flyout children
   const genNav = [
     { id: 'smtp',      label: 'SMTP Settings',     icon: Mail     },
-    {
-      id: 'quotation', label: 'Quotation Settings', icon: FileText,
-      children: [
-        { id: 'terms',   label: 'Terms & Conditions' },
-        { id: 'charges', label: 'Additional Charges'  },
-        { id: 'notes',   label: 'Notes'               },
-        { id: 'quotation_number', label: 'Number Setting' },
-      ]
-    },
+    // Quotation Settings (Terms & Conditions / Additional Charges / Notes /
+    // Number Setting) are per-company now — managed by Sales Head via a request
+    // that a Company Admin approves (LeadSettingsRequestPanel), not here.
     {
       id: 'dispatch', label: 'Dispatch', icon: Truck,
       children: [
@@ -801,71 +664,9 @@ export default function AdminSettings() {
               </>
             )}
 
-            {/* ── Quotation Settings — each child is its own section ── */}
-            {generalSection === 'terms' && (
-              <>
-                <h1 className="text-xl font-semibold text-gray-900">Terms & Conditions</h1>
-                <div className="bg-white rounded-lg border border-gray-200 p-5">
-                  <CrudSection title="Terms & Conditions" icon={FileText} items={terms} defaultOpen
-                    fields={[
-                      { key: 'heading', label: 'Heading', placeholder: 'e.g. Payment Terms', primary: true },
-                      { key: 'text',    label: 'Content', placeholder: 'Full terms text...', type: 'textarea' },
-                    ]}
-                    addLabel="Add Term"
-                    onAdd={f => addTermM.mutate(f)}
-                    onUpdate={(id, f) => updTermM.mutate({ id, body: f })}
-                    onDelete={id => delTermM.mutate(id)}
-                    emptyText="No terms yet."
-                  />
-                </div>
-              </>
-            )}
-            {generalSection === 'charges' && (
-              <>
-                <h1 className="text-xl font-semibold text-gray-900">Additional Charges</h1>
-                <div className="bg-white rounded-lg border border-gray-200 p-5">
-                  <CrudSection title="Additional Charges" icon={DollarSign} items={charges} defaultOpen
-                    fields={[
-                      { key: 'name',  label: 'Charge Name', placeholder: 'e.g. Installation Charges', primary: true },
-                      { key: 'price', label: 'Price (₹)',   placeholder: '0',  type: 'number', prefix: '₹' },
-                      { key: 'gst',   label: 'GST %',       placeholder: '18', type: 'number', prefix: 'GST%:', default: 18 },
-                    ]}
-                    addLabel="Add Charge"
-                    onAdd={f => addChargeM.mutate({ ...f, price: parseFloat(f.price) || 0, gst: f.gst === '' ? 18 : (parseFloat(f.gst) || 0) })}
-                    onUpdate={(id, f) => updChargeM.mutate({ id, body: { ...f, price: parseFloat(f.price) || 0, gst: f.gst === '' ? 18 : (parseFloat(f.gst) || 0) } })}
-                    onDelete={id => delChargeM.mutate(id)}
-                    emptyText="No charges yet."
-                  />
-                </div>
-              </>
-            )}
-            {generalSection === 'notes' && (
-              <>
-                <h1 className="text-xl font-semibold text-gray-900">Notes</h1>
-                <div className="bg-white rounded-lg border border-gray-200 p-5">
-                  <CrudSection title="Notes" icon={StickyNote} items={notes} defaultOpen
-                    fields={[{ key: 'text', label: 'Note Text', placeholder: 'Enter note...', type: 'textarea', primary: true }]}
-                    addLabel="Add Note"
-                    onAdd={f => addNoteM.mutate(f)}
-                    onUpdate={(id, f) => updNoteM.mutate({ id, body: f })}
-                    onDelete={id => delNoteM.mutate(id)}
-                    emptyText="No notes yet."
-                  />
-                </div>
-              </>
-            )}
-            {generalSection === 'quotation_number' && (
-              <>
-                <h1 className="text-xl font-semibold text-gray-900">Quotation Number Setting</h1>
-                <p className="text-sm text-gray-500 -mt-3">Controls the "Quotation No" shown in preview, download, print & email. The most recently saved row is the active format.</p>
-                <QuotationNumberSettingSection
-                  items={quotationNumberSettings}
-                  onAdd={f => addNumberSettingM.mutate(f)}
-                  onUpdate={(id, f) => updNumberSettingM.mutate({ id, body: f })}
-                  onDelete={id => delNumberSettingM.mutate(id)}
-                />
-              </>
-            )}
+            {/* Quotation Settings (Terms & Conditions / Additional Charges /
+                Notes / Number Setting) moved to Sales — Sales Head proposes a
+                change, Company Admin approves it (LeadSettingsRequestPanel). */}
 
             {generalSection === 'dispatch_checklist' && (
               <>

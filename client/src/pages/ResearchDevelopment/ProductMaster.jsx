@@ -87,11 +87,16 @@ const emptyForm = {
   // always defaulted rather than gated behind the sourcing radio. Output Unit
   // defaults to Pieces too (still shown/editable on the form, unlike Purchase Unit).
   inputUnitType: 'Count Unit', inputUnit: 'Pieces', outputUnitType: 'Count Unit', outputUnit: 'Pieces',
-  variant: '', productionRate: '', materialGrade: '', powerSource: '',
-  powerRequiredHP: '', powerRequiredKWH: '', powerRequiredRPM: '',
+  variant: '', productionRate: '', materialGrade: '',
+  // A machine can run on several motors (e.g. one 5 HP + one 10 HP) — see
+  // addPowerRow/renderPowerBuilder below.
+  powerRequirements: [],
   accessories: [], modelNumber: '', applications: [],
-  purchase: true, internalManufacturing: false, isDiscontinued: false,
-  stdCost: '', purchaseCost: '', salePrice: '', mrp: '', gst: '', qty: '', minStock: '',
+  // Neither pre-selected — the user must pick one explicitly (a default
+  // Purchasable choice was silently mis-sourcing In-House machines; see
+  // rdController.js's createMachine).
+  purchase: false, internalManufacturing: false, isDiscontinued: false,
+  stdCost: '', purchaseCost: '', salePrice: '', mrp: '', gst: '', hsn: '', qty: '', minStock: '',
 };
 
 const emptyTemplateForm = { pType: '', category: '', pSourceType: '', productName: '', productVariant: '', groups: [] };
@@ -233,14 +238,14 @@ export default function ProductMaster() {
   const pagination = machinesListResponse?.pagination || { page: 1, pages: 1, total: 0, limit: 20 };
 
   const handleAdd = () => {
-    if (!form.code || !form.name || !form.category || !form.pType || !form.pSourceType) return;
+    if (!form.code || !form.name || !form.category || !form.pType || !form.pSourceType || !(form.purchase || form.internalManufacturing)) return;
     addMachine(form);
     setForm(emptyForm);
     setAddOpen(false);
   };
 
   const handleEdit = () => {
-    if (!editForm.code || !editForm.name || !editForm.category || !editForm.pType || !editForm.pSourceType) return;
+    if (!editForm.code || !editForm.name || !editForm.category || !editForm.pType || !editForm.pSourceType || !(editForm.purchase || editForm.internalManufacturing)) return;
     updateMachine(selected._id, editForm);
     setEditOpen(false);
   };
@@ -268,10 +273,25 @@ export default function ProductMaster() {
       variant: m.variant || '',
       productionRate: m.productionRate || '',
       materialGrade: m.materialGrade || '',
-      powerSource: m.powerSource || '',
-      powerRequiredHP: m.powerRequiredHP !== null && m.powerRequiredHP !== undefined ? String(m.powerRequiredHP) : '',
-      powerRequiredKWH: m.powerRequiredKWH !== null && m.powerRequiredKWH !== undefined ? String(m.powerRequiredKWH) : '',
-      powerRequiredRPM: m.powerRequiredRPM !== null && m.powerRequiredRPM !== undefined ? String(m.powerRequiredRPM) : '',
+      // Machines saved before multiple power requirements existed only have
+      // the 4 legacy scalar fields — normalize those into a one-row array so
+      // editing an old machine doesn't just show it empty; new machines (or
+      // ones already re-saved) already have the real powerRequirements array.
+      powerRequirements: Array.isArray(m.powerRequirements) && m.powerRequirements.length > 0
+        ? m.powerRequirements.map(pr => ({
+            powerSource: pr.powerSource || '',
+            hp: pr.hp !== null && pr.hp !== undefined ? String(pr.hp) : '',
+            kwh: pr.kwh !== null && pr.kwh !== undefined ? String(pr.kwh) : '',
+            rpm: pr.rpm !== null && pr.rpm !== undefined ? String(pr.rpm) : '',
+          }))
+        : (m.powerSource || m.powerRequiredHP != null || m.powerRequiredKWH != null || m.powerRequiredRPM != null)
+          ? [{
+              powerSource: m.powerSource || '',
+              hp: m.powerRequiredHP != null ? String(m.powerRequiredHP) : '',
+              kwh: m.powerRequiredKWH != null ? String(m.powerRequiredKWH) : '',
+              rpm: m.powerRequiredRPM != null ? String(m.powerRequiredRPM) : '',
+            }]
+          : [],
       accessories: Array.isArray(m.accessories) ? m.accessories : [],
       modelNumber: m.modelNumber || '',
       applications: Array.isArray(m.applications) ? m.applications : [],
@@ -279,7 +299,7 @@ export default function ProductMaster() {
       internalManufacturing: !!m.internalManufacturing,
       isDiscontinued: !!m.isDiscontinued,
       stdCost: m.stdCost ?? '', purchaseCost: m.purchaseCost ?? '', salePrice: m.salePrice ?? '',
-      mrp: m.mrp ?? '', gst: m.gst ?? '', qty: m.qty ?? '', minStock: m.minStock ?? '',
+      mrp: m.mrp ?? '', gst: m.gst ?? '', hsn: m.hsn ?? '', qty: m.qty ?? '', minStock: m.minStock ?? '',
     });
     setEditOpen(true);
   };
@@ -343,6 +363,82 @@ export default function ProductMaster() {
   // ── Power Required: KWH auto-calculated from HP (1 HP = 0.746 KW), same formula
   // Motor Master uses — still editable afterward in case a machine doesn't follow it. ──
   const hpToKwh = (hp) => Math.round(hp * 0.746 * 100) / 100;
+
+  // ── Power Requirements — a machine can run on more than one motor (e.g. one
+  // 5 HP + one 10 HP), so this is a repeatable row builder, same shape as the
+  // Specification builder below. ───────────────────────────────────────────────
+  const addPowerRow = (setState) => setState(f => ({ ...f, powerRequirements: [...f.powerRequirements, { powerSource: '', hp: '', kwh: '', rpm: '' }] }));
+  const removePowerRow = (setState, idx) => setState(f => ({ ...f, powerRequirements: f.powerRequirements.filter((_, i) => i !== idx) }));
+  const updatePowerRow = (setState, idx, patch) =>
+    setState(f => ({
+      ...f,
+      powerRequirements: f.powerRequirements.map((p, i) => i === idx ? { ...p, ...patch } : p)
+    }));
+
+  const renderPowerBuilder = (state, setState) => (
+    <div className="p-4 bg-slate-50 rounded-lg border border-slate-100 space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold text-slate-700">Power Requirements</p>
+        <button
+          type="button"
+          onClick={() => addPowerRow(setState)}
+          className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-semibold px-2 py-1 rounded-md hover:bg-blue-50 transition-colors"
+        >
+          <Plus className="h-3 w-3" /> Add Power Requirements
+        </button>
+      </div>
+      {state.powerRequirements.length === 0 ? (
+        <p className="text-xs text-slate-400 italic py-2 text-center border border-dashed border-slate-200 rounded-lg">
+          No power requirements yet — e.g. one 5 HP motor, another 10 HP motor.
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {state.powerRequirements.map((pr, idx) => (
+            <div key={idx} className="grid grid-cols-2 md:grid-cols-4 gap-3 items-end bg-white border border-slate-200 rounded-lg p-3">
+              <div className="col-span-2 md:col-span-1">
+                <label className="text-[10px] font-semibold text-slate-500 uppercase">Power Source</label>
+                <Select value={pr.powerSource} onValueChange={(v) => updatePowerRow(setState, idx, { powerSource: v })}>
+                  <SelectTrigger className="mt-1 h-9 bg-white"><SelectValue placeholder="Select..." /></SelectTrigger>
+                  <SelectContent>
+                    {(masterOptions.PowerSource || []).map(o => <SelectItem key={o.value} value={o.value}>{o.value}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-[10px] font-semibold text-slate-500 uppercase">HP</label>
+                <Input
+                  type="number" min="0" className="mt-1 bg-white" placeholder="e.g. 5"
+                  value={pr.hp}
+                  onChange={(e) => {
+                    const hp = e.target.value;
+                    updatePowerRow(setState, idx, { hp, kwh: hp !== '' ? String(hpToKwh(Number(hp))) : pr.kwh });
+                  }}
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-semibold text-slate-500 uppercase">KWH</label>
+                <Input type="number" min="0" className="mt-1 bg-white" placeholder="e.g. 3.75" value={pr.kwh} onChange={(e) => updatePowerRow(setState, idx, { kwh: e.target.value })} />
+              </div>
+              <div className="flex items-end gap-2">
+                <div className="flex-1">
+                  <label className="text-[10px] font-semibold text-slate-500 uppercase">RPM</label>
+                  <Input type="number" min="0" className="mt-1 bg-white" placeholder="e.g. 1440" value={pr.rpm} onChange={(e) => updatePowerRow(setState, idx, { rpm: e.target.value })} />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => removePowerRow(setState, idx)}
+                  className="text-slate-400 hover:text-red-500 transition-colors p-2 rounded mb-0.5"
+                  title="Remove this power requirement"
+                >
+                  <XCircle className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 
   // ── Specification key-value helpers ──────────────────────────────────────────
   const addSpecRow = (setState) => setState(f => ({ ...f, specifications: [...f.specifications, { key: '', value: '' }] }));
@@ -1044,8 +1140,9 @@ export default function ProductMaster() {
             <RadioGroup
               value={form.purchase ? 'purchase' : form.internalManufacturing ? 'internalManufacturing' : ''}
               onValueChange={(v) => setForm(f => ({ ...f, purchase: v === 'purchase', internalManufacturing: v === 'internalManufacturing' }))}
-              className="flex gap-4 p-3 bg-slate-50 border border-slate-100 rounded-md"
+              className="flex items-center gap-4 p-3 bg-slate-50 border border-slate-100 rounded-md"
             >
+              <span className="text-xs font-semibold text-slate-600">Sourcing <span className="text-red-500">*</span></span>
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="purchase" id="add-purchase" />
                 <Label htmlFor="add-purchase" className="text-sm font-medium text-slate-700">Purchasable (Vendor)</Label>
@@ -1056,7 +1153,9 @@ export default function ProductMaster() {
               </div>
             </RadioGroup>
 
-            {!form.internalManufacturing && (
+            {/* Only once Purchasable is actually chosen — not while the
+                sourcing choice is still unmade. */}
+            {form.purchase && (
               <div className="p-4 bg-slate-50 rounded-lg border border-slate-100 space-y-4">
                 <p className="text-xs font-semibold text-slate-700">Product Weight</p>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -1069,7 +1168,7 @@ export default function ProductMaster() {
               </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="text-xs font-semibold text-slate-600 mb-1 block">Model Number</label>
                 <Input className="bg-white" placeholder="e.g. 8100" value={form.modelNumber} onChange={e => setForm(f => ({ ...f, modelNumber: e.target.value }))} />
@@ -1078,33 +1177,13 @@ export default function ProductMaster() {
                 <label className="text-xs font-semibold text-slate-600 mb-1 block">Brand</label>
                 <Input className="bg-white" placeholder="Enter brand" value={form.brand} onChange={e => setForm(f => ({ ...f, brand: e.target.value }))} />
               </div>
-            </div>
-
-            <div className="p-4 bg-slate-50 rounded-lg border border-slate-100 space-y-4">
-              <p className="text-xs font-semibold text-slate-700">Power</p>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                {renderDeletableDropdown('Power Source', 'PowerSource', 'powerSource', masterOptions.PowerSource, form, setForm, { required: false })}
-                <div>
-                  <label className="text-xs font-semibold text-slate-600 mb-1 block">Power Required (HP)</label>
-                  <Input
-                    type="number" min="0" className="bg-white" placeholder="e.g. 5"
-                    value={form.powerRequiredHP}
-                    onChange={e => {
-                      const hp = e.target.value;
-                      setForm(f => ({ ...f, powerRequiredHP: hp, powerRequiredKWH: hp !== '' ? String(hpToKwh(Number(hp))) : f.powerRequiredKWH }));
-                    }}
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-slate-600 mb-1 block">Power Required (KWH)</label>
-                  <Input type="number" min="0" className="bg-white" placeholder="e.g. 3.75" value={form.powerRequiredKWH} onChange={e => setForm(f => ({ ...f, powerRequiredKWH: e.target.value }))} />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-slate-600 mb-1 block">Power Required (RPM)</label>
-                  <Input type="number" min="0" className="bg-white" placeholder="e.g. 1440" value={form.powerRequiredRPM} onChange={e => setForm(f => ({ ...f, powerRequiredRPM: e.target.value }))} />
-                </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">HSN Code</label>
+                <Input className="bg-white" placeholder="e.g. 8437" value={form.hsn} onChange={e => setForm(f => ({ ...f, hsn: e.target.value }))} />
               </div>
             </div>
+
+            {renderPowerBuilder(form, setForm)}
 
             {renderSpecBuilder(form, setForm)}
 
@@ -1130,7 +1209,7 @@ export default function ProductMaster() {
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
-            <Button onClick={handleAdd} disabled={!form.code || !form.name || !form.category || !form.pType || !form.pSourceType} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">Create Machine</Button>
+            <Button onClick={handleAdd} disabled={!form.code || !form.name || !form.category || !form.pType || !form.pSourceType || !(form.purchase || form.internalManufacturing)} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">Create Machine</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1190,8 +1269,9 @@ export default function ProductMaster() {
             <RadioGroup
               value={editForm.purchase ? 'purchase' : editForm.internalManufacturing ? 'internalManufacturing' : ''}
               onValueChange={(v) => setEditForm(f => ({ ...f, purchase: v === 'purchase', internalManufacturing: v === 'internalManufacturing' }))}
-              className="flex gap-4 p-3 bg-slate-50 border border-slate-100 rounded-md"
+              className="flex items-center gap-4 p-3 bg-slate-50 border border-slate-100 rounded-md"
             >
+              <span className="text-xs font-semibold text-slate-600">Sourcing <span className="text-red-500">*</span></span>
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="purchase" id="edit-purchase" />
                 <Label htmlFor="edit-purchase" className="text-sm font-medium text-slate-700">Purchasable (Vendor)</Label>
@@ -1215,7 +1295,7 @@ export default function ProductMaster() {
               </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="text-xs font-semibold text-slate-600 mb-1 block">Model Number</label>
                 <Input className="bg-white" placeholder="e.g. 8100" value={editForm.modelNumber} onChange={e => setEditForm(f => ({ ...f, modelNumber: e.target.value }))} />
@@ -1224,33 +1304,13 @@ export default function ProductMaster() {
                 <label className="text-xs font-semibold text-slate-600 mb-1 block">Brand</label>
                 <Input className="bg-white" value={editForm.brand} onChange={e => setEditForm(f => ({ ...f, brand: e.target.value }))} />
               </div>
-            </div>
-
-            <div className="p-4 bg-slate-50 rounded-lg border border-slate-100 space-y-4">
-              <p className="text-xs font-semibold text-slate-700">Power</p>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                {renderDeletableDropdown('Power Source', 'PowerSource', 'powerSource', masterOptions.PowerSource, editForm, setEditForm, { required: false })}
-                <div>
-                  <label className="text-xs font-semibold text-slate-600 mb-1 block">Power Required (HP)</label>
-                  <Input
-                    type="number" min="0" className="bg-white" placeholder="e.g. 5"
-                    value={editForm.powerRequiredHP}
-                    onChange={e => {
-                      const hp = e.target.value;
-                      setEditForm(f => ({ ...f, powerRequiredHP: hp, powerRequiredKWH: hp !== '' ? String(hpToKwh(Number(hp))) : f.powerRequiredKWH }));
-                    }}
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-slate-600 mb-1 block">Power Required (KWH)</label>
-                  <Input type="number" min="0" className="bg-white" placeholder="e.g. 3.75" value={editForm.powerRequiredKWH} onChange={e => setEditForm(f => ({ ...f, powerRequiredKWH: e.target.value }))} />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-slate-600 mb-1 block">Power Required (RPM)</label>
-                  <Input type="number" min="0" className="bg-white" placeholder="e.g. 1440" value={editForm.powerRequiredRPM} onChange={e => setEditForm(f => ({ ...f, powerRequiredRPM: e.target.value }))} />
-                </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">HSN Code</label>
+                <Input className="bg-white" placeholder="e.g. 8437" value={editForm.hsn} onChange={e => setEditForm(f => ({ ...f, hsn: e.target.value }))} />
               </div>
             </div>
+
+            {renderPowerBuilder(editForm, setEditForm)}
 
             {renderSpecBuilder(editForm, setEditForm)}
 
@@ -1272,7 +1332,7 @@ export default function ProductMaster() {
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
-            <Button onClick={handleEdit} disabled={!editForm.code || !editForm.name || !editForm.category || !editForm.pType || !editForm.pSourceType} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">Save Changes</Button>
+            <Button onClick={handleEdit} disabled={!editForm.code || !editForm.name || !editForm.category || !editForm.pType || !editForm.pSourceType || !(editForm.purchase || editForm.internalManufacturing)} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">Save Changes</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1365,16 +1425,6 @@ export default function ProductMaster() {
                 </div>
 
                 <div className="bg-slate-50 rounded-lg p-3">
-                  <p className="text-xs text-slate-500 mb-1">Power Source</p>
-                  <p className="text-sm font-medium text-slate-800">{selected.powerSource || 'N/A'}</p>
-                </div>
-                <div className="bg-slate-50 rounded-lg p-3">
-                  <p className="text-xs text-slate-500 mb-1">Power Required</p>
-                  <p className="text-sm font-medium text-slate-800">
-                    {[selected.powerRequiredHP != null ? `${selected.powerRequiredHP} HP` : null, selected.powerRequiredKWH != null ? `${selected.powerRequiredKWH} KW` : null, selected.powerRequiredRPM != null ? `${selected.powerRequiredRPM} RPM` : null].filter(Boolean).join(' / ') || 'N/A'}
-                  </p>
-                </div>
-                <div className="bg-slate-50 rounded-lg p-3">
                   <p className="text-xs text-slate-500 mb-1">Design &amp; Prototype</p>
                   <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${selected.forwardToNextPhase ? 'bg-blue-100 text-blue-700 border-blue-200' : 'bg-slate-100 text-slate-500 border-slate-200'}`}>
                     {selected.forwardToNextPhase ? 'Forwarded' : 'Not Forwarded'}
@@ -1411,6 +1461,10 @@ export default function ProductMaster() {
                   <p className="text-xs text-slate-500 mb-1">GST / Min Stock</p>
                   <p className="text-sm font-medium text-slate-800">{selected.gst ?? 0}% / {selected.minStock ?? 0}</p>
                 </div>
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-xs text-slate-500 mb-1">HSN Code</p>
+                  <p className="text-sm font-medium text-slate-800">{selected.hsn || '-'}</p>
+                </div>
 
                 {/* Specifications & Dates */}
                 <div className="bg-slate-50 rounded-lg p-3">
@@ -1422,6 +1476,31 @@ export default function ProductMaster() {
                   <p className="text-sm font-medium text-slate-800">{selected.createdAt ? new Date(selected.createdAt).toLocaleDateString() : 'N/A'}</p>
                 </div>
               </div>
+
+              {(() => {
+                // Machines saved before multiple power requirements existed
+                // only have the 4 legacy scalar fields — fall back to those
+                // as a single-row list so an old machine's detail view still
+                // shows its power spec.
+                const powerRows = Array.isArray(selected.powerRequirements) && selected.powerRequirements.length > 0
+                  ? selected.powerRequirements
+                  : (selected.powerSource || selected.powerRequiredHP != null || selected.powerRequiredKWH != null || selected.powerRequiredRPM != null)
+                    ? [{ powerSource: selected.powerSource, hp: selected.powerRequiredHP, kwh: selected.powerRequiredKWH, rpm: selected.powerRequiredRPM }]
+                    : [];
+                if (powerRows.length === 0) return null;
+                return (
+                  <div className="bg-slate-50 rounded-lg p-3">
+                    <p className="text-xs text-slate-500 mb-2 font-semibold">Power Requirements</p>
+                    <div className="space-y-1">
+                      {powerRows.map((pr, i) => (
+                        <p key={i} className="text-sm font-medium text-slate-800">
+                          {[pr.powerSource, pr.hp != null && pr.hp !== '' ? `${pr.hp} HP` : null, pr.kwh != null && pr.kwh !== '' ? `${pr.kwh} KW` : null, pr.rpm != null && pr.rpm !== '' ? `${pr.rpm} RPM` : null].filter(Boolean).join(' / ') || 'N/A'}
+                        </p>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {Array.isArray(selected.applications) && selected.applications.length > 0 && (
                 <div className="bg-slate-50 rounded-lg p-3">

@@ -1,80 +1,72 @@
 import React, { useState } from 'react';
-import { useRD } from '@/contexts/RDContext';
-import { Card, CardContent } from '@/components/ui/card';
+import { usePermissions } from '@/hooks/usePermissions';
+import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ClipboardList, Layers, ChevronDown } from 'lucide-react';
-import ChildPartCreationTab from './ChildPartCreationTab';
-import BOMCreationTab from './BOMCreationTab';
-
-// Child Part Creation and BOM Creation both start from the same step —
-// pick a manufacturing product — so that selector lives here once, shared
-// by both tabs, instead of being asked for twice.
-const MANUFACTURING_SOURCE_TYPES = ['In House Manufacturing', 'Out Source Manufactured'];
+import { ClipboardList, Layers, Boxes, Settings2 } from 'lucide-react';
+import SubChildPartMasterTab from './SubChildPartMasterTab';
+import ChildPartMasterTab from './ChildPartMasterTab';
+import MachineBOMTab from './MachineBOMTab';
+import BOMFieldConfigModal from './BOMFieldConfigModal';
 
 export default function BOMManagement() {
-  const { machines } = useRD();
-  const [selectedProductId, setSelectedProductId] = useState('');
-
-  const manufacturingProducts = machines.filter(m => !m.isDiscontinued && MANUFACTURING_SOURCE_TYPES.includes(m.pSourceType));
-  const selectedProduct = manufacturingProducts.find(m => String(m._id) === selectedProductId);
+  const { hasFeatureAccess } = usePermissions();
+  const canEdit = hasFeatureAccess('rnd', 'bomManagement', 'edit');
+  // One global, company-wide config — which Inventory fields show as extra
+  // columns/details wherever a raw material line appears (Machine BOM's own
+  // extras, Sub Child Part Master's source material, and eventually Child
+  // Part's own material list). Lives here, not inside any one tab, so it's
+  // reachable no matter which tab is active.
+  const [bomFormatOpen, setBomFormatOpen] = useState(false);
 
   return (
     <div className="p-6 space-y-6 bg-slate-50 min-h-screen">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-          <ClipboardList className="h-6 w-6 text-blue-600" /> BOM Management
-        </h1>
-        <p className="text-slate-500 text-sm mt-0.5">Define Child Parts and Bills of Materials for manufacturing products — locked BOMs cannot be modified by Production</p>
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
+            <ClipboardList className="h-6 w-6 text-blue-600" /> BOM Management
+          </h1>
+          <p className="text-slate-500 text-sm mt-0.5">Define Sub Child Parts, Child Parts and Bills of Materials — locked BOMs cannot be modified by Production</p>
+        </div>
+        {canEdit && (
+          <Button variant="outline" size="sm" onClick={() => setBomFormatOpen(true)}>
+            <Settings2 className="h-4 w-4 mr-1.5" /> BOM Format & Modification
+          </Button>
+        )}
       </div>
+      <BOMFieldConfigModal open={bomFormatOpen} onOpenChange={setBomFormatOpen} />
 
-      {/* Shared Product Selector */}
-      <Card className="border-none shadow-sm">
-        <CardContent className="p-5">
-          <label className="text-sm font-semibold text-slate-700 mb-2 block">Select Product <span className="text-xs text-slate-400 font-normal">(Manufacturing only)</span></label>
-          <div className="relative max-w-sm">
-            <select
-              className="w-full border border-slate-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white appearance-none pr-8"
-              value={selectedProductId}
-              onChange={e => setSelectedProductId(e.target.value)}
-            >
-              <option value="">-- Select a product --</option>
-              {manufacturingProducts.map(m => (
-                <option key={m._id} value={m._id}>{m.code} — {m.name}</option>
-              ))}
-            </select>
-            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
-          </div>
-        </CardContent>
-      </Card>
+      {/* Sub Child Part Master, Child Part Master, and Machine BOM are all
+          standalone — none is scoped to any product-picker state shared
+          with anything else (see bom-hierarchy-redesign-2026-09.md). The
+          old, per-machine "Child Part / Machine BOM (Legacy)" flow was
+          removed once this new hierarchy fully replaced it. */}
+      <Tabs defaultValue="sub-child-parts" className="w-full">
+        <TabsList className="grid w-full grid-cols-3 max-w-2xl bg-white border border-slate-200 h-12 p-1 rounded-xl shadow-sm">
+          <TabsTrigger value="sub-child-parts" className="rounded-lg data-[state=active]:bg-teal-50 data-[state=active]:text-teal-700 data-[state=active]:shadow-sm">
+            <Boxes className="w-4 h-4 mr-2" /> Sub Child Part Master
+          </TabsTrigger>
+          <TabsTrigger value="child-part-master" className="rounded-lg data-[state=active]:bg-indigo-50 data-[state=active]:text-indigo-700 data-[state=active]:shadow-sm">
+            <Layers className="w-4 h-4 mr-2" /> Child Part Master
+          </TabsTrigger>
+          <TabsTrigger value="machine-bom-new" className="rounded-lg data-[state=active]:bg-purple-50 data-[state=active]:text-purple-700 data-[state=active]:shadow-sm">
+            <ClipboardList className="w-4 h-4 mr-2" /> Machine BOM
+          </TabsTrigger>
+        </TabsList>
 
-      {!selectedProductId ? (
-        <Card className="border-none shadow-sm">
-          <CardContent className="py-16 text-center text-slate-400">
-            <ClipboardList className="h-10 w-10 mx-auto mb-3 opacity-30" />
-            <p>Select a manufacturing product to create its Child Parts or manage its BOM</p>
-          </CardContent>
-        </Card>
-      ) : (
-        <Tabs defaultValue="child-parts" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 max-w-md bg-white border border-slate-200 h-12 p-1 rounded-xl shadow-sm">
-            <TabsTrigger value="child-parts" className="rounded-lg data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700 data-[state=active]:shadow-sm">
-              <Layers className="w-4 h-4 mr-2" /> Child Part Creation
-            </TabsTrigger>
-            <TabsTrigger value="bom-creation" className="rounded-lg data-[state=active]:bg-purple-50 data-[state=active]:text-purple-700 data-[state=active]:shadow-sm">
-              <ClipboardList className="w-4 h-4 mr-2" /> BOM Creation
-            </TabsTrigger>
-          </TabsList>
+        <div className="mt-6">
+          <TabsContent value="sub-child-parts" className="m-0 focus-visible:outline-none focus-visible:ring-0">
+            <SubChildPartMasterTab />
+          </TabsContent>
 
-          <div className="mt-6">
-            <TabsContent value="child-parts" className="m-0 focus-visible:outline-none focus-visible:ring-0">
-              <ChildPartCreationTab product={selectedProduct} />
-            </TabsContent>
-            <TabsContent value="bom-creation" className="m-0 focus-visible:outline-none focus-visible:ring-0">
-              <BOMCreationTab product={selectedProduct} />
-            </TabsContent>
-          </div>
-        </Tabs>
-      )}
+          <TabsContent value="child-part-master" className="m-0 focus-visible:outline-none focus-visible:ring-0">
+            <ChildPartMasterTab />
+          </TabsContent>
+
+          <TabsContent value="machine-bom-new" className="m-0 focus-visible:outline-none focus-visible:ring-0">
+            <MachineBOMTab />
+          </TabsContent>
+        </div>
+      </Tabs>
     </div>
   );
 }

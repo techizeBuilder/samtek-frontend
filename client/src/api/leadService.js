@@ -185,12 +185,20 @@ export const leadApi = {
     });
   },
 
-  uploadLeadDocuments: async (id, files) => {
+  // `payment` (optional) — the payment details Sales now submits alongside the
+  // documents (amount/paymentDate/paymentMethod/bankAccount/transactionId/remarks),
+  // merged in from what used to be Accounts' separate "Add Payment" step.
+  uploadLeadDocuments: async (id, files, payment) => {
     const token = localStorage.getItem('token');
     const formData = new FormData();
     if (files.po) formData.append('po', files.po);
     if (files.paymentProof) formData.append('paymentProof', files.paymentProof);
     if (files.quotation) formData.append('quotation', files.quotation);
+    if (payment) {
+      Object.entries(payment).forEach(([k, v]) => {
+        if (v !== undefined && v !== null && v !== '') formData.append(k, v);
+      });
+    }
 
     const res = await fetch(`/api/leads/${id}/upload-documents`, {
       method: 'POST',

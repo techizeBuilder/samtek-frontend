@@ -27,6 +27,13 @@ export default function ChecklistPickerDialog({ open, onOpenChange, module, stag
   });
   const master = targetResponse?.data?.master || [];
   const selected = targetResponse?.data?.selected || [];
+  // This checklist is the one canonical entry shared by every machine that
+  // uses this Sub Child Part (see qcChecklistController's resolveTarget) —
+  // the picker already loads whatever's been defined so far ("auto pick"),
+  // and any change gets confirmed because it lands on every machine.
+  const subChildPartCanonical = !!targetResponse?.data?.subChildPartCanonical;
+  const sharedMachineCount = targetResponse?.data?.sharedMachineCount || 0;
+  const [guardOpen, setGuardOpen] = useState(false);
 
   // Re-seed the draft selection whenever the dialog opens on a (possibly
   // new) target, once its data has actually arrived.
@@ -72,11 +79,25 @@ export default function ChecklistPickerDialog({ open, onOpenChange, module, stag
     return next;
   });
 
+  const buildSelectedItems = () => Object.entries(selection)
+    .filter(([, v]) => v.checked)
+    .map(([masterItemId, v]) => ({ masterItemId, expectedValue: v.value || '' }));
+
+  // Did the draft actually change from what's stored? (checked set + values)
+  const isChanged = () => {
+    const before = new Map(selected.map(s => [String(s.masterItemId), s.expectedValue || '']));
+    const after = new Map(buildSelectedItems().map(s => [String(s.masterItemId), s.expectedValue || '']));
+    if (before.size !== after.size) return true;
+    for (const [k, v] of after) if (!before.has(k) || before.get(k) !== v) return true;
+    return false;
+  };
+
   const handleSave = () => {
-    const selectedItems = Object.entries(selection)
-      .filter(([, v]) => v.checked)
-      .map(([masterItemId, v]) => ({ masterItemId, expectedValue: v.value || '' }));
-    saveMutation.mutate(selectedItems);
+    if (subChildPartCanonical && sharedMachineCount > 1 && isChanged()) {
+      setGuardOpen(true);
+      return;
+    }
+    saveMutation.mutate(buildSelectedItems());
   };
 
   return (
@@ -85,6 +106,12 @@ export default function ChecklistPickerDialog({ open, onOpenChange, module, stag
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
+
+        {subChildPartCanonical && sharedMachineCount > 1 && (
+          <p className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+            Shared QC checklist — used by {sharedMachineCount} machines. Whatever's already defined is pre-filled; any change here applies to all of them.
+          </p>
+        )}
 
         {master.length === 0 ? (
           <div className="text-center py-10 text-slate-400 text-sm">
@@ -138,6 +165,24 @@ export default function ChecklistPickerDialog({ open, onOpenChange, module, stag
             Save Checklist
           </Button>
         </DialogFooter>
+
+        {/* Guard — a shared Sub Child Part checklist change hits every machine. */}
+        <Dialog open={guardOpen} onOpenChange={setGuardOpen}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader><DialogTitle>Apply to all {sharedMachineCount} machines?</DialogTitle></DialogHeader>
+            <p className="text-sm text-slate-600 py-1">
+              This Sub Child Part's QC checklist is shared. Saving this change updates it for every machine that uses this part.
+            </p>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setGuardOpen(false)}>Cancel</Button>
+              <Button className="bg-amber-600 hover:bg-amber-700 text-white"
+                disabled={saveMutation.isPending}
+                onClick={() => { setGuardOpen(false); saveMutation.mutate(buildSelectedItems()); }}>
+                Apply to All
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </DialogContent>
     </Dialog>
   );

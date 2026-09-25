@@ -33,6 +33,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Calendar as CalendarPicker } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
@@ -82,7 +83,9 @@ import {
   Stamp,
   CalendarClock,
   Check,
-  ChevronsUpDown
+  ChevronsUpDown,
+  CreditCard,
+  DollarSign
 } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
@@ -91,6 +94,7 @@ import DeliveryEstimatorModal from '@/components/sales/DeliveryEstimatorModal';
 import SendEmailModal from '@/components/email/SendEmailModal';
 import LeadSettingsRequestPanel from '@/components/sales/LeadSettingsRequestPanel';
 import QuotationHistoryModal from '@/components/sales/QuotationHistoryModal';
+import SalesItemRequestModal from '@/components/sales/SalesItemRequestModal';
 
 // Searchable single-select dropdown (Popover + Command) — used for the
 // Advanced Filters' State/City pickers so a long India-wide list stays
@@ -278,20 +282,31 @@ function ProductPlantPicker({ selected, onChange }) {
                 Loading...
               </div>
             ) : results.length > 0 ? (
-              pickerType === 'Plant' ? results.map((plant) => (
-                <div
-                  key={plant._id}
-                  className="px-4 py-2 hover:bg-blue-50 cursor-pointer flex flex-col border-b border-gray-50 last:border-0"
-                  onMouseDown={(e) => { e.preventDefault(); addPick(plant.name); }}
-                >
-                  <span className="text-sm font-medium text-gray-800">{plant.name}</span>
-                  <div className="flex items-center gap-2 mt-1">
-                    <Badge variant="outline" className="text-[10px] h-4 bg-purple-50 text-purple-700 border-purple-200">Plant</Badge>
-                    <span className="text-[10px] text-gray-500">{[plant.category, plant.subCategory].filter(Boolean).join(' / ')}</span>
-                    {plant.combinedPrice > 0 && <span className="text-[10px] text-blue-600 font-bold ml-auto">₹{plant.combinedPrice.toLocaleString()}</span>}
+              pickerType === 'Plant' ? results.map((plant) => {
+                // An active plant with a discontinued / not-yet-released
+                // machine or motor inside still lists, but can't be picked
+                // (server's getSalesPlants → unavailableItems).
+                const blocked = plant.unavailableItems?.length > 0;
+                return (
+                  <div
+                    key={plant._id}
+                    className={`px-4 py-2 flex flex-col border-b border-gray-50 last:border-0 ${blocked ? 'opacity-60 cursor-not-allowed bg-gray-50' : 'hover:bg-blue-50 cursor-pointer'}`}
+                    onMouseDown={(e) => { e.preventDefault(); if (!blocked) addPick(plant.name); }}
+                  >
+                    <span className="text-sm font-medium text-gray-800">{plant.name}</span>
+                    <div className="flex items-center gap-2 mt-1">
+                      <Badge variant="outline" className="text-[10px] h-4 bg-purple-50 text-purple-700 border-purple-200">Plant</Badge>
+                      <span className="text-[10px] text-gray-500">{[plant.category, plant.subCategory].filter(Boolean).join(' / ')}</span>
+                      {plant.combinedPrice > 0 && <span className="text-[10px] text-blue-600 font-bold ml-auto">₹{plant.combinedPrice.toLocaleString()}</span>}
+                    </div>
+                    {blocked && (
+                      <span className="text-[10px] text-amber-700 mt-1">
+                        Not available — {plant.unavailableItems.map(u => `${u.name} (${u.code}) is ${u.reason === 'Discontinued' ? 'discontinued' : 'not released'}`).join('; ')}
+                      </span>
+                    )}
                   </div>
-                </div>
-              )) : results.map((item) => (
+                );
+              }) : results.map((item) => (
                 <div
                   key={item._id}
                   className="px-4 py-2 hover:bg-blue-50 cursor-pointer flex flex-col border-b border-gray-50 last:border-0"
@@ -412,6 +427,7 @@ const Leads = () => {
   const [isFilterDialogOpen, setIsFilterDialogOpen] = useState(false);
   const [isLeadSettingsOpen, setIsLeadSettingsOpen] = useState(false);
   const [quotationHistoryLead, setQuotationHistoryLead] = useState(null);
+  const [itemRequestLead, setItemRequestLead] = useState(null);
   const [limit, setLimit] = useState("20");
   const [sortBy, setSortBy] = useState("date");
   const [filters, setFilters] = useState({
@@ -874,6 +890,18 @@ const Leads = () => {
 
   const handleWonChecklistSubmit = () => {
     if (!wonChecklistLead) return;
+    // Every configured checklist point must be confirmed — the Service team
+    // verifies each declared point afterward, so an unconfirmed one here
+    // would leave them with nothing to check against.
+    const missing = salesChecklistConfig.filter(cfg => !salesChecklist[cfg.key]?.checked);
+    if (missing.length > 0) {
+      toast({
+        title: "Required",
+        description: `Please confirm all checklist points before marking the deal as Won: ${missing.map(c => c.label).join(', ')}`,
+        variant: "destructive"
+      });
+      return;
+    }
     markAsWonMutation.mutate({
       id: wonChecklistLead._id,
       salesChecklist
@@ -1239,6 +1267,7 @@ const assignableUsers = (usersData?.users || []).filter(
       setIsGoToAccountModalOpen(false);
       setGoToAccountLead(null);
       setGoToAccountFiles({ po: null, paymentProof: null, quotation: null });
+      setGoToAccountPayment(EMPTY_GO_TO_ACCOUNT_PAYMENT);
     },
     onError: (error) => {
       toast({
@@ -1254,10 +1283,32 @@ const assignableUsers = (usersData?.users || []).filter(
   const [goToAccountLead, setGoToAccountLead] = useState(null);
   const [goToAccountFiles, setGoToAccountFiles] = useState({ po: null, paymentProof: null, quotation: null });
   const [isLoadingQuotation, setIsLoadingQuotation] = useState(false);
+  // Payment details Sales now submits alongside the documents — merged in
+  // from what used to be Accounts' separate "Add Payment" step; Accounts only
+  // verifies this from here on (see updatePaymentCheckStatus).
+  const EMPTY_GO_TO_ACCOUNT_PAYMENT = {
+    amount: '',
+    paymentDate: new Date().toISOString().split('T')[0],
+    paymentMethod: 'Bank Transfer',
+    bankAccount: '',
+    transactionId: '',
+    remarks: ''
+  };
+  const [goToAccountPayment, setGoToAccountPayment] = useState(EMPTY_GO_TO_ACCOUNT_PAYMENT);
+
+  // Bank accounts for the Bank Account picker — informative only for Sales
+  // (getBankAccounts strips the balance for non-Accounts roles server-side).
+  const { data: goToAccountBankData } = useQuery({
+    queryKey: ['bank-accounts-for-payment-request'],
+    queryFn: () => apiRequest('GET', '/api/lead-payments/bank-accounts'),
+    enabled: isGoToAccountModalOpen,
+  });
+  const goToAccountBankAccounts = goToAccountBankData?.bankAccounts || [];
 
   const handleOpenGoToAccountModal = async (lead) => {
     setGoToAccountLead(lead);
     setGoToAccountFiles({ po: null, paymentProof: null, quotation: null });
+    setGoToAccountPayment(EMPTY_GO_TO_ACCOUNT_PAYMENT);
     setIsGoToAccountModalOpen(true);
 
     if (lead.hasQuotation) {
@@ -1279,7 +1330,7 @@ const assignableUsers = (usersData?.users || []).filter(
   };
 
   const uploadLeadDocsMutation = useMutation({
-    mutationFn: ({ id, files }) => leadApi.uploadLeadDocuments(id, files),
+    mutationFn: ({ id, files, payment }) => leadApi.uploadLeadDocuments(id, files, payment),
     onSuccess: (_, { id }) => {
       // After docs uploaded, request payment check
       requestPaymentCheckMutation.mutate(id);
@@ -1316,17 +1367,39 @@ const assignableUsers = (usersData?.users || []).filter(
 
   const handleGoToAccountSubmit = () => {
     if (!goToAccountLead) return;
-    // Quotation and Payment Proof are required
     if (!goToAccountFiles.quotation) {
       toast({ title: "Required", description: "Please upload Quotation before requesting payment check.", variant: "destructive" });
       return;
     }
-    if (!goToAccountFiles.paymentProof) {
+    if (!goToAccountPayment.amount || parseFloat(goToAccountPayment.amount) <= 0) {
+      toast({ title: "Required", description: "Please enter the payment amount.", variant: "destructive" });
+      return;
+    }
+    if (!goToAccountPayment.paymentDate) {
+      toast({ title: "Required", description: "Please select the payment date.", variant: "destructive" });
+      return;
+    }
+    const isCash = goToAccountPayment.paymentMethod === 'Cash';
+    if (!isCash && !goToAccountPayment.bankAccount) {
+      toast({ title: "Required", description: "Please select the bank account the payment was received into.", variant: "destructive" });
+      return;
+    }
+    const txnNotRequired = ['Cash', 'Cheque'];
+    if (!txnNotRequired.includes(goToAccountPayment.paymentMethod) && !goToAccountPayment.transactionId.trim()) {
+      toast({ title: "Required", description: `Transaction ID is required for ${goToAccountPayment.paymentMethod} payments.`, variant: "destructive" });
+      return;
+    }
+    // Payment Proof is required unless the payment method is Cash.
+    if (!isCash && !goToAccountFiles.paymentProof) {
       toast({ title: "Required", description: "Please upload Payment Proof / Screenshot before requesting payment check.", variant: "destructive" });
       return;
     }
-    // PO is optional — upload docs then trigger payment check request
-    uploadLeadDocsMutation.mutate({ id: goToAccountLead._id, files: goToAccountFiles });
+    // PO is optional — upload docs + payment details, then trigger payment check request
+    uploadLeadDocsMutation.mutate({
+      id: goToAccountLead._id,
+      files: goToAccountFiles,
+      payment: { ...goToAccountPayment, amount: parseFloat(goToAccountPayment.amount) }
+    });
   };
 
   const handleEditBuyerClick = (lead) => {
@@ -1737,7 +1810,7 @@ const assignableUsers = (usersData?.users || []).filter(
               size="sm"
               className="bg-white border-gray-300 text-gray-700 hover:bg-gray-50"
               onClick={() => setIsLeadSettingsOpen(true)}
-              title="Propose changes to Lead Stage / Source / Business Type / Document Type / Reject Reason / Sales Checklist — a Company Admin must approve before they go live"
+              title="Propose changes to Lead settings (Stage / Source / Business Type / Document Type / Reject Reason / Sales Checklist) and Quotation settings (Terms & Conditions / Additional Charges / Notes / Number Setting) — a Company Admin must approve before they go live"
             >
               <Settings className="h-4 w-4 mr-2" />
               Settings
@@ -2172,7 +2245,7 @@ const assignableUsers = (usersData?.users || []).filter(
 
                 <div className="flex flex-wrap gap-2 px-4 py-2 border-t border-gray-50 bg-white">
                   <Button variant="outline" size="sm" className="h-8 text-xs bg-gray-50">Email Reply</Button>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     <Button variant="outline" size="sm" className="h-8 text-xs rounded-full">Call Attempts</Button>
                     <Button variant="outline" size="sm" className="h-8 text-xs rounded-full" onClick={() => handleOpenMeetingAttempts(lead)}>Meeting Attempts</Button>
                     <Button
@@ -2184,8 +2257,26 @@ const assignableUsers = (usersData?.users || []).filter(
                     >
                       {lead.hasQuotation  ? 'Update Quotation' : 'Send Quotation'}
                     </Button>
-                    <Button 
-                      variant="outline" 
+                    {/* R&D product request — colour reflects R&D's decision on this
+                        lead's request(s): grey = none, amber = pending, red = rejected,
+                        green = approved (see itemRequestStatus in leadController.getLeads). */}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className={cn(
+                        "h-8 text-xs rounded-full",
+                        lead.itemRequestStatus === 'Pending'  ? "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100" :
+                        lead.itemRequestStatus === 'Rejected' ? "bg-red-50 text-red-700 border-red-200 hover:bg-red-100" :
+                        lead.itemRequestStatus === 'Approved' ? "bg-green-50 text-green-700 border-green-200 hover:bg-green-100" :
+                        "bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100"
+                      )}
+                      onClick={() => setItemRequestLead(lead)}
+                      disabled={!canEditLead}
+                    >
+                      Add Request
+                    </Button>
+                    <Button
+                      variant="outline"
                       size="sm" 
                       className="h-8 text-xs rounded-full bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100"
                       onClick={() => {
@@ -2195,7 +2286,11 @@ const assignableUsers = (usersData?.users || []).filter(
                         }
                         handleOpenGoToAccountModal(lead);
                       }}
-                      disabled={requestPaymentCheckMutation.isPending || uploadLeadDocsMutation.isPending}
+                      // One request at a time — the next payment can only be
+                      // sent once Accounts has decided on the one waiting
+                      // (server enforces the same, see uploadLeadDocuments).
+                      disabled={requestPaymentCheckMutation.isPending || uploadLeadDocsMutation.isPending || lead.paymentCheckStatus === 'Pending'}
+                      title={lead.paymentCheckStatus === 'Pending' ? 'A payment is already waiting for Accounts to verify' : undefined}
                     >
                       {lead.paymentCheckStatus === 'Pending' ? 'Verification Pending' :
                        lead.paymentCheckStatus === 'Paid' ? 'Payment Verified' :
@@ -3170,11 +3265,19 @@ const assignableUsers = (usersData?.users || []).filter(
         onOpenChange={(open) => { if (!open) setQuotationHistoryLead(null); }}
       />
 
-      {/* Lead Settings — Sales Head proposes changes, Company Admin approves */}
+      {/* R&D product request — raised straight from the lead card */}
+      <SalesItemRequestModal
+        leadId={itemRequestLead?._id}
+        leadCode={itemRequestLead?.leadCode}
+        open={!!itemRequestLead}
+        onOpenChange={(open) => { if (!open) setItemRequestLead(null); }}
+      />
+
+      {/* Lead & Quotation Settings — Sales Head proposes changes, Company Admin approves */}
       <Dialog open={isLeadSettingsOpen} onOpenChange={setIsLeadSettingsOpen}>
         <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Lead Settings</DialogTitle>
+            <DialogTitle>Lead &amp; Quotation Settings</DialogTitle>
             <DialogDescription>Propose add/edit/delete changes — your Company Admin approves before they go live.</DialogDescription>
           </DialogHeader>
           <LeadSettingsRequestPanel />
@@ -4625,148 +4728,274 @@ const assignableUsers = (usersData?.users || []).filter(
           setIsGoToAccountModalOpen(false);
           setGoToAccountLead(null);
           setGoToAccountFiles({ po: null, paymentProof: null, quotation: null });
+          setGoToAccountPayment(EMPTY_GO_TO_ACCOUNT_PAYMENT);
         }
       }}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader className="pb-2">
             <DialogTitle className="text-lg font-bold flex items-center gap-2">
               <Stamp className="h-5 w-5 text-orange-600" />
               Request Payment Verification
             </DialogTitle>
             <DialogDescription className="text-gray-500 text-sm">
-              Upload payment documents for{' '}
+              Submit payment details and documents for{' '}
               <span className="font-semibold text-gray-700">{goToAccountLead?.companyName}</span>{' '}
-              to request account payment check.
+              — your Company's Accounts team will verify before it's marked Paid.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 py-2">
 
-            {/* Quotation Upload — REQUIRED */}
-            <div className="space-y-1.5">
-              <Label className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
-                <FileText className="h-4 w-4 text-purple-500" />
-                Quotation
-                <span className="text-[11px] font-bold text-red-500 ml-1">* Required</span>
-                <span className="text-xs font-normal text-gray-400 ml-1">PDF, Image, DOC</span>
-              </Label>
-              <div className={`border-2 border-dashed rounded-lg p-3 transition-colors ${
-                isLoadingQuotation
-                  ? 'border-purple-200 bg-purple-50/50'
-                  : goToAccountFiles.quotation
-                  ? 'border-purple-400 bg-purple-50'
-                  : 'border-red-200 hover:border-purple-400 bg-red-50/30'
-              }`}>
-                {isLoadingQuotation ? (
-                  <div className="flex items-center gap-2 text-sm text-purple-600">
-                    <RefreshCw className="h-4 w-4 animate-spin" />
-                    <span>Loading quotation from records...</span>
-                  </div>
-                ) : goToAccountFiles.quotation ? (
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <FileDown className="h-4 w-4 text-purple-600" />
-                      <span className="text-sm text-purple-700 font-medium truncate max-w-[220px]">{goToAccountFiles.quotation.name}</span>
-                    </div>
-                    <button onClick={() => setGoToAccountFiles(p => ({ ...p, quotation: null }))} className="text-gray-400 hover:text-red-500 transition-colors">
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                ) : (
-                  <label className="cursor-pointer flex items-center gap-2 text-sm text-gray-500">
-                    <Upload className="h-4 w-4 text-purple-400" />
-                    <span>Click to upload Quotation <span className="text-red-400 font-semibold">(required)</span></span>
-                    <input
-                      type="file"
-                      className="hidden"
-                      accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.webp"
-                      onChange={(e) => e.target.files?.[0] && setGoToAccountFiles(p => ({ ...p, quotation: e.target.files[0] }))}
-                    />
-                  </label>
-                )}
+            {/* ─── Left: Payment Details (was Accounts' "Add Payment") ─────── */}
+            <div className="space-y-4">
+              <h4 className="text-sm font-semibold text-gray-700 flex items-center gap-1.5 pb-2 border-b border-gray-100">
+                <DollarSign className="h-4 w-4 text-emerald-600" />
+                Payment Details
+              </h4>
+
+              <div className="space-y-1.5">
+                <Label className="text-sm">Amount Received <span className="text-red-500">*</span></Label>
+                <Input
+                  type="number"
+                  placeholder="Enter amount"
+                  value={goToAccountPayment.amount}
+                  onChange={(e) => setGoToAccountPayment(p => ({ ...p, amount: e.target.value }))}
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-sm flex items-center gap-1"><Calendar className="h-4 w-4" />Payment Date <span className="text-red-500">*</span></Label>
+                <Input
+                  type="date"
+                  value={goToAccountPayment.paymentDate}
+                  onChange={(e) => setGoToAccountPayment(p => ({ ...p, paymentDate: e.target.value }))}
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-sm flex items-center gap-1"><CreditCard className="h-4 w-4" />Payment Method <span className="text-red-500">*</span></Label>
+                <Select
+                  value={goToAccountPayment.paymentMethod}
+                  onValueChange={(v) => setGoToAccountPayment(p => ({ ...p, paymentMethod: v, ...(v === 'Cash' ? { bankAccount: '' } : {}) }))}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Cash">Cash</SelectItem>
+                    <SelectItem value="Cheque">Cheque</SelectItem>
+                    <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
+                    <SelectItem value="UPI">UPI</SelectItem>
+                    <SelectItem value="Card">Card</SelectItem>
+                    <SelectItem value="Other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {goToAccountPayment.paymentMethod !== 'Cash' && (
+                <div className="space-y-1.5">
+                  <Label className="text-sm">Bank Account <span className="text-red-500">*</span></Label>
+                  <Select
+                    value={goToAccountPayment.bankAccount}
+                    onValueChange={(v) => setGoToAccountPayment(p => ({ ...p, bankAccount: v }))}
+                  >
+                    <SelectTrigger><SelectValue placeholder="Select bank account" /></SelectTrigger>
+                    <SelectContent>
+                      {goToAccountBankAccounts.length === 0 ? (
+                        <SelectItem value="no-accounts" disabled>No bank accounts found</SelectItem>
+                      ) : (
+                        goToAccountBankAccounts.map((account) => (
+                          <SelectItem key={account._id} value={account._id}>
+                            {account.bankName ? `${account.bankName} — ` : ''}{account.accountName} ({account.accountNumber})
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                <Label className="text-sm">
+                  Transaction ID / Reference
+                  {!['Cash', 'Cheque'].includes(goToAccountPayment.paymentMethod) && <span className="text-red-500 ml-1">*</span>}
+                  {['Cash', 'Cheque'].includes(goToAccountPayment.paymentMethod) && <span className="text-gray-400 text-xs ml-1">(Optional)</span>}
+                </Label>
+                <Input
+                  placeholder={['Cash', 'Cheque'].includes(goToAccountPayment.paymentMethod) ? 'Enter reference (optional)' : `Enter ${goToAccountPayment.paymentMethod} transaction ID`}
+                  value={goToAccountPayment.transactionId}
+                  onChange={(e) => setGoToAccountPayment(p => ({ ...p, transactionId: e.target.value }))}
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-sm">Remarks</Label>
+                <Textarea
+                  rows={2}
+                  placeholder="Enter any remarks"
+                  value={goToAccountPayment.remarks}
+                  onChange={(e) => setGoToAccountPayment(p => ({ ...p, remarks: e.target.value }))}
+                />
               </div>
             </div>
 
-            {/* Payment Proof Upload — REQUIRED */}
-            <div className="space-y-1.5">
-              <Label className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
-                <FileText className="h-4 w-4 text-green-500" />
-                Payment Proof / Screenshot
-                <span className="text-[11px] font-bold text-red-500 ml-1">* Required</span>
-                <span className="text-xs font-normal text-gray-400 ml-1">Image, PDF</span>
-              </Label>
-              <div className={`border-2 border-dashed rounded-lg p-3 transition-colors ${
-                goToAccountFiles.paymentProof
-                  ? 'border-green-400 bg-green-50'
-                  : 'border-red-200 hover:border-green-400 bg-red-50/30'
-              }`}>
-                {goToAccountFiles.paymentProof ? (
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <FileDown className="h-4 w-4 text-green-600" />
-                      <span className="text-sm text-green-700 font-medium truncate max-w-[220px]">{goToAccountFiles.paymentProof.name}</span>
+            {/* ─── Right: Documents ──────────────────────────────────────── */}
+            <div className="space-y-4">
+              {/* Total Quotation Amount — read-only, from the sent quotation */}
+              <div className="space-y-1.5">
+                <Label className="text-sm font-semibold text-gray-700">Total Quotation Amount</Label>
+                <Input
+                  disabled
+                  className="bg-gray-100 border-gray-300 font-semibold text-gray-700"
+                  value={`₹${Number(goToAccountLead?.quotationFinalAmount || goToAccountLead?.dealValue || 0).toLocaleString('en-IN')}`}
+                />
+              </div>
+
+              {/* Quotation Upload — REQUIRED */}
+              <div className="space-y-1.5">
+                <Label className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
+                  <FileText className="h-4 w-4 text-purple-500" />
+                  Quotation
+                  <span className="text-[11px] font-bold text-red-500 ml-1">* Required</span>
+                  <span className="text-xs font-normal text-gray-400 ml-1">PDF, Image, DOC</span>
+                </Label>
+                <div className={`border-2 border-dashed rounded-lg p-3 transition-colors ${
+                  isLoadingQuotation
+                    ? 'border-purple-200 bg-purple-50/50'
+                    : goToAccountFiles.quotation
+                    ? 'border-purple-400 bg-purple-50'
+                    : 'border-red-200 hover:border-purple-400 bg-red-50/30'
+                }`}>
+                  {isLoadingQuotation ? (
+                    <div className="flex items-center gap-2 text-sm text-purple-600">
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                      <span>Loading quotation from records...</span>
                     </div>
-                    <button onClick={() => setGoToAccountFiles(p => ({ ...p, paymentProof: null }))} className="text-gray-400 hover:text-red-500 transition-colors">
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                ) : (
-                  <label className="cursor-pointer flex items-center gap-2 text-sm text-gray-500">
-                    <Upload className="h-4 w-4 text-green-400" />
-                    <span>Click to upload Payment Proof <span className="text-red-400 font-semibold">(required)</span></span>
-                    <input
-                      type="file"
-                      className="hidden"
-                      accept=".pdf,.jpg,.jpeg,.png,.webp"
-                      onChange={(e) => e.target.files?.[0] && setGoToAccountFiles(p => ({ ...p, paymentProof: e.target.files[0] }))}
-                    />
-                  </label>
-                )}
+                  ) : goToAccountFiles.quotation ? (
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <FileDown className="h-4 w-4 text-purple-600" />
+                        <span className="text-sm text-purple-700 font-medium truncate max-w-[180px]">{goToAccountFiles.quotation.name}</span>
+                      </div>
+                      <button onClick={() => setGoToAccountFiles(p => ({ ...p, quotation: null }))} className="text-gray-400 hover:text-red-500 transition-colors">
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <label className="cursor-pointer flex items-center gap-2 text-sm text-gray-500">
+                      <Upload className="h-4 w-4 text-purple-400" />
+                      <span>Click to upload Quotation <span className="text-red-400 font-semibold">(required)</span></span>
+                      <input
+                        type="file"
+                        className="hidden"
+                        accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.webp"
+                        onChange={(e) => e.target.files?.[0] && setGoToAccountFiles(p => ({ ...p, quotation: e.target.files[0] }))}
+                      />
+                    </label>
+                  )}
+                </div>
+              </div>
+
+              {/* Advance Payment Amount — read-only, synced with the left column's Amount */}
+              <div className="space-y-1.5">
+                <Label className="text-sm font-semibold text-gray-700">Advance Payment Amount</Label>
+                <Input
+                  disabled
+                  className="bg-gray-100 border-gray-300 font-semibold text-gray-700"
+                  value={`₹${Number(goToAccountPayment.amount || 0).toLocaleString('en-IN')}`}
+                />
+              </div>
+
+              {/* Payment Proof Upload — required unless Payment Method is Cash */}
+              <div className="space-y-1.5">
+                <Label className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
+                  <FileText className="h-4 w-4 text-green-500" />
+                  Payment Proof / Screenshot
+                  {goToAccountPayment.paymentMethod === 'Cash' ? (
+                    <span className="text-xs font-normal text-gray-400 ml-1">Optional for Cash</span>
+                  ) : (
+                    <span className="text-[11px] font-bold text-red-500 ml-1">* Required</span>
+                  )}
+                  <span className="text-xs font-normal text-gray-400 ml-1">Image, PDF</span>
+                </Label>
+                <div className={`border-2 border-dashed rounded-lg p-3 transition-colors ${
+                  goToAccountFiles.paymentProof
+                    ? 'border-green-400 bg-green-50'
+                    : goToAccountPayment.paymentMethod === 'Cash'
+                    ? 'border-gray-200 hover:border-green-300'
+                    : 'border-red-200 hover:border-green-400 bg-red-50/30'
+                }`}>
+                  {goToAccountFiles.paymentProof ? (
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <FileDown className="h-4 w-4 text-green-600" />
+                        <span className="text-sm text-green-700 font-medium truncate max-w-[180px]">{goToAccountFiles.paymentProof.name}</span>
+                      </div>
+                      <button onClick={() => setGoToAccountFiles(p => ({ ...p, paymentProof: null }))} className="text-gray-400 hover:text-red-500 transition-colors">
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <label className="cursor-pointer flex items-center gap-2 text-sm text-gray-500">
+                      <Upload className="h-4 w-4 text-green-400" />
+                      <span>
+                        Click to upload Payment Proof{' '}
+                        <span className={goToAccountPayment.paymentMethod === 'Cash' ? 'text-gray-400' : 'text-red-400 font-semibold'}>
+                          ({goToAccountPayment.paymentMethod === 'Cash' ? 'optional' : 'required'})
+                        </span>
+                      </span>
+                      <input
+                        type="file"
+                        className="hidden"
+                        accept=".pdf,.jpg,.jpeg,.png,.webp"
+                        onChange={(e) => e.target.files?.[0] && setGoToAccountFiles(p => ({ ...p, paymentProof: e.target.files[0] }))}
+                      />
+                    </label>
+                  )}
+                </div>
+              </div>
+
+              {/* PO Upload — OPTIONAL */}
+              <div className="space-y-1.5">
+                <Label className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
+                  <FileText className="h-4 w-4 text-blue-500" />
+                  Purchase Order (PO)
+                  <span className="text-[11px] font-normal text-gray-400 ml-1">Optional · PDF, Image, DOC</span>
+                </Label>
+                <div className={`border-2 border-dashed rounded-lg p-3 transition-colors ${
+                  goToAccountFiles.po
+                    ? 'border-blue-400 bg-blue-50'
+                    : 'border-gray-200 hover:border-blue-300'
+                }`}>
+                  {goToAccountFiles.po ? (
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <FileDown className="h-4 w-4 text-blue-600" />
+                        <span className="text-sm text-blue-700 font-medium truncate max-w-[180px]">{goToAccountFiles.po.name}</span>
+                      </div>
+                      <button onClick={() => setGoToAccountFiles(p => ({ ...p, po: null }))} className="text-gray-400 hover:text-red-500 transition-colors">
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <label className="cursor-pointer flex items-center gap-2 text-sm text-gray-500">
+                      <Upload className="h-4 w-4" />
+                      <span>Click to upload PO (optional)</span>
+                      <input
+                        type="file"
+                        className="hidden"
+                        accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.webp"
+                        onChange={(e) => e.target.files?.[0] && setGoToAccountFiles(p => ({ ...p, po: e.target.files[0] }))}
+                      />
+                    </label>
+                  )}
+                </div>
               </div>
             </div>
-
-            {/* PO Upload — OPTIONAL */}
-            <div className="space-y-1.5">
-              <Label className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
-                <FileText className="h-4 w-4 text-blue-500" />
-                Purchase Order (PO)
-                <span className="text-[11px] font-normal text-gray-400 ml-1">Optional · PDF, Image, DOC</span>
-              </Label>
-              <div className={`border-2 border-dashed rounded-lg p-3 transition-colors ${
-                goToAccountFiles.po
-                  ? 'border-blue-400 bg-blue-50'
-                  : 'border-gray-200 hover:border-blue-300'
-              }`}>
-                {goToAccountFiles.po ? (
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <FileDown className="h-4 w-4 text-blue-600" />
-                      <span className="text-sm text-blue-700 font-medium truncate max-w-[220px]">{goToAccountFiles.po.name}</span>
-                    </div>
-                    <button onClick={() => setGoToAccountFiles(p => ({ ...p, po: null }))} className="text-gray-400 hover:text-red-500 transition-colors">
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                ) : (
-                  <label className="cursor-pointer flex items-center gap-2 text-sm text-gray-500">
-                    <Upload className="h-4 w-4" />
-                    <span>Click to upload PO (optional)</span>
-                    <input
-                      type="file"
-                      className="hidden"
-                      accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.webp"
-                      onChange={(e) => e.target.files?.[0] && setGoToAccountFiles(p => ({ ...p, po: e.target.files[0] }))}
-                    />
-                  </label>
-                )}
-              </div>
-            </div>
-
-            <p className="text-xs text-gray-500 bg-amber-50 rounded p-2 border border-amber-100 flex items-start gap-1.5">
-              <AlertTriangle className="h-3.5 w-3.5 text-amber-500 mt-0.5 flex-shrink-0" />
-              <span>Quotation and Payment Proof are <strong>mandatory</strong> before sending to Account. PO is optional. Uploaded documents will be sent to the Accounts team for verification.</span>
-            </p>
           </div>
+
+          <p className="text-xs text-gray-500 bg-amber-50 rounded p-2 border border-amber-100 flex items-start gap-1.5">
+            <AlertTriangle className="h-3.5 w-3.5 text-amber-500 mt-0.5 flex-shrink-0" />
+            <span>Quotation is always mandatory. Payment Proof is mandatory unless the payment method is Cash. PO is optional. Everything here goes to Accounts for verification only — nothing is posted to the ledger until they verify it.</span>
+          </p>
 
           <div className="flex justify-end gap-3 pt-4 border-t">
             <Button
@@ -4776,6 +5005,7 @@ const assignableUsers = (usersData?.users || []).filter(
                 setIsGoToAccountModalOpen(false);
                 setGoToAccountLead(null);
                 setGoToAccountFiles({ po: null, paymentProof: null, quotation: null });
+                setGoToAccountPayment(EMPTY_GO_TO_ACCOUNT_PAYMENT);
               }}
             >
               Cancel
@@ -4810,6 +5040,9 @@ const assignableUsers = (usersData?.users || []).filter(
             </DialogTitle>
             <DialogDescription className="text-gray-500 text-sm mt-1">
               Please declare the commitments discussed with the customer. The Service team will verify each marked point.
+              {salesChecklistConfig.length > 0 && (
+                <span className="block mt-1 text-amber-700 font-medium">All points below must be confirmed before the deal can be marked Won.</span>
+              )}
             </DialogDescription>
           </DialogHeader>
 
@@ -4837,6 +5070,7 @@ const assignableUsers = (usersData?.users || []).filter(
                     />
                     <Label htmlFor={`chk-${cfg.key}`} className="font-semibold text-gray-800 cursor-pointer flex-1">
                       {idx + 1}. {cfg.label}
+                      {!item.checked && <span className="text-[11px] font-bold text-red-500 ml-1.5">* Required</span>}
                     </Label>
                   </div>
                   {cfg.valueType !== 'none' && item.checked && (
@@ -4887,7 +5121,8 @@ const assignableUsers = (usersData?.users || []).filter(
             <Button
               className="bg-green-600 hover:bg-green-700 text-white font-medium"
               onClick={handleWonChecklistSubmit}
-              disabled={markAsWonMutation.isPending}
+              disabled={markAsWonMutation.isPending || salesChecklistConfig.some(cfg => !salesChecklist[cfg.key]?.checked)}
+              title={salesChecklistConfig.some(cfg => !salesChecklist[cfg.key]?.checked) ? 'Confirm every checklist point first' : undefined}
             >
               {markAsWonMutation.isPending ? 'Saving...' : 'Save & Mark as Won'}
             </Button>

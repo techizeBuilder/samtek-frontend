@@ -21,6 +21,7 @@ import { apiRequest } from '@/lib/queryClient';
 import { config } from '@/config/environment';
 import { dimensionSignature } from '@/lib/fabricationDims';
 import FabricationItemPicker from './FabricationItemPicker';
+import { AMOUNT_UNIT_TYPES } from './UnitAmountField';
 
 const DIMENSION_UNITS = ['Inch', 'MM', 'Feet', 'Meter'];
 const DIMENSION_FIELDS = [
@@ -50,7 +51,7 @@ export default function SimpleInventoryForm({
     // Record Type — not shown in this form (Product/Motor Master set it
     // themselves elsewhere); defaults silently to 'Material', the common case
     // for plain Inventory items created here.
-    itemType: '', type: 'Material',
+    itemType: '', jobWorkType: '', type: 'Material',
     // Item Process Type + Fabrication Master link — see FABRICATION_PROCESS_TYPE above.
     itemProcessType: '', fabricationRef: null, dimensionVariants: [],
     importance: 'Normal', unitType: '', unit: '', isDiscontinued: false,
@@ -133,7 +134,7 @@ export default function SimpleInventoryForm({
     onSuccess: () => qc.invalidateQueries({ queryKey: ['rd-master-options'] }),
   });
 
-  const INV_FIELD_KEY_MAP = { SourceType: 'sourceType', ItemSourceType: 'itemSourceType', ItemType: 'itemType', ItemProcessType: 'itemProcessType' };
+  const INV_FIELD_KEY_MAP = { SourceType: 'sourceType', ItemSourceType: 'itemSourceType', ItemType: 'itemType', ItemProcessType: 'itemProcessType', JobWorkType: 'jobWorkType' };
   const RD_FIELD_KEY_MAP = { Metrology: 'metrology', MaterialGrade: 'materialGrade' };
 
   // Deletes a dynamic ("+"-addable) dropdown option. Server-side rejects the
@@ -346,6 +347,10 @@ export default function SimpleInventoryForm({
         gst: Number(item.gst) || 0,
         leadTime: Number(item.leadTime) || 0,
         unitWeightValue: (item.unitWeightValue !== null && item.unitWeightValue !== undefined) ? item.unitWeightValue : '',
+        // Only meaningful for a Length/Area/Volume Used Unit item — the
+        // reference unit unitWeightValue (kg) is defined per (e.g. "Meter").
+        // Ignored/overwritten at save for Mass/Count items — see handleSubmit.
+        unitWeightUnit: item.unitWeightUnit || '',
         internalManufacturing: Boolean(item.internalManufacturing),
         purchase: Boolean(item.purchase !== false),
         isDiscontinued: Boolean(item.isDiscontinued),
@@ -414,6 +419,7 @@ export default function SimpleInventoryForm({
   const handleMaterialFlowChange = (value) => {
     setFormData(prev => ({ ...prev, materialFlow: value, minStock: value ? FLOW_MIN_STOCK_DEFAULTS[value] : prev.minStock }));
     if (errors.reorderQty) setErrors(prev => ({ ...prev, reorderQty: null }));
+    if (errors.materialFlow) setErrors(prev => ({ ...prev, materialFlow: null }));
   };
 
   const handleImageUpload = async (event) => {
@@ -462,6 +468,7 @@ export default function SimpleInventoryForm({
       if (formData.purchase) {
         if (!formData.purchaseUnitType && !formData.purchaseUnit) validationErrors.purchaseUnitType = 'Purchase Unit Type is required';
         if (!formData.purchaseUnit) validationErrors.purchaseUnit = 'Purchase Unit is required';
+        if (!formData.materialFlow) validationErrors.materialFlow = 'Material Flow is required';
         // Order Qty is deliberately allowed to be lower than Min Stock — the
         // client explicitly asked for free input here (same removal on the
         // server side — see inventoryController.js's validateItemData).
@@ -490,6 +497,11 @@ export default function SimpleInventoryForm({
       const processedData = {
         ...formData,
         code: formData.code.trim(),
+        // Only meaningful when Item Type is "Job Work" — cleared client-side
+        // too (server enforces the same in sanitizeItemData) so it can't
+        // linger stale if Item Type is changed away from Job Work without
+        // this field ever being touched again.
+        jobWorkType: formData.itemType?.trim().toLowerCase() === 'job work' ? (formData.jobWorkType || '') : '',
         purchaseUnitType: formData.purchase ? formData.purchaseUnitType : '',
         purchaseUnit: formData.purchase ? formData.purchaseUnit : '',
         qty: Number(formData.qty) || 0,
@@ -516,10 +528,20 @@ export default function SimpleInventoryForm({
         leadTime: Number(formData.leadTime) || 0,
         unitWeightValue: (formData.unitWeightValue !== '' && formData.unitWeightValue !== null && formData.unitWeightValue !== undefined)
           ? Number(formData.unitWeightValue) : null,
-        // Locked to kg — the Weight Unit Type/Unit selectors were removed
-        // from the form (see the Unit Weight field above).
-        unitWeightUnitType: 'Mass Unit',
-        unitWeightUnit: 'Kilogram',
+        // For a Length/Area/Volume Used Unit item, unitWeightUnit is the
+        // reference unit the (kg) weight above is defined per — chosen
+        // independently of Used Unit so a thin/long item can use a natural
+        // scale (e.g. "1 kg per Meter" instead of an awkward "0.001 kg per
+        // Millimeter") — see the "per" selector on the Unit Weight field.
+        // Every other Used Unit category keeps unitWeightUnit as the
+        // weight's own unit, always kg — no reference scale is needed there.
+        ...(AMOUNT_UNIT_TYPES.includes(formData.unitType) ? {
+          unitWeightUnitType: formData.unitType,
+          unitWeightUnit: formData.unitWeightUnit || formData.unit,
+        } : {
+          unitWeightUnitType: 'Mass Unit',
+          unitWeightUnit: 'Kilogram',
+        }),
         // Receive Unit always mirrors Used Unit outside fabrication items —
         // see the Receive Unit field above (also enforced server-side).
         ...(formData.itemProcessType !== FABRICATION_PROCESS_TYPE ? {
@@ -576,6 +598,24 @@ export default function SimpleInventoryForm({
                   <Button type="button" variant="outline" size="icon" onClick={() => setNewOptionModal({ open: true, scope: 'inventory', field: 'ItemType', value: '' })}><Plus className="h-4 w-4" /></Button>
                 </div>
               </div>
+              {/* Only meaningful when Item Type is "Job Work" (case-insensitive)
+                  — which specific outsourced service this item represents.
+                  Feeds the upcoming Job Work production stage; server also
+                  clears this if Item Type is ever changed away from Job Work
+                  (inventoryController.js's sanitizeItemData), so it can't
+                  linger stale. */}
+              {formData.itemType?.trim().toLowerCase() === 'job work' && (
+                <div className="md:col-span-2">
+                  <Label className="text-sm font-medium text-gray-700">Job Work Type</Label>
+                  <div className="flex gap-2 mt-1">
+                    <Select value={formData.jobWorkType} onValueChange={(v) => handleInputChange('jobWorkType', v)}>
+                      <SelectTrigger className="flex-1"><SelectValue placeholder="e.g. Powder Coating, Anodizing, Heat Treatment">{formData.jobWorkType}</SelectValue></SelectTrigger>
+                      <SelectContent>{(invMasterOptions.JobWorkType || []).map(o => <SelectItem key={o.value} value={o.value}>{optionRow(o.value, () => deleteOption('inventory', o, 'jobWorkType'))}</SelectItem>)}</SelectContent>
+                    </Select>
+                    <Button type="button" variant="outline" size="icon" onClick={() => setNewOptionModal({ open: true, scope: 'inventory', field: 'JobWorkType', value: '' })}><Plus className="h-4 w-4" /></Button>
+                  </div>
+                </div>
+              )}
               <div className="md:col-span-2">
                 <Label className="text-sm font-medium text-gray-700">2. Item Process Type</Label>
                 <div className="flex gap-2 mt-1">
@@ -748,12 +788,28 @@ export default function SimpleInventoryForm({
             {formData.itemProcessType !== FABRICATION_PROCESS_TYPE && (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
                 <div>
-                  {/* Always kilograms — the Weight Unit Type/Unit selectors
-                      were removed since a mixed-unit unitWeightValue can't
-                      be compared/summed anywhere it's read. */}
+                  {/* Always kilograms — the value itself has no separate unit
+                      picker (a mixed-unit unitWeightValue can't be
+                      compared/summed anywhere it's read). For a Length/Area/
+                      Volume Used Unit item, the "per" dropdown alongside sets
+                      what quantity this kg rate is defined against — BOM
+                      Total Weight converts the line's own amount (in Used
+                      Unit) into that scale before multiplying. */}
                   <Label className="text-sm font-medium text-gray-700">12. Unit Weight (kg)</Label>
                   <Input type="number" min="0" value={formData.unitWeightValue} onChange={(e) => handleInputChange('unitWeightValue', e.target.value)} placeholder="0" className="mt-1 bg-white" />
                 </div>
+                {AMOUNT_UNIT_TYPES.includes(formData.unitType) && (
+                  <div>
+                    <Label className="text-sm font-medium text-gray-700">per</Label>
+                    <Select
+                      value={formData.unitWeightUnit || formData.unit}
+                      onValueChange={(v) => handleInputChange('unitWeightUnit', v)}
+                    >
+                      <SelectTrigger className="mt-1 bg-white"><SelectValue placeholder="Select" /></SelectTrigger>
+                      <SelectContent>{availableUnits.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -980,20 +1036,21 @@ export default function SimpleInventoryForm({
           {formData.purchase && (
             <div className="border border-gray-200 rounded-lg p-4">
               <Label className="text-sm font-medium text-gray-700 mb-2 block">
-                17. Material Flow
+                17. Material Flow *
                 {formData.fabricationRef && <span className="text-xs font-normal text-gray-400 ml-1">(applies to every size of this item)</span>}
               </Label>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <Label className="text-xs text-gray-500">Flow</Label>
                   <Select value={formData.materialFlow} onValueChange={handleMaterialFlowChange}>
-                    <SelectTrigger className="mt-1"><SelectValue placeholder="Not classified" /></SelectTrigger>
+                    <SelectTrigger className={`mt-1 ${errors.materialFlow ? 'border-red-500' : ''}`}><SelectValue placeholder="Select Flow" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="High Flow">High Flow</SelectItem>
                       <SelectItem value="Medium Flow">Medium Flow</SelectItem>
                       <SelectItem value="Low Flow">Low Flow</SelectItem>
                     </SelectContent>
                   </Select>
+                  {errors.materialFlow && <p className="text-red-500 text-xs mt-1">{errors.materialFlow}</p>}
                 </div>
                 <div>
                   <Label className="text-xs text-gray-500">Min Stock (reorder trigger)</Label>
@@ -1077,7 +1134,7 @@ export default function SimpleInventoryForm({
       <DialogContent className="max-w-sm">
         <DialogHeader>
           <DialogTitle>
-            Add New {({ ItemCategory: 'Item Category', SourceType: 'Source Type', ItemSourceType: 'Item Source Type', ItemType: 'Item Type', ItemProcessType: 'Item Process Type', Metrology: 'Metrology', MaterialGrade: 'Material Grade' })[newOptionModal.field] || newOptionModal.field}
+            Add New {({ ItemCategory: 'Item Category', SourceType: 'Source Type', ItemSourceType: 'Item Source Type', ItemType: 'Item Type', ItemProcessType: 'Item Process Type', JobWorkType: 'Job Work Type', Metrology: 'Metrology', MaterialGrade: 'Material Grade' })[newOptionModal.field] || newOptionModal.field}
           </DialogTitle>
         </DialogHeader>
         <div className="py-2">

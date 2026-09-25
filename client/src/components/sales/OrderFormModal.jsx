@@ -680,7 +680,19 @@ export default function OrderFormModal({ open, onOpenChange, orderId, order, lea
                                 {it.cashAmount === '' || it.cashAmount == null ? '-' : Number(it.cashAmount).toLocaleString('en-IN')}
                               </div>
                             ) : (
-                              <CellInput type="number" value={it.cashAmount} onChange={v => setItemField(originalIdx, 'cashAmount', v)} disabled={disabled} className="text-right" size="lg" />
+                              <>
+                                <CellInput type="number" value={it.cashAmount} onChange={v => setItemField(originalIdx, 'cashAmount', v)} disabled={disabled} className="text-right" size="lg" />
+                                {!disabled && num(it.quotationAmount) > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setItemField(originalIdx, 'cashAmount', Math.max(0, num(it.quotationAmount) - num(it.billAmount)))}
+                                    className="mt-1 text-[10px] text-blue-500 hover:text-blue-700 underline"
+                                    title="Fill with whatever's left of the Quotation Amount after Bill Amt"
+                                  >
+                                    Fill Remaining
+                                  </button>
+                                )}
+                              </>
                             )}
                           </TableCell>
                           <TableCell className="align-top"><CellInput type="number" value={it.discountAmount} onChange={v => setItemField(originalIdx, 'discountAmount', v)} disabled={disabled} className="text-right" size="lg" /></TableCell>

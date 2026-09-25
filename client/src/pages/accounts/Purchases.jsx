@@ -152,7 +152,7 @@ const Purchases = () => {
           </div>
           <div className="flex gap-3">
             <Link href="/accounts/purchases/returns">
-              <Button variant="outline" className="border-orange-200 text-orange-700 hover:bg-orange- client/src/pages/accounts/Purchases.jsx50">
+              <Button variant="outline" className="border-orange-200 text-orange-700 hover:bg-orange-50">
                 <RotateCcw className="w-4 h-4 mr-2" /> Returns
               </Button>
             </Link>

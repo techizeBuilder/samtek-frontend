@@ -9,7 +9,7 @@ import { useToast } from '@/hooks/use-toast';
 import { usePermissions } from '@/hooks/usePermissions';
 import {
     Plus, Search, Edit2, MapPin, Phone, Mail,
-    Tag, X, PlusCircle
+    Tag, X, PlusCircle, Package, Wrench
 } from 'lucide-react';
 import {
     Dialog,
@@ -94,6 +94,24 @@ const VendorMaster = () => {
 
     // dynamic array state for form
     const [formCategories, setFormCategories] = useState([]);
+    // What this vendor covers (2026-09-25): Product tab = Item ids,
+    // Services tab = Process Template step names (see Supplier.js).
+    const [formItems, setFormItems] = useState([]);
+    const [formServices, setFormServices] = useState([]);
+    const [coverageTab, setCoverageTab] = useState('products');
+    const [coverageSearch, setCoverageSearch] = useState('');
+
+    // Pickable Purchasable items + Process Template steps (with which BOM
+    // parts use each as Out Source) — also used to show names on the cards,
+    // since a vendor stores item ids.
+    const { data: catalogData } = useQuery({
+        queryKey: ['/api/suppliers/catalog'],
+        queryFn: () => apiRequest('GET', '/api/suppliers/catalog'),
+    });
+    const catalogItems = catalogData?.items || [];
+    const catalogServices = catalogData?.services || [];
+    const itemById = new Map(catalogItems.map(it => [String(it._id), it]));
+    const toggleIn = (list, setList, value) => setList(list.includes(value) ? list.filter(v => v !== value) : [...list, value]);
 
     // Passing page/limit opts this browse page into the paginated response
     // shape — vendor-picker dropdowns elsewhere call /api/suppliers with no
@@ -128,15 +146,24 @@ const VendorMaster = () => {
         }
     });
 
+    const resetCoverage = (vendor) => {
+        setFormItems((vendor?.suppliedItems || []).map(String));
+        setFormServices(vendor?.services || []);
+        setCoverageTab('products');
+        setCoverageSearch('');
+    };
+
     const openAdd = () => {
         setEditingVendor(null);
         setFormCategories([]);
+        resetCoverage(null);
         setIsAddModalOpen(true);
     };
 
     const openEdit = (vendor) => {
         setEditingVendor(vendor);
         setFormCategories(vendor.vendorCategories || []);
+        resetCoverage(vendor);
         setIsAddModalOpen(true);
     };
 
@@ -155,6 +182,8 @@ const VendorMaster = () => {
                 country: raw['address.country'] || 'India',
             },
             vendorCategories: formCategories,
+            suppliedItems: formItems,
+            services: formServices,
         };
         // Remove flat address keys
         ['address.street', 'address.city', 'address.state', 'address.zipCode', 'address.country']
@@ -242,6 +271,39 @@ const VendorMaster = () => {
                                     </div>
                                 )}
 
+                                {/* Products / Services this vendor covers */}
+                                {(() => {
+                                    const productNames = (vendor.suppliedItems || []).map(id => itemById.get(String(id))?.name).filter(Boolean);
+                                    const chips = (list, cls) => (
+                                        <div className="flex flex-wrap gap-1">
+                                            {list.slice(0, 4).map((n, i) => (
+                                                <span key={i} className={`px-2 py-0.5 rounded-full text-xs font-medium ${cls}`}>{n}</span>
+                                            ))}
+                                            {list.length > 4 && <span className="px-2 py-0.5 text-xs text-slate-400">+{list.length - 4} more</span>}
+                                        </div>
+                                    );
+                                    return (
+                                        <>
+                                            {productNames.length > 0 && (
+                                                <div>
+                                                    <p className="text-xs font-semibold text-slate-400 uppercase flex items-center gap-1 mb-1">
+                                                        <Package className="w-3 h-3" /> Products
+                                                    </p>
+                                                    {chips(productNames, 'bg-emerald-100 text-emerald-700')}
+                                                </div>
+                                            )}
+                                            {vendor.services?.length > 0 && (
+                                                <div>
+                                                    <p className="text-xs font-semibold text-slate-400 uppercase flex items-center gap-1 mb-1">
+                                                        <Wrench className="w-3 h-3" /> Services
+                                                    </p>
+                                                    {chips(vendor.services, 'bg-purple-100 text-purple-700')}
+                                                </div>
+                                            )}
+                                        </>
+                                    );
+                                })()}
+
                                 <div className="pt-3 border-t flex justify-between items-center">
                                     <div className="text-sm">
                                         <span className="text-slate-400">Opening Balance: </span>
@@ -326,20 +388,95 @@ const VendorMaster = () => {
                             </select>
                         </div>
 
-                        {/* ── Vendor Categories ── */}
+                        {/* ── What this vendor supplies ── Products (real
+                            Purchasable items), Services (Process Template
+                            steps done as job work), plus the old free-text
+                            tags, still used by RFQ vendor matching. */}
                         <div className="col-span-2 pt-2">
                             <h3 className="text-sm font-semibold text-slate-700 mb-3 border-b pb-1 flex items-center gap-2">
                                 <Tag className="w-4 h-4 text-blue-500" /> Vendor Categories
-                                <span className="text-xs font-normal text-slate-400 ml-1">— What type of goods/services does this vendor supply?</span>
+                                <span className="text-xs font-normal text-slate-400 ml-1">— What does this vendor supply?</span>
                             </h3>
-                            <TagInput
-                                label="Categories"
-                                icon={Tag}
-                                items={formCategories}
-                                setItems={setFormCategories}
-                                placeholder='e.g. Raw Material, Services… then press Enter or Add'
-                                colorClass="bg-blue-100 text-blue-700"
-                            />
+                            <div className="flex gap-2 mb-3">
+                                {[
+                                    { key: 'products', label: 'Products', icon: Package, count: formItems.length },
+                                    { key: 'services', label: 'Services', icon: Wrench, count: formServices.length },
+                                    { key: 'tags', label: 'Tags', icon: Tag, count: formCategories.length },
+                                ].map(t => (
+                                    <button
+                                        key={t.key} type="button"
+                                        onClick={() => { setCoverageTab(t.key); setCoverageSearch(''); }}
+                                        className={`px-3 py-1.5 rounded-md text-xs font-semibold border flex items-center gap-1.5 ${coverageTab === t.key ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300'}`}
+                                    >
+                                        <t.icon className="w-3.5 h-3.5" /> {t.label}{t.count > 0 ? ` (${t.count})` : ''}
+                                    </button>
+                                ))}
+                            </div>
+
+                            {coverageTab === 'products' && (() => {
+                                const q = coverageSearch.trim().toLowerCase();
+                                const list = catalogItems.filter(it => !q || it.name.toLowerCase().includes(q) || (it.code || '').toLowerCase().includes(q));
+                                return (
+                                    <div>
+                                        <p className="text-xs text-slate-500 mb-2">Items this vendor sells us — every item marked <b>Purchasable</b> in Inventory, Product Master or Motor Master. Child Parts / Sub Child Parts are made in-house from their BOM; their outsourced work goes under <b>Services</b>.</p>
+                                        <Input value={coverageSearch} onChange={e => setCoverageSearch(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') e.preventDefault(); }} placeholder="Search items by name or code..." className="mb-2 text-sm" />
+                                        <div className="border rounded-md max-h-56 overflow-y-auto divide-y">
+                                            {list.length === 0 ? (
+                                                <p className="text-xs text-slate-400 text-center py-4">No purchasable items found.</p>
+                                            ) : list.map(it => {
+                                                const id = String(it._id);
+                                                return (
+                                                    <label key={id} className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-slate-50 cursor-pointer">
+                                                        <input type="checkbox" checked={formItems.includes(id)} onChange={() => toggleIn(formItems, setFormItems, id)} />
+                                                        <span className="font-medium text-slate-800">{it.name}</span>
+                                                        <span className="font-mono text-[11px] text-blue-600">{it.code}</span>
+                                                        <span className="ml-auto text-[10px] text-slate-400">{it.source}</span>
+                                                    </label>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                );
+                            })()}
+
+                            {coverageTab === 'services' && (() => {
+                                const q = coverageSearch.trim().toLowerCase();
+                                const list = catalogServices.filter(s => !q || s.name.toLowerCase().includes(q));
+                                return (
+                                    <div>
+                                        <p className="text-xs text-slate-500 mb-2">Job work this vendor does — steps from BOM Management's Process Templates. Matches that step name at every BOM level, wherever a BOM marks it <b>Out Source</b>.</p>
+                                        <Input value={coverageSearch} onChange={e => setCoverageSearch(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') e.preventDefault(); }} placeholder="Search steps..." className="mb-2 text-sm" />
+                                        <div className="border rounded-md max-h-56 overflow-y-auto divide-y">
+                                            {list.length === 0 ? (
+                                                <p className="text-xs text-slate-400 text-center py-4">No process steps found.</p>
+                                            ) : list.map(s => (
+                                                <label key={s.name} className="flex items-start gap-2 px-3 py-2 text-sm hover:bg-slate-50 cursor-pointer">
+                                                    <input type="checkbox" className="mt-1" checked={formServices.includes(s.name)} onChange={() => toggleIn(formServices, setFormServices, s.name)} />
+                                                    <span className="min-w-0">
+                                                        <span className="font-medium text-slate-800">{s.name}</span>
+                                                        <span className="block text-[11px] text-slate-500">
+                                                            {s.usedBy.length > 0
+                                                                ? <>Out Source in: {s.usedBy.map(u => `${u.name} (${u.code})`).join(', ')}</>
+                                                                : <span className="text-slate-400">Not an Out Source step in any BOM yet</span>}
+                                                        </span>
+                                                    </span>
+                                                </label>
+                                            ))}
+                                        </div>
+                                    </div>
+                                );
+                            })()}
+
+                            {coverageTab === 'tags' && (
+                                <TagInput
+                                    label="Categories (free text — used by RFQ vendor matching)"
+                                    icon={Tag}
+                                    items={formCategories}
+                                    setItems={setFormCategories}
+                                    placeholder='e.g. Raw Material, Services… then press Enter or Add'
+                                    colorClass="bg-blue-100 text-blue-700"
+                                />
+                            )}
                         </div>
 
                         {/* Address Section */}

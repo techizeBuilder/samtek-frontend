@@ -1,21 +1,32 @@
 import React, { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
+import { useAuth } from '@/hooks/useAuth';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Search, Eye, Cog } from 'lucide-react';
+import { Search, Eye, Cog, ClipboardCheck, History } from 'lucide-react';
+import StockAuditModal from '@/components/inventory/StockAuditModal';
+import StockAuditHistoryModal from '@/components/inventory/StockAuditHistoryModal';
 
 // Read-only view of Motor Master for Store — same underlying data
 // (GET /api/items?type=Product&productKind=Motor) Motor Master itself uses,
 // but no create/edit/discontinue actions. Store just needs visibility into
-// what motors exist.
+// what motors exist. Store Head additionally gets a Verify Stock action
+// (see StockAuditModal) — Store Employee does not.
 export default function MotorMasterTab() {
+  const { user } = useAuth();
+  const isStoreHead = user?.role === 'Store Head';
+  const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [showDiscontinued, setShowDiscontinued] = useState(false);
   const [selected, setSelected] = useState(null);
   const [viewOpen, setViewOpen] = useState(false);
+  const [auditItem, setAuditItem] = useState(null);
+  const [auditOpen, setAuditOpen] = useState(false);
+  const [historyItem, setHistoryItem] = useState(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const { data: motorsResponse, isLoading } = useQuery({
     queryKey: ['store-motor-master', 'list', { search, showDiscontinued }],
@@ -76,7 +87,19 @@ export default function MotorMasterTab() {
                     <td className="px-5 py-3.5 text-slate-600 text-xs">{m.motorDetails?.hp ?? '—'}</td>
                     <td className="px-5 py-3.5 text-slate-600 text-xs">{m.qty ?? 0} {m.unit || ''}</td>
                     <td className="px-5 py-3.5">
-                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-amber-600" onClick={() => { setSelected(m); setViewOpen(true); }}><Eye className="h-3.5 w-3.5" /></Button>
+                      <div className="flex items-center gap-1">
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-amber-600" onClick={() => { setSelected(m); setViewOpen(true); }}><Eye className="h-3.5 w-3.5" /></Button>
+                        {isStoreHead && (
+                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-amber-600" title="Verify Stock" onClick={() => { setAuditItem(m); setAuditOpen(true); }}>
+                            <ClipboardCheck className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                        {isStoreHead && (
+                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-slate-700" title="Audit History" onClick={() => { setHistoryItem(m); setHistoryOpen(true); }}>
+                            <History className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -151,6 +174,25 @@ export default function MotorMasterTab() {
           )}
         </DialogContent>
       </Dialog>
+
+      <StockAuditModal
+        open={auditOpen}
+        onOpenChange={(open) => { setAuditOpen(open); if (!open) setAuditItem(null); }}
+        item={auditItem ? {
+          id: auditItem._id,
+          code: auditItem.code,
+          name: auditItem.name,
+          qty: auditItem.qty ?? 0,
+          unit: auditItem.unit || '',
+        } : null}
+        onSuccess={() => qc.invalidateQueries({ queryKey: ['store-motor-master'] })}
+      />
+
+      <StockAuditHistoryModal
+        open={historyOpen}
+        onOpenChange={(open) => { setHistoryOpen(open); if (!open) setHistoryItem(null); }}
+        item={historyItem ? { id: historyItem._id, code: historyItem.code, name: historyItem.name } : null}
+      />
     </div>
   );
 }
