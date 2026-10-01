@@ -86,11 +86,6 @@ export function ProductionProvider({ children }) {
     onSuccess: invalidateOrders,
   });
 
-  const raiseRDRequestMutation = useMutation({
-    mutationFn: (id) => apiRequest('PUT', `${BASE}/orders/${id}/raise-rd-request`),
-    onSuccess: invalidateOrders,
-  });
-
   const markMaterialIssuedMutation = useMutation({
     mutationFn: (id) => apiRequest('PUT', `${BASE}/orders/${id}/mark-material-issued`),
     onSuccess: invalidateOrders,
@@ -203,7 +198,6 @@ export function ProductionProvider({ children }) {
   const addOrder = useCallback((data) => addOrderMutation.mutate(data), []);
   const verifyBOM = useCallback((id) => verifyBOMMutation.mutateAsync(id), []);
   const verifyDesign = useCallback((id) => verifyDesignMutation.mutateAsync(id), []);
-  const raiseRDRequest = useCallback((id) => raiseRDRequestMutation.mutateAsync(id), []);
   const markMaterialIssued = useCallback((id) => markMaterialIssuedMutation.mutateAsync(id), []);
   const decideRework = useCallback((id) => decideReworkMutation.mutateAsync(id), []);
   const decideRepair = useCallback((id) => decideRepairMutation.mutateAsync(id), []);
@@ -355,7 +349,6 @@ export function ProductionProvider({ children }) {
       addOrder,
       verifyBOM,
       verifyDesign,
-      raiseRDRequest,
       decideRework,
       decideRepair,
       addMaterialDemand,

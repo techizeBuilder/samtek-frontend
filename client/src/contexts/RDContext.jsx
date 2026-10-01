@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useCallback, useState } from 'react';
+import React, { createContext, useContext, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useAuthContext } from '@/contexts/AuthContext';
@@ -14,15 +14,6 @@ export function RDProvider({ children }) {
   // empty/failed result is cached for good and never auto-refetches after login. Only a
   // hard refresh used to fix it because that recreates the QueryClient from scratch.
   const { isAuthenticated } = useAuthContext();
-
-  // ── Production Request Filters State ─────────────────────────────────────────
-  // This state powers your tabs, search, and dropdown filters
-  const [reqFilters, setReqFilters] = useState({
-    tab: 'fresh', // 'fresh' or 'history'
-    search: '',
-    status: 'All',
-    page: 1
-  });
 
   // ── Queries ──────────────────────────────────────────────────────────────────
   // `enabled: isAuthenticated` on every query below: RDProvider lives above the router,
@@ -75,16 +66,6 @@ export function RDProvider({ children }) {
     enabled: isAuthenticated,
   });
 
-  // Production Requests Query (Watches reqFilters automatically)
-  const { data: productionRequestsData, isLoading: productionRequestsLoading } = useQuery({
-    queryKey: ['rd-production-requests', reqFilters],
-    queryFn: () => {
-      const params = new URLSearchParams(reqFilters).toString();
-      return apiRequest('GET', `${BASE}/production-rnd-requests?${params}`);
-    },
-    enabled: isAuthenticated,
-  });
-
   const machines = machinesData?.data || [];
   const prototypes = prototypesData?.data || [];
   const changeRequests = changeRequestsData?.data || [];
@@ -93,8 +74,6 @@ export function RDProvider({ children }) {
   const documents = documentsData?.data || [];
   const masterOptions = masterOptionsData?.data || { Category: [], PType: [], PSourceType: [], Metrology: [], MaterialType: [], ProductName: [], ProductVariant: [] };
   const customFieldTemplates = customFieldTemplatesData?.data || [];
-  const productionRequests = productionRequestsData?.data || [];
-  const productionRequestsPagination = productionRequestsData?.pagination || { page: 1, pages: 1, total: 0, limit: 20 };
 
   const inv = (key) => () => qc.invalidateQueries({ queryKey: [key] });
   const invMachines = inv('rd-machines');
@@ -103,7 +82,6 @@ export function RDProvider({ children }) {
   const invToolProcesses = inv('rd-tool-processes');
   const invQualityParams = inv('rd-quality-params');
   const invDocuments = inv('rd-documents');
-  const invProductionRequests = inv('rd-production-requests');
   const invMasterOptions = inv('rd-master-options');
   const invCustomFieldTemplates = inv('rd-custom-field-templates');
 
@@ -124,8 +102,6 @@ export function RDProvider({ children }) {
   });
   const saveCustomFieldTemplateMut = useMutation({ mutationFn: (data) => apiRequest('POST', `${BASE}/custom-field-templates`, data), onSuccess: invCustomFieldTemplates });
   const deleteCustomFieldTemplateMut = useMutation({ mutationFn: (id) => apiRequest('DELETE', `${BASE}/custom-field-templates/${id}`), onSuccess: invCustomFieldTemplates });
-  const designStatusMut = useMutation({ mutationFn: ({ id, status, note }) => apiRequest('PUT', `${BASE}/machines/${id}/design-status`, { status, note }), onSuccess: invMachines });
-  const releaseStatusMut = useMutation({ mutationFn: ({ id, status }) => apiRequest('PUT', `${BASE}/machines/${id}/release-status`, { status }), onSuccess: invMachines });
   const discontinueMachineMut = useMutation({ mutationFn: (id) => apiRequest('PUT', `${BASE}/machines/${id}/discontinue`), onSuccess: invMachines });
   const reactivateMachineMut = useMutation({ mutationFn: (id) => apiRequest('PUT', `${BASE}/machines/${id}/reactivate`), onSuccess: invMachines });
 
@@ -155,17 +131,9 @@ export function RDProvider({ children }) {
   const createDocMut = useMutation({ mutationFn: (d) => apiRequest('POST', `${BASE}/documents`, d), onSuccess: invDocuments });
   const deleteDocMut = useMutation({ mutationFn: (id) => apiRequest('DELETE', `${BASE}/documents/${id}`), onSuccess: invDocuments });
 
-  // ── Production Request Mutations ─────────────────────────────────────────────
-  const processRDRequestMut = useMutation({
-    mutationFn: ({ id, action, rejectReason }) => apiRequest('PUT', `${BASE}/${id}/process`, { action, rejectReason }),
-    onSuccess: invProductionRequests
-  });
-
   // ── Stable callbacks ─────────────────────────────────────────────────────────
   const addMachine = useCallback((data) => createMachineMut.mutate(data), []);
   const updateMachine = useCallback((id, data) => updateMachineMut.mutate({ id, data }), []);
-  const updateDesignStatus = useCallback((id, status, note = '') => designStatusMut.mutate({ id, status, note }), []);
-  const updateReleaseStatus = useCallback((id, status) => releaseStatusMut.mutateAsync({ id, status }), []);
   const discontinueMachine = useCallback((id) => discontinueMachineMut.mutate(id), []);
   const reactivateMachine = useCallback((id) => reactivateMachineMut.mutate(id), []);
 
@@ -218,14 +186,6 @@ export function RDProvider({ children }) {
   }, [machines]);
   const deleteDocument = useCallback((id) => deleteDocMut.mutate(id), []);
 
-  const processProductionRequest = useCallback(async (id, action, rejectReason = '') => {
-    return processRDRequestMut.mutateAsync({ id, action, rejectReason });
-  }, []);
-
-  const fetchProductionRequestReviewData = useCallback(async (id) => {
-    return apiRequest('GET', `${BASE}/production-rnd-requests/${id}/review`);
-  }, []);
-
   const addMasterOption = useCallback(async (data) => {
     return addMasterOptionMut.mutateAsync(data);
   }, []);
@@ -266,18 +226,9 @@ export function RDProvider({ children }) {
       masterOptions, masterOptionsLoading, addMasterOption, updateMasterOption, deleteMasterOption,
       customFieldTemplates, customFieldTemplatesLoading, saveCustomFieldTemplate, deleteCustomFieldTemplate, getCustomFieldTemplate,
 
-      // Production Requests state
-      productionRequests,
-      productionRequestsPagination,
-      productionRequestsLoading,
-      reqFilters,
-      setReqFilters,
-      processProductionRequest,
-      fetchProductionRequestReviewData,
-
       machinesLoading, prototypesLoading, changeRequestsLoading,
       toolProcessesLoading, qualityParamsLoading, documentsLoading,
-      addMachine, updateMachine, updateDesignStatus, updateReleaseStatus, discontinueMachine, reactivateMachine,
+      addMachine, updateMachine, discontinueMachine, reactivateMachine,
       addPrototype, updatePrototype,
       addChangeRequest, resolveChangeRequest,
       getToolsProcess, addTool, removeTool, discontinueTool, reactivateTool, addProcess, removeProcess,
