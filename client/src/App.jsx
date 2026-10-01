@@ -62,6 +62,7 @@ import ChartOfAccounts from "@/pages/accounts/ChartOfAccounts";
 import AccountsSales from "@/pages/accounts/Sales";
 import AccountsPurchases from "@/pages/accounts/Purchases";
 import VendorMaster from "@/pages/accounts/VendorMaster";
+import VendorBatchingPreview from "@/pages/accounts/VendorBatchingPreview";
 import PurchaseInvoices from "@/pages/accounts/PurchaseInvoices";
 import PurchaseReturns from "@/pages/accounts/PurchaseReturns";
 import PurchaseExchanges from "@/pages/accounts/PurchaseExchanges";
@@ -1166,6 +1167,11 @@ function Router() {
       <Route path="/accounts/purchases/vendors">
         <ProtectedRoute requiredRole="Accounts">
           <VendorMaster />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/accounts/purchases/vendor-batching-preview">
+        <ProtectedRoute requiredRole="Accounts">
+          <VendorBatchingPreview />
         </ProtectedRoute>
       </Route>
       <Route path="/accounts/purchases/sub-child-job-work">

@@ -9,7 +9,7 @@ import { useToast } from '@/hooks/use-toast';
 import { usePermissions } from '@/hooks/usePermissions';
 import {
     Plus, Search, Edit2, MapPin, Phone, Mail,
-    Tag, X, PlusCircle, Package, Wrench
+    Tag, X, Package, Wrench
 } from 'lucide-react';
 import {
     Dialog,
@@ -17,67 +17,6 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
-
-// ── Tag Input component ────────────────────────────────────────────────────────
-const TagInput = ({ label, icon: Icon, items, setItems, placeholder, colorClass }) => {
-    const [inputVal, setInputVal] = useState('');
-
-    const addItem = () => {
-        const trimmed = inputVal.trim();
-        if (trimmed && !items.includes(trimmed)) {
-            setItems([...items, trimmed]);
-        }
-        setInputVal('');
-    };
-
-    const removeItem = (idx) => setItems(items.filter((_, i) => i !== idx));
-
-    return (
-        <div className="col-span-2">
-            <label className="text-sm font-semibold text-slate-700 mb-2 flex items-center gap-1">
-                <Icon className="w-4 h-4" /> {label}
-            </label>
-
-            {/* existing tags */}
-            <div className="flex flex-wrap gap-2 mb-2 min-h-[32px]">
-                {items.map((item, idx) => (
-                    <span
-                        key={idx}
-                        className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium ${colorClass}`}
-                    >
-                        {item}
-                        <button
-                            type="button"
-                            onClick={() => removeItem(idx)}
-                            className="hover:opacity-70 ml-1"
-                        >
-                            <X className="w-3 h-3" />
-                        </button>
-                    </span>
-                ))}
-                {items.length === 0 && (
-                    <span className="text-xs text-slate-400 italic">No items added yet</span>
-                )}
-            </div>
-
-            {/* add row */}
-            <div className="flex gap-2">
-                <Input
-                    value={inputVal}
-                    onChange={(e) => setInputVal(e.target.value)}
-                    onKeyDown={(e) => {
-                        if (e.key === 'Enter') { e.preventDefault(); addItem(); }
-                    }}
-                    placeholder={placeholder}
-                    className="flex-1 text-sm"
-                />
-                <Button type="button" variant="outline" size="sm" onClick={addItem} className="shrink-0">
-                    <PlusCircle className="w-4 h-4 mr-1" /> Add
-                </Button>
-            </div>
-        </div>
-    );
-};
 
 // ── Main Component ─────────────────────────────────────────────────────────────
 const VendorMaster = () => {
@@ -100,6 +39,21 @@ const VendorMaster = () => {
     const [formServices, setFormServices] = useState([]);
     const [coverageTab, setCoverageTab] = useState('products');
     const [coverageSearch, setCoverageSearch] = useState('');
+    // Products picker filter (2026-09-28) — narrows by where the item comes
+    // from (Inventory / Product Master / Motor Master). Only a source that
+    // actually has items gets shown as a chip — see the "available sources"
+    // computation in the products tab below.
+    const [productSourceFilter, setProductSourceFilter] = useState('all');
+    // Second-level filter, only shown for a single selected source that has
+    // its own classification field: Inventory's itemCategories (its "Item
+    // Category" field, multi-select — NOT itemType/"Item Type", checked
+    // against real data: itemType is ~70% one value there, itemCategories
+    // has a real spread), Product Master's category (its "P-Type"). Motor
+    // Master never saves these (the form has no fields for them), so it
+    // stays a plain list — no sub-filter for it. Stores 'all' or a
+    // normalized (trimmed, lowercased) value key, '(blank)' for items with
+    // nothing set.
+    const [productSubFilter, setProductSubFilter] = useState('all');
 
     // Pickable Purchasable items + Process Template steps (with which BOM
     // parts use each as Out Source) — also used to show names on the cards,
@@ -151,6 +105,8 @@ const VendorMaster = () => {
         setFormServices(vendor?.services || []);
         setCoverageTab('products');
         setCoverageSearch('');
+        setProductSourceFilter('all');
+        setProductSubFilter('all');
     };
 
     const openAdd = () => {
@@ -389,19 +345,66 @@ const VendorMaster = () => {
                         </div>
 
                         {/* ── What this vendor supplies ── Products (real
-                            Purchasable items), Services (Process Template
-                            steps done as job work), plus the old free-text
-                            tags, still used by RFQ vendor matching. */}
+                            Purchasable items) and Services (Process Template
+                            steps done as job work). The old free-text tags
+                            tab was removed 2026-09-28 — vendor shortlisting
+                            is done by Products/Services now, not tags; the
+                            "Tags" section further below just keeps whatever
+                            a vendor already had, read-only display on the
+                            card. */}
                         <div className="col-span-2 pt-2">
                             <h3 className="text-sm font-semibold text-slate-700 mb-3 border-b pb-1 flex items-center gap-2">
                                 <Tag className="w-4 h-4 text-blue-500" /> Vendor Categories
                                 <span className="text-xs font-normal text-slate-400 ml-1">— What does this vendor supply?</span>
                             </h3>
+
+                            {/* Always visible, both at once, regardless of
+                                which tab/filter is active below — narrowing
+                                the Products list by source would otherwise
+                                hide items already picked under a different
+                                filter, and a vendor can supply both products
+                                and services at the same time. */}
+                            <div className="grid grid-cols-2 gap-3 mb-3">
+                                <div className="border rounded-md p-2 bg-slate-50">
+                                    <p className="text-[11px] font-semibold text-slate-500 uppercase mb-1.5 flex items-center gap-1">
+                                        <Package className="w-3 h-3" /> Products ({formItems.length})
+                                    </p>
+                                    <div className="flex flex-wrap gap-1">
+                                        {formItems.length === 0 ? (
+                                            <span className="text-xs text-slate-400 italic">None picked yet</span>
+                                        ) : formItems.map(id => (
+                                            <span key={id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
+                                                {itemById.get(id)?.name || id}
+                                                <button type="button" onClick={() => toggleIn(formItems, setFormItems, id)} className="hover:opacity-70">
+                                                    <X className="w-3 h-3" />
+                                                </button>
+                                            </span>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className="border rounded-md p-2 bg-slate-50">
+                                    <p className="text-[11px] font-semibold text-slate-500 uppercase mb-1.5 flex items-center gap-1">
+                                        <Wrench className="w-3 h-3" /> Services ({formServices.length})
+                                    </p>
+                                    <div className="flex flex-wrap gap-1">
+                                        {formServices.length === 0 ? (
+                                            <span className="text-xs text-slate-400 italic">None picked yet</span>
+                                        ) : formServices.map(name => (
+                                            <span key={name} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
+                                                {name}
+                                                <button type="button" onClick={() => toggleIn(formServices, setFormServices, name)} className="hover:opacity-70">
+                                                    <X className="w-3 h-3" />
+                                                </button>
+                                            </span>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+
                             <div className="flex gap-2 mb-3">
                                 {[
                                     { key: 'products', label: 'Products', icon: Package, count: formItems.length },
                                     { key: 'services', label: 'Services', icon: Wrench, count: formServices.length },
-                                    { key: 'tags', label: 'Tags', icon: Tag, count: formCategories.length },
                                 ].map(t => (
                                     <button
                                         key={t.key} type="button"
@@ -415,10 +418,80 @@ const VendorMaster = () => {
 
                             {coverageTab === 'products' && (() => {
                                 const q = coverageSearch.trim().toLowerCase();
-                                const list = catalogItems.filter(it => !q || it.name.toLowerCase().includes(q) || (it.code || '').toLowerCase().includes(q));
+                                // Dynamic: only a source that actually has at
+                                // least one item gets a filter chip.
+                                const sourceOrder = ['Inventory', 'Product Master', 'Motor Master'];
+                                const availableSources = sourceOrder.filter(src => catalogItems.some(it => it.source === src));
+
+                                // Second-level filter field per source —
+                                // Motor Master has none (see state comment).
+                                // Inventory's is a multi-select array
+                                // (itemCategories); Product Master's is a
+                                // plain string (category).
+                                const subFieldFor = { 'Inventory': 'itemCategories', 'Product Master': 'category' };
+                                const subField = subFieldFor[productSourceFilter];
+                                const isArraySubField = subField === 'itemCategories';
+                                const normalize = (s) => (s || '').trim();
+                                const titleCase = (s) => s.replace(/\w\S*/g, w => w[0].toUpperCase() + w.slice(1).toLowerCase());
+                                // Every value this item carries for the
+                                // current sub-field, normalized — '(blank)'
+                                // as its own bucket rather than hidden.
+                                const subValuesOf = (it) => {
+                                    const raw = isArraySubField ? (it[subField] || []) : [it[subField]];
+                                    const vals = raw.map(normalize).filter(Boolean);
+                                    return vals.length > 0 ? vals : ['(blank)'];
+                                };
+
+                                let subOptions = [];
+                                if (subField) {
+                                    const bySource = catalogItems.filter(it => it.source === productSourceFilter);
+                                    const seen = new Map();
+                                    bySource.forEach(it => {
+                                        subValuesOf(it).forEach(v => {
+                                            const key = v === '(blank)' ? '(blank)' : v.toLowerCase();
+                                            const label = v === '(blank)' ? 'Unspecified' : titleCase(v);
+                                            if (!seen.has(key)) seen.set(key, { key, label, count: 0 });
+                                            seen.get(key).count++;
+                                        });
+                                    });
+                                    subOptions = [...seen.values()].sort((a, b) => a.label.localeCompare(b.label));
+                                }
+
+                                const list = catalogItems
+                                    .filter(it => productSourceFilter === 'all' || it.source === productSourceFilter)
+                                    .filter(it => !subField || productSubFilter === 'all' || subValuesOf(it).some(v => (v === '(blank)' ? '(blank)' : v.toLowerCase()) === productSubFilter))
+                                    .filter(it => !q || it.name.toLowerCase().includes(q) || (it.code || '').toLowerCase().includes(q));
                                 return (
                                     <div>
                                         <p className="text-xs text-slate-500 mb-2">Items this vendor sells us — every item marked <b>Purchasable</b> in Inventory, Product Master or Motor Master. Child Parts / Sub Child Parts are made in-house from their BOM; their outsourced work goes under <b>Services</b>.</p>
+                                        <div className="flex gap-1.5 mb-2 flex-wrap">
+                                            {['all', ...availableSources].map(src => {
+                                                const count = src === 'all' ? catalogItems.length : catalogItems.filter(it => it.source === src).length;
+                                                return (
+                                                    <button
+                                                        key={src} type="button"
+                                                        onClick={() => { setProductSourceFilter(src); setProductSubFilter('all'); }}
+                                                        className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border ${productSourceFilter === src ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400'}`}
+                                                    >
+                                                        {src === 'all' ? 'All' : src} ({count})
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                        {subField && (
+                                            <div className="flex items-center gap-1.5 mb-2 flex-wrap">
+                                                <span className="text-[11px] text-slate-400">{productSourceFilter === 'Inventory' ? 'Item Category:' : 'Category:'}</span>
+                                                {[{ key: 'all', label: 'All', count: catalogItems.filter(it => it.source === productSourceFilter).length }, ...subOptions].map(opt => (
+                                                    <button
+                                                        key={opt.key} type="button"
+                                                        onClick={() => setProductSubFilter(opt.key)}
+                                                        className={`px-2 py-0.5 rounded-full text-[11px] border ${productSubFilter === opt.key ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-500 border-slate-200 hover:border-blue-300'}`}
+                                                    >
+                                                        {opt.label} ({opt.count})
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
                                         <Input value={coverageSearch} onChange={e => setCoverageSearch(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') e.preventDefault(); }} placeholder="Search items by name or code..." className="mb-2 text-sm" />
                                         <div className="border rounded-md max-h-56 overflow-y-auto divide-y">
                                             {list.length === 0 ? (
@@ -466,17 +539,6 @@ const VendorMaster = () => {
                                     </div>
                                 );
                             })()}
-
-                            {coverageTab === 'tags' && (
-                                <TagInput
-                                    label="Categories (free text — used by RFQ vendor matching)"
-                                    icon={Tag}
-                                    items={formCategories}
-                                    setItems={setFormCategories}
-                                    placeholder='e.g. Raw Material, Services… then press Enter or Add'
-                                    colorClass="bg-blue-100 text-blue-700"
-                                />
-                            )}
                         </div>
 
                         {/* Address Section */}

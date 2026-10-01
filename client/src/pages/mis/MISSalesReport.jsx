@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { TrendingUp, IndianRupee, FileText, AlertTriangle, RefreshCw, Download } from 'lucide-react';
+import { TrendingUp, IndianRupee, FileText, AlertTriangle, RefreshCw, Download, Search, PackageSearch } from 'lucide-react';
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
@@ -33,6 +33,7 @@ export default function MISSalesReport() {
   const [error, setError] = useState(null);
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
+  const [productCode, setProductCode] = useState('');
 
   const fetchData = async () => {
     try {
@@ -42,6 +43,7 @@ export default function MISSalesReport() {
       const params = new URLSearchParams();
       if (from) params.append('from', from);
       if (to) params.append('to', to);
+      if (productCode.trim()) params.append('productCode', productCode.trim());
       const res = await fetch(`${API_BASE}/mis/sales-report?${params}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -96,6 +98,17 @@ export default function MISSalesReport() {
           <input type="date" value={from} onChange={e => setFrom(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
           <span className="text-gray-400 text-sm">to</span>
           <input type="date" value={to} onChange={e => setTo(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+          <div className="relative">
+            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              value={productCode}
+              onChange={e => setProductCode(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') fetchData(); }}
+              placeholder="Product code (Product/Motor Master)"
+              className="border border-gray-200 rounded-lg pl-8 pr-3 py-2 text-sm w-56"
+            />
+          </div>
           <button onClick={fetchData} className="flex items-center gap-2 px-4 py-2 bg-[#49A7F5] text-white rounded-lg text-sm hover:bg-[#3d96e4] transition-colors">
             <RefreshCw size={14} /> Apply
           </button>
@@ -115,6 +128,87 @@ export default function MISSalesReport() {
         <SummaryCard title="Total Collected" value={fmt((s.totalPaid || 0) + (s.totalAdvance || 0))} sub="Paid + Advance" color="#0891B2" />
         <SummaryCard title="Balance Pending" value={fmt(s.totalBalance)} sub="Outstanding amount" color="#EF4444" />
       </div>
+
+      {/* Product Sales (by code) — Product Master / Motor Master only */}
+      {data?.productSales && (
+        <div className="bg-white rounded-xl border-2 border-[#49A7F5]/30 shadow-sm overflow-hidden">
+          <div className="p-5 border-b border-gray-100 bg-blue-50/50 flex items-center gap-2">
+            <PackageSearch size={18} className="text-[#49A7F5]" />
+            <h3 className="font-semibold text-gray-700">Product Sales — "{productCode}"</h3>
+          </div>
+          {data.productSales.matchedItems.length === 0 ? (
+            <p className="p-5 text-sm text-gray-500">No Product Master / Motor Master item matches code "{productCode}".</p>
+          ) : (
+            <div className="p-5 space-y-5">
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <span className="text-gray-400">Matched:</span>
+                {data.productSales.matchedItems.map((it, i) => (
+                  <span key={i} className="px-2.5 py-1 bg-blue-50 text-[#3d96e4] rounded-full text-xs font-medium">
+                    {it.name} ({it.code}) — {it.productKind === 'Machine' ? 'Product Master' : 'Motor Master'}
+                  </span>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <SummaryCard title="Qty Sold" value={data.productSales.totalQty} sub="Selected period" />
+                <SummaryCard title="Revenue" value={fmt(data.productSales.totalRevenue)} sub="Selected period" color="#16A34A" />
+              </div>
+
+              {data.productSales.monthlyTrend.length > 0 && (
+                <div>
+                  <h4 className="text-sm font-semibold text-gray-600 mb-2">Monthly Trend</h4>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="text-left px-4 py-2 text-gray-500 font-medium">Month</th>
+                          <th className="text-right px-4 py-2 text-gray-500 font-medium">Qty</th>
+                          <th className="text-right px-4 py-2 text-gray-500 font-medium">Revenue</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {data.productSales.monthlyTrend.map((m, i) => (
+                          <tr key={i} className="border-t border-gray-50">
+                            <td className="px-4 py-2 text-gray-700">{MONTH_NAMES[m._id.month - 1]} {m._id.year}</td>
+                            <td className="px-4 py-2 text-right text-gray-600">{m.qty}</td>
+                            <td className="px-4 py-2 text-right font-semibold text-[#49A7F5]">{fmt(m.revenue)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {data.productSales.topCustomers.length > 0 && (
+                <div>
+                  <h4 className="text-sm font-semibold text-gray-600 mb-2">Top Customers for this Product</h4>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="text-left px-4 py-2 text-gray-500 font-medium">Customer</th>
+                          <th className="text-right px-4 py-2 text-gray-500 font-medium">Qty</th>
+                          <th className="text-right px-4 py-2 text-gray-500 font-medium">Revenue</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {data.productSales.topCustomers.map((c, i) => (
+                          <tr key={i} className="border-t border-gray-50">
+                            <td className="px-4 py-2 font-medium text-gray-800">{c.customerName}</td>
+                            <td className="px-4 py-2 text-right text-gray-600">{c.qty}</td>
+                            <td className="px-4 py-2 text-right font-semibold text-green-600">{fmt(c.revenue)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Overdue Alert */}
       {data?.overdueInvoices?.count > 0 && (

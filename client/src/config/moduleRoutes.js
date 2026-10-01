@@ -176,6 +176,7 @@ const accountsMenuItems = [
     feature: 'purchases',
     submodules: [
       { label: 'Vendor Master', path: '/accounts/purchases/vendors', feature: 'purchases' },
+      { label: 'Vendor Batching (Preview)', path: '/accounts/purchases/vendor-batching-preview', feature: 'purchases' },
       { label: 'Outsource Work', path: '/accounts/purchases/sub-child-job-work', feature: 'purchases' },
       { label: 'Inventory', path: '/accounts/purchases/inventory', feature: 'purchases' },
       { label: 'Purchase Request', path: '/accounts/purchases/requests', feature: 'purchases' },

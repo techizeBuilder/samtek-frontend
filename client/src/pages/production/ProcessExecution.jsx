@@ -13,8 +13,6 @@ import {
   FileCheck, FileText, Eye, Download, Send
 } from 'lucide-react';
 import SubChildPartQCPanel from '@/components/production/SubChildPartQCPanel';
-import FinalChecklistPanel from '@/components/production/FinalChecklistPanel';
-import QcCheckpointPanel from '@/components/production/QcCheckpointPanel';
 import StepMaterialStatus from '@/components/production/StepMaterialStatus';
 import { apiRequest } from '@/lib/queryClient';
 import { config } from '@/config/environment';
@@ -232,18 +230,22 @@ export default function ProcessExecution() {
   // How many physical machines this order builds, and which one is on screen.
   const unitCount = getUnitCountFor(selectedOrder);
   const activeProcesses = getUnitProcessesFor(selectedOrder, activeUnit);
-  // Stage 3b (2026-09-23) — client-side mirror of the backend's
-  // qcCheckpointIndex (productionMfgController.js): the ONE real QC
-  // checkpoint's position, from Phase 1's qcRequired flag, or Sub Child
-  // Part's fixed always-last-step rule. -1 for a legacy order with nothing
-  // flagged (not Sub Child Part) — every existing hardcoded-name branch
-  // below stays exactly as it was for that case.
-  const checkpointIdx = !selectedOrder ? -1
-    : selectedOrder.orderKind === 'SubChildPart' ? activeProcesses.length - 1
-    : activeProcesses.findIndex(p => p.qcRequired);
-  const isDynamicOrder = checkpointIdx !== -1;
-  const trueLastStepAfterCheckpoint = isDynamicOrder && checkpointIdx < activeProcesses.length - 1
-    ? activeProcesses.length - 1 : -1;
+  // QC multi-checkpoint redesign (slice 2, 2026-09-26) — Sub Child Part's own
+  // multi-step case (whole-batch submit), Stage B (2026-09-26) — Child
+  // Part's own (per-unit submit), and Stage C (2026-09-28) — Machine's own
+  // (per-unit submit, same mechanism) — EVERY qcRequired/finalQc index, for
+  // all three of these order kinds. Only one of isBatchQcOrder/isUnitQcOrder
+  // is ever true for a given order, so both safely share the one
+  // qcStepIndices array below. A legacy (non-dynamic) Machine order still
+  // resolves to isUnitQcOrder=true here, but qcStepIndices naturally comes
+  // back empty for it (no step has either flag), so every per-step
+  // isUnitQcStep/isUnitLastNonQc check below is safely a no-op — same
+  // "empty array = old behavior" pattern, not a special case.
+  const isBatchQcOrder = selectedOrder?.orderKind === 'SubChildPart';
+  const isUnitQcOrder = selectedOrder?.orderKind === 'ChildPart' || selectedOrder?.orderKind === 'Machine';
+  const qcStepIndices = (isBatchQcOrder || isUnitQcOrder)
+    ? activeProcesses.reduce((acc, p, i) => { if (p.qcRequired || p.finalQc) acc.push(i); return acc; }, [])
+    : [];
 
   // ── BOM & Design — replaces the per-order R&D request with a live check:
   // is the machine's BOM locked (R&D → BOM Management) and its design
@@ -495,39 +497,118 @@ export default function ProcessExecution() {
     }
   };
 
+  // QC multi-checkpoint redesign (slice 2, 2026-09-26) — Production's
+  // submit-only action for a Sub Child Part QC step: no checklist to fill
+  // (QC does that, see SubChildPartBatchQCReview), just a plain "Submit to
+  // QC" click — except when this step is the array's true last index, which
+  // still needs the same cost-entry dialog completeFinalProcessStep's own
+  // trigger uses (batch-qc-step/submit requires cost on that step's first
+  // submission, mirrored server-side).
+  const [batchQcSubmitDialog, setBatchQcSubmitDialog] = useState(null); // { stepIndex, step }
+  const [batchQcCost, setBatchQcCost] = useState('');
+  const [batchQcExpense, setBatchQcExpense] = useState('');
+  const [batchQcBusy, setBatchQcBusy] = useState(false);
+  const handleSubmitBatchQcStep = async (stepIndex, step, needsCost) => {
+    setBatchQcBusy(true);
+    try {
+      const body = needsCost ? { productionCost: Number(batchQcCost), productionExpense: Number(batchQcExpense) } : {};
+      await apiRequest('PUT', `/api/production-mfg/orders/${selectedOrderKey}/processes/${stepIndex}/batch-qc-step/submit`, body);
+      qc.invalidateQueries({ queryKey: ['production-mfg-orders'] });
+      showSmartToast({ message: `${step} submitted to QC.` }, '');
+      setBatchQcSubmitDialog(null); setBatchQcCost(''); setBatchQcExpense('');
+    } catch (error) {
+      showSmartToast(error, 'Submit to QC Failed');
+    } finally {
+      setBatchQcBusy(false);
+    }
+  };
+  const handleClickSubmitBatchQcStep = (stepIndex, step, needsCost) => {
+    if (needsCost) { setBatchQcSubmitDialog({ stepIndex, step }); return; }
+    handleSubmitBatchQcStep(stepIndex, step, false);
+  };
+
+  // Stage B (2026-09-26) — same idea as the Sub Child Part pair above, for a
+  // Child Part order's per-unit QC step (submit only, no checklist — QC does
+  // that, see ChildPartUnitQCReview). ?unit= targets the currently active
+  // unit tab, same convention every other per-unit action on this page uses.
+  const [unitQcSubmitDialog, setUnitQcSubmitDialog] = useState(null); // { stepIndex, step }
+  const [unitQcCost, setUnitQcCost] = useState('');
+  const [unitQcExpense, setUnitQcExpense] = useState('');
+  const [unitQcBusy, setUnitQcBusy] = useState(false);
+  const handleSubmitUnitQcStep = async (stepIndex, step, needsCost) => {
+    setUnitQcBusy(true);
+    try {
+      const body = needsCost ? { productionCost: Number(unitQcCost), productionExpense: Number(unitQcExpense) } : {};
+      await apiRequest('PUT', `/api/production-mfg/orders/${selectedOrderKey}/processes/${stepIndex}/unit-qc-step/submit?unit=${activeUnit}`, body);
+      qc.invalidateQueries({ queryKey: ['production-mfg-orders'] });
+      showSmartToast({ message: `${step} submitted to QC — Unit ${activeUnit}.` }, '');
+      setUnitQcSubmitDialog(null); setUnitQcCost(''); setUnitQcExpense('');
+    } catch (error) {
+      showSmartToast(error, 'Submit to QC Failed');
+    } finally {
+      setUnitQcBusy(false);
+    }
+  };
+  const handleClickSubmitUnitQcStep = (stepIndex, step, needsCost) => {
+    if (needsCost) { setUnitQcSubmitDialog({ stepIndex, step }); return; }
+    handleSubmitUnitQcStep(stepIndex, step, false);
+  };
+
   // Phase 2 — Production's own "Send for Outsourcing" trigger for a dynamic
   // Process-Definition-built Out Source step (proc.type==='Outsourcing' on a
-  // step carrying the new fields — see processStepBuilderService.js). Sends
-  // just THIS one step for now, not a multi-step bundle picker — the backend
-  // (outsourceWorkController.js) supports bundling a consecutive run into
-  // one hand-off, but building that picker UI is follow-up work; sending
-  // each step of a run one at a time still works correctly today, just with
-  // one click per step instead of one click per run. unitIndex is 0-based on
-  // that controller (0 = top-level `processes`), while activeUnit here is
-  // 1-based (Unit 1, Unit 2, ...) — converted below.
+  // step carrying the new fields — see processStepBuilderService.js).
+  // unitIndex is 0-based on that controller (0 = top-level `processes`),
+  // while activeUnit here is 1-based (Unit 1, Unit 2, ...) — converted below.
+  //
+  // Multi-step bundle picker (2026-09-26 — found missing while the user was
+  // live-testing SCP-003's two-consecutive-Out-Source-step BOM: welding then
+  // grinding, same "Fabrication" category). The backend always supported
+  // bundling a whole consecutive Out Source run into one hand-off
+  // (`stepIndices` as an array, `validateContiguousOutSourceRun`,
+  // `groupConsecutiveOutSourceRuns`) — only the picker UI itself was never
+  // built (this comment used to say so). Clicking Send on a step that's
+  // followed by more Out Source steps now offers a "bundle the next N steps
+  // in" choice before the existing unit-eligibility check; declining (or a
+  // run of length 1, the common case) sends exactly as before. Purchase's
+  // own Send/Receive Round UI already supports sending a multi-step hand-off
+  // in separate rounds (SubChildJobWork.jsx's existing per-step checkbox
+  // list) — that half needed no changes.
   //
   // Multi-unit outsource handoff batching (2026-09-25, see the discussion
   // doc's own section) — a hand-off's unit set is fixed once created, so
   // before sending we check which OTHER units are currently eligible for
-  // this exact step run (same step INDEX required, per the confirmed
-  // design) and only show a picker when there's a real choice to make; the
-  // common case (no other unit ready yet, or a single-unit order) still
-  // sends in one click, unchanged from before this feature.
+  // this exact step run (same step INDICES required, per the confirmed
+  // design). Combined with the step-bundle picker above into ONE dialog
+  // (2026-09-28, user's own UX call — the original two-sequential-dialogs
+  // flow buried the unit choice behind confirming the step choice first).
+  // Eligibility is monotonic in step count (a unit eligible for a longer run
+  // is always eligible for any shorter prefix of it too — same steps must
+  // ALSO satisfy the shorter run's checks), so every prefix's eligible-unit
+  // list is fetched once, up front, in parallel — no re-fetch needed as the
+  // user toggles the step checkboxes inside the dialog. Ineligible units are
+  // shown disabled, not omitted (user's explicit correction) — Production
+  // should see who exists and why they can't be included, not a shorter
+  // list. The common case (single step, single-unit order — nothing to ever
+  // show) still sends in one click, unchanged from before this feature.
   const [outsourceBusy, setOutsourceBusy] = useState(false);
-  const [outsourceUnitPicker, setOutsourceUnitPicker] = useState(null); // { stepIndex, eligibleUnits: [1-based...], selectedUnits: Set<number> }
+  const [outsourceSendPicker, setOutsourceSendPicker] = useState(null);
+  // { run: [idx,...], selectedCount: number (>=1, contiguous prefix of run),
+  //   eligibleUnitsByCount: { [count]: [unitNo,...] } (1-based, excludes activeUnit),
+  //   selectedUnits: Set<number> (1-based) }
 
-  const sendOutsourceHandoff = async (stepIndex, unitIndices) => {
+  const sendOutsourceHandoff = async (stepIndices, unitIndices) => {
     setOutsourceBusy(true);
     try {
       await apiRequest('POST', `/api/outsource-work/orders/${selectedOrderKey}/handoffs`, {
         unitIndices,
-        stepIndices: [stepIndex],
+        stepIndices,
       });
       qc.invalidateQueries({ queryKey: ['production-mfg-orders'] });
+      const parts = [];
+      if (stepIndices.length > 1) parts.push(`${stepIndices.length} steps`);
+      if (unitIndices.length > 1) parts.push(`${unitIndices.length} units`);
       showSmartToast({
-        message: unitIndices.length > 1
-          ? `Sent ${unitIndices.length} units for outsourcing — Purchase will pick this up.`
-          : 'Sent for outsourcing — Purchase will pick this up.',
+        message: parts.length ? `Sent ${parts.join(', ')} for outsourcing — Purchase will pick this up.` : 'Sent for outsourcing — Purchase will pick this up.',
       }, '');
     } catch (error) {
       showSmartToast(error, 'Send for Outsourcing Failed');
@@ -537,19 +618,34 @@ export default function ProcessExecution() {
   };
 
   const handleSendForOutsourcing = async (stepIndex) => {
+    // Walk forward from stepIndex while still an untouched Out Source step —
+    // same contiguity rule validateContiguousOutSourceRun enforces server-
+    // side, computed here just to know whether there's a real bundling
+    // choice to offer.
+    const run = [];
+    for (let i = stepIndex; i < activeProcesses.length; i++) {
+      const p = activeProcesses[i];
+      if (p.type !== 'Outsourcing' || p.outsourceStatus !== 'NotStarted') break;
+      run.push(i);
+    }
+    if (run.length === 1 && unitCount === 1) {
+      await sendOutsourceHandoff(run, [activeUnit - 1]);
+      return;
+    }
     setOutsourceBusy(true);
     try {
-      const res = await apiRequest('GET', `/api/outsource-work/orders/${selectedOrderKey}/eligible-units?stepIndices=${stepIndex}&unitIndex=${activeUnit - 1}`);
-      const otherEligible = (res?.data?.eligibleUnitIndices || []).filter(i => i !== activeUnit - 1);
-      if (!otherEligible.length) {
-        await sendOutsourceHandoff(stepIndex, [activeUnit - 1]);
-        return;
+      const eligibleUnitsByCount = {};
+      if (unitCount > 1) {
+        const results = await Promise.all(run.map((_, i) => {
+          const stepIndices = run.slice(0, i + 1);
+          return apiRequest('GET', `/api/outsource-work/orders/${selectedOrderKey}/eligible-units?stepIndices=${stepIndices.join(',')}&unitIndex=${activeUnit - 1}`);
+        }));
+        results.forEach((res, i) => {
+          const otherEligible = (res?.data?.eligibleUnitIndices || []).filter(u => u !== activeUnit - 1);
+          eligibleUnitsByCount[i + 1] = otherEligible.map(u => u + 1).sort((a, b) => a - b);
+        });
       }
-      setOutsourceUnitPicker({
-        stepIndex,
-        eligibleUnits: otherEligible.map(i => i + 1).sort((a, b) => a - b),
-        selectedUnits: new Set(),
-      });
+      setOutsourceSendPicker({ run, selectedCount: 1, eligibleUnitsByCount, selectedUnits: new Set() });
     } catch (error) {
       showSmartToast(error, 'Send for Outsourcing Failed');
     } finally {
@@ -557,12 +653,13 @@ export default function ProcessExecution() {
     }
   };
 
-  const handleConfirmSendForOutsourcing = async () => {
-    if (!outsourceUnitPicker) return;
-    const unitIndices = [activeUnit - 1, ...[...outsourceUnitPicker.selectedUnits].map(u => u - 1)];
-    const stepIndex = outsourceUnitPicker.stepIndex;
-    setOutsourceUnitPicker(null);
-    await sendOutsourceHandoff(stepIndex, unitIndices);
+  const handleConfirmSendPicker = async () => {
+    if (!outsourceSendPicker) return;
+    const { run, selectedCount, selectedUnits } = outsourceSendPicker;
+    const stepIndices = run.slice(0, selectedCount);
+    const unitIndices = [activeUnit - 1, ...[...selectedUnits].map(u => u - 1)];
+    setOutsourceSendPicker(null);
+    await sendOutsourceHandoff(stepIndices, unitIndices);
   };
 
   // { name, fileUrl } — fileUrl is either a plain static /uploads/... URL
@@ -1323,10 +1420,29 @@ export default function ProcessExecution() {
                             <Play className="h-3.5 w-3.5 mr-1" /> Start{scpFabrication ? ` Unit ${activeUnit}` : ''}
                           </Button>
                         )}
+                        {/* QC multi-checkpoint redesign (slice 2, 2026-09-26)
+                            — Sub Child Part's own per-step flags (whole-batch
+                            submit), Stage B (2026-09-26) — Child Part's own
+                            (per-unit submit), and Stage C (2026-09-28) —
+                            Machine's own (per-unit submit, same mechanism,
+                            now also checking finalQc alongside qcRequired
+                            since Machine is the only order kind that ever
+                            sets it), computed here where proc/idx are in
+                            scope. isBatchQcOrder is false for both Child Part
+                            and Machine, so that branch is a no-op there. */}
+                        {(() => {
+                          const isBatchQcStep = isBatchQcOrder && (proc.qcRequired || proc.finalQc);
+                          const isBatchLastNonQc = isBatchQcOrder && qcStepIndices.length > 0
+                            && idx === activeProcesses.length - 1 && !proc.qcRequired && !proc.finalQc;
+                          const isUnitQcStep = isUnitQcOrder && (proc.qcRequired || proc.finalQc);
+                          const isUnitLastNonQc = isUnitQcOrder && qcStepIndices.length > 0
+                            && idx === activeProcesses.length - 1 && !proc.qcRequired && !proc.finalQc;
+                          return (
+                        <>
                         {proc.status === 'In Progress' && canEdit && (
                           <>
                             {!(isSubChildPartOrder && (proc.step === 'Painting' || proc.step === 'Assembly')) && proc.step !== 'Final Testing'
-                              && idx !== checkpointIdx && idx !== trueLastStepAfterCheckpoint && (
+                              && !isBatchQcStep && !isBatchLastNonQc && !isUnitQcStep && !isUnitLastNonQc && (
                               <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white text-xs" onClick={() => markProcessComplete(selectedOrderId, proc.step, activeUnit)}>
                                 <CheckCircle className="h-3.5 w-3.5 mr-1" /> Mark Complete
                               </Button>
@@ -1342,17 +1458,45 @@ export default function ProcessExecution() {
                                 <CheckCircle className="h-3.5 w-3.5 mr-1" /> Complete Painting — Unit {activeUnit}
                               </Button>
                             )}
-                            {/* Stage 3b — the dynamic checkpoint step
-                                (whatever it's named) completes the same way
-                                Final Testing already does: submitting the
-                                checklist panel below, not this button. */}
-                            {idx === checkpointIdx && (
-                              <span className="text-xs text-slate-400 italic">Submitting the QC checklist below completes this step and sends it to QC</span>
+                            {/* Sub Child Part's own QC step — no checklist
+                                to fill (QC does that), just submit; the
+                                array's true last index also needs cost. */}
+                            {isBatchQcStep && (
+                              <Button size="sm" className="bg-purple-600 hover:bg-purple-700 text-white text-xs" disabled={batchQcBusy}
+                                onClick={() => handleClickSubmitBatchQcStep(idx, proc.step, idx === activeProcesses.length - 1)}>
+                                <CheckCircle className="h-3.5 w-3.5 mr-1" /> Submit to QC
+                              </Button>
                             )}
-                            {/* The true last step, reached after an earlier
-                                checkpoint already passed — no further QC,
-                                Production alone finishes it and reports cost. */}
-                            {idx === trueLastStepAfterCheckpoint && (
+                            {/* Sub Child Part's true last step when it ISN'T
+                                itself QC-flagged (some earlier step is) —
+                                same cost-entry dialog/endpoint as
+                                isUnitLastNonQc below, completeFinalProcessStep
+                                already handles this order kind too (see
+                                productionMfgController.js). */}
+                            {isBatchLastNonQc && (
+                              <Button size="sm" className="bg-purple-600 hover:bg-purple-700 text-white text-xs" onClick={() => setFinalStepDialog({ stepIndex: idx, step: proc.step })}>
+                                <CheckCircle className="h-3.5 w-3.5 mr-1" /> Complete {proc.step}
+                              </Button>
+                            )}
+                            {/* Stage B (2026-09-26) — Child Part's own QC
+                                step, per unit — no checklist to fill (QC
+                                does that), just submit; the array's true
+                                last index also needs cost, same as the batch
+                                case above. */}
+                            {isUnitQcStep && (
+                              <Button size="sm" className="bg-purple-600 hover:bg-purple-700 text-white text-xs" disabled={unitQcBusy}
+                                onClick={() => handleClickSubmitUnitQcStep(idx, proc.step, idx === activeProcesses.length - 1)}>
+                                <CheckCircle className="h-3.5 w-3.5 mr-1" /> Submit to QC — Unit {activeUnit}
+                              </Button>
+                            )}
+                            {/* Child Part's true last step when it ISN'T
+                                itself QC-flagged (some earlier step is) —
+                                same cost-entry dialog/endpoint as
+                                isBatchLastNonQc above; completeFinalProcessStep's
+                                ChildPart branch already reads getQcStepIndices,
+                                not qcCheckpointIndex, so no backend change was
+                                needed for this. */}
+                            {isUnitLastNonQc && (
                               <Button size="sm" className="bg-purple-600 hover:bg-purple-700 text-white text-xs" onClick={() => setFinalStepDialog({ stepIndex: idx, step: proc.step })}>
                                 <CheckCircle className="h-3.5 w-3.5 mr-1" /> Complete {proc.step}
                               </Button>
@@ -1362,12 +1506,19 @@ export default function ProcessExecution() {
                             </Button>
                           </>
                         )}
-                        {/* Final Testing / the dynamic QC checkpoint have no
-                            self-certify Approve/Reject here — the real
-                            decision is QC's own review on /qc/jobs, gated
-                            on the checklist submitted above; "QC Pending"
-                            for either just means "waiting on QC." */}
-                        {proc.status === 'QC Pending' && canEdit && proc.step !== 'Final Testing' && idx !== checkpointIdx && (
+                        {/* A dynamic order's own QC-flagged step (Sub Child
+                            Part/Child Part/Machine) has no self-certify
+                            Approve/Reject here — the real decision is QC's
+                            own review on /qc/jobs, gated on the checklist
+                            submitted above; "QC Pending" for it just means
+                            "waiting on QC." Everything else (including a
+                            legacy order's plain step, or one literally named
+                            'Final Testing' with no flag) self-certifies
+                            normally through the buttons below — slice 4
+                            cleanup (2026-09-28) removed the old dedicated
+                            Final Testing checklist flow, no separate
+                            mechanism left to defer to. */}
+                        {proc.status === 'QC Pending' && canEdit && !isBatchQcStep && !isUnitQcStep && (
                           <>
                             <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs" onClick={() => setQcDialog({ step: proc.step, action: 'approve' })}>
                               <ThumbsUp className="h-3.5 w-3.5 mr-1" /> Approve QC
@@ -1377,9 +1528,12 @@ export default function ProcessExecution() {
                             </Button>
                           </>
                         )}
-                        {proc.status === 'QC Pending' && (proc.step === 'Final Testing' || idx === checkpointIdx) && (
+                        {proc.status === 'QC Pending' && (isBatchQcStep || isUnitQcStep) && (
                           <span className="text-xs text-slate-400 italic">Sent to QC — awaiting their decision</span>
                         )}
+                        </>
+                          );
+                        })()}
 
                         {proc.status === 'Completed' && (
                           <span className="flex items-center gap-1 text-xs text-emerald-600 font-semibold px-2 py-1">
@@ -1516,24 +1670,6 @@ export default function ProcessExecution() {
                           </div>
                         </div>
                       </div>
-                    )}
-
-                    {/* Final Testing checklist — every order, not just
-                        manufactured ones (see FinalChecklistPanel's own
-                        comment). Shown once the step is actually reached,
-                        same gate the old Sub Entries section below already
-                        used. */}
-                    {proc.step === 'Final Testing' && proc.status !== 'Pending' && (
-                      <FinalChecklistPanel orderId={selectedOrderId} canEdit={canEdit} procStatus={proc.status} unitNumber={activeUnit} />
-                    )}
-
-                    {/* Stage 3b — the dynamic QC checkpoint's own self-check
-                        + submit panel, generalizing FinalChecklistPanel/
-                        the Child Part Initial-Process UI above into one
-                        component driven by position (see its own comment).
-                        Same "shown once reached" gate as Final Testing's. */}
-                    {idx === checkpointIdx && proc.status !== 'Pending' && (
-                      <QcCheckpointPanel orderId={selectedOrderId} canEdit={canEdit} procStatus={proc.status} unitNumber={activeUnit} orderKind={selectedOrder.orderKind} />
                     )}
 
                     {/* Stage 3d — shown regardless of this step's own status
@@ -1738,49 +1874,161 @@ export default function ProcessExecution() {
         </DialogContent>
       </Dialog>
 
-      {/* Multi-unit outsource handoff batching (2026-09-25) — Production
-          picks which OTHER units currently sitting at this exact step to
-          bundle into the same hand-off as the unit they clicked Send from.
-          The unit set is fixed once sent — no adding units to it later. */}
-      <Dialog open={!!outsourceUnitPicker} onOpenChange={(open) => { if (!open) setOutsourceUnitPicker(null); }}>
+      {/* QC multi-checkpoint redesign (slice 2, 2026-09-26) — Sub Child
+          Part's own QC-step submit, only asks for cost when this step is
+          the array's true last index (see handleClickSubmitBatchQcStep). */}
+      <Dialog open={!!batchQcSubmitDialog} onOpenChange={(open) => { if (!open) { setBatchQcSubmitDialog(null); setBatchQcCost(''); setBatchQcExpense(''); } }}>
         <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle className="text-purple-700">Send for Outsourcing</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle className="text-purple-700">Submit {batchQcSubmitDialog?.step} to QC</DialogTitle></DialogHeader>
           <div className="space-y-3 py-2">
-            <p className="text-xs text-slate-500">
-              Other units are also ready for this step. Include them in the same hand-off, or send Unit {activeUnit} alone.
-            </p>
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
-                <Checkbox checked disabled />
-                Unit {activeUnit} <span className="text-xs text-slate-400 font-normal">(this unit)</span>
+            <p className="text-xs text-slate-500">This is the last step — enter what it actually cost, so its BOM/pricing stays accurate.</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">Production Cost *</label>
+                <Input type="number" min="0" placeholder="0" value={batchQcCost} onChange={e => setBatchQcCost(e.target.value)} />
               </div>
-              {outsourceUnitPicker?.eligibleUnits.map(u => (
-                <label key={u} className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
-                  <Checkbox
-                    checked={outsourceUnitPicker.selectedUnits.has(u)}
-                    onCheckedChange={(checked) => {
-                      setOutsourceUnitPicker(prev => {
-                        const next = new Set(prev.selectedUnits);
-                        if (checked) next.add(u); else next.delete(u);
-                        return { ...prev, selectedUnits: next };
-                      });
-                    }}
-                  />
-                  Unit {u}
-                </label>
-              ))}
+              <div>
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">Production Expense *</label>
+                <Input type="number" min="0" placeholder="0" value={batchQcExpense} onChange={e => setBatchQcExpense(e.target.value)} />
+              </div>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOutsourceUnitPicker(null)}>Cancel</Button>
+            <Button variant="outline" onClick={() => { setBatchQcSubmitDialog(null); setBatchQcCost(''); setBatchQcExpense(''); }}>Cancel</Button>
             <Button
-              onClick={handleConfirmSendForOutsourcing}
+              onClick={() => handleSubmitBatchQcStep(batchQcSubmitDialog.stepIndex, batchQcSubmitDialog.step, true)}
+              disabled={batchQcBusy || batchQcCost === '' || batchQcExpense === '' || Number(batchQcCost) < 0 || Number(batchQcExpense) < 0}
+              className="bg-purple-600 hover:bg-purple-700 text-white"
+            >
+              Submit to QC
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Stage B (2026-09-26) — Child Part's own per-unit QC-step submit,
+          same shape as the Sub Child Part dialog above, just per unit. */}
+      <Dialog open={!!unitQcSubmitDialog} onOpenChange={(open) => { if (!open) { setUnitQcSubmitDialog(null); setUnitQcCost(''); setUnitQcExpense(''); } }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle className="text-purple-700">Submit {unitQcSubmitDialog?.step} to QC — Unit {activeUnit}</DialogTitle></DialogHeader>
+          <div className="space-y-3 py-2">
+            <p className="text-xs text-slate-500">This is the last step for this unit — enter what it actually cost, so its BOM/pricing stays accurate.</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">Production Cost *</label>
+                <Input type="number" min="0" placeholder="0" value={unitQcCost} onChange={e => setUnitQcCost(e.target.value)} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">Production Expense *</label>
+                <Input type="number" min="0" placeholder="0" value={unitQcExpense} onChange={e => setUnitQcExpense(e.target.value)} />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setUnitQcSubmitDialog(null); setUnitQcCost(''); setUnitQcExpense(''); }}>Cancel</Button>
+            <Button
+              onClick={() => handleSubmitUnitQcStep(unitQcSubmitDialog.stepIndex, unitQcSubmitDialog.step, true)}
+              disabled={unitQcBusy || unitQcCost === '' || unitQcExpense === '' || Number(unitQcCost) < 0 || Number(unitQcExpense) < 0}
+              className="bg-purple-600 hover:bg-purple-700 text-white"
+            >
+              Submit to QC
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Combined Out Source send picker (2026-09-28 — merged from two
+          sequential dialogs into one, user's own UX call: the old flow
+          buried the unit choice behind confirming the step choice first).
+          Step selection is always a contiguous prefix of the run starting at
+          the clicked step (clicking a row includes everything up through it,
+          matching validateContiguousOutSourceRun's own requirement
+          server-side). Unit rows list EVERY unit of the order, not just the
+          eligible ones — a unit not currently on this exact step run is
+          shown disabled rather than omitted, so Production can see who
+          exists and why they're unavailable. */}
+      <Dialog open={!!outsourceSendPicker} onOpenChange={(open) => { if (!open) setOutsourceSendPicker(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle className="text-purple-700">Send for Outsourcing</DialogTitle></DialogHeader>
+          <div className="space-y-3 py-2">
+            {outsourceSendPicker?.run.length > 1 && (
+              <p className="text-xs text-slate-500">
+                This is followed by more Out Source steps. Bundle them into the same hand-off, or send just this step for now.
+              </p>
+            )}
+            {outsourceSendPicker?.run.length > 1 && (
+              <div className="space-y-2">
+                {outsourceSendPicker.run.map((stepIdx, i) => (
+                  <label key={stepIdx} className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                    <Checkbox
+                      checked={i < outsourceSendPicker.selectedCount}
+                      disabled={i === 0}
+                      onCheckedChange={(checked) => {
+                        setOutsourceSendPicker(prev => {
+                          const newCount = checked ? i + 1 : i;
+                          const eligible = new Set(prev.eligibleUnitsByCount[newCount] || []);
+                          return {
+                            ...prev,
+                            selectedCount: newCount,
+                            selectedUnits: new Set([...prev.selectedUnits].filter(u => eligible.has(u))),
+                          };
+                        });
+                      }}
+                    />
+                    {activeProcesses[stepIdx]?.step}
+                    {i === 0 && <span className="text-xs text-slate-400 font-normal">(this step)</span>}
+                  </label>
+                ))}
+              </div>
+            )}
+            {unitCount > 1 && (
+              <>
+                <p className="text-xs text-slate-500">
+                  Other units currently ready for this step can be included in the same hand-off.
+                </p>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                    <Checkbox checked disabled />
+                    Unit {activeUnit} <span className="text-xs text-slate-400 font-normal">(this unit)</span>
+                  </div>
+                  {Array.from({ length: unitCount }, (_, i) => i + 1).filter(u => u !== activeUnit).map(u => {
+                    const eligible = (outsourceSendPicker?.eligibleUnitsByCount[outsourceSendPicker.selectedCount] || []).includes(u);
+                    return (
+                      <label key={u} className={`flex items-center gap-2 text-sm cursor-pointer ${eligible ? 'text-slate-700' : 'text-slate-400 cursor-not-allowed'}`}>
+                        <Checkbox
+                          checked={outsourceSendPicker?.selectedUnits.has(u) || false}
+                          disabled={!eligible}
+                          onCheckedChange={(checked) => {
+                            setOutsourceSendPicker(prev => {
+                              const next = new Set(prev.selectedUnits);
+                              if (checked) next.add(u); else next.delete(u);
+                              return { ...prev, selectedUnits: next };
+                            });
+                          }}
+                        />
+                        Unit {u}
+                        {!eligible && <span className="text-xs font-normal">(not on this step)</span>}
+                      </label>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOutsourceSendPicker(null)}>Cancel</Button>
+            <Button
+              onClick={handleConfirmSendPicker}
               disabled={outsourceBusy}
               className="bg-purple-600 hover:bg-purple-700 text-white"
             >
               {(() => {
-                const n = 1 + (outsourceUnitPicker?.selectedUnits.size || 0);
-                return `Send ${n} Unit${n > 1 ? 's' : ''}`;
+                const nSteps = outsourceSendPicker?.selectedCount || 1;
+                const nUnits = 1 + (outsourceSendPicker?.selectedUnits.size || 0);
+                const parts = [];
+                if (nSteps > 1) parts.push(`${nSteps} Steps`);
+                if (nUnits > 1) parts.push(`${nUnits} Units`);
+                return parts.length ? `Send ${parts.join(', ')}` : 'Send';
               })()}
             </Button>
           </DialogFooter>

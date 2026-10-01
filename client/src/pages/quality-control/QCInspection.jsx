@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import SubChildPartQCReview from '@/components/qc/SubChildPartQCReview';
 import ChildPartUnitQCReview from '@/components/qc/ChildPartUnitQCReview';
+import SubChildPartBatchQCReview from '@/components/qc/SubChildPartBatchQCReview';
 import ProductionCheckReviewRow from '@/components/qc/ProductionCheckReviewRow';
 
 const statusColor = {
@@ -183,6 +184,16 @@ export default function QCInspection() {
 
   const job = data?.data;
 
+  // Inspector picker (2026-09-26) — client requirement: a selection from QC
+  // department users, not free text. Only fetched once an inspector still
+  // needs assigning, and only when the picker would actually render.
+  const { data: qcUsersData } = useQuery({
+    queryKey: ['qc-department-users'],
+    queryFn: () => apiRequest('GET', '/api/qc/department-users'),
+    enabled: !!id && canView && canEdit && !job?.inspector,
+  });
+  const qcUsers = qcUsersData?.data || [];
+
   // ⚡ The new Sync Function ⚡
   const handleSyncRD = async () => {
     setSyncingRD(true);
@@ -203,7 +214,7 @@ export default function QCInspection() {
 
   const handleStart = async () => {
     if (!inspectorName.trim()) {
-      toast({ title: 'Inspector name is required', description: 'Please enter the inspector name before starting inspection.', variant: 'destructive' });
+      toast({ title: 'Inspector is required', description: 'Please select an inspector before starting inspection.', variant: 'destructive' });
       return;
     }
     setLoading(true);
@@ -336,6 +347,11 @@ export default function QCInspection() {
   // multi-unit order for dispatch off one unit's check. Keyed on having
   // unitChecks at all, not on source, so both kinds are covered.
   const isPerUnitJob = job.unitChecks?.length > 0;
+  // QC multi-checkpoint redesign (slice 2, 2026-09-26) — Sub Child Part's
+  // own whole-batch equivalent (SubChildPartBatchQCReview), same reasoning:
+  // the flat Checklist/Decision cards below are meaningless once a job has
+  // moved onto per-step batchSteps.
+  const isBatchJob = job.batchSteps?.length > 0;
   const statusField = productionFilled ? 'qcStatus' : 'status';
   const passCount = cl.filter(c => c[statusField] === 'Pass').length;
   const failCount = cl.filter(c => c[statusField] === 'Fail').length;
@@ -380,15 +396,28 @@ export default function QCInspection() {
         </CardContent>
       </Card>
 
-      {/* Start inspection */}
-      {job.status === 'Pending' && canEdit && (
+      {/* Assign inspector — gated on !job.inspector, not job.status (2026-09-26
+          fix, found live: a batchSteps/unitChecks-per-step job auto-advances
+          past 'Pending' the moment a step is first submitted, well before QC
+          ever opens it, so the old status==='Pending' gate meant this panel
+          — the only place inspector ever got set — never showed for these
+          jobs at all). Client requirement: a selection from QC department
+          users, not free text — see the qcUsers query above. */}
+      {!job.inspector && canEdit && (
         <Card className="border-none shadow-sm border-l-4 border-l-amber-400">
           <CardContent className="p-5">
-            <p className="font-semibold text-slate-800 mb-3">Start Inspection</p>
+            <p className="font-semibold text-slate-800 mb-3">Assign Inspector</p>
             <div className="flex gap-3 items-end">
               <div className="flex-1">
-                <Label>Inspector Name</Label>
-                <Input className="mt-1" value={inspectorName} onChange={e => setInspectorName(e.target.value)} placeholder="Your name" />
+                <Label>Inspector</Label>
+                <Select value={inspectorName} onValueChange={setInspectorName}>
+                  <SelectTrigger className="mt-1"><SelectValue placeholder="Select an inspector" /></SelectTrigger>
+                  <SelectContent>
+                    {qcUsers.map(u => (
+                      <SelectItem key={u._id} value={u.fullName || u.username}>{u.fullName || u.username} ({u.role})</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <Button onClick={handleStart} disabled={loading} className="flex items-center gap-2">
                 <Play className="h-4 w-4" /> Start Inspection
@@ -405,14 +434,22 @@ export default function QCInspection() {
           is Approved. */}
       <SubChildPartQCReview jobId={id} partChecks={job.partChecks} canEdit={canEdit} onRefetch={refetch} />
 
-      {/* Child Part order — this job's per-unit review (renders nothing
-          otherwise, see ChildPartUnitQCReview's own comment). No shared
-          Final Check follows it — each unit's own Approval directly unlocks
-          that unit's own Painting step in Production. */}
-      <ChildPartUnitQCReview jobId={id} unitChecks={job.unitChecks} canEdit={canEdit} onRefetch={refetch} singleStage={job.source !== 'ChildPartProduction'} />
+      {/* Child Part/Machine order — this job's per-unit review (renders
+          nothing otherwise, see ChildPartUnitQCReview's own comment). No
+          shared Final Check follows it for Child Part — each unit's own
+          Approval directly unlocks that unit's own Painting step in
+          Production. unitStepsDynamic (Stage C, 2026-09-28 — was Child-
+          Part-only childPartDynamic) covers a dynamic Machine order too now. */}
+      <ChildPartUnitQCReview jobId={id} unitChecks={job.unitChecks} canEdit={canEdit} onRefetch={refetch} singleStage={job.source !== 'ChildPartProduction'} stepped={!!job.unitStepsDynamic} />
 
-      {/* Checklist — meaningless for a per-unit job, see isPerUnitJob. */}
-      {!isPerUnitJob && (
+      {/* Sub Child Part's own whole-batch QC steps (slice 2, 2026-09-26) —
+          renders nothing otherwise, see SubChildPartBatchQCReview's own
+          comment. */}
+      <SubChildPartBatchQCReview jobId={id} batchSteps={job.batchSteps} canEdit={canEdit} onRefetch={refetch} />
+
+      {/* Checklist — meaningless for a per-unit or batch job, see
+          isPerUnitJob/isBatchJob. */}
+      {!isPerUnitJob && !isBatchJob && (
       <Card className="border-none shadow-sm">
         <CardContent className="p-5">
           <div className="flex justify-between items-center mb-4">
@@ -479,8 +516,9 @@ export default function QCInspection() {
       </Card>
       )}
 
-      {/* Decision panel — meaningless for a per-unit job, see isPerUnitJob. */}
-      {job.status === 'In Progress' && canEdit && !isPerUnitJob && (
+      {/* Decision panel — meaningless for a per-unit or batch job, see
+          isPerUnitJob/isBatchJob. */}
+      {job.status === 'In Progress' && canEdit && !isPerUnitJob && !isBatchJob && (
         <Card className={`border-none shadow-sm border-l-4 ${allInspected ? (hasAnyFail ? 'border-l-red-400' : 'border-l-emerald-400') : 'border-l-slate-300'}`}>
           <CardContent className="p-5">
             <h2 className="font-semibold text-slate-800 mb-1">Final Decision</h2>

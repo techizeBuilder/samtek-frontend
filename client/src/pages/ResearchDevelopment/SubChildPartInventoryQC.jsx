@@ -5,42 +5,23 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { config } from '@/config/environment';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { ChevronDown, ClipboardList, Settings2, CheckSquare, Hash, Boxes, FileText } from 'lucide-react';
+import { ChevronDown, ClipboardList, Boxes, FileText } from 'lucide-react';
 import MasterChecklistPanel from '@/components/qc/MasterChecklistPanel';
-import ChecklistPickerDialog from '@/components/qc/ChecklistPickerDialog';
+import StepChecklistCards from '@/components/qc/StepChecklistCards';
 
-// Sub Child Part's own QC checklist — a genuinely independent module
-// ('subChildPart'), flat single checklist (its own order flow is a single
-// order-level Assign/Start/Complete cycle, no stages — see
-// subChildPartOrderService.js). NOT the generic QCChecklistModule.jsx (the
-// "Inventory" tab's own component) — this needs its own Composition
-// reference panel (the one raw material it's built from), which a fully
-// generic shared component shouldn't carry.
+// Sub Child Part's own QC checklists — a genuinely independent module
+// ('subChildPart') with one flat master list. Since the QC multi-checkpoint
+// redesign (2026-09-25) each QC-flagged step of the part's own Process
+// Definition gets its own checklist picked from that master
+// (StepChecklistCards) — replacing the single item-level "Assigned
+// Checklist". NOT the generic QCChecklistModule.jsx (the "Inventory" tab's
+// own component) — this needs its own Composition reference panel (the one
+// raw material it's built from), which a fully generic shared component
+// shouldn't carry.
 const MODULE = 'subChildPart';
 const FEATURE = 'qcSubChildPart';
 const resolveMediaUrl = (url) => (!url ? '' : (url.startsWith('http') || url.startsWith('data:')) ? url : `${config.baseURL}${url}`);
-
-function ChecklistRowSummary({ row }) {
-  return (
-    <div className="flex items-center gap-3 bg-slate-50 rounded-lg px-4 py-3 border border-slate-100">
-      {row.type === 'checkbox'
-        ? <CheckSquare className="h-4 w-4 text-blue-500 flex-shrink-0" />
-        : <Hash className="h-4 w-4 text-purple-500 flex-shrink-0" />}
-      <div className="flex-1">
-        <p className="text-sm font-medium text-slate-800">
-          {row.label}
-          {row.isDiscontinued && <Badge variant="outline" className="ml-2 text-xs align-middle">Discontinued</Badge>}
-        </p>
-        {row.reference && <p className="text-xs text-slate-400 mt-0.5">{row.reference}</p>}
-      </div>
-      {row.type === 'value' && (
-        <span className="font-mono text-xs bg-purple-50 text-purple-700 px-2 py-0.5 rounded flex-shrink-0">{row.expectedValue}</span>
-      )}
-    </div>
-  );
-}
 
 // Read-only "what this Sub Child Part is made of" — the one raw material it's
 // built from (grade/brand/qty) plus this part's own design file — same
@@ -95,7 +76,6 @@ export default function SubChildPartInventoryQC() {
 
   const [selectedItemId, setSelectedItemId] = useState('');
   const [masterDialogOpen, setMasterDialogOpen] = useState(false);
-  const [pickerOpen, setPickerOpen] = useState(false);
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['qc-module-items', MODULE],
@@ -103,14 +83,6 @@ export default function SubChildPartInventoryQC() {
   });
   const items = (data?.items || data?.data || []).filter(i => !i.isDiscontinued);
   const selectedItem = items.find(i => String(i._id) === selectedItemId);
-  const targetPath = selectedItemId ? `item/${selectedItemId}` : null;
-
-  const { data: checklistResp, isLoading: checklistLoading } = useQuery({
-    queryKey: ['qc-target-checklist', MODULE, 'default', targetPath],
-    queryFn: () => apiRequest('GET', `/api/rd/qc-checklist/${MODULE}/default/${targetPath}`),
-    enabled: !!targetPath,
-  });
-  const selectedRows = checklistResp?.data?.selected || [];
 
   return (
     <div className="space-y-6">
@@ -161,40 +133,12 @@ export default function SubChildPartInventoryQC() {
 
           <CompositionCard selectedItemId={selectedItemId} />
 
-          <Card className="border-none shadow-sm">
-            <CardHeader className="flex flex-row items-center justify-between border-b border-slate-50 pb-3">
-              <CardTitle className="text-base font-semibold text-slate-800">Assigned Checklist</CardTitle>
-              {canManage && (
-                <Button size="sm" variant="outline" onClick={() => setPickerOpen(true)}>
-                  <Settings2 className="h-4 w-4 mr-1.5" /> Manage Checklist
-                </Button>
-              )}
-            </CardHeader>
-            <CardContent className="p-5">
-              {checklistLoading ? (
-                <div className="text-center py-6 text-slate-400 text-sm">Loading…</div>
-              ) : selectedRows.length === 0 ? (
-                <div className="text-center py-6 text-slate-400 text-sm">No checks selected yet.</div>
-              ) : (
-                <div className="space-y-2">
-                  {selectedRows.map(row => <ChecklistRowSummary key={String(row.masterItemId)} row={row} />)}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          <StepChecklistCards
+            module={MODULE} itemId={selectedItemId} itemCode={selectedItem?.code}
+            canManage={canManage} onManageMaster={() => setMasterDialogOpen(true)}
+          />
         </>
       )}
-
-      <ChecklistPickerDialog
-        open={pickerOpen}
-        onOpenChange={setPickerOpen}
-        module={MODULE}
-        stage="default"
-        targetPath={targetPath}
-        title={`Manage Checklist — ${selectedItem?.code || ''}`}
-        emptyMasterHint="No check items defined yet for Sub Child Part QC."
-        onManageMaster={() => setMasterDialogOpen(true)}
-      />
 
       <Dialog open={masterDialogOpen} onOpenChange={setMasterDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">

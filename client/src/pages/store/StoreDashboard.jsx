@@ -54,25 +54,26 @@ const StoreDashboard = () => {
 
   // --- Inventory derived values ---
   const invStats = inventoryResponse?.stats || {};
-  const typeStats = inventoryResponse?.typeStats || [];
-  const categoryQtyStats = inventoryResponse?.categoryQtyStats || [];
+  // Real classification breakdown (2026-09-29) — plain Inventory items by
+  // their actual Item Category (itemCategories, the client's real
+  // multi-select field, per /r&d/inventory's own create form), plus Child
+  // Part / Sub Child Part as their own buckets (they never carry an Item
+  // Category — created via BOM Management, not this form). Replaces the
+  // old breakdown by `type` (Material/Product/Spares/Assemblies), an
+  // internal system field, not how Store actually categorizes stock.
+  const inventoryBreakdown = inventoryResponse?.inventoryBreakdown || [];
 
   // Build inventory overview bars from real data
-  const totalQtyAll = typeStats.reduce((sum, t) => sum + (t.totalQty || 0), 0) || 1;
+  const totalQtyAll = inventoryBreakdown.reduce((sum, b) => sum + (b.totalQty || 0), 0) || 1;
 
-  // Try to map to known groups, fallback to actual type names
-  const TYPE_LABELS = {
-    'Material': { label: 'Raw Materials', color: 'bg-blue-400' },
-    'Product': { label: 'Finished Goods', color: 'bg-emerald-400' },
-    'Spares': { label: 'Spares', color: 'bg-amber-400' },
-    'Assemblies': { label: 'Assemblies', color: 'bg-purple-400' }
-  };
+  const CATEGORY_COLORS = ['bg-blue-400', 'bg-emerald-400', 'bg-amber-400', 'bg-purple-400', 'bg-cyan-400', 'bg-pink-400'];
+  const SPECIAL_COLORS = { 'Child Part': 'bg-indigo-400', 'Sub Child Part': 'bg-teal-400', 'Unspecified': 'bg-slate-500' };
 
-  const inventoryBars = typeStats.length > 0
-    ? typeStats.map(t => {
-        const mapped = TYPE_LABELS[t._id] || { label: t._id || 'Other', color: 'bg-slate-400' };
-        const pct = totalQtyAll > 0 ? Math.round((t.totalQty / totalQtyAll) * 100) : 0;
-        return { label: mapped.label, val: pct, count: t.count, totalQty: t.totalQty, color: mapped.color };
+  const inventoryBars = inventoryBreakdown.length > 0
+    ? inventoryBreakdown.map((b, i) => {
+        const color = SPECIAL_COLORS[b.label] || CATEGORY_COLORS[i % CATEGORY_COLORS.length];
+        const pct = totalQtyAll > 0 ? Math.round((b.totalQty / totalQtyAll) * 100) : 0;
+        return { label: b.label, val: pct, count: b.totalItems, totalQty: b.totalQty, color };
       })
     : [
         { label: 'No Inventory Data', val: 0, count: 0, totalQty: 0, color: 'bg-slate-400' }

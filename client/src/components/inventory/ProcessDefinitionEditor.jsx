@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Checkbox } from '@/components/ui/checkbox';
-import { X, ChevronUp, ChevronDown, ShieldCheck } from 'lucide-react';
+import { X, ChevronUp, ChevronDown, ShieldCheck, BadgeCheck } from 'lucide-react';
 
 // Shared Category -> Internal Process picker for all three BOM Management
 // tabs (Sub Child Part / Child Part / Machine) — see
@@ -22,16 +22,18 @@ import { X, ChevronUp, ChevronDown, ShieldCheck } from 'lucide-react';
 //
 // value shape: [{ label, internalProcesses: [{ name, type: 'InHouse'|
 // 'OutSource', materialSource: 'ExplicitMaterials'|'AssembledPart',
-// materialRefs: [id], materialQuantities: [{ref, qty}], qcRequired: boolean
-// }] }]. Ordering is array position — no explicit sequence field, matching
-// this codebase's one existing convention (ProductionOrder.js's hardcoded
-// step arrays).
+// materialRefs: [id], materialQuantities: [{ref, qty}], qcRequired: boolean,
+// finalQc: boolean }] }]. Ordering is array position — no explicit sequence
+// field, matching this codebase's one existing convention
+// (ProductionOrder.js's hardcoded step arrays).
 //
-// qcRequired: exactly one internal process across the WHOLE definition (not
-// per-category) is the QC checkpoint — confirmed with the user 2026-09-22:
-// one checklist, one point, not "mandatory final gate plus optional extras".
-// Never shown for Sub Child Part — its QC point is always implicitly the
-// last step, a fixed rule, not a per-BOM R&D choice.
+// QC (QC multi-checkpoint redesign, 2026-09-25 — see
+// server/docs/qc-multi-checkpoint-redesign-discussion-2026-09.md):
+// qcRequired is a plain per-step toggle at EVERY level, Sub Child Part
+// included — any number of steps can be QC steps, at least one required.
+// Each QC step gets its own checklist in QC Parameters. finalQc is Machine
+// only — exactly one step, mandatory, carries the machine's Final checklist
+// (it can also be a QC step). The server enforces both rules too.
 //
 // materialLines/assemblyLines (Child Part / Machine only — both omitted for
 // Sub Child Part, which has no lines of its own, its one sourceItem is the
@@ -102,7 +104,7 @@ export default function ProcessDefinitionEditor({ bomLevel, value, onChange, mat
   const addInternalProcess = (categoryLabel, name) => {
     const cat = categories.find(c => c.label === categoryLabel);
     if (!cat || cat.internalProcesses.some(p => p.name === name)) return;
-    updateCategory(categoryLabel, { internalProcesses: [...cat.internalProcesses, { name, type: 'InHouse', materialSource: 'ExplicitMaterials', materialRefs: [], materialQuantities: [], qcRequired: false }] });
+    updateCategory(categoryLabel, { internalProcesses: [...cat.internalProcesses, { name, type: 'InHouse', materialSource: 'ExplicitMaterials', materialRefs: [], materialQuantities: [], qcRequired: false, finalQc: false }] });
   };
   const removeInternalProcess = (categoryLabel, name) => {
     const cat = categories.find(c => c.label === categoryLabel);
@@ -134,17 +136,23 @@ export default function ProcessDefinitionEditor({ bomLevel, value, onChange, mat
       internalProcesses: cat.internalProcesses.map(p => (p.name === name ? { ...p, materialSource } : p)),
     });
   };
-  // Exactly one internal process across the WHOLE process definition can be
-  // the QC checkpoint (confirmed with the user 2026-09-22 — one checklist,
-  // one point, not per-category) — so this touches every category, not just
-  // the one the clicked step belongs to. Clicking the already-flagged step
-  // clears it back to none; clicking a different step moves the flag there.
-  const setQcCheckpoint = (categoryLabel, name) => {
+  // QC step — a plain toggle on this one step; any number can be flagged.
+  const toggleQcStep = (categoryLabel, name) => {
+    const cat = categories.find(c => c.label === categoryLabel);
+    if (!cat) return;
+    updateCategory(categoryLabel, {
+      internalProcesses: cat.internalProcesses.map(p => (p.name === name ? { ...p, qcRequired: !p.qcRequired } : p)),
+    });
+  };
+  // Machine only — exactly one Final QC step across the WHOLE definition, so
+  // this touches every category: clicking the already-flagged step clears
+  // it, clicking a different step moves the flag there.
+  const setFinalQcStep = (categoryLabel, name) => {
     setCategories(categories.map(c => ({
       ...c,
       internalProcesses: c.internalProcesses.map(p => {
         const isTarget = c.label === categoryLabel && p.name === name;
-        return { ...p, qcRequired: isTarget ? !p.qcRequired : false };
+        return { ...p, finalQc: isTarget ? !p.finalQc : false };
       }),
     })));
   };
@@ -189,7 +197,9 @@ export default function ProcessDefinitionEditor({ bomLevel, value, onChange, mat
   const availableCategoryOptions = catalog.filter(o => !categories.some(c => c.label === o.label));
 
   const totalProcesses = categories.reduce((sum, c) => sum + c.internalProcesses.length, 0);
-  const qcCheckpointCount = categories.reduce((sum, c) => sum + c.internalProcesses.filter(p => p.qcRequired).length, 0);
+  const isMachine = bomLevel === 'Machine';
+  const qcStepCount = categories.reduce((sum, c) => sum + c.internalProcesses.filter(p => p.qcRequired).length, 0);
+  const finalQcCount = categories.reduce((sum, c) => sum + c.internalProcesses.filter(p => p.finalQc).length, 0);
 
   // Live pool-depletion for assembly-reference chips (2026-09-23) — each
   // reference can only ever be claimed by one step across the whole
@@ -223,13 +233,18 @@ export default function ProcessDefinitionEditor({ bomLevel, value, onChange, mat
 
   return (
     <div className="space-y-3">
-      {bomLevel !== 'SubChildPart' && totalProcesses > 0 && (
-        <p className={`text-[11px] ${qcCheckpointCount === 1 ? 'text-slate-400' : 'text-amber-600 font-medium'}`}>
-          {qcCheckpointCount === 1
-            ? 'One step is flagged as the QC Checkpoint — the only QC review this build gets, wherever it sits.'
-            : 'Flag exactly one step as the QC Checkpoint before saving.'}
-        </p>
-      )}
+      {totalProcesses > 0 && (() => {
+        const needsQc = qcStepCount === 0 && finalQcCount === 0;
+        const needsFinal = isMachine && finalQcCount !== 1;
+        const ok = !needsQc && !needsFinal;
+        return (
+          <p className={`text-[11px] ${ok ? 'text-slate-400' : 'text-amber-600 font-medium'}`}>
+            {ok
+              ? `${qcStepCount} QC step${qcStepCount === 1 ? '' : 's'}${isMachine ? ' + the Final QC step' : ''} — each QC step gets its own checklist in QC Parameters.`
+              : [needsQc && 'Flag at least one step for QC.', needsFinal && 'Pick exactly one Final QC step.'].filter(Boolean).join(' ') + ' Required before saving.'}
+          </p>
+        );
+      })()}
       {categories.length === 0 && catalog.length > 0 && (
         <p className="text-xs text-slate-400 italic">No process categories picked yet — add one below.</p>
       )}
@@ -263,14 +278,22 @@ export default function ProcessDefinitionEditor({ bomLevel, value, onChange, mat
                       {proc.name}
                     </span>
                     <div className="flex items-center gap-3">
-                      {bomLevel !== 'SubChildPart' && (
-                        <label className={`flex items-center gap-1.5 text-xs cursor-pointer ${proc.qcRequired ? 'text-emerald-700 font-medium' : 'text-slate-500'}`}>
+                      <label className={`flex items-center gap-1.5 text-xs cursor-pointer ${proc.qcRequired ? 'text-emerald-700 font-medium' : 'text-slate-500'}`}>
+                        <Checkbox
+                          disabled={disabled}
+                          checked={!!proc.qcRequired}
+                          onCheckedChange={() => toggleQcStep(cat.label, proc.name)}
+                        />
+                        <ShieldCheck className="h-3.5 w-3.5" /> QC
+                      </label>
+                      {isMachine && (
+                        <label className={`flex items-center gap-1.5 text-xs cursor-pointer ${proc.finalQc ? 'text-purple-700 font-medium' : 'text-slate-500'}`}>
                           <Checkbox
                             disabled={disabled}
-                            checked={!!proc.qcRequired}
-                            onCheckedChange={() => setQcCheckpoint(cat.label, proc.name)}
+                            checked={!!proc.finalQc}
+                            onCheckedChange={() => setFinalQcStep(cat.label, proc.name)}
                           />
-                          <ShieldCheck className="h-3.5 w-3.5" /> QC Checkpoint
+                          <BadgeCheck className="h-3.5 w-3.5" /> Final QC
                         </label>
                       )}
                       <RadioGroup

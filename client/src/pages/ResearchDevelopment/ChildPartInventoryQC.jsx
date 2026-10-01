@@ -5,12 +5,10 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { config } from '@/config/environment';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { ChevronDown, ClipboardList, Settings2, CheckSquare, Hash, Layers, FileText, Wrench } from 'lucide-react';
+import { ChevronDown, ClipboardList, Layers, FileText, Wrench } from 'lucide-react';
 import MasterChecklistPanel from '@/components/qc/MasterChecklistPanel';
-import ChecklistPickerDialog from '@/components/qc/ChecklistPickerDialog';
+import StepChecklistCards from '@/components/qc/StepChecklistCards';
 
 const resolveMediaUrl = (url) => (!url ? '' : (url.startsWith('http') || url.startsWith('data:')) ? url : `${config.baseURL}${url}`);
 
@@ -84,77 +82,22 @@ function CompositionCard({ selectedItemId }) {
   );
 }
 
-// A Child Part's Initial/Process QC checklist is ONE canonical entry keyed to
-// its own Inventory Item (productKind 'ChildPart'), part ids null — this is
-// its own genuinely independent module ('childPart'), NOT shared with
-// Product Master QC's own module the way the old "Sub Child Part Inventory
-// QC" tab used to be (renamed/rescoped 2026-09-14 — see
-// server/docs/qc-module-restructure-client-request.md's follow-on). Product
-// Master QC's own Child Part/Sub Child Part accordion is untouched and still
-// reads the legacy RDChildPart/RDBOM tree separately — this module doesn't
-// feed it and isn't fed by it.
+// A Child Part's QC checklists — its own genuinely independent module
+// ('childPart'), NOT shared with Product Master QC's own module the way the
+// old "Sub Child Part Inventory QC" tab used to be (renamed/rescoped
+// 2026-09-14 — see server/docs/qc-module-restructure-client-request.md's
+// follow-on).
+//
+// QC multi-checkpoint redesign (2026-09-25): the Initial stage is gone —
+// one Process master list, and each QC-flagged step of the Child Part's own
+// BOM Process Definition gets its own checklist picked from it
+// (StepChecklistCards), replacing the old item-level Initial + Process
+// cards.
 //
 // UI deliberately mirrors QCChecklistModule.jsx's own dropdown-select
 // pattern (the "Sub Child Part" tab right next to this one) instead of a
-// scrollable list — pick one Child Part, see/manage its checklist — just
-// duplicated across two cards (Initial + Process) since this module is
-// staged, unlike Sub Child Part QC's flat single checklist.
+// scrollable list — pick one Child Part, see/manage its step checklists.
 const MODULE = 'childPart';
-const STAGE_LABELS = { initial: 'Initial Checklist', process: 'Process Checklist' };
-
-function ChecklistRowSummary({ row }) {
-  return (
-    <div className="flex items-center gap-3 bg-slate-50 rounded-lg px-4 py-3 border border-slate-100">
-      {row.type === 'checkbox'
-        ? <CheckSquare className="h-4 w-4 text-blue-500 flex-shrink-0" />
-        : <Hash className="h-4 w-4 text-purple-500 flex-shrink-0" />}
-      <div className="flex-1">
-        <p className="text-sm font-medium text-slate-800">
-          {row.label}
-          {row.isDiscontinued && <Badge variant="outline" className="ml-2 text-xs align-middle">Discontinued</Badge>}
-        </p>
-        {row.reference && <p className="text-xs text-slate-400 mt-0.5">{row.reference}</p>}
-      </div>
-      {row.type === 'value' && (
-        <span className="font-mono text-xs bg-purple-50 text-purple-700 px-2 py-0.5 rounded flex-shrink-0">{row.expectedValue}</span>
-      )}
-    </div>
-  );
-}
-
-function StageChecklistCard({ stage, selectedItemId, canManage, onManage }) {
-  const targetPath = selectedItemId ? `item/${selectedItemId}` : null;
-  const { data, isLoading } = useQuery({
-    queryKey: ['qc-target-checklist', MODULE, stage, targetPath],
-    queryFn: () => apiRequest('GET', `/api/rd/qc-checklist/${MODULE}/${stage}/${targetPath}`),
-    enabled: !!targetPath,
-  });
-  const selected = data?.data?.selected || [];
-
-  return (
-    <Card className="border-none shadow-sm">
-      <CardHeader className="flex flex-row items-center justify-between border-b border-slate-50 pb-3">
-        <CardTitle className="text-base font-semibold text-slate-800">{STAGE_LABELS[stage]}</CardTitle>
-        {canManage && (
-          <Button size="sm" variant="outline" onClick={onManage}>
-            <Settings2 className="h-4 w-4 mr-1.5" /> Manage Checklist
-          </Button>
-        )}
-      </CardHeader>
-      <CardContent className="p-5">
-        {isLoading ? (
-          <div className="text-center py-6 text-slate-400 text-sm">Loading…</div>
-        ) : selected.length === 0 ? (
-          <div className="text-center py-6 text-slate-400 text-sm">No checks selected yet.</div>
-        ) : (
-          <div className="space-y-2">
-            {selected.map(row => <ChecklistRowSummary key={String(row.masterItemId)} row={row} />)}
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
 
 export default function ChildPartInventoryQC() {
   const { hasFeatureAccess } = usePermissions();
@@ -164,8 +107,6 @@ export default function ChildPartInventoryQC() {
 
   const [selectedItemId, setSelectedItemId] = useState('');
   const [masterDialogOpen, setMasterDialogOpen] = useState(false);
-  const [masterTab, setMasterTab] = useState('initial');
-  const [picker, setPicker] = useState(null); // { stage, title }
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['child-part-qc-list'],
@@ -226,46 +167,18 @@ export default function ChildPartInventoryQC() {
 
           <CompositionCard selectedItemId={selectedItemId} />
 
-          <StageChecklistCard
-            stage="initial" selectedItemId={selectedItemId} canManage={canManage}
-            onManage={() => setPicker({ stage: 'initial', title: `Initial Checklist — ${selectedItem?.code}` })}
-          />
-          <StageChecklistCard
-            stage="process" selectedItemId={selectedItemId} canManage={canManage}
-            onManage={() => setPicker({ stage: 'process', title: `Process Checklist — ${selectedItem?.code}` })}
+          <StepChecklistCards
+            module={MODULE} itemId={selectedItemId} itemCode={selectedItem?.code}
+            canManage={canManage} onManageMaster={() => setMasterDialogOpen(true)}
           />
         </>
-      )}
-
-      {picker && (
-        <ChecklistPickerDialog
-          open={!!picker}
-          onOpenChange={(o) => !o && setPicker(null)}
-          module={MODULE}
-          stage={picker.stage}
-          targetPath={`item/${selectedItemId}`}
-          title={picker.title}
-          emptyMasterHint={`No ${STAGE_LABELS[picker.stage]} checks defined yet.`}
-          onManageMaster={() => { setMasterTab(picker.stage); setMasterDialogOpen(true); }}
-        />
       )}
 
       <Dialog open={masterDialogOpen} onOpenChange={setMasterDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Manage Master Checklist — Child Part QC</DialogTitle></DialogHeader>
-          <p className="text-xs text-slate-500 -mt-2">One shared list of possible checks — editing one here updates it everywhere it's already been selected.</p>
-          <Tabs value={masterTab} onValueChange={setMasterTab}>
-            <TabsList className="grid grid-cols-2 w-full max-w-xs">
-              <TabsTrigger value="initial">Initial</TabsTrigger>
-              <TabsTrigger value="process">Process</TabsTrigger>
-            </TabsList>
-            <TabsContent value="initial" className="mt-3">
-              <MasterChecklistPanel module={MODULE} stage="initial" featureKey="qcChildPart" />
-            </TabsContent>
-            <TabsContent value="process" className="mt-3">
-              <MasterChecklistPanel module={MODULE} stage="process" featureKey="qcChildPart" />
-            </TabsContent>
-          </Tabs>
+          <p className="text-xs text-slate-500 -mt-2">One shared list of possible Process checks — every QC step's checklist is picked from it; editing one here updates it everywhere it's already been selected.</p>
+          <MasterChecklistPanel module={MODULE} stage="process" featureKey="qcChildPart" />
           <DialogFooter>
             <Button variant="outline" onClick={() => setMasterDialogOpen(false)}>Close</Button>
           </DialogFooter>
