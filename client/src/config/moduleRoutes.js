@@ -440,7 +440,6 @@ const companyAdminMenuItems = [
 const rdMenuItems = [
   { label: 'Dashboard', path: '/r&d/dashboard', icon: LayoutDashboard, module: 'rnd', feature: 'dashboard' },
   { label: 'Inventory', path: '/r&d/inventory', icon: Package, module: 'rnd', feature: 'inventory' },
-  { label: 'Approve Requests', path: '/r&d/approve-requests', icon: CheckCircle, module: 'rnd', feature: 'approveRequests' },
   {
     label: 'Product Management',
     path: '/r&d/product-master',
@@ -455,10 +454,9 @@ const rdMenuItems = [
       { label: 'Plant Master', path: '/r&d/plant-master', feature: 'plantMaster' },
     ]
   },
-  { label: 'Design Approval', path: '/r&d/design-approval', icon: CheckCircle, module: 'rnd', feature: 'designApproval' },
+  { label: 'Approval', path: '/r&d/design-approval', icon: CheckCircle, module: 'rnd', feature: 'designApproval' },
   { label: 'BOM Management', path: '/r&d/bom-management', icon: ClipboardList, module: 'rnd', feature: 'bomManagement' },
   { label: 'Tool & Process', path: '/r&d/tool-process', icon: Cog, module: 'rnd', feature: 'toolProcess' },
-  { label: 'Prototype', path: '/r&d/prototype', icon: Beaker, module: 'rnd', feature: 'prototype' },
   { label: 'Change Management', path: '/r&d/change-management', icon: AlertTriangle, module: 'rnd', feature: 'changeManagement' },
   {
     label: 'Quality Parameters',

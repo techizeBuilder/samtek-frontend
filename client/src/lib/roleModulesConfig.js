@@ -123,14 +123,13 @@ export const MODULES = [
     features: [
       { key: 'dashboard', label: 'Dashboard' },
       { key: 'inventory', label: 'Inventory' },
-      { key: 'approveRequests', label: 'Approve Requests' },
       { key: 'productMaster', label: 'Product Master' },
       { key: 'motorMaster', label: 'Motor Master' },
       { key: 'plantMaster', label: 'Plant Master' },
-      { key: 'designApproval', label: 'Design Approval' },
+      { key: 'designApproval', label: 'Approval (Design, BOM, QC List, Release)' },
       { key: 'bomManagement', label: 'BOM Management' },
       { key: 'toolProcess', label: 'Tool & Process' },
-      { key: 'prototype', label: 'Prototype' },
+      { key: 'prototype', label: 'Prototype Testing (inside Approval)' },
       { key: 'changeManagement', label: 'Change Management' },
       // Replaces the old single 'qualityParameters' feature — client asked
       // for the sidebar split three ways (see

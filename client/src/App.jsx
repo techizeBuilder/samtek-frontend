@@ -205,7 +205,6 @@ import FabricationMaster from "@/pages/ResearchDevelopment/FabricationMaster";
 import DesignApproval from "@/pages/ResearchDevelopment/DesignApproval";
 import BOMManagement from "@/pages/ResearchDevelopment/BOMManagement";
 import ToolProcess from "@/pages/ResearchDevelopment/ToolProcess";
-import Prototype from "@/pages/ResearchDevelopment/Prototype";
 import ChangeManagement from "@/pages/ResearchDevelopment/ChangeManagement";
 import InventoryQC from "@/pages/ResearchDevelopment/InventoryQC";
 import ProductMasterQC from "@/pages/ResearchDevelopment/ProductMasterQC";
@@ -255,10 +254,9 @@ import MISQualityReport from "@/pages/mis/MISQualityReport";
 import MISSettings from "@/pages/mis/MISSettings";
 
 // rnd
-import RDProductionQueue from "@/pages/ResearchDevelopment/RDProductionQueue";
 import SalesItemRequests from "@/pages/ResearchDevelopment/SalesItemRequests";
 
-import { Route, Switch } from "wouter";
+import { Route, Switch, Redirect } from "wouter";
 
 function Router() {
   return (
@@ -622,11 +620,6 @@ function Router() {
           <InventoryHome />
         </ProtectedRoute>
       </Route>
-      <Route path="/r&d/approve-requests">
-        <ProtectedRoute requiredRole={["Research & Development Head", "Research Development Employee"]}>
-          <RDProductionQueue />
-        </ProtectedRoute>
-      </Route>
       <Route path="/r&d/sales-item-requests">
         <ProtectedRoute requiredRole={["Research & Development Head", "Research Development Employee"]}>
           <SalesItemRequests />
@@ -721,10 +714,12 @@ function Router() {
           <ToolProcess />
         </ProtectedRoute>
       </Route>
+      {/* Prototype Management was folded into the consolidated Approval page */}
       <Route path="/r&d/prototype">
-        <ProtectedRoute requiredRole={["Research & Development Head", "Research Development Employee"]}>
-          <Prototype />
-        </ProtectedRoute>
+        <Redirect to="/r&d/design-approval" />
+      </Route>
+      <Route path="/r&d/approve-requests">
+        <Redirect to="/r&d/design-approval" />
       </Route>
       <Route path="/r&d/change-management">
         <ProtectedRoute requiredRole={["Research & Development Head", "Research Development Employee"]}>
