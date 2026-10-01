@@ -36,10 +36,10 @@ export default function RDDashboard() {
 
   const modules = [
     { label: 'Product Master', path: '/r&d/product-master', icon: Package, desc: `${stats.totalMachines} active machines`, color: 'text-blue-600', bg: 'bg-blue-50' },
-    { label: 'Design Approval', path: '/r&d/design-approval', icon: CheckCircle2, desc: `${stats.pendingApproval} pending review`, color: 'text-amber-600', bg: 'bg-amber-50', badge: stats.pendingApproval },
+    { label: 'Approval', path: '/r&d/design-approval', icon: CheckCircle2, desc: `${stats.pendingApproval} pending review`, color: 'text-amber-600', bg: 'bg-amber-50', badge: stats.pendingApproval },
     { label: 'BOM Management', path: '/r&d/bom-management', icon: ClipboardList, desc: 'Material definitions', color: 'text-purple-600', bg: 'bg-purple-50' },
     { label: 'Tool & Process', path: '/r&d/tool-process', icon: Cog, desc: 'Manufacturing process steps', color: 'text-orange-600', bg: 'bg-orange-50' },
-    { label: 'Prototype', path: '/r&d/prototype', icon: Beaker, desc: `${inProgressPrototypes.length} in testing`, color: 'text-teal-600', bg: 'bg-teal-50', badge: inProgressPrototypes.length },
+    { label: 'Prototype', path: '/r&d/design-approval', icon: Beaker, desc: `${inProgressPrototypes.length} in testing`, color: 'text-teal-600', bg: 'bg-teal-50', badge: inProgressPrototypes.length },
     { label: 'Change Management', path: '/r&d/change-management', icon: AlertTriangle, desc: `${stats.openChangeRequests} open requests`, color: 'text-red-600', bg: 'bg-red-50', badge: stats.openChangeRequests },
     { label: 'Quality Parameters', path: '/r&d/inventory-qc', icon: ShieldAlert, desc: 'QC standards & checklists', color: 'text-indigo-600', bg: 'bg-indigo-50' },
     { label: 'Documentation', path: '/r&d/documentation', icon: FolderOpen, desc: 'Design files & manuals', color: 'text-slate-600', bg: 'bg-slate-100' },
@@ -157,7 +157,7 @@ export default function RDDashboard() {
           <Card className="border-none shadow-sm bg-white">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-semibold text-slate-800">Prototypes in Testing</CardTitle>
-              <Link href="/r&d/prototype">
+              <Link href="/r&d/design-approval">
                 <span className="text-xs text-blue-600 hover:underline cursor-pointer">View all</span>
               </Link>
             </CardHeader>

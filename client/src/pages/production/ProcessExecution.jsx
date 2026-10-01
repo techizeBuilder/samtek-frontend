@@ -132,7 +132,7 @@ export default function ProcessExecution() {
   const {
     orders, teams, getTeamById,
     assignTeam, startProcess, markProcessComplete,
-    approveQC, rejectQC, updateProcessNotes, raiseRDRequest,
+    approveQC, rejectQC, updateProcessNotes,
   } = useProduction();
   const { hasFeatureAccess } = usePermissions();
   const canEdit = hasFeatureAccess('production', 'orders', 'edit');
@@ -247,12 +247,12 @@ export default function ProcessExecution() {
     ? activeProcesses.reduce((acc, p, i) => { if (p.qcRequired || p.finalQc) acc.push(i); return acc; }, [])
     : [];
 
-  // ── BOM & Design — replaces the per-order R&D request with a live check:
-  // is the machine's BOM locked (R&D → BOM Management) and its design
-  // Approved (R&D → Design Approval)? If both, this auto-verifies the order
-  // (see productionMfgController.js's getBomDesignStatus) and Production
-  // never has to raise a request at all. If not, the existing "Raise R&D
-  // Request" flow is the fallback, unchanged. ──────────────────────────────
+  // ── BOM & Design — a live check, no manual request: is the machine's BOM
+  // locked (R&D → BOM Management) and its design Approved (R&D → Approval),
+  // including every part underneath? If both, this auto-verifies the order
+  // (see productionMfgController.js's getBomDesignStatus). If not, the card
+  // just shows what's still pending — there's nothing for Production to
+  // raise. ──────────────────────────────────────────────────────────────────
   const selectedOrderKey = selectedOrder ? String(selectedOrder._id || selectedOrder.id) : null;
   const { data: bomDesignResponse, isLoading: bomDesignLoading } = useQuery({
     queryKey: ['bom-design-status', selectedOrderKey],
@@ -720,14 +720,6 @@ export default function ProcessExecution() {
       setBomActionLoading(false);
     }
   };
-  const handleRaiseRDRequestHere = async () => {
-    try {
-      await raiseRDRequest(selectedOrderKey);
-    } catch (error) {
-      showSmartToast(error, 'Raise R&D Request');
-    }
-  };
-
   const selectOrder = (order, fromCompletedTab) => {
     setSelectedOrderId(String(order._id || order.id));
     setSelectedCompletedOrder(fromCompletedTab ? order : null);
@@ -1031,7 +1023,7 @@ export default function ProcessExecution() {
                   // approved, /production/orders (OrderManagement.jsx, which
                   // reads these same stored flags directly) correctly showed
                   // verified, while this page kept showing "BOM Not Locked"
-                  // and still offered "Raise R&D Request" forever, since the
+                  // and kept showing as not ready forever, since the
                   // underlying MachineBOM genuinely never gets locked by that
                   // override path. Now treats either signal as verified.
                   <div className="flex gap-3 flex-wrap">
@@ -1080,14 +1072,18 @@ export default function ProcessExecution() {
                         <span className="font-semibold">{bomDesign?.designApproved ? '✓ Design Approved' : '✗ Design Not Approved'}</span>
                       </div>
                     </div>
-                    {!selectedOrder.rdRequestRaised ? (
-                      <Button size="sm" variant="outline" className="mt-2 border-amber-300 text-amber-700 hover:bg-amber-50 text-xs" onClick={handleRaiseRDRequestHere}>
-                        <Send className="h-3.5 w-3.5 mr-1" /> Raise R&D Request
-                      </Button>
-                    ) : (
-                      <p className="text-xs text-amber-600 mt-2 flex items-center gap-1">
-                        <AlertTriangle className="h-3.5 w-3.5" /> R&D request raised — awaiting design & BOM from R&D team
-                      </p>
+                    {/* No manual "Raise R&D Request" any more — this card is live status
+                        only. Production starts on its own once R&D has locked the BOM and
+                        design-approved this item and every part underneath it. */}
+                    {!bomDesign?.designApproved && bomDesign?.designBlockers?.length > 0 && (
+                      <div className="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2">
+                        <p className="font-semibold mb-1 flex items-center gap-1"><AlertTriangle className="h-3.5 w-3.5" /> Waiting on R&D design approval for:</p>
+                        <ul className="space-y-0.5">
+                          {bomDesign.designBlockers.map((b, i) => (
+                            <li key={`${b._id}-${i}`}><span className="font-mono">{b.code}</span> {b.name} — {b.reason}</li>
+                          ))}
+                        </ul>
+                      </div>
                     )}
                   </div>
                 )}
