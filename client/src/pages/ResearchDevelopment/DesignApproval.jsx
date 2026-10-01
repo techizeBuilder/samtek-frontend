@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { CheckCircle2, ArrowRight, Search, Settings2 } from 'lucide-react';
+import { CheckCircle2, ArrowRight, Search, Settings2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { APPROVAL_TABS, KIND_LABEL, StageChips, BlockersPanel } from './approval/approvalShared';
 import ApprovalManageDialog from './approval/ApprovalManageDialog';
 
@@ -13,9 +14,23 @@ import ApprovalManageDialog from './approval/ApprovalManageDialog';
 // Release, across all three BOM tiers via a tab switch (same pattern BOM
 // Management uses). It replaced the old Machine-only Design Approval,
 // Prototype Management and Approve Requests pages.
+const PAGE_SIZE = 20;
+
+// Page numbers to show: always first/last, a window around the current page,
+// with null marking a gap (rendered as an ellipsis).
+function pageWindow(current, total) {
+  const nums = new Set([1, total, current - 1, current, current + 1].filter(n => n >= 1 && n <= total));
+  const sorted = [...nums].sort((a, b) => a - b);
+  const out = [];
+  sorted.forEach((n, i) => { if (i > 0 && n - sorted[i - 1] > 1) out.push(null); out.push(n); });
+  return out;
+}
+
 export default function DesignApproval() {
   const [kind, setKind] = useState('Machine');
-  const [search, setSearch] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  // One request per pause in typing, not one per keystroke.
+  const search = useDebouncedValue(searchInput.trim(), 400);
   const [page, setPage] = useState(1);
   const [managingId, setManagingId] = useState(null);
 
@@ -24,11 +39,11 @@ export default function DesignApproval() {
   const { data, isLoading } = useQuery({
     queryKey: ['approval-items', kind, search, page],
     queryFn: () => {
-      const params = new URLSearchParams({ kind, page: String(page), limit: '20' });
+      const params = new URLSearchParams({ kind, page: String(page), limit: String(PAGE_SIZE) });
       if (search) params.set('search', search);
       return apiRequest('GET', `/api/rd/approval/items?${params.toString()}`);
     },
-    keepPreviousData: true,
+    placeholderData: keepPreviousData,
   });
   const rows = data?.rows || [];
   const pages = data?.pages || 1;
@@ -68,7 +83,7 @@ export default function DesignApproval() {
 
       <div className="relative max-w-sm">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-        <Input placeholder={`Search ${KIND_LABEL[kind]}s...`} className="pl-9" value={search} onChange={e => setSearch(e.target.value)} />
+        <Input placeholder={`Search ${KIND_LABEL[kind]}s...`} className="pl-9" value={searchInput} onChange={e => setSearchInput(e.target.value)} />
       </div>
 
       {isLoading ? (
@@ -101,11 +116,28 @@ export default function DesignApproval() {
         </div>
       )}
 
-      {pages > 1 && (
-        <div className="flex items-center justify-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1}>Previous</Button>
-          <span className="text-sm text-muted-foreground">Page {page} of {pages} ({total} items)</span>
-          <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)} disabled={page >= pages}>Next</Button>
+      {total > 0 && (
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <span className="text-sm text-slate-500">
+            Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, total)} of {total}
+          </span>
+          {pages > 1 && (
+            <div className="flex items-center gap-1">
+              <Button variant="outline" size="sm" className="h-8 w-8 p-0" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1} aria-label="Previous page">
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              {pageWindow(page, pages).map((n, i) => n === null ? (
+                <span key={`gap-${i}`} className="px-1 text-slate-400">…</span>
+              ) : (
+                <Button key={n} size="sm" variant={n === page ? 'default' : 'outline'} className={`h-8 min-w-8 px-2 ${n === page ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`} onClick={() => setPage(n)}>
+                  {n}
+                </Button>
+              ))}
+              <Button variant="outline" size="sm" className="h-8 w-8 p-0" onClick={() => setPage(p => Math.min(pages, p + 1))} disabled={page >= pages} aria-label="Next page">
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
         </div>
       )}
 

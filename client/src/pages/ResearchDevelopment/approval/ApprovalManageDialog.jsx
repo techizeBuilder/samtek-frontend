@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { FileText, Eye, Download, CheckCircle2 } from 'lucide-react';
 import { showSuccessToast, showSmartToast } from '@/lib/toast-utils';
-import { KIND_LABEL, StageChips, BlockersPanel, designStatusConfig } from './approvalShared';
+import { KIND_LABEL, StageChips, BlockersPanel } from './approvalShared';
 import PrototypePanel from './PrototypePanel';
 
 const IMAGE_EXTS = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'];
@@ -39,8 +39,6 @@ export default function ApprovalManageDialog({ itemId, open, onClose }) {
   const canEdit = hasFeatureAccess('rnd', 'designApproval', 'edit');
   const [busy, setBusy] = useState(false);
   const [blockers, setBlockers] = useState([]);
-  const [rejecting, setRejecting] = useState(false);
-  const [rejectNote, setRejectNote] = useState('');
   const [previewFile, setPreviewFile] = useState(null);
 
   const { data, isLoading } = useQuery({
@@ -71,12 +69,9 @@ export default function ApprovalManageDialog({ itemId, open, onClose }) {
     }
   };
 
-  const setDesign = (status, note) => run('design', { status, note }, `Design ${status === 'Testing' ? 'sent to Testing' : status.toLowerCase()}`);
-
-  const close = () => { setBlockers([]); setRejecting(false); setRejectNote(''); onClose(); };
+  const close = () => { setBlockers([]); onClose(); };
   const purchase = item?.purchaseMachine;
   const isMachine = item?.productKind === 'Machine';
-  const cfg = item ? designStatusConfig[item.designStatus] : null;
   const release = item?.releaseReadiness;
 
   return (
@@ -106,46 +101,18 @@ export default function ApprovalManageDialog({ itemId, open, onClose }) {
               {!purchase && (
                 <Stage step={1} title="Design" hint="Includes every part underneath — a parent can't be approved until its parts are.">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-semibold border ${cfg.color}`}>
-                      <cfg.icon className="h-3 w-3" />{item.designStatus}
-                    </span>
-                    <span className="text-xs text-slate-500">{cfg.desc}</span>
+                    <span className="text-sm text-slate-700">{item.designStatus === 'Approved' ? 'Design approved' : 'Not approved yet'}</span>
+                    {canEdit && (
+                      item.designStatus === 'Approved'
+                        ? <Button size="sm" variant="outline" disabled={busy} onClick={() => run('design', { approved: false }, 'Design approval revoked')}>Revoke</Button>
+                        : <Button size="sm" disabled={busy} className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => run('design', { approved: true }, 'Design approved')}>Approve Design</Button>
+                    )}
                   </div>
-                  {item.designStatus === 'Rejected' && item.rejectionNote && (
-                    <div className="bg-red-50 border border-red-100 rounded-lg p-2 text-xs text-red-700">{item.rejectionNote}</div>
-                  )}
-                  {item.designReadiness && !item.designReadiness.ok && item.designStatus !== 'Approved' && (
-                    <BlockersPanel title="Not design-approved underneath" blockers={item.designReadiness.blockers.filter(b => b._id !== item._id)} />
-                  )}
-                  {item.designStatus === 'Approved' && item.designReadiness && !item.designReadiness.ok && (
-                    <BlockersPanel title="A part underneath is no longer design-approved" blockers={item.designReadiness.blockers.filter(b => b._id !== item._id)} />
-                  )}
-                  {canEdit && !rejecting && (
-                    <div className="flex gap-2 flex-wrap">
-                      {(item.designStatus === 'Draft' || item.designStatus === 'Rejected') && (
-                        <Button size="sm" disabled={busy} className="bg-amber-500 hover:bg-amber-600 text-white" onClick={() => setDesign('Testing')}>
-                          {item.designStatus === 'Rejected' ? 'Re-submit to Testing' : 'Send to Testing'}
-                        </Button>
-                      )}
-                      {item.designStatus === 'Testing' && (
-                        <>
-                          <Button size="sm" disabled={busy} className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => setDesign('Approved')}>Approve Design</Button>
-                          <Button size="sm" disabled={busy} className="bg-red-600 hover:bg-red-700 text-white" onClick={() => setRejecting(true)}>Reject</Button>
-                        </>
-                      )}
-                      {item.designStatus === 'Approved' && (
-                        <Button size="sm" variant="outline" disabled={busy} onClick={() => setDesign('Testing')}>Re-open for Testing</Button>
-                      )}
-                    </div>
-                  )}
-                  {rejecting && (
-                    <div className="space-y-2">
-                      <textarea className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-red-400" rows={3} placeholder="Why is this design rejected? (required)" value={rejectNote} onChange={e => setRejectNote(e.target.value)} />
-                      <div className="flex gap-2">
-                        <Button size="sm" variant="outline" onClick={() => { setRejecting(false); setRejectNote(''); }}>Cancel</Button>
-                        <Button size="sm" disabled={busy || !rejectNote.trim()} className="bg-red-600 hover:bg-red-700 text-white" onClick={async () => { await setDesign('Rejected', rejectNote); setRejecting(false); setRejectNote(''); }}>Reject Design</Button>
-                      </div>
-                    </div>
+                  {item.designReadiness && !item.designReadiness.ok && (
+                    <BlockersPanel
+                      title={item.designStatus === 'Approved' ? 'A part underneath is no longer design-approved' : 'Approve these first — not design-approved underneath'}
+                      blockers={item.designReadiness.blockers.filter(b => b._id !== item._id)}
+                    />
                   )}
                   <div>
                     <p className="text-xs font-semibold text-slate-600 mb-1">Design files</p>
