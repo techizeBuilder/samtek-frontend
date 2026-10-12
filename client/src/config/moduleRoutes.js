@@ -4,7 +4,7 @@ import {
   PieChart, ShoppingCart, CreditCard, RotateCcw, Calendar, FileText, CheckCircle,
   BarChart, Clock, AlertTriangle, History, Target, Star, MessageSquare, Briefcase,
   ClipboardList, CalendarCheck, CheckSquare, UserCircle, Beaker, ShieldAlert,
-  FolderOpen, Upload, Pen, User, Bell, Megaphone, Inbox, ShieldCheck, Image, PackagePlus
+  FolderOpen, Upload, Pen, User, Bell, Megaphone, Inbox, ShieldCheck, Image, PackagePlus, Lock
 } from 'lucide-react';
 
 // ============================================================
@@ -96,6 +96,12 @@ const packagingDispatchMenuItems = [
   { label: 'Active Dispatches', path: '/dispatch/active', icon: CheckSquare, module: 'dispatches', feature: 'activeDispatches' },
   { label: 'Dispatch History', path: '/dispatch/completed', icon: BarChart, module: 'dispatches', feature: 'dispatchHistory' },
   { label: 'Delivery Challan', path: '/dispatch/delivery-challan', icon: FileText, module: 'dispatches', feature: 'deliveryChallan' },
+  // Stub (2026-10) — just shows POs where Purchase marked transport as the
+  // company's responsibility (By Vendor tab). No feature key of its own
+  // yet (same reasoning as the backend route reusing dashboardView) —
+  // shown to anyone with dispatches access, like Dashboard/Task Management
+  // above.
+  { label: 'Vendor Pickups', path: '/dispatch/vendor-pickups', icon: Truck, module: 'dispatches' },
   { label: 'Expenses', path: '/packaging-dispatch/expenses', icon: Receipt, module: 'dispatches' },
   {
     label: 'Training Management',
@@ -176,15 +182,17 @@ const accountsMenuItems = [
     feature: 'purchases',
     submodules: [
       { label: 'Vendor Master', path: '/accounts/purchases/vendors', feature: 'purchases' },
-      { label: 'Vendor Batching (Preview)', path: '/accounts/purchases/vendor-batching-preview', feature: 'purchases' },
-      { label: 'Outsource Work', path: '/accounts/purchases/sub-child-job-work', feature: 'purchases' },
+      // Purchase redesign (2026-10): PRs now live inside this one page's
+      // "Purchase" tab — the standalone Purchase Request entry is retired
+      // (Store still has its own "Purchase Orders" sidebar entry to the
+      // same PR page, unaffected — see moduleRoutes.js's Store section).
+      // Vendor Batching (Preview), RFQ Management and Vendor Bids removed
+      // 2026-10-06 — By Item/By Vendor fully replaced them.
+      { label: 'Purchase & Outsource', path: '/accounts/purchases/purchase-outsource', feature: 'purchases' },
       { label: 'Inventory', path: '/accounts/purchases/inventory', feature: 'purchases' },
-      { label: 'Purchase Request', path: '/accounts/purchases/requests', feature: 'purchases' },
-      { label: 'RFQ Management', path: '/accounts/purchases/rfq', feature: 'purchases' },
-      { label: 'Vendor Bids', path: '/accounts/purchases/vendor-bids', feature: 'purchases' },
       { label: 'Purchase Invoice', path: '/accounts/purchases/invoices', feature: 'purchases' },
       // { label: 'Purchase Return', path: '/accounts/purchases/returns', feature: 'purchases' },
-      { label: 'Purchase Exchange', path: '/accounts/purchases/exchanges', feature: 'purchases' },
+      { label: 'QC Rejections', path: '/accounts/purchases/exchanges', feature: 'purchases' },
       { label: 'Vendor Payment', path: '/accounts/purchases/payments', feature: 'purchases' },
       { label: 'Payable Ageing', path: '/accounts/purchases/ageing', feature: 'purchases' },
       { label: 'Purchase Expenses', path: '/accounts/purchases/expenses', feature: 'purchases' },
@@ -436,6 +444,10 @@ const companyAdminMenuItems = [
   // so it's gated by role alone — same convention as Sidebar.jsx's
   // `item.feature ? hasFeatureAccess(...) : true` fallback for module-level items.
   { label: 'Lead & Quotation Settings', path: '/hrms/CompanyAdmin/lead-settings', icon: ClipboardList, module: 'hrms' },
+  // procurement-v2 (2026-10-08): every Purchase/Vendor approval the client's
+  // blueprint gives to Purchase Head / Manager / Management is the Company
+  // Admin's — role-defining like the item above, so gated by role alone.
+  { label: 'Purchase & Vendor Approval', path: '/hrms/CompanyAdmin/purchase-approvals', icon: ShieldCheck, module: 'hrms' },
 ];
 
 const rdMenuItems = [
@@ -538,6 +550,9 @@ const storeMenuItems = [
   { label: 'Orders', path: '/store/orders', icon: Receipt, module: 'Store', feature: 'orders' },
   { label: 'Purchase Orders', path: '/store/purchases/requests', icon: ShoppingCart, module: 'Store', feature: 'purchaseOrders' },
   { label: 'Material Transfers', path: '/store/material-issues', icon: Handshake, module: 'Store', feature: 'materialTransfers' },
+  // What production / job-work orders have reserved (2026-10-09) — read-only,
+  // shown to anyone who can see Store's Inventory.
+  { label: 'Reservations', path: '/store/reservations', icon: Lock, module: 'Store', feature: 'inventory' },
   { label: 'Defective Inventory', path: '/store/defective-inventory', icon: AlertTriangle, module: 'Store', feature: 'defectiveInventory' },
   { label: 'Task Management', path: '/store/task-management', icon: CheckSquare, module: 'store' },
   { label: 'My Task', path: '/store/my-task', icon: CheckSquare, module: 'store' },

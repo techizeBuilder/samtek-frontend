@@ -606,7 +606,18 @@ export default function QCInspection() {
                 <p className={`font-semibold ${job.status === 'Approved' ? 'text-emerald-800' : 'text-red-800'}`}>
                   {job.status === 'Approved' ? 'QC Approved — Transferred to Store' : `QC Rejected — Returned to ${job.source} Department`}
                 </p>
-                {job.failReason && <p className="text-sm text-red-700 mt-1">Reason: {job.failReason}</p>}
+                {job.status === 'Rejected' && job.failReason && <p className="text-sm text-red-700 mt-1">Reason: {job.failReason}</p>}
+                {/* Slices QC rejected before the final decision (2026-10-12). */}
+                {(job.partialRejections || []).length > 0 && (
+                  <div className="text-sm text-red-700 mt-1">
+                    {job.partialRejections.map((r, i) => (
+                      <p key={i}>Rejected earlier: {r.qty} {job.unit || ''} — {r.reason || 'no reason'}{r.rejectedAt ? ` (${new Date(r.rejectedAt).toLocaleDateString('en-IN')})` : ''}</p>
+                    ))}
+                  </div>
+                )}
+                {job.source === 'Purchase' && (job.status === 'Rejected' || (job.partialRejections || []).length > 0) && (
+                  <p className="text-xs text-slate-500 mt-1">Purchase records the vendor's answer (replace / refund / credit / refused) under Purchase Orders → QC Rejections.</p>
+                )}
                 {job.inspectorRemarks && <p className="text-sm text-slate-600 mt-1">Remarks: {job.inspectorRemarks}</p>}
                 {job.inspector && <p className="text-sm text-slate-500 mt-1">Inspector: {job.inspector} · {job.inspectionEndDate}</p>}
               </div>

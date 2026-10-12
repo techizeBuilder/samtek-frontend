@@ -163,7 +163,10 @@ export default function ProductMaster() {
     try {
       await addMasterOption({ field: newOptionModal.field, value: newOptionModal.value, parentValue: newOptionModal.parentValue || null });
       const fieldKey = FIELD_KEY_MAP[newOptionModal.field];
-      if (editOpen) {
+      if (newOptionModal.field === 'PowerSource') {
+        // Power Source lives inside powerRequirements[] rows, not a top-level form key
+        updatePowerRow(editOpen ? setEditForm : setForm, newOptionModal.powerRowIdx, { powerSource: newOptionModal.value });
+      } else if (editOpen) {
         setEditForm(f => ({ ...f, [fieldKey]: newOptionModal.value }));
       } else {
         setForm(f => ({ ...f, [fieldKey]: newOptionModal.value }));
@@ -397,12 +400,22 @@ export default function ProductMaster() {
             <div key={idx} className="grid grid-cols-2 md:grid-cols-4 gap-3 items-end bg-white border border-slate-200 rounded-lg p-3">
               <div className="col-span-2 md:col-span-1">
                 <label className="text-[10px] font-semibold text-slate-500 uppercase">Power Source</label>
-                <Select value={pr.powerSource} onValueChange={(v) => updatePowerRow(setState, idx, { powerSource: v })}>
-                  <SelectTrigger className="mt-1 h-9 bg-white"><SelectValue placeholder="Select..." /></SelectTrigger>
-                  <SelectContent>
-                    {(masterOptions.PowerSource || []).map(o => <SelectItem key={o.value} value={o.value}>{o.value}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <div className="flex gap-2 mt-1">
+                  <Select value={pr.powerSource} onValueChange={(v) => updatePowerRow(setState, idx, { powerSource: v })}>
+                    <SelectTrigger className="h-9 bg-white"><SelectValue placeholder="Select..." /></SelectTrigger>
+                    <SelectContent>
+                      {(masterOptions.PowerSource || []).map(o => <SelectItem key={o.value} value={o.value}>{o.value}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    type="button" size="icon" variant="outline"
+                    title="Add new Power Source option"
+                    onClick={() => setNewOptionModal({ open: true, field: 'PowerSource', value: '', parentValue: '', powerRowIdx: idx })}
+                    className="flex-shrink-0 h-9 w-9 bg-white hover:bg-slate-50 text-slate-600"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
               <div>
                 <label className="text-[10px] font-semibold text-slate-500 uppercase">HP</label>

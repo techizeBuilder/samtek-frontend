@@ -92,6 +92,12 @@ export const MODULES = [
       { key: 'chartOfAccounts', label: 'Chart of Accounts' },
       { key: 'sales', label: 'Sales' },
       { key: 'purchases', label: 'Purchases' },
+      // procurement-v2 (2026-10-08): who may edit the PO charge / payment-term
+      // label templates (Purchase & Outsource → Settings).
+      { key: 'purchaseSettings', label: 'Purchase Settings (PO templates)' },
+      // procurement-v2 gap 17 (2026-10-10): who may see the purchase audit
+      // log (Purchase & Outsource → Audit Log, and each PO's History).
+      { key: 'purchaseAuditLog', label: 'Purchase Audit Log' },
       { key: 'gstAndTds', label: 'GST & TDS' },
       { key: 'damageAndExpiry', label: 'Damage & Expiry' },
       { key: 'salesmanSettlement', label: 'Salesman Settlement' },

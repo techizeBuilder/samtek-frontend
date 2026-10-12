@@ -15,6 +15,7 @@ export default function VendorBidForm() {
   const [deliveryDays, setDeliveryDays] = useState('');
   const [warrantyMonths, setWarrantyMonths] = useState('');
   const [remarks, setRemarks] = useState('');
+  const [gstInclusive, setGstInclusive] = useState(false);
 
   const backendUrl = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000');
 
@@ -41,6 +42,7 @@ export default function VendorBidForm() {
         setDeliveryDays(String(data.data.existingBid.deliveryDays));
         setWarrantyMonths(String(data.data.existingBid.warrantyMonths));
         setRemarks(data.data.existingBid.remarks || '');
+        setGstInclusive(!!data.data.existingBid.gstInclusive);
         if (data.data.bidStatus === 'Submitted') {
           setSubmitted(true);
         }
@@ -73,7 +75,8 @@ export default function VendorBidForm() {
           unitPrice: parseFloat(unitPrice),
           deliveryDays: parseInt(deliveryDays),
           warrantyMonths: parseInt(warrantyMonths) || 0,
-          remarks
+          remarks,
+          gstInclusive
         })
       });
 
@@ -140,7 +143,7 @@ export default function VendorBidForm() {
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-slate-500">Unit Price</span>
-              <span className="font-semibold text-slate-800">₹{parseFloat(unitPrice).toLocaleString('en-IN')}</span>
+              <span className="font-semibold text-slate-800">₹{parseFloat(unitPrice).toLocaleString('en-IN')}{gstInclusive ? ' (incl. GST)' : ' (+ GST)'}</span>
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-slate-500">Delivery Time</span>
@@ -253,6 +256,15 @@ export default function VendorBidForm() {
                   Total order value: ₹{totalValue} (for {rfqData.quantity} {rfqData.quantityUnit || 'units'})
                 </p>
               )}
+              <label className="flex items-center gap-2 mt-2 text-sm text-slate-600 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={gstInclusive}
+                  onChange={(e) => setGstInclusive(e.target.checked)}
+                  className="w-4 h-4"
+                />
+                This price already includes GST
+              </label>
             </div>
 
             {/* Delivery Days */}

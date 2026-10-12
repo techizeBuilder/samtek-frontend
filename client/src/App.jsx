@@ -62,7 +62,6 @@ import ChartOfAccounts from "@/pages/accounts/ChartOfAccounts";
 import AccountsSales from "@/pages/accounts/Sales";
 import AccountsPurchases from "@/pages/accounts/Purchases";
 import VendorMaster from "@/pages/accounts/VendorMaster";
-import VendorBatchingPreview from "@/pages/accounts/VendorBatchingPreview";
 import PurchaseInvoices from "@/pages/accounts/PurchaseInvoices";
 import PurchaseReturns from "@/pages/accounts/PurchaseReturns";
 import PurchaseExchanges from "@/pages/accounts/PurchaseExchanges";
@@ -72,7 +71,7 @@ import VendorPayments from "@/pages/accounts/VendorPayments";
 import PayableAgeing from "@/pages/accounts/PayableAgeing";
 import PurchaseExpenses from "@/pages/accounts/PurchaseExpenses";
 import PurchaseInventory from "@/pages/accounts/PurchaseInventory";
-import SubChildJobWork from "@/pages/accounts/SubChildJobWork";
+import PurchaseOutsourceHub from "@/pages/accounts/purchase/PurchaseOutsourceHub";
 import GSTAndTDS from "@/pages/accounts/GSTAndTDS";
 import DamageAndExpiry from "@/pages/accounts/DamageAndExpiry";
 import SalesmanSettlement from "@/pages/accounts/SalesmanSettlement";
@@ -80,9 +79,8 @@ import BankAndCash from "@/pages/accounts/BankAndCash";
 import InterUnit from "@/pages/accounts/InterUnit";
 import AccountsReports from "@/pages/accounts/Reports";
 import AccountsSettings from "@/pages/accounts/Settings";
-import RFQManagement from "@/pages/accounts/RFQManagement";
-import VendorBids from "@/pages/accounts/VendorBids";
 import VendorBidForm from "@/pages/VendorBidForm";
+import VendorQuotationForm from "@/pages/VendorQuotationForm";
 import PurchaseExchangeAccept from "@/pages/PurchaseExchangeAccept";
 
 // Sales Account Module (New)
@@ -101,6 +99,7 @@ import PaymentReminders from "@/pages/accounts/PaymentReminders";
 import LeadPayments from "@/pages/accounts/LeadPayments";
 import DeliveryChallan from "@/pages/dispatch/DeliveryChallan";
 import DispatchHistory from "@/pages/dispatch/DispatchHistory";
+import VendorPickups from "@/pages/dispatch/VendorPickups";
 import SalesApproval from "@/pages/SalesApproval";
 import SalesOrderList from "@/pages/SalesOrderList";
 import RoleBasedLayout from "@/components/layout/RoleBasedLayout";
@@ -191,6 +190,7 @@ import AdminDashboard from "@/pages/lms/AdminDashboard";
 import CompanyAdminDashboard from "@/pages/hrms/CompanyAdmin/CompanyAdminDashboard";
 import CompanyAdminLayout from "@/pages/hrms/CompanyAdmin/CompanyAdminLayout";
 import LeadSettingRequests from "@/pages/hrms/CompanyAdmin/LeadSettingRequests";
+import PurchaseVendorApprovals from "@/pages/hrms/CompanyAdmin/PurchaseVendorApprovals";
 import ManagerLeaves from "@/pages/hrms/Manager/LeavesEmployee";
 import PerformanceMetrics from "@/pages/hrms/Manager/PerformanceMetrics";
 import RDDashboard from "@/pages/ResearchDevelopment/Dashboard";
@@ -198,6 +198,7 @@ import StoreDashboard from "@/pages/store/StoreDashboard";
 import StoreOrders from "@/pages/store/StoreOrders";
 import StoreMaterialIssues from "@/pages/store/MaterialHandshake/index";
 import DefectiveInventory from "@/pages/store/DefectiveInventory";
+import StoreReservations from "@/pages/store/Reservations";
 import { RDProvider } from "@/contexts/RDContext";
 import ProductMaster from "@/pages/ResearchDevelopment/ProductMaster";
 import MotorMaster from "@/pages/ResearchDevelopment/MotorMaster";
@@ -281,6 +282,11 @@ function Router() {
       {/* PUBLIC: Vendor Bid Submission (no login required) */}
       <Route path="/vendor-bid/:token">
         <VendorBidForm />
+      </Route>
+
+      {/* PUBLIC: one quotation for several items (no login required) */}
+      <Route path="/vendor-quotation/:token">
+        <VendorQuotationForm />
       </Route>
 
       {/* PUBLIC: Purchase Exchange vendor accept link (no login required) */}
@@ -605,6 +611,7 @@ function Router() {
             <Route exact path="/hrms/CompanyAdmin/user-management" component={RolePermissionManagement} />
             <Route exact path="/hrms/CompanyAdmin/task-management" component={HRMSTaskManagement} />
             <Route exact path="/hrms/CompanyAdmin/lead-settings" component={LeadSettingRequests} />
+            <Route exact path="/hrms/CompanyAdmin/purchase-approvals" component={PurchaseVendorApprovals} />
             <Route component={NotFound} />
           </Switch>
         </ProtectedRoute>
@@ -1010,6 +1017,11 @@ function Router() {
           <DispatchHistory />
         </ProtectedRoute>
       </Route>
+      <Route path="/dispatch/vendor-pickups">
+        <ProtectedRoute requiredRole={["Dispatch", "Dispatch Head", "Dispatch Employee"]}>
+          <VendorPickups />
+        </ProtectedRoute>
+      </Route>
 
       {/* Packaging & Dispatch Module Routes */}
       <Route path="/packaging-dispatch/dashboard">
@@ -1164,14 +1176,9 @@ function Router() {
           <VendorMaster />
         </ProtectedRoute>
       </Route>
-      <Route path="/accounts/purchases/vendor-batching-preview">
+      <Route path="/accounts/purchases/purchase-outsource">
         <ProtectedRoute requiredRole="Accounts">
-          <VendorBatchingPreview />
-        </ProtectedRoute>
-      </Route>
-      <Route path="/accounts/purchases/sub-child-job-work">
-        <ProtectedRoute requiredRole="Accounts">
-          <SubChildJobWork />
+          <PurchaseOutsourceHub />
         </ProtectedRoute>
       </Route>
       <Route path="/accounts/purchases/inventory">
@@ -1179,21 +1186,12 @@ function Router() {
           <PurchaseInventory />
         </ProtectedRoute>
       </Route>
-      <Route path="/accounts/purchases/requests">
-        <ProtectedRoute requiredRole="Accounts">
-          <PurchaseRequest />
-        </ProtectedRoute>
-      </Route>
-      <Route path="/accounts/purchases/rfq">
-        <ProtectedRoute requiredRole="Accounts">
-          <RFQManagement />
-        </ProtectedRoute>
-      </Route>
-      <Route path="/accounts/purchases/vendor-bids">
-        <ProtectedRoute requiredRole="Accounts">
-          <VendorBids />
-        </ProtectedRoute>
-      </Route>
+      {/* Purchase-side standalone PR page is retired — PRs now live inside
+          the "PRs" sub-tab of PurchaseOutsourceHub above. Store's own route
+          to this exact same PurchaseRequest.jsx component, further below,
+          is untouched. RFQ Management and Vendor Bids (the legacy
+          pre-redesign flow these replaced) were removed 2026-10-06 once
+          PRs/By Item/By Vendor were live-verified end to end. */}
       <Route path="/accounts/purchases/invoices">
         <ProtectedRoute requiredRole="Accounts">
           <PurchaseInvoices />
@@ -1304,6 +1302,11 @@ function Router() {
       <Route path="/store/defective-inventory">
         <ProtectedRoute requiredRole={["Store Head", "Store Employee"]}>
           <DefectiveInventory />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/store/reservations">
+        <ProtectedRoute requiredRole={["Store Head", "Store Employee", "Company Admin"]}>
+          <StoreReservations />
         </ProtectedRoute>
       </Route>
       {/* task management route for store department */}

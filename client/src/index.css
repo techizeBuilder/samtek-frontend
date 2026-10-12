@@ -110,6 +110,47 @@
   background: hsl(var(--foreground));
 }
 
+/* Scrolls normally (wheel, touchpad, touch, keyboard) but shows no scrollbar —
+   used by the RFQ/PO page's two independently scrolling columns. */
+.no-scrollbar {
+  scrollbar-width: none;      /* Firefox */
+  -ms-overflow-style: none;   /* old Edge */
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;              /* Chrome, Edge, Safari */
+}
+
+/* A slim, rounded scrollbar with no arrow buttons, for small boxes that scroll
+   sideways (e.g. the RFQ/PO "Quotes compared" table). Chrome / Edge / Safari use
+   the ::-webkit-scrollbar rules; Firefox falls back to the standard properties
+   (set only there, because Chrome ignores ::-webkit-scrollbar when they're set). */
+.thin-scrollbar::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+.thin-scrollbar::-webkit-scrollbar-button {
+  display: none;
+}
+.thin-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.thin-scrollbar::-webkit-scrollbar-thumb {
+  background: rgb(203 213 225); /* slate-300 */
+  border-radius: 9999px;
+}
+.thin-scrollbar:hover::-webkit-scrollbar-thumb {
+  background: rgb(148 163 184); /* slate-400 */
+}
+.thin-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgb(100 116 139); /* slate-500 */
+}
+@supports not selector(::-webkit-scrollbar) {
+  .thin-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(203 213 225) transparent;
+  }
+}
+
 /* For the hand-rolled dark (bg-slate-900) hover popovers used across the app
    (Store Orders material availability, Production Material List, etc.) —
    .custom-scrollbar above uses the light theme's --muted tokens, which are

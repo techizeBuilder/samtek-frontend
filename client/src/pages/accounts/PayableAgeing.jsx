@@ -4,7 +4,7 @@ import { apiRequest } from '@/lib/queryClient';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { BarChart3, TrendingDown, AlertTriangle } from 'lucide-react';
+import { BarChart3, TrendingDown, AlertTriangle, Package } from 'lucide-react';
 
 const PayableAgeing = () => {
     const { data: ageingData, isLoading } = useQuery({
@@ -15,22 +15,28 @@ const PayableAgeing = () => {
     const vendors = ageingData?.data || [];
     const totalPayable = vendors.reduce((sum, v) => sum + v.totalOutstanding, 0);
 
-    // Calculate ageing slabs dynamically
-    const today = new Date();
-    const slabs = {
-        current: 0, // 0-30 days
-        due: 0,     // 31-60 days
-        overdue: 0  // 61+ days
-    };
-
+    // Ageing by DUE date (2026-10-12). A PO's bill only gets a due date once
+    // everything is received and QC-passed (credit days after that); until
+    // then it's on order, not yet payable — apart from any advance still
+    // unpaid, which is due now. A bill without a PO uses its own due date
+    // (its bill date when it has none).
+    const startOfDay = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
+    const today = startOfDay(new Date());
+    const slabs = { onOrder: 0, notDue: 0, overdue30: 0, overdueMore: 0 };
     vendors.forEach(vendor => {
         vendor.invoices.forEach(inv => {
-            const invoiceDate = new Date(inv.date);
-            const diffDays = Math.floor((today - invoiceDate) / (1000 * 60 * 60 * 24));
-
-            if (diffDays <= 30) slabs.current += inv.balance;
-            else if (diffDays <= 60) slabs.due += inv.balance;
-            else slabs.overdue += inv.balance;
+            let balance = inv.balance;
+            if (inv.purchaseOrder && !inv.fullyAcceptedAt) {
+                const advanceLeft = inv.payableNow?.advance || 0;
+                slabs.overdue30 += advanceLeft;          // an unpaid advance is due now
+                slabs.onOrder += Math.max(0, balance - advanceLeft);
+                return;
+            }
+            const due = startOfDay(inv.dueDate || inv.date);
+            const late = Math.floor((today - due) / (1000 * 60 * 60 * 24));
+            if (late <= 0) slabs.notDue += balance;
+            else if (late <= 30) slabs.overdue30 += balance;
+            else slabs.overdueMore += balance;
         });
     });
 
@@ -47,46 +53,25 @@ const PayableAgeing = () => {
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                <Card className="border-0 shadow-sm border-l-4 border-l-green-500">
-                    <CardHeader className="pb-2">
-                        <CardTitle className="text-xs font-bold text-slate-500 uppercase flex items-center">
-                            <TrendingDown className="w-4 h-4 mr-1 text-green-500" /> Current (0-30 Days)
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold text-green-700">₹{slabs.current.toLocaleString()}</div>
-                        <div className="text-xs text-slate-400">
-                            {totalPayable > 0 ? Math.round((slabs.current / totalPayable) * 100) : 0}% of total
-                        </div>
-                    </CardContent>
-                </Card>
-                <Card className="border-0 shadow-sm border-l-4 border-l-yellow-400">
-                    <CardHeader className="pb-2">
-                        <CardTitle className="text-xs font-bold text-slate-500 uppercase flex items-center">
-                            <BarChart3 className="w-4 h-4 mr-1 text-yellow-500" /> Due (31-60 Days)
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold text-yellow-700">₹{slabs.due.toLocaleString()}</div>
-                        <div className="text-xs text-slate-400">
-                            {totalPayable > 0 ? Math.round((slabs.due / totalPayable) * 100) : 0}% of total
-                        </div>
-                    </CardContent>
-                </Card>
-                <Card className="border-0 shadow-sm border-l-4 border-l-red-500 bg-red-50">
-                    <CardHeader className="pb-2">
-                        <CardTitle className="text-xs font-bold text-red-500 uppercase flex items-center">
-                            <AlertTriangle className="w-4 h-4 mr-1" /> Overdue (60+ Days)
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold text-red-600">₹{slabs.overdue.toLocaleString()}</div>
-                        <div className="text-xs text-red-400 opacity-70">
-                            {totalPayable > 0 ? Math.round((slabs.overdue / totalPayable) * 100) : 0}% of total
-                        </div>
-                    </CardContent>
-                </Card>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                {[
+                    { key: 'onOrder', label: 'On order — not payable yet', icon: Package, tone: 'border-l-slate-400', text: 'text-slate-700', hint: 'PO material not yet received + QC-passed' },
+                    { key: 'notDue', label: 'Payable — not due yet', icon: TrendingDown, tone: 'border-l-green-500', text: 'text-green-700', hint: 'Within the credit days' },
+                    { key: 'overdue30', label: 'Due now / overdue up to 30 days', icon: BarChart3, tone: 'border-l-yellow-400', text: 'text-yellow-700', hint: 'Includes unpaid advances' },
+                    { key: 'overdueMore', label: 'Overdue 30+ days', icon: AlertTriangle, tone: 'border-l-red-500 bg-red-50', text: 'text-red-600', hint: 'Past the due date by over a month' },
+                ].map(c => (
+                    <Card key={c.key} className={`border-0 shadow-sm border-l-4 ${c.tone}`}>
+                        <CardHeader className="pb-2">
+                            <CardTitle className="text-xs font-bold text-slate-500 uppercase flex items-center">
+                                <c.icon className="w-4 h-4 mr-1" /> {c.label}
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <div className={`text-2xl font-bold ${c.text}`}>₹{Math.round(slabs[c.key]).toLocaleString('en-IN')}</div>
+                            <div className="text-xs text-slate-400">{c.hint}</div>
+                        </CardContent>
+                    </Card>
+                ))}
             </div>
 
             <Card className="border-0 shadow-sm">
@@ -111,7 +96,7 @@ const PayableAgeing = () => {
                                         <div className="flex gap-1 flex-wrap">
                                             {vendor.invoices.map((inv, idx) => (
                                                 <Badge key={idx} variant="outline" className="text-[10px] bg-white">
-                                                    {inv.invoiceNo}
+                                                    {inv.poNumber || inv.invoiceNo}
                                                 </Badge>
                                             ))}
                                         </div>

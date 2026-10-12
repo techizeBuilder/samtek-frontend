@@ -33,6 +33,41 @@ const variantCapacityMm = (variant, isSheet) => variant
 // transfer otherwise). Leftover is an explicit batch Store enters
 // themselves (amount + unit + how many identical leftover pieces resulted)
 // rather than assumed equal to the transfer quantity.
+// Reservation-aware stock note (2026-10-09). Production orders reserve their
+// material when they're created; stock still reserved for an order that
+// claimed it EARLIER is shown here so Store knows before transferring. A
+// warning only — Store can still transfer (user decision: physical stock can
+// be wrong, so never block on it). `check` comes from getPendingRequests.
+function StockCheckNote({ check, qty = null, compact = false }) {
+  if (!check) return null;
+  const takesEarlier = qty != null && Number(qty) > 0 && Number(qty) > check.freeForThisOrder && check.heldForEarlier > 0;
+  const tight = check.heldForEarlier > 0 && check.freeForThisOrder <= 0;
+  const cls = takesEarlier || tight ? 'text-amber-700' : 'text-slate-400';
+  const taken = Math.round((Number(qty) - Math.max(0, check.freeForThisOrder)) * 1000) / 1000;
+  return (
+    <div className={`text-[11px] mt-0.5 ${cls}`}>
+      In stock {check.stock} {check.unit}
+      {check.heldForEarlier > 0 && (
+        <> · {check.heldForEarlier} held for earlier order{check.earlier.length === 1 ? '' : 's'}
+          {!compact && check.earlier.length > 0 && ` (${check.earlier.map(e => `${e.orderCode || 'order'} ${e.remaining}`).join(', ')})`}</>
+      )}
+      {' '}· free for this order {Math.max(0, check.freeForThisOrder)}
+      {takesEarlier && (
+        <div className="font-medium">Transferring {qty} takes {taken} reserved for an earlier order — allowed, but check they can still be supplied.</div>
+      )}
+    </div>
+  );
+}
+
+// Shows the server's reservation warning after a transfer, if there is one.
+function transferredToast(toast, res) {
+  if (res?.warning) {
+    toast({ title: 'Transferred — reserved stock used', description: res.warning });
+  } else {
+    toast({ title: 'Success', description: 'Material transferred to production successfully.' });
+  }
+}
+
 function FabricationTransferDialog({ request, onClose, categories }) {
   const { toast } = useToast();
   const [sourceVariantId, setSourceVariantId] = useState('');
@@ -98,8 +133,8 @@ function FabricationTransferDialog({ request, onClose, categories }) {
         : undefined,
       issuedTo: issuedTo || undefined,
     }),
-    onSuccess: () => {
-      toast({ title: 'Success', description: 'Material transferred to production successfully.' });
+    onSuccess: (res) => {
+      transferredToast(toast, res);
       queryClient.invalidateQueries({ queryKey: ['/api/inventory/pending-requests'] });
       onClose();
     },
@@ -149,6 +184,9 @@ function FabricationTransferDialog({ request, onClose, categories }) {
                 <Input type="number" min="1" max={chosenVariant?.subStock || undefined} value={piecesConsumed} onChange={(e) => setPiecesConsumed(e.target.value)} placeholder="e.g. 1" />
                 {Number(piecesConsumed) > (chosenVariant.subStock || 0) && (
                   <p className="text-red-500 text-xs mt-1">Cannot exceed available stock ({chosenVariant.subStock || 0}).</p>
+                )}
+                {String(sourceVariantId) === String(request.material.dimensionVariantId) && (
+                  <StockCheckNote check={request.material.stockCheck} qty={piecesConsumed} />
                 )}
               </div>
               <div>
@@ -231,8 +269,9 @@ function FabricationTransferDialog({ request, onClose, categories }) {
 // sheet cuts of the same raw material) and raise ONE consolidated Purchase
 // Request covering all of them — the vendor is ultimately paid by weight
 // (or whatever Purchase Unit the item uses), not per distinct cut size, so
-// this always submits a single request with a dimensionLines[] breakdown,
-// never one request per checked size. Purchase can still add/remove/adjust
+// this submits one call with a dimensionLines[] breakdown — and since
+// 2026-10-09 the server raises ONE REQUEST PER SIZE from it (each size is
+// ordered on its own on RFQ/PO, in pieces). Purchase can still add/remove/adjust
 // lines later from the same "Send RFQ" form (RFQManagement.jsx) before it's
 // actually sent — see server/controllers/purchaseRequestController.js's
 // resolveFabricationLines, which both this dialog's preview and the final
@@ -287,8 +326,9 @@ function FabricationPurchaseDialog({ request, onClose }) {
       storeOrderId: request.order._id,
       fabricationDimensionLines: linesPayload,
     }),
-    onSuccess: () => {
-      toast({ title: 'Purchase Request Raised', description: 'The purchase request has been submitted successfully.' });
+    onSuccess: (res) => {
+      // Several sizes → the server raises one request per size (2026-10-09).
+      toast({ title: res?.requests?.length > 1 ? `${res.requests.length} Purchase Requests Raised` : 'Purchase Request Raised', description: res?.message || 'The purchase request has been submitted successfully.' });
       queryClient.invalidateQueries({ queryKey: ['/api/inventory/pending-requests'] });
       onClose();
     },
@@ -302,7 +342,7 @@ function FabricationPurchaseDialog({ request, onClose }) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2"><ShoppingCart className="h-5 w-5 text-emerald-600" /> Raise Purchase Request</DialogTitle>
           <DialogDescription>
-            <span className="font-semibold text-slate-800">{request.material.materialName}</span> (<span className="font-mono">{sourceItemCode}</span>) — check every catalog size you need reordered, with a quantity each.
+            <span className="font-semibold text-slate-800">{request.material.materialName}</span> (<span className="font-mono">{sourceItemCode}</span>) — check every catalog size you need reordered, with a quantity each. Each size becomes its own purchase request (Purchase orders each size separately).
           </DialogDescription>
         </DialogHeader>
         <div className="py-2 space-y-3">
@@ -485,11 +525,8 @@ export default function PendingRequestsTab() {
         issuedTo: issuedTo || undefined,
       });
     },
-    onSuccess: () => {
-      toast({
-        title: "Success",
-        description: "Material transferred to production successfully.",
-      });
+    onSuccess: (res) => {
+      transferredToast(toast, res);
       setSelectedRequest(null);
       setTransferQty('');
       setTransferIssuedTo('');
@@ -819,6 +856,7 @@ export default function PendingRequestsTab() {
                             )}
                           </div>
                           <div className="text-xs text-slate-500 font-mono">{mat.sourceItemCode || mat.materialCode}</div>
+                          <StockCheckNote check={mat.stockCheck} compact />
                           {mat.fabricationCategory && mat.bomDimensions && Object.keys(mat.bomDimensions).length > 0 && (
                             <div className="text-[10px] text-slate-400 mt-0.5">Cut: {formatDims(mat.bomDimensions)}</div>
                           )}
@@ -988,6 +1026,7 @@ export default function PendingRequestsTab() {
               {selectedRequest && Number(transferQty) > ((selectedRequest.material.quantity || 0) - (selectedRequest.material.transferredQuantity || 0)) && (
                 <p className="text-red-500 text-xs mt-1">Cannot exceed remaining requested quantity.</p>
               )}
+              <StockCheckNote check={selectedRequest?.material.stockCheck} qty={transferQty} />
             </div>
             <div>
               <label className="text-sm font-medium text-slate-700 mb-1 block">Issued To <span className="text-red-500">*</span> <span className="text-[10px] text-slate-400 font-normal">(who you're physically handing this to)</span></label>

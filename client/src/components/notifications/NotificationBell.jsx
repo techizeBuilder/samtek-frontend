@@ -117,6 +117,19 @@ export const getNavigationUrl = (notification, userRole = '') => {
     return '/accounts/payment-verifications';
   }
 
+  // Vendor approvals / document expiry (procurement-v2) — every one carries
+  // data.vendorId. The Company Admin reviews them on Purchase & Vendor
+  // Approval; Purchase (Accounts roles) sees the vendor in Vendor Master.
+  if (type === 'purchase' && data?.vendorId) {
+    if (userRole === 'Company Admin') return '/hrms/CompanyAdmin/purchase-approvals';
+    return '/accounts/purchases/vendors';
+  }
+  // A PO above the approval limit (procurement-v2) — the Company Admin
+  // reviews it on the same approvals page.
+  if (type === 'purchase' && data?.poApproval && userRole === 'Company Admin') {
+    return '/hrms/CompanyAdmin/purchase-approvals';
+  }
+
   // Store users land in their own module, never in Sales/Accounts pages
   if (isStoreRole) {
     if (type === 'inventory' || data?.itemId) return '/store/inventory';
@@ -131,11 +144,15 @@ export const getNavigationUrl = (notification, userRole = '') => {
     return '/accounts/sales/order-forms';
   }
 
-  if (type === 'purchase' && data?.orderId?.startsWith('SCJW-')) return '/accounts/purchases/sub-child-job-work';
+  if (type === 'purchase' && data?.orderId?.startsWith('SCJW-')) return '/accounts/purchases/purchase-outsource';
   if (data?.orderId) return `/sales/orders?highlight=${data.orderId}`;
   if (type === 'lead' && data?.leadId) return `/sales/leads?highlight=${data.leadId}`;
   if (type === 'account' && data?.orderCode) return `/accounts/sales/packed-orders`;
-  if (type === 'purchase') return `/accounts/purchases/requests`;
+  // The standalone Purchase-side /accounts/purchases/requests route was
+  // retired in the Purchase restructure (PRs now live inside Purchase &
+  // Outsource's own PRs tab, the page's default view) — this fallback
+  // pointed at a route that no longer exists until now.
+  if (type === 'purchase') return `/accounts/purchases/purchase-outsource`;
   if (type === 'production') return `/production/orders`;
   if (type === 'store') return `/store/orders`;
   // "Packing Completed" is sent to Dispatch AND Accounts — Accounts has no
