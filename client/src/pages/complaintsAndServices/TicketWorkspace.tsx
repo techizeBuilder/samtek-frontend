@@ -5,6 +5,7 @@ import { useSupportTickets, useServicemen } from '@/hooks/useComplaints';
 import { Search, Eye, AlertCircle, Clock, CheckCircle2, Calendar } from 'lucide-react';
 import TicketDetailModal from '@/components/support/TicketDetailModal';
 import TicketCreationForm from '@/components/support/TicketCreationForm';
+import VendorWarrantyClaims from '@/components/support/VendorWarrantyClaims';
 
 export default function TicketWorkspace() {
   const { user } = useAuth() as any;
@@ -51,6 +52,12 @@ export default function TicketWorkspace() {
   // hasFeatureAccess), not a hardcoded role list.
   const canCreateTicket = hasFeatureAccess('complaints', 'supportManagement', 'add');
 
+  // Vendor warranty claims (2026-10-13): a purchased unit failed at a
+  // customer — raised and resolved here, for the vendor score.
+  const [isClaimsOpen, setIsClaimsOpen] = useState(false);
+  const canSeeClaims = hasFeatureAccess('complaints', 'supportManagement', 'view');
+  const canEditClaims = hasFeatureAccess('complaints', 'supportManagement', 'edit');
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'Resolved':
@@ -79,15 +86,29 @@ export default function TicketWorkspace() {
           <p className="text-sm text-gray-500">Manage customer complaints, assign technicians, and track SLAs.</p>
         </div>
 
-        {canCreateTicket && (
-          <button 
-            onClick={() => setIsCreateFormOpen(true)}
-            className="bg-orange-500 text-white px-4 py-2 rounded-lg shadow hover:bg-orange-600 transition font-medium"
-          >
-            + Create Ticket
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {canSeeClaims && (
+            <button
+              onClick={() => setIsClaimsOpen(true)}
+              className="bg-white text-gray-700 border border-gray-200 px-4 py-2 rounded-lg shadow-sm hover:bg-gray-50 transition font-medium"
+            >
+              Vendor Warranty Claims
+            </button>
+          )}
+          {canCreateTicket && (
+            <button
+              onClick={() => setIsCreateFormOpen(true)}
+              className="bg-orange-500 text-white px-4 py-2 rounded-lg shadow hover:bg-orange-600 transition font-medium"
+            >
+              + Create Ticket
+            </button>
+          )}
+        </div>
       </div>
+
+      {canSeeClaims && (
+        <VendorWarrantyClaims open={isClaimsOpen} onClose={() => setIsClaimsOpen(false)} canAdd={canCreateTicket} canEdit={canEditClaims} />
+      )}
 
       <div className="space-y-4">
         

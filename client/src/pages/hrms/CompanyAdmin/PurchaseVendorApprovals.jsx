@@ -18,6 +18,9 @@ import LowVendorCoverageTab from './purchaseApprovals/LowVendorCoverageTab';
 import PoApprovalsTab from './purchaseApprovals/PoApprovalsTab';
 import PurchaseRulesSettingsTab from './purchaseApprovals/PurchaseRulesSettingsTab';
 import { AuditLogTable } from '@/components/accounts/purchase/AuditLog';
+import PriceHistory from '@/components/accounts/purchase/PriceHistory';
+import { PurchaserScoreList } from '@/components/accounts/purchase/PurchaserScore';
+import PurchaseDashboard from '@/pages/accounts/purchase/PurchaseDashboard';
 
 // Company Admin's "Purchase & Vendor Approval" page (procurement-v2,
 // 2026-10-08). Client decision: every approval the procurement blueprint
@@ -38,12 +41,20 @@ const TABS = [
   { id: 'Settings', label: 'Settings', types: null },
   // gap 17 (2026-10-10) — every step of every PO.
   { id: 'AuditLog', label: 'Audit Log', types: null },
+  // 2026-10-12 (client) — avg / last / lowest price of an item over a period.
+  { id: 'PriceHistory', label: 'Price History', types: null },
+  // 2026-10-13 — blueprint §13: each purchaser's process score.
+  { id: 'PurchaserScore', label: 'Purchaser Score', types: null },
+  // 2026-10-13 — blueprint §21: what needs you, and how purchasing is going.
+  { id: 'PurchaseDashboard', label: 'Dashboard', types: null },
 ];
 // The tabs grouped under parent tabs (2026-10-10) — the flat row had grown
 // to eight. A parent's badge is the sum of its children's pending counts.
 const GROUPS = [
-  { id: 'vendors', label: 'Vendors', tabs: ['NewVendor', 'DetailsChange', 'Status', 'Watchlist', 'LowCoverage'] },
+  { id: 'dashboard', label: 'Dashboard', tabs: ['PurchaseDashboard'] },
+  { id: 'vendors', label: 'Vendors', tabs: ['NewVendor', 'DetailsChange', 'Status', 'Watchlist', 'LowCoverage', 'PriceHistory'] },
   { id: 'orders', label: 'Purchase Orders', tabs: ['POApprovals', 'AuditLog'] },
+  { id: 'purchasers', label: 'Purchasers', tabs: ['PurchaserScore'] },
   { id: 'settings', label: 'Settings', tabs: ['Settings'] },
 ];
 // Tabs that render their own component instead of the request list.
@@ -53,6 +64,9 @@ const CUSTOM_TABS = {
   LowCoverage: () => <LowVendorCoverageTab />,
   Settings: () => <PurchaseRulesSettingsTab />,
   AuditLog: () => <AuditLogTable />,
+  PriceHistory: () => <PriceHistory />,
+  PurchaserScore: () => <PurchaserScoreList />,
+  PurchaseDashboard: ({ openTab }) => <PurchaseDashboard onOpenTab={openTab} />,
 };
 const STATUS_TABS = ['Pending', 'Approved', 'Rejected'];
 const TYPE_LABEL = {
@@ -316,7 +330,7 @@ function StatusRequestCard({ request, onReview, busy }) {
               <span className="text-xs text-gray-400">currently {vendor.approvalStatus}</span>
             </div>
             <p className="text-sm text-gray-800 mt-1.5"><b>Reason:</b> {payload.reason || '—'}</p>
-            {payload.fromWatchlist && <p className="text-xs text-gray-500">From the Watchlist — rating {payload.rating ?? '—'} over {payload.ratingEvents ?? 0} events</p>}
+            {payload.fromWatchlist && <p className="text-xs text-gray-500">From the Watchlist — {payload.watchReason || (payload.score != null ? `vendor score ${payload.score} / 100` : payload.rating != null ? `rating ${payload.rating} / 5 (old rating)` : '—')}</p>}
             {payload.reviewDate && <p className="text-xs text-gray-500">Review on {formatDay(payload.reviewDate)}</p>}
             {(request.evidence || []).length > 0 && (
               <div className="flex flex-wrap gap-2 mt-1.5">
@@ -338,7 +352,7 @@ function StatusRequestCard({ request, onReview, busy }) {
   );
 }
 
-// ── Tab 4: Watchlist (derived from the existing vendor rating) ───────────────
+// ── Tab 4: Watchlist (derived from the vendor score, 2026-10-13) ─────────────
 function WatchlistTab() {
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -366,8 +380,8 @@ function WatchlistTab() {
     <div className="space-y-3">
       {t && (
         <p className="text-xs text-gray-500">
-          Approved vendors whose rating (on-time delivery + QC results, from the Vendor Ratings tab) is below {t.ratingBelow} over at least {t.minEvents} events.
-          Nothing happens to them automatically — suspend one here if needed.
+          Approved vendors whose vendor score (Purchase → Vendor Ratings) is below {t.scoreBelow} / 100 with at least {t.minEvents} deliveries / QC checks, or who refused to replace or refund QC-rejected material in the last 90 days.
+          You're notified when a vendor first drops below the line. Nothing happens to them automatically — suspend one here if needed. The line is set under Settings.
         </p>
       )}
       {list.length === 0 ? (
@@ -378,7 +392,13 @@ function WatchlistTab() {
             <div className="flex items-start justify-between gap-3 flex-wrap">
               <div>
                 <p className="font-semibold text-gray-800">{v.supplierName} <span className="text-xs font-mono text-gray-400">{v.supplierCode}</span></p>
-                <p className="text-sm text-orange-700 mt-0.5">Rating {v.standing?.rating} / 5 over {v.standing?.eventCount} events · {v.standing?.receivedPOCount} received POs</p>
+                <p className="text-sm text-orange-700 mt-0.5">{v.standing?.watchReason || 'On the Watchlist'}{v.standing?.score != null ? ` · score ${v.standing.score} / 100` : ''} · {v.standing?.receivedPOCount} received POs</p>
+                {v.standing?.parts && (
+                  <p className="text-xs text-gray-500">
+                    {[['price', 'Price'], ['quality', 'Quality'], ['delivery', 'Delivery'], ['credit', 'Credit'], ['warranty', 'Warranty'], ['response', 'Response']]
+                      .map(([k, l]) => `${l} ${v.standing.parts[k]?.pct == null ? '—' : Math.round(v.standing.parts[k].pct)}`).join(' · ')}
+                  </p>
+                )}
                 <p className="text-xs text-gray-500">{v.contactPerson} · {v.phone}</p>
               </div>
               {suspending === v._id ? (
@@ -407,12 +427,15 @@ function WatchlistTab() {
 export default function PurchaseVendorApprovals() {
   const { toast } = useToast();
   const qc = useQueryClient();
-  const [group, setGroup] = useState('vendors');
-  const [tab, setTab] = useState('NewVendor');
+  // The Dashboard opens first (2026-10-13).
+  const [group, setGroup] = useState('dashboard');
+  const [tab, setTab] = useState('PurchaseDashboard');
   const [status, setStatus] = useState('Pending');
   const tabDef = TABS.find(t => t.id === tab);
   const groupDef = GROUPS.find(g => g.id === group);
   const openGroup = (id) => { setGroup(id); setTab(GROUPS.find(g => g.id === id).tabs[0]); setStatus('Pending'); };
+  // A dashboard tile jumps straight to a tab here.
+  const openTab = (groupId, tabId) => { setGroup(groupId); setTab(tabId); setStatus('Pending'); };
 
   // Pending counts for the tab badges.
   const { data: pendingData } = useQuery({
@@ -501,7 +524,7 @@ export default function PurchaseVendorApprovals() {
       </div>
       )}
 
-      {CUSTOM_TABS[tab] ? CUSTOM_TABS[tab]() : (
+      {CUSTOM_TABS[tab] ? CUSTOM_TABS[tab]({ openTab }) : (
         <>
           <div className="flex gap-1.5 mb-4">
             {STATUS_TABS.map(s => (

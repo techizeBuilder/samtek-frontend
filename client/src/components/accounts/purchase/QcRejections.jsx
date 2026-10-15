@@ -163,6 +163,7 @@ export default function QcRejections({ canAnswer = true, onCounts }) {
                       <span className="font-mono text-xs text-slate-500">{r.number}</span>
                       {r.itemName}
                       <span className="text-slate-500 font-normal">· {r.rejectedQty} {r.qtyUnit}</span>
+                      {r.severity && <span className={`ml-1 text-[10px] font-semibold border rounded-full px-1.5 py-0.5 ${r.severity === 'Critical' ? 'bg-red-50 text-red-700 border-red-200' : r.severity === 'Major' ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-slate-50 text-slate-600 border-slate-200'}`}>{r.severity}</span>}
                       <Badge variant="outline" className={`text-[10px] ${STATUS_TONE[r.status] || ''}`}>{r.status}</Badge>
                       {r.replacementOf && <Badge variant="outline" className="text-[10px]">replacement failed again</Badge>}
                     </p>

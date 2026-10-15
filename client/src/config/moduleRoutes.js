@@ -181,6 +181,8 @@ const accountsMenuItems = [
     module: 'accounts',
     feature: 'purchases',
     submodules: [
+      // Purchase Dashboard (2026-10-13, blueprint §21) — my work / the team, by role.
+      { label: 'Purchase Dashboard', path: '/accounts/purchases/dashboard', feature: 'purchases' },
       { label: 'Vendor Master', path: '/accounts/purchases/vendors', feature: 'purchases' },
       // Purchase redesign (2026-10): PRs now live inside this one page's
       // "Purchase" tab — the standalone Purchase Request entry is retired

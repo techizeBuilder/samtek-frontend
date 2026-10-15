@@ -59,17 +59,35 @@ export function ManualQuotationDialog({ open, onOpenChange, vendor, rows, validi
   const [advancePercent, setAdvancePercent] = useState('');
   const [creditDays, setCreditDays] = useState('');
   const [terms, setTerms] = useState([]);        // [{label, value, custom}]
+  const [carry, setCarry] = useState(null);      // { number, at } when pre-filled
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
-  // Fresh form every time it opens (nothing is uploaded until Save).
+  // Fresh form every time it opens (nothing is uploaded until Save). The
+  // vendor's charges + terms carry over from their last quotation (2026-10-14,
+  // services/quotationCarryOverService.js): change or remove what the vendor
+  // changed, otherwise they carry on.
   useEffect(() => {
-    if (!open) return;
+    if (!open) return undefined;
     setChannel(''); setChannelOther(''); setQuoteDate(localDay(new Date()));
     setContactPerson(''); setNotes(''); setFiles([]); setError('');
     setPrices(Object.fromEntries(rows.map(r => [String(r.card.group._id), blankPrice()])));
     setCharges([]); setAdvancePercent(''); setCreditDays('');
-    setTerms([]);
+    setTerms([]); setCarry(null);
+    let live = true;
+    apiRequest('GET', `/api/manual-quotations/carry-over?vendor=${vendor._id}`)
+      .then(res => {
+        const c = res?.data;
+        if (!live || !c) return;
+        const labels = new Set((settings?.termLabels || []).map(t => t.name));
+        setCharges(c.charges.map(x => ({ label: x.label, amount: String(x.amount), gstPercent: String(x.gstPercent ?? 0) })));
+        setAdvancePercent(c.paymentTerms.advancePercent != null ? String(c.paymentTerms.advancePercent) : '');
+        setCreditDays(c.paymentTerms.creditDays != null ? String(c.paymentTerms.creditDays) : '');
+        setTerms(c.paymentTerms.others.map(t => ({ label: t.label, value: t.value, custom: !labels.has(t.label) })));
+        setCarry({ number: c.number, at: c.at });
+      })
+      .catch(() => {}); // nothing carried — the form simply starts empty
+    return () => { live = false; };
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const today = localDay(new Date());
@@ -115,6 +133,8 @@ export function ManualQuotationDialog({ open, onOpenChange, vendor, rows, validi
       const name = r.card.item.name;
       if (!(Number(p.unitPrice) > 0)) return setError(`Enter the rate for "${name}".`);
       if (!(Number(p.deliveryDays) >= 1)) return setError(`Enter the delivery time (days) for "${name}".`);
+      // GST is required (2026-10-14): the PO takes it from the quote.
+      if (!p.gstInclusive && String(p.gstPercent ?? '').trim() === '') return setError(`Enter the GST % for "${name}" (0 if none), or tick "Rate already includes GST".`);
       if (currentOf(r) && !String(p.revisionReason || '').trim()) return setError(`"${name}" already has a quote from ${vendor.supplierName} — give the reason for the new price.`);
     }
     for (const c of charges) {
@@ -259,7 +279,7 @@ export function ManualQuotationDialog({ open, onOpenChange, vendor, rows, validi
                 </p>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   <Input className="h-8 text-sm" type="number" min="0" value={p.unitPrice} onChange={e => setPrice(gid, { unitPrice: e.target.value })} placeholder={`Rate ₹${r.card.group.purchaseUnit ? `/${r.card.group.purchaseUnit}` : ''} *`} />
-                  <Input className="h-8 text-sm" type="number" min="0" max="100" value={p.gstInclusive ? '' : p.gstPercent} disabled={p.gstInclusive} onChange={e => setPrice(gid, { gstPercent: e.target.value })} placeholder={p.gstInclusive ? 'GST included' : 'GST % (optional)'} />
+                  <Input className="h-8 text-sm" type="number" min="0" max="100" value={p.gstInclusive ? '' : p.gstPercent} disabled={p.gstInclusive} onChange={e => setPrice(gid, { gstPercent: e.target.value })} placeholder={p.gstInclusive ? 'GST included' : 'GST % *'} />
                   <Input className="h-8 text-sm" type="number" min="1" value={p.deliveryDays} onChange={e => setPrice(gid, { deliveryDays: e.target.value })} placeholder="Delivery days *" />
                   {!fab && <Input className="h-8 text-sm" type="number" min="0" value={p.warrantyMonths} onChange={e => setPrice(gid, { warrantyMonths: e.target.value })} placeholder="Warranty (months)" />}
                 </div>
@@ -288,6 +308,13 @@ export function ManualQuotationDialog({ open, onOpenChange, vendor, rows, validi
 
         {/* The vendor's charges + payment terms */}
         <div className="space-y-2">
+          {carry && (
+            <p className="text-xs text-blue-800 bg-blue-50 border border-blue-200 rounded-md px-3 py-2">
+              Charges and payment terms carried over from <b>{carry.number}</b>, {vendor.supplierName}'s last quotation
+              ({new Date(carry.at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}). If the vendor changed anything,
+              change or remove it here — otherwise these carry on to this quotation.
+            </p>
+          )}
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-xs font-semibold text-slate-500 uppercase">Vendor's charges (whole quotation)</p>
             <select className="border rounded-md px-2 py-1 text-xs bg-white" value="" onChange={e => { if (e.target.value) addCharge(e.target.value === '__other' ? '' : e.target.value); }}>

@@ -26,7 +26,7 @@ import { CHANNEL_META, ManualQuotationDialog, QuotationRequestDialog, requestWai
 const gstLabel = (q) => (q.gstInclusive ? ' incl. GST' : q.gstPercent != null ? ` + ${q.gstPercent}% GST` : ' + GST');
 export const SORTS = [
   { key: 'price', label: 'Lowest quoted total' },
-  { key: 'rating', label: 'Best rating' },
+  { key: 'rating', label: 'Best vendor score' },
   { key: 'delivery', label: 'Fastest delivery' },
   { key: 'name', label: 'Name' },
 ];
@@ -181,29 +181,35 @@ function VendorCard({ entry, considered, settings, company, quoteRules, onChange
   const batchable = rows.filter(r => r.canBatch);
   // Every row that can be ticked starts ticked (user, 2026-10-09) — but only
   // while this vendor hasn't been asked about anything here yet. Once it has a
-  // quote, a waiting request or a "can't supply" on any row, nothing is
-  // pre-ticked: Purchase ticks what they want (user, 2026-10-10).
+  // quote, a waiting request or a "can't supply" on any row, only its rows
+  // with a valid price start ticked, ready for Review & create PO (user,
+  // 2026-10-10 / 2026-10-14) — however the quote came in (email or manual).
   const freshVendor = !rows.some(r => r.quote);
-  const [picked, setPicked] = useState(() => new Set(freshVendor ? tickable.map(r => r.card.key) : []));
+  const isPriced = (r) => rowRank(r) === 0;
+  const startTicked = (rs) => rs.filter(r => freshVendor || isPriced(r)).map(r => r.card.key);
+  const [picked, setPicked] = useState(() => new Set(startTicked(tickable)));
   const [reviewOpen, setReviewOpen] = useState(false);
   const [requestOpen, setRequestOpen] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
 
   // When the rows change (an item ticked on the left, a new card, a quote),
-  // rows that just BECAME tickable start ticked; ticks the user removed stay
-  // removed; rows that can't be ticked any more drop out.
-  const tickableKey = tickable.map(r => r.card.key).join(',');
-  const prevTickable = useRef(new Set(tickable.map(r => r.card.key)));
+  // rows that just BECAME tickable — or just got a valid price — start ticked
+  // by the rule above; ticks the user removed stay removed; rows that can't be
+  // ticked any more drop out.
+  const tickKey = (r) => `${r.card.key}${isPriced(r) ? ':priced' : ''}`;
+  const tickableKey = tickable.map(tickKey).join(',');
+  const prevTickable = useRef(new Set(tickable.map(tickKey)));
   useEffect(() => {
     const before = prevTickable.current;
     const tickableKeys = new Set(tickable.map(r => r.card.key));
+    const changed = tickable.filter(r => !before.has(tickKey(r)));
     setPicked(prev => {
       const next = new Set([...prev].filter(k => tickableKeys.has(k)));
-      if (freshVendor) for (const k of tickableKeys) if (!before.has(k)) next.add(k);
+      for (const k of startTicked(changed)) next.add(k);
       return next;
     });
-    prevTickable.current = tickableKeys;
+    prevTickable.current = new Set(tickable.map(tickKey));
   }, [tickableKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggle = (key) => setPicked(s => { const n = new Set(s); n.has(key) ? n.delete(key) : n.add(key); return n; });

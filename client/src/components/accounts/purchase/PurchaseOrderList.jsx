@@ -1,3 +1,4 @@
+import { fileHref } from '@/components/accounts/vendor/vendorUi';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import React, { useEffect, useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
@@ -7,8 +8,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { ChevronDown, ChevronUp, Receipt, RotateCw, Search, X, Package, Truck } from 'lucide-react';
 import { Input } from '@/components/ui/input';
-import { SelectionCheckDetails, SelectionCheckLine } from './SelectionCheck';
+import { SelectionCheckDetails, SelectionCheckLine, QuoteTermsChangeDetails } from './SelectionCheck';
 import { GstSplitNote } from './GstSplit';
+import { formatDims } from '@/lib/fabricationDims';
 
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '');
 const inr = (n) => `₹${Math.round(n || 0).toLocaleString('en-IN')}`;
@@ -58,6 +60,10 @@ const startOfDay = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); retur
 // A PO with an advance has no dates until the full advance is paid — the
 // vendor's delivery days count from that day (2026-10-12).
 export const awaitingAdvance = (po) => po?.deliveryClock?.startsOn === 'advance' && !po.deliveryClock.startedAt;
+// Not a real order (yet): waiting for the Company Admin, or rejected by them.
+// Nothing is due, paid, awaited or received on it (2026-10-14 — a rejected
+// PO used to show "Advance due" / "Waiting for advance" / "Awaiting receipt").
+export const notOrdered = (po) => po?.status === 'Pending Approval' || po?.status === 'Rejected';
 function lineDue(it, po, isReceived) {
   if (it.cancelled?.at || isReceived) return null;
   if (awaitingAdvance(po)) return { bucket: 'advance', days: it.deliveryDays || null };
@@ -116,6 +122,10 @@ export default function PurchaseOrderList({
   renderPoActions = null,
   // Expected receipts (2026-10-10): Overdue / Due today / Due in 3 days chips.
   showDueFilter = false,
+  // Bump to refetch IN PLACE after an action on the page (a receive, a date
+  // change) — the table stays on screen and the open PO, page, filters and
+  // search are kept (2026-10-14; it used to remount the whole list).
+  reloadSignal = 0,
 }) {
   const [purchases, setPurchases] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -129,8 +139,10 @@ export default function PurchaseOrderList({
   const [dueCounts, setDueCounts] = useState(null);
   const [expanded, setExpanded] = useState(null); // Purchase _id
 
-  const load = async () => {
-    setLoading(true);
+  // `quiet`: refetch without swapping the table for "Loading…" (keeps the
+  // page height and scroll position).
+  const load = async ({ quiet = false } = {}) => {
+    if (!quiet) setLoading(true);
     try {
       const params = new URLSearchParams({ page: String(page), limit: '20', status: statusFilter || scopeStatuses.join(',') });
       if (searchText) params.set('search', searchText);
@@ -145,6 +157,8 @@ export default function PurchaseOrderList({
   };
 
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [page, searchText, statusFilter, dueFilter]);
+  useEffect(() => { if (reloadSignal) load({ quiet: true }); /* eslint-disable-next-line */ }, [reloadSignal]);
+  const quietReload = () => load({ quiet: true });
   // A PO just created/landed elsewhere in this tab (see onPOCreated) auto-
   // expands here so Purchase actually sees it, instead of having to go find it.
   useEffect(() => {
@@ -174,7 +188,7 @@ export default function PurchaseOrderList({
             <X className="w-3.5 h-3.5" /> Clear filters
           </button>
         )}
-        <Button size="sm" variant="outline" className="ml-auto" onClick={load}><RotateCw className="w-3.5 h-3.5 mr-1" /> Refresh</Button>
+        <Button size="sm" variant="outline" className="ml-auto" onClick={() => load()}><RotateCw className="w-3.5 h-3.5 mr-1" /> Refresh</Button>
       </div>
 
       {showDueFilter && (
@@ -228,7 +242,7 @@ export default function PurchaseOrderList({
                         </TableCell>
                         <TableCell>{po.supplier?.supplierName || '—'}</TableCell>
                         <TableCell className="text-slate-500 text-xs">{po.orderDate ? new Date(po.orderDate).toLocaleDateString('en-IN') : '—'}</TableCell>
-                        <TableCell className="text-slate-500 text-xs">{awaitingAdvance(po) ? <span className="text-violet-700">After advance</span> : po.expectedDeliveryDate ? new Date(po.expectedDeliveryDate).toLocaleDateString('en-IN') : '—'}</TableCell>
+                        <TableCell className="text-slate-500 text-xs">{po.status === 'Pending Approval' ? 'After approval' : po.status === 'Rejected' ? '—' : awaitingAdvance(po) ? <span className="text-violet-700">After advance</span> : po.expectedDeliveryDate ? new Date(po.expectedDeliveryDate).toLocaleDateString('en-IN') : '—'}</TableCell>
                         <TableCell>
                           <Badge variant="outline" className={po.transportBy === 'Company' ? 'bg-violet-100 text-violet-700 border-violet-200' : 'bg-slate-100 text-slate-500 border-slate-200'}>
                             {po.transportBy === 'Company' ? <Truck className="w-3 h-3 mr-1" /> : null}
@@ -238,12 +252,14 @@ export default function PurchaseOrderList({
                         <TableCell>
                           <Badge variant="outline" className={poStatusColor[po.status] || ''}>{po.status}</Badge>
                           {(po.cancellations || []).some(c => c.status === 'Requested') && <Badge variant="outline" className="ml-1 bg-red-50 text-red-700 border-red-200">Cancel requested</Badge>}
-                          {po.status !== 'Cancelled' && (po.items || []).some(it => lineDue(it, po, lineIsReceived(it))?.bucket === 'overdue') && <Badge variant="outline" className="ml-1 bg-red-50 text-red-700 border-red-200">Overdue</Badge>}
+                          {po.status !== 'Cancelled' && !notOrdered(po) && (po.items || []).some(it => lineDue(it, po, lineIsReceived(it))?.bucket === 'overdue') && <Badge variant="outline" className="ml-1 bg-red-50 text-red-700 border-red-200">Overdue</Badge>}
                           {(po.cancellations || []).some(c => c.status === 'Approved' && c.kind === 'ShortClose') && <Badge variant="outline" className="ml-1 bg-slate-50 text-slate-600 border-slate-200">Short closed</Badge>}
                         </TableCell>
                         <TableCell>
-                          <Badge variant="outline" className={paymentStatusColor[po.paymentStatus] || ''}>{po.paymentStatus}</Badge>
-                          {awaitingAdvance(po) && po.status !== 'Cancelled' && <Badge variant="outline" className="ml-1 bg-violet-50 text-violet-700 border-violet-200">Advance due</Badge>}
+                          {notOrdered(po)
+                            ? <span className="text-xs text-slate-400">—</span>
+                            : <Badge variant="outline" className={paymentStatusColor[po.paymentStatus] || ''}>{po.paymentStatus}</Badge>}
+                          {awaitingAdvance(po) && po.status !== 'Cancelled' && !notOrdered(po) && <Badge variant="outline" className="ml-1 bg-violet-50 text-violet-700 border-violet-200">Advance due</Badge>}
                         </TableCell>
                         <TableCell className="text-right font-medium text-slate-800">{inr(po.grandTotal)}</TableCell>
                         <TableCell className="text-right text-slate-500">{po.items?.length || 0}</TableCell>
@@ -275,7 +291,9 @@ export default function PurchaseOrderList({
                                   // Cancelled line (gap 13: the whole PO, or a short close) —
                                   // kept for the record, never received.
                                   const isCancelled = !!it.cancelled?.at;
-                                  const receiveCls = isCancelled
+                                  const receiveCls = notOrdered(po)
+                                    ? 'bg-slate-50 text-slate-400 border-slate-200'
+                                    : isCancelled
                                     ? 'bg-red-50 text-red-700 border-red-200'
                                     : isReceived
                                     ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
@@ -288,7 +306,11 @@ export default function PurchaseOrderList({
                                   // and the two numbers can look alike at a
                                   // glance (e.g. "400 Kilogram" vs "0/12
                                   // PRs" for the very same line).
-                                  const receiveLabel = isCancelled
+                                  const receiveLabel = po.status === 'Rejected'
+                                    ? 'Not ordered'
+                                    : po.status === 'Pending Approval'
+                                    ? 'Not ordered yet'
+                                    : isCancelled
                                     ? 'Cancelled'
                                     : isReceived
                                     ? 'Received'
@@ -302,20 +324,46 @@ export default function PurchaseOrderList({
                                   // whichever linked PR has one, since that
                                   // gets synced back at batch time.
                                   const lineUnit = it.purchaseUnit || prRefs.find(pr => pr?.purchaseUnit)?.purchaseUnit || '';
-                                  const due = po.status === 'Cancelled' ? null : lineDue(it, po, isReceived);
+                                  const due = po.status === 'Cancelled' || notOrdered(po) ? null : lineDue(it, po, isReceived);
                                   const lastRevision = (it.deliveryDateHistory || []).slice(-1)[0];
                                   return (
                                     <div key={i} className="flex flex-wrap items-center justify-between px-3 py-2 text-sm gap-x-3 gap-y-1">
                                       <span className="flex items-center gap-1.5 min-w-0">
                                         <Package className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                                        <span className={`truncate ${isCancelled ? 'line-through text-slate-400' : ''}`}>{it.itemName}</span>
+                                        <span className={`min-w-0 ${isCancelled ? 'line-through text-slate-400' : ''}`}>
+                                          <span className="truncate">{it.itemName}</span>
+                                          {/* From the item master, decided when the PO was made (2026-10-15). */}
+                                          {it.isFabrication && <span className="ml-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded border bg-slate-50 text-slate-500 border-slate-200">Fabrication</span>}
+                                          {/* A fabrication line's size × pieces, so lines of one item can be told apart (2026-10-14). */}
+                                          {it.fabricationDimensionLines?.[0]?.values && (
+                                            <span className="block text-[11px] font-mono text-slate-500">{formatDims(it.fabricationDimensionLines[0].values)} × {it.fabricationDimensionLines[0].quantity} pcs</span>
+                                          )}
+                                        </span>
                                         <DueBadge due={due} />
                                       </span>
                                       <span className="flex items-center gap-2 shrink-0">
                                         <span className="text-slate-600">{it.quantity} {lineUnit} × {inr(it.unitPrice)}{it.itemChargesTotal > 0 ? ` + ${inr(it.itemChargesTotal)} charges` : ''}{it.gstInclusive ? ' (incl. GST)' : it.gstRate ? ` + ${it.gstRate}% GST` : ''} = {inr(it.totalPrice + (it.itemChargesTotal || 0) + (it.gstAmount || 0))}</span>
                                         <Badge variant="outline" className={`text-[10px] ${receiveCls}`}>{receiveLabel}</Badge>
-                                        {renderLineAction && !isCancelled && po.status !== 'Cancelled' && renderLineAction(it, po, { isReceived, prRefs })}
+                                        {renderLineAction && !isCancelled && po.status !== 'Cancelled' && !notOrdered(po) && renderLineAction(it, po, { isReceived, prRefs })}
                                       </span>
+                                      {/* The vendor's own invoice(s) recorded at receive (2026-10-12). */}
+                                      {(() => {
+                                        const invs = [];
+                                        for (const pr of prRefs) {
+                                          const v = pr?.vendorInvoice;
+                                          if (v?.number && !invs.some(x => x.number === v.number)) invs.push(v);
+                                        }
+                                        return invs.length ? (
+                                          <p className="basis-full text-[11px] text-slate-500 pl-5">
+                                            Vendor invoice: {invs.map((v, k) => (
+                                              <span key={k}>{k ? ', ' : ''}{v.fileUrl ? <a href={fileHref(v.fileUrl)} target="_blank" rel="noreferrer" className="text-blue-700 underline" onClick={e => e.stopPropagation()}>{v.number}</a> : v.number}{v.date ? ` (${shortDay(v.date)})` : ''}</span>
+                                            ))}
+                                          </p>
+                                        ) : null;
+                                      })()}
+                                      {prRefs.some(pr => pr?.replacementFor && pr.status !== 'Received') && (
+                                        <p className="basis-full text-[11px] text-sky-700 pl-5">Replacement for QC-rejected material expected on this line.</p>
+                                      )}
                                       {lastRevision && (
                                         <p className="basis-full text-[11px] text-slate-500 pl-5">
                                           Date changed{lastRevision.from ? ` from ${shortDay(lastRevision.from)}` : ''} to {shortDay(lastRevision.to)} — {lastRevision.reason}
@@ -362,6 +410,7 @@ export default function PurchaseOrderList({
                                     return [
                                       reasons.includes('threshold') ? `total above the ₹${Number(po.approval?.threshold || 0).toLocaleString('en-IN')} limit` : null,
                                       reasons.includes('selection') ? 'vendor selection exception' : null,
+                                      reasons.includes('charges') ? `charges above ${po.quoteTermsCheck?.from || 'the quotation'}` : null,
                                     ].filter(Boolean).join(' + ');
                                   })()}. Not sent to the vendor or Store yet.
                                 </p>
@@ -375,6 +424,8 @@ export default function PurchaseOrderList({
                                     <SelectionCheckDetails check={po.selectionCheck} />
                                   </div>
                                 ))}
+                              {/* Charges / terms changed from the quotation (2026-10-14) */}
+                              <QuoteTermsChangeDetails check={po.quoteTermsCheck} />
                               {/* Cancellations (gap 13) — every request, newest first. */}
                               {[...(po.cancellations || [])].reverse().map((c, ci) => (
                                 <p key={c._id || ci} className={`text-xs ${c.status === 'Approved' ? 'text-red-700' : c.status === 'Requested' ? 'text-amber-700' : 'text-slate-500'}`}>
@@ -396,7 +447,7 @@ export default function PurchaseOrderList({
                                   <> · <GstSplitNote split={po.gstSplit} gstAmount={(po.taxAmount || 0) + (po.chargesGstTotal || 0)} /></>
                                 )}
                               </p>
-                              {renderPoActions && <div className="flex flex-wrap items-center gap-2 pt-1">{renderPoActions(po, load)}</div>}
+                              {renderPoActions && <div className="flex flex-wrap items-center gap-2 pt-1">{renderPoActions(po, quietReload)}</div>}
                             </div>
                           </TableCell>
                         </TableRow>

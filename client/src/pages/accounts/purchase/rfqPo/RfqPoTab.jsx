@@ -251,7 +251,7 @@ export default function RfqPoTab({ focusItemId = null, onPOCreated }) {
         vendor: v,
         rows,
         coverage: rows.length,
-        rating: ratings.get(String(v._id))?.rating ?? null,
+        rating: ratings.get(String(v._id))?.score ?? null,   // vendor score /100 (2026-10-13)
         context: ratings.get(String(v._id)) || null,
         priceTotal: quoted.length ? quoted.reduce((s, r) => s + r.quote.unitPrice * r.quote.quantity, 0) : Infinity,
         slowest: quoted.length ? Math.max(...quoted.map(r => Number(r.quote.deliveryDays) || 0)) : Infinity,

@@ -16,7 +16,27 @@ const inr = (n) => `₹${round2(n).toLocaleString('en-IN')}`;
 export const APPROVAL_REASON_META = {
   threshold: { label: 'Over the ₹ limit', cls: 'bg-amber-50 text-amber-800 border-amber-200' },
   selection: { label: 'Vendor selection exception', cls: 'bg-rose-50 text-rose-800 border-rose-200' },
+  charges: { label: 'Charges above quotation', cls: 'bg-orange-50 text-orange-800 border-orange-200' },
 };
+
+// Charges / payment terms changed from the vendor's quotation (2026-10-14,
+// server services/poQuoteTermsService.js) — as saved on the PO, with
+// Purchase's reason. Nothing when the PO kept the quotation's.
+export function QuoteTermsChangeDetails({ check }) {
+  if (!check?.changes?.length) return null;
+  return (
+    <div className={`rounded-md border px-3 py-2 text-xs space-y-1 ${check.chargesAbove ? 'border-orange-200 bg-orange-50/60' : 'border-slate-200 bg-slate-50'}`}>
+      <p className="text-[11px] uppercase text-gray-500 font-semibold">Changed from the vendor's quotation {check.from}</p>
+      <ul className="list-disc pl-4 text-gray-800">
+        {check.changes.map((c, i) => <li key={i}>{c}</li>)}
+      </ul>
+      {check.chargesAbove && (
+        <p className="text-orange-800">Charges {inr(check.poChargesTotal)} vs {inr(check.quotedChargesTotal)} quoted (with GST) — needs the Company Admin.</p>
+      )}
+      <p className="text-gray-700"><span className="font-medium">Purchase's reason:</span> {(check.reasons || []).join(', ')}{check.note ? ` — "${check.note}"` : ''}</p>
+    </div>
+  );
+}
 
 export function ApprovalReasonBadges({ reasons = [] }) {
   if (!reasons.length) return null;

@@ -330,7 +330,7 @@ const VendorMaster = () => {
                                 )}
                                 {vendor.standing?.stage === 'Watchlist' && (
                                     <div className="text-xs bg-orange-50 border border-orange-200 text-orange-700 rounded-md px-2 py-1.5 flex items-center gap-1">
-                                        <AlertTriangle className="w-3 h-3 shrink-0" /> Rating {vendor.standing.rating} from {vendor.standing.eventCount} deliveries/QC checks — on the Company Admin's watchlist.
+                                        <AlertTriangle className="w-3 h-3 shrink-0" /> {vendor.standing.watchReason || `Vendor score ${vendor.standing.score ?? '—'} / 100`} — on the Company Admin's watchlist.
                                     </div>
                                 )}
                                 {(vendor.pendingRequests || []).length > 0 && (
@@ -533,16 +533,10 @@ const VendorMaster = () => {
                                 <option value="Others">Others</option>
                             </select>
                         </div>
-                        <div>
-                            <label className="text-sm font-medium">TDS Section</label>
-                            <select name="tdsSection" className="w-full border rounded-md p-2" defaultValue={editingVendor?.tdsSection || 'None'}>
-                                <option value="194C">Section 194C (Contract)</option>
-                                <option value="194J">Section 194J (Prof.)</option>
-                                <option value="194Q">Section 194Q (Goods Sale)</option>
-                                <option value="206C_1H">Section 206C(1H)</option>
-                                <option value="None">None</option>
-                            </select>
-                        </div>
+                        {/* TDS Section hidden (2026-10-12 — client: no TDS on the purchase
+                            side). Kept as a hidden field so saving a vendor never blanks a
+                            value already stored. */}
+                        <input type="hidden" name="tdsSection" value={editingVendor?.tdsSection || 'None'} />
                         <div>
                             <label className="text-sm font-medium">Status</label>
                             <select name="status" className="w-full border rounded-md p-2" defaultValue={editingVendor?.status || 'active'}>

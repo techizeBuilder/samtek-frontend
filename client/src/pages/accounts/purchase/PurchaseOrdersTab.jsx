@@ -106,7 +106,7 @@ export default function PurchaseOrdersTab({ expandPONumber = null }) {
         </TabsList>
         <TabsContent value="active">
           <PurchaseOrderList
-            key={listKey}
+            reloadSignal={listKey}
             scopeStatuses={PURCHASE_ACTIVE_STATUSES}
             emptyMessage="No active purchase orders."
             expandPONumber={expandPONumber}

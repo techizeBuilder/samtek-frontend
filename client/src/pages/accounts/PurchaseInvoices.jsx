@@ -1,3 +1,4 @@
+import { fileHref } from '@/components/accounts/vendor/vendorUi';
 import React, { useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { apiRequest, queryClient } from '@/lib/queryClient';
@@ -512,6 +513,14 @@ const PurchaseInvoices = () => {
                                     <div><div className="text-[10px] uppercase text-slate-400 font-bold">Can pay now</div>{viewInvoice.payableNow ? [viewInvoice.payableNow.advance > 0 && `advance ${inrFmt(viewInvoice.payableNow.advance)}`, viewInvoice.payableNow.material > 0 && `material ${inrFmt(viewInvoice.payableNow.material)}`].filter(Boolean).join(' · ') || 'Nothing yet' : '—'}</div>
                                     <div><div className="text-[10px] uppercase text-slate-400 font-bold">Full payment</div>{viewInvoice.dueDate ? `due ${new Date(viewInvoice.dueDate).toLocaleDateString('en-IN')}` : `${viewInvoice.creditDays ? `${viewInvoice.creditDays} days after` : 'when'} everything passes QC`}</div>
                                 </div>
+                                {(viewInvoice.vendorInvoices || []).length > 0 && (
+                                    <div className="text-xs text-slate-600 pt-2 border-t space-y-0.5">
+                                        <div className="text-[10px] uppercase text-slate-400 font-bold">Vendor's invoices (recorded at receive)</div>
+                                        {viewInvoice.vendorInvoices.map((v, i) => (
+                                            <div key={i}>{v.fileUrl ? <a href={fileHref(v.fileUrl)} target="_blank" rel="noreferrer" className="text-blue-700 underline">{v.number}</a> : v.number}{v.date ? ` · ${new Date(v.date).toLocaleDateString('en-IN')}` : ''} — {v.items.join(', ')}</div>
+                                        ))}
+                                    </div>
+                                )}
                                 {(viewInvoice.adjustments || []).length > 0 && (
                                     <div className="text-xs text-slate-600 space-y-1 pt-2 border-t">
                                         {viewInvoice.adjustments.map((a, i) => <div key={i}>−{inrFmt(a.amount)} · {a.kind}{a.reason ? ` — ${a.reason}` : ''}</div>)}

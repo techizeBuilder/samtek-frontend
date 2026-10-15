@@ -26,6 +26,10 @@ const statusColor = {
 
 const PRIORITIES = ['Low', 'Medium', 'High'];
 const STATUSES = ['Pending', 'Approved', 'Ordered', 'Received', 'Rejected'];
+// A request "Rejected" was closed without being bought — Store refused it, a
+// cancelled PO's "no longer needed", or a replacement withdrawn. Shown as
+// "Closed" + its reason so it isn't mistaken for a QC rejection (2026-10-15).
+const statusLabel = (s) => (s === 'Rejected' ? 'Closed' : s);
 
 // What actually raised this PR — requestFromDepartment is NOT this: every
 // real creation path hardcodes it to 'Store' (confirmed in
@@ -156,7 +160,7 @@ export default function PurchaseRequestsTab({ onGoToQuote }) {
         </div>
         <select value={statusFilter} onChange={e => changeFilter(setStatusFilter)(e.target.value)} className="border rounded-md p-2 text-sm bg-white">
           <option value="">All statuses</option>
-          {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+          {STATUSES.map(s => <option key={s} value={s}>{statusLabel(s)}</option>)}
         </select>
         <select value={raisedByFilter} onChange={e => changeFilter(setRaisedByFilter)(e.target.value)} className="border rounded-md p-2 text-sm bg-white">
           <option value="">All origins</option>
@@ -229,13 +233,16 @@ export default function PurchaseRequestsTab({ onGoToQuote }) {
                       </TableCell>
                       <TableCell>{pr.priority}</TableCell>
                       <TableCell>
-                        <Badge variant="outline" className={statusColor[pr.status] || ''}>{pr.status}</Badge>
+                        <Badge variant="outline" className={statusColor[pr.status] || ''} title={pr.status === 'Rejected' ? (pr.rejectionReason || 'Closed without being bought') : undefined}>{statusLabel(pr.status)}</Badge>
+                        {pr.status === 'Rejected' && pr.rejectionReason && (
+                          <p className="text-[11px] text-slate-500 mt-0.5 max-w-[220px] truncate" title={pr.rejectionReason}>{pr.rejectionReason}</p>
+                        )}
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline" className={qs.cls}>{qs.label}</Badge>
                       </TableCell>
                       <TableCell className="text-right">
-                        {!pr.purchaseOrder && (
+                        {!pr.purchaseOrder && pr.status !== 'Rejected' && (
                           // "Vendor Quotation" (client design change D4) — opens
                           // RFQ/PO with this request's item already picked.
                           <Button size="sm" className="bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700" onClick={() => onGoToQuote?.(pr.item?._id || null)}>

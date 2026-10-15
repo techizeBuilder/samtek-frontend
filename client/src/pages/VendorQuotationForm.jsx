@@ -137,9 +137,18 @@ export default function VendorQuotationForm() {
       const d = body.data;
       setData(d);
       setAnswers(Object.fromEntries(d.items.map(it => [String(it.vendorBidId), { unitPrice: '', gstPercent: '', gstInclusive: false, deliveryDays: '', warrantyMonths: '', remarks: '', cantSupply: false }])));
-      setCharges((d.offeredChargeLabels || []).map(c => ({ label: c.name, amount: '', gstPercent: String(c.defaultGstPercent ?? 0), offered: true })));
-      // Payment terms are added by choice (only the ones they give) — 2026-10-09.
-      setTerms([]);
+      // Charges and payment terms are added by choice (only the ones they give)
+      // — terms 2026-10-09, charges 2026-10-14: a pre-listed charge with a
+      // blank amount read like something the vendor was expected to charge.
+      // Their OWN charges + terms from their last quotation are pre-filled
+      // (2026-10-14): they carry on unless the vendor changes them.
+      const carry = d.carryOver;
+      const offeredCharge = new Set((d.offeredChargeLabels || []).map(c => c.name));
+      const offeredTerm = new Set((d.offeredTermLabels || []).map(t => t.name));
+      setCharges((carry?.charges || []).map(c => ({ label: c.label, amount: String(c.amount), gstPercent: String(c.gstPercent ?? 0), offered: offeredCharge.has(c.label) })));
+      setAdvancePercent(carry?.paymentTerms?.advancePercent != null ? String(carry.paymentTerms.advancePercent) : '');
+      setCreditDays(carry?.paymentTerms?.creditDays != null ? String(carry.paymentTerms.creditDays) : '');
+      setTerms((carry?.paymentTerms?.others || []).map(t => ({ label: t.label, value: t.value, offered: offeredTerm.has(t.label) })));
     } catch {
       setError('Could not load the quotation. Please check your internet connection.');
     } finally {
@@ -150,6 +159,11 @@ export default function VendorQuotationForm() {
 
   const setAnswer = (id, patch) => setAnswers(a => ({ ...a, [id]: { ...a[id], ...patch } }));
   const setCharge = (i, patch) => setCharges(cs => cs.map((c, j) => (j === i ? { ...c, ...patch } : c)));
+  const addCharge = (name) => {
+    const offered = (data?.offeredChargeLabels || []).find(c => c.name === name);
+    setCharges(cs => [...cs, { label: name || '', amount: '', gstPercent: String(offered?.defaultGstPercent ?? 0), offered: !!name }]);
+  };
+  const chargeChoices = (data?.offeredChargeLabels || []).filter(c => !charges.some(x => x.offered && x.label === c.name));
   const setTerm = (i, patch) => setTerms(ts => ts.map((t, j) => (j === i ? { ...t, ...patch } : t)));
   const addTerm = (name) => setTerms(ts => [...ts, { label: name || '', value: '', offered: !!name }]);
   const termChoices = (data?.offeredTermLabels || []).filter(t => !terms.some(x => x.offered && x.label === t.name));
@@ -182,7 +196,14 @@ export default function VendorQuotationForm() {
       if (!(Number(a.deliveryDays) >= 1)) { setFormError(`Enter the delivery time (days) for "${it.itemName}".`); return; }
       if (!a.gstInclusive && a.gstPercent === '') { setFormError(`Enter the GST % for "${it.itemName}" (0 if none), or tick "Price includes GST".`); return; }
     }
-    if (!totals.priced) { setFormError('Enter a price for at least one item.'); return; }
+    const saidCantSupply = openItems.some(it => answers[String(it.vendorBidId)]?.cantSupply);
+    if (!totals.priced && !saidCantSupply) { setFormError('Enter a price for at least one item, or tick "Can\'t supply" on the items you can\'t supply.'); return; }
+    for (const c of charges) {
+      const label = String(c.label).trim();
+      if (!label && c.amount === '') continue;
+      if (!label) { setFormError('Name each charge you added.'); return; }
+      if (!(Number(c.amount) > 0)) { setFormError(`Enter the amount for "${label}" under charges, or remove it.`); return; }
+    }
     for (const t of terms) {
       const label = String(t.label).trim();
       const value = String(t.value).trim();
@@ -200,7 +221,7 @@ export default function VendorQuotationForm() {
         body: JSON.stringify({
           items: openItems.map(it => {
             const a = answers[String(it.vendorBidId)];
-            return a.cantSupply ? { vendorBidId: it.vendorBidId, unitPrice: 0 } : {
+            return a.cantSupply ? { vendorBidId: it.vendorBidId, unitPrice: 0, cantSupply: true } : {
               vendorBidId: it.vendorBidId,
               unitPrice: Number(a.unitPrice) || 0,
               gstPercent: a.gstInclusive ? null : a.gstPercent,
@@ -326,10 +347,17 @@ export default function VendorQuotationForm() {
           </div>
         </div>
 
+        {data.carryOver && (
+          <div className="rounded-2xl p-4 mb-5 border border-blue-200 bg-blue-50 text-sm text-blue-800">
+            Your charges and payment terms below are carried over from your last quotation to us ({fmtDay(data.carryOver.at)}).
+            If anything is different for this order, change or remove it — otherwise they carry on to this quotation.
+          </div>
+        )}
+
         {/* Charges */}
         <div className="bg-white rounded-2xl shadow-md p-5 mb-5 border border-slate-100">
           <p className="text-xs font-bold text-slate-400 uppercase mb-1">Charges on the whole order</p>
-          <p className="text-xs text-slate-400 mb-3">Fill only what applies — leave the amount blank to skip. GST % can be 0.</p>
+          <p className="text-xs text-slate-400 mb-3">Add only the charges you will bill on this order (freight, packing…). GST % can be 0.</p>
           <div className="space-y-2">
             {charges.map((c, i) => (
               <div key={i} className="flex flex-wrap sm:flex-nowrap items-center gap-2">
@@ -340,15 +368,15 @@ export default function VendorQuotationForm() {
                 <span className="flex items-center gap-1 text-xs text-slate-500">
                   <input type="number" min="0" max="100" className={`${inputCls} w-20`} value={c.gstPercent} onChange={e => setCharge(i, { gstPercent: e.target.value })} />% GST
                 </span>
-                {!c.offered
-                  ? <button type="button" onClick={() => setCharges(cs => cs.filter((_, j) => j !== i))} className="text-slate-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
-                  : <span className="w-4" />}
+                <button type="button" onClick={() => setCharges(cs => cs.filter((_, j) => j !== i))} className="text-slate-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
               </div>
             ))}
           </div>
-          <button type="button" onClick={() => setCharges(cs => [...cs, { label: '', amount: '', gstPercent: '0', offered: false }])} className="mt-3 text-sm text-blue-700 hover:text-blue-800 flex items-center gap-1">
-            <Plus className="w-4 h-4" /> Add your own charge
-          </button>
+          <select className={`${inputCls} mt-3 sm:w-64 bg-white text-blue-700`} value="" onChange={e => { if (e.target.value) addCharge(e.target.value === '__other' ? '' : e.target.value); }}>
+            <option value="">+ Add a charge…</option>
+            {chargeChoices.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+            <option value="__other">Other (type your own)</option>
+          </select>
         </div>
 
         {/* Payment terms */}

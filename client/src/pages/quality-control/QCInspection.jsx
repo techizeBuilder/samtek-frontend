@@ -14,6 +14,8 @@ import {
   CheckCircle2, XCircle, Clock, AlertTriangle, ChevronLeft,
   Play, Send, Package, Factory, ShoppingCart, Plus, Trash2, RefreshCw
 } from 'lucide-react';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
+import { formatDims } from '@/lib/fabricationDims';
 import SubChildPartQCReview from '@/components/qc/SubChildPartQCReview';
 import ChildPartUnitQCReview from '@/components/qc/ChildPartUnitQCReview';
 import SubChildPartBatchQCReview from '@/components/qc/SubChildPartBatchQCReview';
@@ -27,6 +29,8 @@ const statusColor = {
 };
 
 const itemStatusColor = { Pending: 'text-slate-400', Pass: 'text-emerald-600', Fail: 'text-red-600' };
+// QC by PO line (2026-10-15): which kind of request a rejection is counted against.
+const KIND_LABEL = { stock: 'stock', production: 'production', sales: 'sales order' };
 
 // `productionFilled` is true only for a manufactured job's Final Check
 // (job.partChecks.length > 0) — Production already recorded actualValue/
@@ -171,6 +175,8 @@ export default function QCInspection() {
   const [decision, setDecision] = useState('');
   const [failReason, setFailReason] = useState('');
   const [rejectQty, setRejectQty] = useState('');
+  const [sizeRejects, setSizeRejects] = useState({}); // fabrication line with several sizes: size key → pieces
+  const [severity, setSeverity] = useState('Major');
   const [inspectorRemarks, setInspectorRemarks] = useState('');
   const [inspectorName, setInspectorName] = useState('');
   const [newParam, setNewParam] = useState('');
@@ -183,6 +189,54 @@ export default function QCInspection() {
   });
 
   const job = data?.data;
+
+  // Serial numbers of a purchased item (2026-10-13): when every piece came
+  // with its own serial, a Fail ticks the serials instead of typing a count.
+  const { data: serialData, refetch: refetchSerials } = useQuery({
+    queryKey: ['qc-job-serials', id],
+    queryFn: () => apiRequest('GET', `/api/serial-numbers/qc-job/${id}`),
+    enabled: !!id && canView && job?.source === 'Purchase',
+  });
+  const jobSerials = (serialData?.data || []).filter(u => !u.isLot);
+  const piecesInQc = jobSerials.filter(u => u.status === 'In QC');
+  const serialMode = piecesInQc.length > 0;
+  const [rejectSerials, setRejectSerials] = useState([]);
+  const toggleSerial = (uid) => setRejectSerials(cur => (cur.includes(uid) ? cur.filter(x => x !== uid) : [...cur, uid]));
+
+  // QC by PO line (2026-10-15): a purchase card stands for the whole received
+  // PO line — several requests' jobs decided as one. The quantities below are
+  // the LINE's; the server shares a rejection out across the requests.
+  const rg = job?.receiptGroup || null;
+  const lineMode = !!rg && rg.requests.length > 1;
+  const lineQty = lineMode ? rg.inQc : (job?.quantity || 1);
+  const lineSizes = (() => {
+    if (!rg?.isFabrication) return [];
+    const bySize = new Map();
+    for (const r of rg.requests) for (const s of r.sizes || []) {
+      const key = JSON.stringify(s.values);
+      const cur = bySize.get(key) || { key, values: s.values, quantity: 0 };
+      cur.quantity += Number(s.quantity) || 0;
+      bySize.set(key, cur);
+    }
+    return [...bySize.values()];
+  })();
+  const multiSize = lineSizes.length > 1;
+  const sizeRejectTotal = lineSizes.reduce((s, z) => s + (Number(sizeRejects[z.key]) || 0), 0);
+  // "Which request will this go on?" — asked of the server as a dry run.
+  const previewBody = decision === 'Fail' && lineMode && !serialMode
+    ? (multiSize
+      ? { rejectSizes: lineSizes.map(z => ({ values: z.values, qty: Number(sizeRejects[z.key]) || 0 })).filter(z => z.qty > 0) }
+      : { rejectQty: Number(rejectQty) || 0 })
+    : null;
+  const previewKey = useDebouncedValue(JSON.stringify(previewBody), 400);
+  const previewReady = previewKey !== 'null' && (multiSize ? sizeRejectTotal > 0 : Number(JSON.parse(previewKey || 'null')?.rejectQty) > 0);
+  const { data: previewData } = useQuery({
+    queryKey: ['qc-line-preview', id, previewKey],
+    queryFn: () => apiRequest('PUT', `/api/qc/jobs/${id}/decision`, { decision: 'Fail', dryRun: true, ...JSON.parse(previewKey) }),
+    enabled: !!id && canEdit && previewReady,
+    retry: false,
+  });
+  const previewRows = previewReady ? (previewData?.preview || []).filter(p => p.reject > 0) : [];
 
   // Inspector picker (2026-09-26) — client requirement: a selection from QC
   // department users, not free text. Only fetched once an inspector still
@@ -258,9 +312,12 @@ export default function QCInspection() {
 
   // Reject qty only matters when the job still holds more than 1 unit — for a
   // single-unit job, Fail always rejects that one unit, same as before.
-  const showRejectQtyInput = decision === 'Fail' && (job?.quantity || 1) > 1;
-  const parsedRejectQty = showRejectQtyInput ? Number(rejectQty) : (job?.quantity || 1);
-  const isPartialRejectQty = showRejectQtyInput && parsedRejectQty > 0 && parsedRejectQty < job.quantity;
+  const showRejectQtyInput = decision === 'Fail' && !serialMode && !multiSize && lineQty > 1;
+  const showSerialPicker = decision === 'Fail' && serialMode;
+  const showSizeRejects = decision === 'Fail' && !serialMode && multiSize;
+  const parsedRejectQty = showSerialPicker ? rejectSerials.length : showSizeRejects ? sizeRejectTotal : showRejectQtyInput ? Number(rejectQty) : lineQty;
+  const isPartialRejectQty = (showRejectQtyInput || showSerialPicker || showSizeRejects) && parsedRejectQty > 0 && parsedRejectQty < lineQty;
+  const sizeRejectInvalid = showSizeRejects && (sizeRejectTotal <= 0 || lineSizes.some(z => (Number(sizeRejects[z.key]) || 0) > z.quantity || !Number.isInteger(Number(sizeRejects[z.key]) || 0)));
 
   const handleDecision = async () => {
     if (!decision) { toast({ title: 'Select Pass or Fail', variant: 'destructive' }); return; }
@@ -269,22 +326,50 @@ export default function QCInspection() {
       return;
     }
     if (decision === 'Fail' && !failReason.trim()) { toast({ title: 'Fail reason is required', variant: 'destructive' }); return; }
-    if (showRejectQtyInput && (!Number.isFinite(parsedRejectQty) || parsedRejectQty < 1 || parsedRejectQty > job.quantity)) {
-      toast({ title: 'Enter a valid reject quantity', description: `Must be between 1 and ${job.quantity}`, variant: 'destructive' });
+    if (showRejectQtyInput && (!Number.isFinite(parsedRejectQty) || parsedRejectQty <= 0 || parsedRejectQty > lineQty)) {
+      toast({ title: 'Enter a valid reject quantity', description: `Must be more than 0 and at most ${lineQty}`, variant: 'destructive' });
+      return;
+    }
+    if (showSerialPicker && !rejectSerials.length) {
+      toast({ title: 'Tick the rejected serial numbers', variant: 'destructive' });
+      return;
+    }
+    if (sizeRejectInvalid) {
+      toast({ title: 'Enter the rejected pieces per size', description: 'Whole pieces, at most what arrived of each size.', variant: 'destructive' });
       return;
     }
     setLoading(true);
     try {
       const payload = { decision, failReason, inspectorRemarks };
-      if (showRejectQtyInput) payload.rejectQty = parsedRejectQty;
+      if (decision === 'Fail' && job?.source === 'Purchase') payload.severity = severity;
+      if (showRejectQtyInput || (decision === 'Fail' && lineMode && !serialMode && !showSizeRejects)) payload.rejectQty = parsedRejectQty;
+      if (showSerialPicker) { payload.rejectSerials = rejectSerials; payload.rejectQty = rejectSerials.length; }
+      // Fabrication: say which size the rejected pieces were.
+      if (decision === 'Fail' && !serialMode && rg?.isFabrication) {
+        payload.rejectSizes = showSizeRejects
+          ? lineSizes.map(z => ({ values: z.values, qty: Number(sizeRejects[z.key]) || 0 })).filter(z => z.qty > 0)
+          : (lineSizes.length === 1 ? [{ values: lineSizes[0].values, qty: parsedRejectQty }] : undefined);
+      }
       const res = await submitDecision(id, payload);
+      if (job?.source === 'Purchase') refetchSerials();
 
-      if (res?.partial) {
+      if (lineMode) {
+        // The line: stay while anything on it is still in QC.
+        const fresh = (await refetch())?.data?.data;
+        setDecision(''); setFailReason(''); setRejectQty(''); setRejectSerials([]); setSizeRejects({});
+        const results = res?.line?.results || [];
+        const summary = decision === 'Fail'
+          ? results.filter(r => r.rejected > 0).map(r => `${r.rejected} on ${r.requestId} (${KIND_LABEL[r.kind] || r.kind})`).join(', ')
+          : `${results.length} request${results.length === 1 ? '' : 's'} approved`;
+        toast({ title: decision === 'Pass' ? '✓ Line approved' : `✗ ${parsedRejectQty} rejected`, description: summary });
+        if (fresh?.status !== 'In Progress') setLocation('/qc/jobs');
+      } else if (res?.partial) {
         // Only part of the job's quantity was rejected — the rest stays in
         // QC for its own Approve/Fail decision, so we stay on this screen.
         setDecision('');
         setFailReason('');
         setRejectQty('');
+        setRejectSerials([]);
         await refetch();
         toast({
           title: `✗ ${parsedRejectQty} unit${parsedRejectQty > 1 ? 's' : ''} rejected`,
@@ -374,6 +459,9 @@ export default function QCInspection() {
             <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${statusColor[job.status]}`}>{job.status}</span>
           </div>
           <p className="text-slate-500 text-sm mt-0.5">{job.itemName} · {job.category}</p>
+          {job.receiptGroup?.sizes?.length > 0 && (
+            <p className="text-xs font-mono text-slate-600 mt-0.5">{job.receiptGroup.sizes.map(z => `${formatDims(z.values)} × ${z.quantity} pcs`).join(' · ')}</p>
+          )}
           <p className="text-xs text-slate-400 mt-0.5">QC Job ID: {job.qcJobId}</p>
         </div>
       </div>
@@ -387,14 +475,56 @@ export default function QCInspection() {
             <div><p className="text-xs text-slate-400">Ref ID</p><p className="font-medium mt-1">{job.sourceRefId || '—'}</p></div>
             <div><p className="text-xs text-slate-400">Sent By</p><p className="font-medium mt-1">{job.sentBy || '—'}</p></div>
             <div><p className="text-xs text-slate-400">Received</p><p className="font-medium mt-1">{new Date(job.receivedDate).toLocaleDateString('en-IN')}</p></div>
-            <div><p className="text-xs text-slate-400">Quantity</p><p className="font-medium mt-1">{job.quantity} {job.unit}</p></div>
+            <div><p className="text-xs text-slate-400">Quantity</p><p className="font-medium mt-1">{lineMode ? `${rg.received} ${job.unit} (this delivery)` : `${job.quantity} ${job.unit}`}</p></div>
             <div><p className="text-xs text-slate-400">Item Code</p><p className="font-medium mt-1">{job.itemCode || '—'}</p></div>
             <div><p className="text-xs text-slate-400">Inspector</p><p className="font-medium mt-1">{job.inspector || '—'}</p></div>
             <div><p className="text-xs text-slate-400">Department</p><p className="font-medium mt-1">{job.sourceDepartment || '—'}</p></div>
           </div>
-          {job.notes && <p className="text-sm text-slate-500 mt-3 pt-3 border-t border-slate-100 italic">Note: {job.notes}</p>}
+          {job.notes && !lineMode && <p className="text-sm text-slate-500 mt-3 pt-3 border-t border-slate-100 italic">Note: {job.notes}</p>}
         </CardContent>
       </Card>
+
+      {/* QC by PO line (2026-10-15): the requests this delivery fills. QC
+          decides the line once; a rejection is counted against requests by
+          the rule — stock requests first, then production, sales orders last,
+          newest first (fabrication: per size first). */}
+      {lineMode && (
+        <Card className="border-none shadow-sm">
+          <CardContent className="p-5 space-y-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="font-semibold text-slate-800">This delivery</h2>
+              {rg.isFabrication && <span className="text-[10px] font-medium px-1.5 py-0.5 rounded border bg-slate-50 text-slate-500 border-slate-200">Fabrication</span>}
+              <span className="text-xs text-slate-500">one PO line · {rg.requests.length} requests · {rg.inQc} {job.unit} in QC{rg.rejected > 0 ? ` · ${rg.rejected} rejected` : ''}</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-[11px] uppercase text-slate-400 text-left">
+                    <th className="font-semibold pb-1">Request</th><th className="font-semibold pb-1">For</th>
+                    <th className="font-semibold pb-1 text-right">Received</th><th className="font-semibold pb-1 text-right">Rejected</th>
+                    <th className="font-semibold pb-1 text-right">In QC</th><th className="font-semibold pb-1 text-right">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rg.requests.map(r => (
+                    <tr key={r.jobId} className="border-t">
+                      <td className="py-1 font-mono text-xs">{r.requestId}</td>
+                      <td className="py-1 text-slate-600">{KIND_LABEL[r.kind] || r.kind}</td>
+                      <td className="py-1 text-right">{r.received}</td>
+                      <td className={`py-1 text-right ${r.rejected > 0 ? 'text-red-600' : 'text-slate-400'}`}>{r.rejected || '—'}</td>
+                      <td className="py-1 text-right">{r.inQc || '—'}</td>
+                      <td className="py-1 text-right"><span className={`text-[11px] px-2 py-0.5 rounded-full ${statusColor[r.status] || ''}`}>{r.status}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {rg.isFabrication && lineSizes.length > 0 && (
+              <p className="text-xs text-slate-500">In QC by size: {lineSizes.map(z => `${formatDims(z.values)} × ${z.quantity} pcs`).join(' · ')}</p>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Assign inspector — gated on !job.inspector, not job.status (2026-09-26
           fix, found live: a batchSteps/unitChecks-per-step job auto-advances
@@ -531,14 +661,14 @@ export default function QCInspection() {
             <div className="space-y-4">
               <div className="flex gap-3">
                 <button
-                  onClick={() => { setDecision('Pass'); setRejectQty(''); }}
+                  onClick={() => { setDecision('Pass'); setRejectQty(''); setRejectSerials([]); setSizeRejects({}); }}
                   className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg border-2 font-medium transition-all ${decision === 'Pass' ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-slate-200 text-slate-500 hover:border-emerald-300'
                     }`}
                 >
-                  <CheckCircle2 className="h-5 w-5" /> Pass — Approve {job.quantity} & Transfer to Store
+                  <CheckCircle2 className="h-5 w-5" /> Pass — Approve {lineQty} & Transfer to Store
                 </button>
                 <button
-                  onClick={() => { setDecision('Fail'); setRejectQty(String(job.quantity)); }}
+                  onClick={() => { setDecision('Fail'); setRejectQty(String(lineQty)); }}
                   className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg border-2 font-medium transition-all ${decision === 'Fail' ? 'border-red-500 bg-red-50 text-red-700' : 'border-slate-200 text-slate-500 hover:border-red-300'
                     }`}
                 >
@@ -553,22 +683,92 @@ export default function QCInspection() {
                 </div>
               )}
 
+              {/* How bad it is (2026-10-13) — purchased material only; it weighs the vendor's quality score. */}
+              {decision === 'Fail' && job.source === 'Purchase' && (
+                <div>
+                  <Label>Severity</Label>
+                  <div className="mt-1 flex gap-1 bg-slate-100 rounded-lg p-1 w-fit">
+                    {[['Minor', 'Cosmetic / usable'], ['Major', 'Not usable as is'], ['Critical', 'Unsafe / wrong item']].map(([s, hint]) => (
+                      <button key={s} type="button" title={hint} onClick={() => setSeverity(s)}
+                        className={`text-xs px-3 py-1 rounded-md font-medium ${severity === s ? (s === 'Critical' ? 'bg-red-600 text-white' : s === 'Major' ? 'bg-amber-500 text-white' : 'bg-white shadow-sm text-slate-900') : 'text-slate-500 hover:text-slate-700'}`}>
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1">Counts against the vendor's quality score: Minor 1×, Major 1.5×, Critical 2×.</p>
+                </div>
+              )}
+
               {showRejectQtyInput && (
                 <div>
                   <Label>Reject Quantity <span className="text-red-500">*</span></Label>
                   <Input
                     className="mt-1"
                     type="number"
-                    min={1}
-                    max={job.quantity}
+                    min={0}
+                    max={lineQty}
                     value={rejectQty}
                     onChange={e => setRejectQty(e.target.value)}
-                    placeholder={`Out of ${job.quantity} ${job.unit}`}
+                    placeholder={`Out of ${lineQty} ${job.unit}`}
                   />
                   <p className="text-xs text-slate-500 mt-1">
                     {isPartialRejectQty
-                      ? `${parsedRejectQty} will be rejected, ${job.quantity - parsedRejectQty} will stay in QC for its own decision.`
-                      : `All ${job.quantity} ${job.unit} will be rejected.`}
+                      ? `${parsedRejectQty} will be rejected, ${Math.round((lineQty - parsedRejectQty) * 1000) / 1000} will stay in QC for its own decision.`
+                      : `All ${lineQty} ${job.unit} will be rejected.`}
+                  </p>
+                </div>
+              )}
+
+              {/* Fabrication line with several sizes: rejected pieces per size. */}
+              {showSizeRejects && (
+                <div>
+                  <Label>Rejected pieces per size <span className="text-red-500">*</span></Label>
+                  <div className="mt-1 space-y-1.5">
+                    {lineSizes.map(z => (
+                      <div key={z.key} className="flex items-center gap-2 text-sm">
+                        <span className="flex-1 font-mono text-xs text-slate-600">{formatDims(z.values)}</span>
+                        <Input className="h-8 w-24" type="number" min={0} max={z.quantity} value={sizeRejects[z.key] ?? ''} onChange={e => setSizeRejects(s => ({ ...s, [z.key]: e.target.value }))} placeholder="0" />
+                        <span className="text-xs text-slate-500 w-20">of {z.quantity} pcs</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Which request the rejection is counted against (server dry run). */}
+              {previewRows.length > 0 && (
+                <p className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-md px-3 py-2">
+                  Counted against: {previewRows.map(p => `${p.requestId} (${KIND_LABEL[p.kind] || p.kind}) ${p.reject}`).join(' · ')}
+                  <span className="block text-slate-400 mt-0.5">Stock requests first, then production, sales orders last — newest first.</span>
+                </p>
+              )}
+
+              {showSerialPicker && (
+                <div>
+                  <div className="flex items-center justify-between">
+                    <Label>Rejected Serial Numbers <span className="text-red-500">*</span></Label>
+                    <button
+                      type="button"
+                      className="text-xs text-blue-600 hover:underline"
+                      onClick={() => setRejectSerials(rejectSerials.length === piecesInQc.length ? [] : piecesInQc.map(u => u._id))}
+                    >
+                      {rejectSerials.length === piecesInQc.length ? 'Clear' : 'Tick all'}
+                    </button>
+                  </div>
+                  <div className="mt-1 grid grid-cols-2 sm:grid-cols-3 gap-1.5 max-h-56 overflow-y-auto border border-slate-200 rounded-lg p-2">
+                    {piecesInQc.map(u => (
+                      <label key={u._id} className={`flex items-center gap-2 px-2 py-1 rounded-md border text-sm cursor-pointer ${rejectSerials.includes(u._id) ? 'border-red-300 bg-red-50 text-red-800' : 'border-slate-200 hover:bg-slate-50'}`}>
+                        <input type="checkbox" checked={rejectSerials.includes(u._id)} onChange={() => toggleSerial(u._id)} />
+                        <span className="font-mono truncate">{u.serialNumber}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1">
+                    {!rejectSerials.length
+                      ? `Tick each piece that failed (${piecesInQc.length} in QC).`
+                      : isPartialRejectQty
+                        ? `${rejectSerials.length} will be rejected, ${lineQty - rejectSerials.length} will stay in QC for its own decision.`
+                        : `All ${lineQty} pieces will be rejected.`}
                   </p>
                 </div>
               )}
@@ -583,11 +783,12 @@ export default function QCInspection() {
                 onClick={handleDecision}
                 disabled={
                   loading || !decision || (cl.length > 0 && pendingCount > 0) ||
-                  (showRejectQtyInput && (!Number.isFinite(parsedRejectQty) || parsedRejectQty < 1 || parsedRejectQty > job.quantity))
+                  (showRejectQtyInput && (!Number.isFinite(parsedRejectQty) || parsedRejectQty <= 0 || parsedRejectQty > lineQty)) ||
+                  (showSerialPicker && !rejectSerials.length) || sizeRejectInvalid
                 }
               >
                 <Send className="h-4 w-4 mr-2" />
-                {loading ? 'Submitting...' : isPartialRejectQty ? `Reject ${parsedRejectQty} of ${job.quantity}` : `Submit ${decision || 'Decision'}`}
+                {loading ? 'Submitting...' : isPartialRejectQty ? `Reject ${parsedRejectQty} of ${lineQty}` : `Submit ${decision || 'Decision'}`}
               </Button>
             </div>
           </CardContent>
@@ -608,14 +809,22 @@ export default function QCInspection() {
                 </p>
                 {job.status === 'Rejected' && job.failReason && <p className="text-sm text-red-700 mt-1">Reason: {job.failReason}</p>}
                 {/* Slices QC rejected before the final decision (2026-10-12). */}
-                {(job.partialRejections || []).length > 0 && (
+                {lineMode && rg.rejected > 0 && (
+                  <p className="text-sm text-red-700 mt-1">
+                    Rejected on this delivery: {rg.requests.filter(r => r.rejected > 0).map(r => `${r.rejected} on ${r.requestId} (${KIND_LABEL[r.kind] || r.kind})`).join(', ')} — see "This delivery" above.
+                  </p>
+                )}
+                {!lineMode && (job.partialRejections || []).length > 0 && (
                   <div className="text-sm text-red-700 mt-1">
                     {job.partialRejections.map((r, i) => (
-                      <p key={i}>Rejected earlier: {r.qty} {job.unit || ''} — {r.reason || 'no reason'}{r.rejectedAt ? ` (${new Date(r.rejectedAt).toLocaleDateString('en-IN')})` : ''}</p>
+                      <p key={i}>Rejected earlier: {r.qty} {job.unit || ''}{r.severity ? ` (${r.severity})` : ''} — {r.reason || 'no reason'}{r.rejectedAt ? ` (${new Date(r.rejectedAt).toLocaleDateString('en-IN')})` : ''}</p>
                     ))}
                   </div>
                 )}
-                {job.source === 'Purchase' && (job.status === 'Rejected' || (job.partialRejections || []).length > 0) && (
+                {jobSerials.some(u => u.status === 'QC rejected') && (
+                  <p className="text-sm text-red-700 mt-1">Rejected serial numbers: <span className="font-mono">{jobSerials.filter(u => u.status === 'QC rejected').map(u => u.serialNumber).join(', ')}</span></p>
+                )}
+                {job.source === 'Purchase' && (job.status === 'Rejected' || (job.partialRejections || []).length > 0 || (lineMode && rg.rejected > 0)) && (
                   <p className="text-xs text-slate-500 mt-1">Purchase records the vendor's answer (replace / refund / credit / refused) under Purchase Orders → QC Rejections.</p>
                 )}
                 {job.inspectorRemarks && <p className="text-sm text-slate-600 mt-1">Remarks: {job.inspectorRemarks}</p>}

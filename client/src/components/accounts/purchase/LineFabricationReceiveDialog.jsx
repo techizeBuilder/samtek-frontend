@@ -8,6 +8,7 @@ import { RefreshCw, PackageCheck, Plus, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { dimensionSignature, formatDims } from '@/lib/fabricationDims';
 import FabricationDimensionFields from '@/components/inventory/FabricationDimensionFields';
+import VendorInvoiceFields, { emptyVendorInvoice, appendVendorInvoice, vendorInvoiceError } from './VendorInvoiceFields';
 
 // Union of every bundled PR's own fabricationDimensionLines, summing
 // quantities where two PRs request the identical dimensions (same
@@ -42,6 +43,7 @@ export default function LineFabricationReceiveDialog({ purchaseId, line, prs, on
   const [addingVariantId, setAddingVariantId] = useState('');
   const [showNewDimForm, setShowNewDimForm] = useState(false);
   const [newDimDraft, setNewDimDraft] = useState({ bomDimensions: {} });
+  const [vendorInvoice, setVendorInvoice] = useState(emptyVendorInvoice);
 
   const samplePr = prs?.[0];
   const sourceItemCode = samplePr?.materialCode || samplePr?.itemId;
@@ -112,9 +114,17 @@ export default function LineFabricationReceiveDialog({ purchaseId, line, prs, on
   const preview = previewRes?.data;
 
   const receiveMutation = useMutation({
-    mutationFn: () => apiRequest('PATCH', `/api/purchase-requests/orders/${purchaseId}/lines/${line._id}/receive-fabrication`, {
-      lines: linesPayload,
-    }),
+    // With the vendor's invoice (2026-10-12) it goes as multipart, lines as JSON text.
+    mutationFn: () => {
+      const invErr = vendorInvoiceError(vendorInvoice);
+      if (invErr) return Promise.reject(new Error(invErr));
+      const url = `/api/purchase-requests/orders/${purchaseId}/lines/${line._id}/receive-fabrication`;
+      if (!vendorInvoice.number.trim()) return apiRequest('PATCH', url, { lines: linesPayload });
+      const fd = new FormData();
+      fd.append('lines', JSON.stringify(linesPayload));
+      appendVendorInvoice(fd, vendorInvoice);
+      return apiRequest('PATCH', url, fd);
+    },
     onSuccess: () => {
       toast({ title: 'Line Received', description: `Recorded for ${prs.length} request${prs.length > 1 ? 's' : ''} — QC jobs created; stock updates once QC passes.` });
       queryClient.invalidateQueries({ queryKey: ['/api/purchase-requests/orders'] });
@@ -230,6 +240,7 @@ export default function LineFabricationReceiveDialog({ purchaseId, line, prs, on
               ) : null}
             </div>
           )}
+          <VendorInvoiceFields value={vendorInvoice} onChange={setVendorInvoice} />
         </div>
         <DialogFooter className="shrink-0 pt-3 border-t border-slate-100">
           <Button variant="outline" onClick={onClose}>Cancel</Button>

@@ -6,6 +6,7 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { formatDims } from '@/lib/fabricationDims';
 import { ClipboardList, Plus, Clock, CheckCircle2, XCircle, AlertTriangle, Factory, ShoppingCart, Package, Layers } from 'lucide-react';
 
 const statusColor = {
@@ -180,7 +181,19 @@ export default function QCJobs() {
                           <p className="font-semibold text-slate-800">{job.orderCode || job.qcJobId}</p>
                           <span className="text-slate-300">·</span>
                           <p className="text-slate-700 truncate">{job.itemName}</p>
+                          {/* QC by PO line (2026-10-15): one card per received line. */}
+                          {job.line?.isFabrication && <span className="text-[10px] font-medium px-1.5 py-0.5 rounded border bg-slate-50 text-slate-500 border-slate-200">Fabrication</span>}
+                          {job.line && (
+                            <span className="text-xs font-semibold text-slate-700">
+                              {job.line.inQc > 0 ? `${job.line.inQc} ${job.unit || ''} in QC` : `${job.line.received} ${job.unit || ''}`}
+                              {job.line.requests > 1 && <span className="font-normal text-slate-500"> · {job.line.requests} requests</span>}
+                              {job.line.rejected > 0 && <span className="font-normal text-red-600"> · {job.line.rejected} rejected</span>}
+                            </span>
+                          )}
                         </div>
+                        {job.line?.sizes?.length > 0 && (
+                          <p className="text-[11px] font-mono text-slate-600 mt-0.5">{job.line.sizes.map(z => `${formatDims(z.values)} × ${z.quantity} pcs`).join(' · ')}</p>
+                        )}
                         <div className="flex items-center gap-3 mt-1 flex-wrap text-xs text-slate-500">
                           {job.orderCode && <><span>QC ID: {job.qcJobId}</span><span>·</span></>}
                           <span>{sourceLabel[job.source] || job.source}</span>

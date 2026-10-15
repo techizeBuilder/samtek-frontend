@@ -4,21 +4,28 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
-import { Plus, Trash2, CreditCard, ShieldAlert, TrendingUp } from 'lucide-react';
+import { Trash2, CreditCard, ShieldAlert, TrendingUp } from 'lucide-react';
 import { BoughtBeforeTag, comparablePrice, vendorCheck } from './PriceCheck';
 import { SelectionCheckDetails } from './SelectionCheck';
 import { GstSplitNote } from './GstSplit';
 import { gstSplitFor } from '@/lib/gstStates';
+import { compareWithQuotation, TERMS_CHANGE_REASONS } from '@/lib/poQuoteTerms';
 
 // Review & create PO (procurement-v2, 2026-10-08). Everything decided per
 // order is entered HERE, not on the vendor:
-//   - GST — a % per item line ("apply to all lines" box + per-line change);
-//     a line whose quoted rate already includes GST adds nothing on top
-//   - charges — whole-PO, a name from the Purchase template (or typed),
-//     flat ₹ + its own GST % (default from the template)
+//   - GST — each line's GST is the QUOTE's (read-only since 2026-10-14; the
+//     server takes rate / GST / warranty from the quote, never this page); a
+//     wrong GST is re-quoted. A line whose quoted rate includes GST adds
+//     nothing on top
+//   - charges — whole-PO, pre-filled from the vendor's quotation; a name from
+//     the Purchase template (or typed), flat ₹ + its own GST %
 //   - payment terms — built-in Advance % (paid when the PO is placed; the
 //     delivery days count from it) and Credit Days (the full payment is due
-//     that long after everything passes QC) + the template's free-text terms
+//     that long after everything passes QC) + the vendor's other terms (our
+//     template terms are added by choice, 2026-10-14)
+//   - any change to the quotation's charges / terms needs a reason; charges
+//     above the quotation need the Company Admin (2026-10-14,
+//     lib/poQuoteTerms.js = the server's services/poQuoteTermsService.js)
 //   - transport — who brings the goods (company pickup = no freight line)
 // If the final total is above the Company Admin's threshold, the PO is sent
 // for approval instead of created (server decides — this preview just says so).
@@ -38,9 +45,10 @@ const fmtDay = (d) => (d ? new Date(d).toLocaleDateString('en-IN', { day: '2-dig
 
 export default function PoReviewDialog({ open, onOpenChange, vendor, lines, settings, company = null, priceJumpWarnPercent = null, onCreated }) {
   const { toast } = useToast();
-  const [gstAll, setGstAll] = useState('');
-  const [lineGst, setLineGst] = useState({});      // line key -> '18'
   const [charges, setCharges] = useState([]);      // [{label, amount, gstPercent}]
+  const [quoted, setQuoted] = useState(null);      // the quotation's { charges, paymentTerms } — the baseline
+  const [tcReasons, setTcReasons] = useState([]);  // why charges / terms differ from it
+  const [tcNote, setTcNote] = useState('');
   const [advancePercent, setAdvancePercent] = useState('');
   const [creditDays, setCreditDays] = useState('');
   const [terms, setTerms] = useState([]);          // [{label, value, custom}]
@@ -74,22 +82,23 @@ export default function PoReviewDialog({ open, onOpenChange, vendor, lines, sett
     const from = sorted[0] || null;
     const vt = from?.paymentTerms || {};
     const vendorOthers = vt.others || [];
-    setGstAll('');
-    setLineGst(Object.fromEntries(lines.filter(l => !l.gstInclusive && l.gstPercent != null).map(l => [l.key, String(l.gstPercent)])));
     setCharges((from?.charges || []).map(c => ({ label: c.label, amount: String(c.amount ?? ''), gstPercent: String(c.gstPercent ?? 0) })));
     setAdvancePercent(vt.advancePercent != null ? String(vt.advancePercent) : '');
     setCreditDays(vt.creditDays != null ? String(vt.creditDays) : '');
-    setTerms([
-      ...termLabels.map(t => ({ label: t.name, value: vendorOthers.find(o => same(o.label, t.name))?.value || '', custom: false })),
-      ...vendorOthers.filter(o => !termLabels.some(t => same(t.name, o.label))).map(o => ({ label: o.label, value: o.value, custom: true })),
-    ]);
+    // Only the vendor's own terms; our template terms are added by choice
+    // (2026-10-14) — never listed blank.
+    setTerms(vendorOthers.map(o => ({ label: o.label, value: o.value, custom: !termLabels.some(t => same(t.name, o.label)) })));
+    setQuoted(from ? { charges: from.charges || [], paymentTerms: vt } : null);
+    setTcReasons([]); setTcNote('');
     setPrefill(from ? { from, others: sorted.slice(1).map(q => q.number) } : null);
     setTransportBy('Vendor');
     setOutstanding(null);
     setExReasons([]); setExNote('');
     loadCheck();
     apiRequest('GET', `/api/accounts/purchases/outstanding?vendorId=${vendor._id}`)
-      .then(res => setOutstanding(res?.data?.[0]?.totalOutstanding || 0))
+      // What we already owe this vendor and haven't paid (2026-10-12) —
+      // not material still on order, and not this PO.
+      .then(res => setOutstanding(res?.data?.[0]?.pending || { total: 0, advance: 0, material: 0, noPo: 0, overdue: 0 }))
       .catch(() => setOutstanding(null));
   }, [open, vendor?._id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -105,17 +114,15 @@ export default function PoReviewDialog({ open, onOpenChange, vendor, lines, sett
   };
   const toggleReason = (r) => setExReasons(rs => (rs.includes(r) ? rs.filter(x => x !== r) : [...rs, r]));
 
-  const applyGstAll = (v) => {
-    setGstAll(v);
-    setLineGst(Object.fromEntries(lines.map(l => [l.key, v])));
-  };
+  const toggleTcReason = (r) => setTcReasons(rs => (rs.includes(r) ? rs.filter(x => x !== r) : [...rs, r]));
 
   const computed = useMemo(() => {
     let goods = 0;
     let lineGstTotal = 0;
     const rows = lines.map(l => {
       const amount = round2(Number(l.quantity) * Number(l.unitPrice));
-      const rate = pct(lineGst[l.key]);
+      // The quote's GST — read-only (no GST given on an old quote = 0%).
+      const rate = l.gstInclusive ? 0 : pct(l.gstPercent);
       const gst = l.gstInclusive ? 0 : round2(amount * rate / 100);
       goods += amount;
       lineGstTotal += gst;
@@ -130,15 +137,27 @@ export default function PoReviewDialog({ open, onOpenChange, vendor, lines, sett
     const chargesGst = round2(cleanCharges.reduce((s, c) => s + Number(c.amount) * pct(c.gstPercent) / 100, 0));
     const grand = round2(goods + lineGstTotal + chargesTotal + chargesGst);
     return { rows, goods: round2(goods), lineGstTotal: round2(lineGstTotal), chargesTotal, chargesGst, grand };
-  }, [lines, lineGst, charges, vendor?._id]);
+  }, [lines, charges, vendor?._id]);
+
+  // Charges / terms vs the vendor's quotation (the server re-checks).
+  const termsCmp = useMemo(() => (quoted ? compareWithQuotation(quoted, {
+    charges: charges.map(c => ({ label: c.label, amount: Number(c.amount) || 0, gstPercent: pct(c.gstPercent) })),
+    paymentTerms: { advancePercent, creditDays, others: terms },
+  }) : null), [quoted, charges, advancePercent, creditDays, terms]);
+  const termsChanged = !!termsCmp?.changes.length;
+  const chargesAbove = !!termsCmp?.chargesAbove;
+  const tcReasonMissing = termsChanged && (!tcReasons.length || (tcReasons.includes('Other') && !tcNote.trim()));
 
   const overThreshold = threshold != null && computed.grand > Number(threshold);
   const selectionFailed = !!check && !check.passed;
-  const needsApproval = overThreshold || selectionFailed;
+  const needsApproval = overThreshold || selectionFailed || chargesAbove;
   const reasonMissing = selectionFailed && (!exReasons.length || (exReasons.includes('Other') && !exNote.trim()));
   const warnAt = priceJumpWarnPercent ?? settings?.priceJumpWarnPercent ?? 10;
   const risen = computed.rows.filter(l => l.changePct != null && l.changePct > 0 && l.changePct >= warnAt);
-  const exposurePct = vendor?.creditLimit && outstanding != null ? (outstanding + computed.grand) / vendor.creditLimit : null;
+  // Credit limit (Vendor Master) vs what we already owe this vendor and
+  // haven't paid — old bills, unpaid advances, received + QC-passed material.
+  // The PO being created isn't part of it (user, 2026-10-12).
+  const owedPct = vendor?.creditLimit && outstanding ? outstanding.total / vendor.creditLimit : null;
 
   const addCharge = (labelName) => {
     const tpl = chargeLabels.find(c => c.name === labelName);
@@ -146,10 +165,16 @@ export default function PoReviewDialog({ open, onOpenChange, vendor, lines, sett
   };
   const setCharge = (i, patch) => setCharges(cs => cs.map((c, j) => (j === i ? { ...c, ...patch } : c)));
   const setTerm = (i, patch) => setTerms(ts => ts.map((t, j) => (j === i ? { ...t, ...patch } : t)));
+  const addTerm = (name) => setTerms(ts => [...ts, { label: name || '', value: '', custom: !name }]);
+  const termChoices = termLabels.filter(t => !terms.some(x => same(x.label, t.name)));
 
   const submit = async () => {
     if (reasonMissing) {
       toast({ title: 'Give the reason for choosing this vendor', description: exReasons.includes('Other') ? 'Add a note explaining "Other".' : 'Pick at least one reason in the Vendor selection check.', variant: 'destructive' });
+      return;
+    }
+    if (tcReasonMissing) {
+      toast({ title: 'Say why the charges / terms differ from the quotation', description: tcReasons.includes('Other') ? 'Add a note explaining "Other".' : 'Pick at least one reason under "Changed from the quotation".', variant: 'destructive' });
       return;
     }
     setSaving(true);
@@ -180,6 +205,7 @@ export default function PoReviewDialog({ open, onOpenChange, vendor, lines, sett
           others: terms.map(t => ({ label: String(t.label).trim(), value: String(t.value).trim() })).filter(t => t.label && t.value),
         },
         ...(selectionFailed ? { selectionException: { reasons: exReasons, note: exNote.trim() } } : {}),
+        ...(termsChanged ? { termsChange: { reasons: tcReasons, note: tcNote.trim() } } : {}),
       });
       toast({
         title: res?.pendingApproval ? 'Sent for Company Admin approval' : 'PO created',
@@ -202,13 +228,13 @@ export default function PoReviewDialog({ open, onOpenChange, vendor, lines, sett
       <DialogContent className="sm:max-w-[760px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Review PO — {vendor.supplierName}</DialogTitle>
-          <DialogDescription>Enter GST, charges and payment terms for this order. Nothing is created until you confirm.</DialogDescription>
+          <DialogDescription>Prices and GST are the vendor's quote. Charges and payment terms come from their quotation — any change needs a reason. Nothing is created until you confirm.</DialogDescription>
         </DialogHeader>
 
         {prefill && (
           <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
-            Pre-filled from <b>{prefill.from.number}</b> — {vendor.supplierName}'s {prefill.from.manual ? 'manual quotation entered' : 'quotation'} on {fmtDay(prefill.from.at)} (GST per item, charges, payment terms). Change anything before creating.
-            {prefill.others.length > 0 && <> Some items were quoted on {prefill.others.join(', ')} — only the latest one's charges and terms are filled in; see All quotes.</>}
+            Charges and payment terms are pre-filled from <b>{prefill.from.number}</b> — {vendor.supplierName}'s {prefill.from.manual ? 'manual quotation entered' : 'quotation'} on {fmtDay(prefill.from.at)}. If you change any of them, you'll be asked why.
+            {prefill.others.length > 0 && <> Some items were quoted earlier on {prefill.others.join(', ')}; charges and terms carry over from one quotation to the next, so the newest one ({prefill.from.number}) holds the vendor's current ones. See All quotes.</>}
             {prefill.from.vendorRemarks && <span className="block mt-0.5 text-blue-700">Vendor's remarks: "{prefill.from.vendorRemarks}"</span>}
           </div>
         )}
@@ -217,10 +243,7 @@ export default function PoReviewDialog({ open, onOpenChange, vendor, lines, sett
         <div>
           <div className="flex items-center justify-between mb-1.5">
             <p className="text-xs font-semibold text-slate-500 uppercase">Items &amp; GST</p>
-            <label className="text-xs text-slate-600 flex items-center gap-1.5">
-              GST % for all lines
-              <Input className="h-7 w-20 text-xs" type="number" min="0" max="100" value={gstAll} onChange={e => applyGstAll(e.target.value)} placeholder="e.g. 18" />
-            </label>
+            <span className="text-[11px] text-slate-400">As quoted — a wrong rate or GST is fixed by a new quotation</span>
           </div>
           <div className="border rounded-md divide-y">
             {computed.rows.map(l => (
@@ -236,9 +259,8 @@ export default function PoReviewDialog({ open, onOpenChange, vendor, lines, sett
                 {l.gstInclusive ? (
                   <span className="text-[11px] text-slate-500 border rounded-full px-2 py-0.5">GST included in rate</span>
                 ) : (
-                  <span className="flex items-center gap-1 text-xs">
-                    <Input className="h-7 w-16 text-xs" type="number" min="0" max="100" value={lineGst[l.key] ?? ''} onChange={e => setLineGst(m => ({ ...m, [l.key]: e.target.value }))} placeholder="0" />
-                    % = {inr(l.gst)}
+                  <span className="text-[11px] text-slate-600 border rounded-full px-2 py-0.5" title="The GST % the vendor quoted">
+                    {l.gstPercent != null ? `GST ${l.rate}% (quoted) = ${inr(l.gst)}` : 'No GST quoted (0%)'}
                   </span>
                 )}
               </div>
@@ -296,17 +318,43 @@ export default function PoReviewDialog({ open, onOpenChange, vendor, lines, sett
                 {t.custom
                   ? <Input className="h-8 w-44 text-sm" value={t.label} onChange={e => setTerm(i, { label: e.target.value })} placeholder="Term name" />
                   : <span className="w-44 text-xs text-slate-600 shrink-0">{t.label}</span>}
-                <Input className="h-8 flex-1 text-sm" value={t.value} onChange={e => setTerm(i, { value: e.target.value })} placeholder="Leave blank to skip" />
-                {t.custom
-                  ? <button type="button" onClick={() => setTerms(ts => ts.filter((_, j) => j !== i))} className="text-slate-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
-                  : <span className="w-4" />}
+                <Input className="h-8 flex-1 text-sm" value={t.value} onChange={e => setTerm(i, { value: e.target.value })} placeholder="Details" />
+                <button type="button" onClick={() => setTerms(ts => ts.filter((_, j) => j !== i))} className="text-slate-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
               </div>
             ))}
           </div>
-          <button type="button" onClick={() => setTerms(ts => [...ts, { label: '', value: '', custom: true }])} className="mt-1.5 text-xs text-blue-700 hover:text-blue-800 flex items-center gap-1">
-            <Plus className="w-3.5 h-3.5" /> Add a term
-          </button>
+          {/* Our template terms are added by choice, like charges (2026-10-14). */}
+          <select className="mt-1.5 border rounded-md px-2 py-1 text-xs bg-white text-blue-700" value="" onChange={e => { if (e.target.value) addTerm(e.target.value === '__other' ? '' : e.target.value); }}>
+            <option value="">+ Add a term…</option>
+            {termChoices.map(t => <option key={t.name} value={t.name}>{t.name}</option>)}
+            <option value="__other">Other (type a name)</option>
+          </select>
         </div>
+
+        {/* Changed from the vendor's quotation (2026-10-14) — needs a reason */}
+        {termsChanged && (
+          <div className={`rounded-md border px-3 py-2 space-y-1.5 ${chargesAbove ? 'border-orange-200 bg-orange-50/70' : 'border-slate-200 bg-slate-50'}`}>
+            <p className="text-xs font-semibold text-slate-600 uppercase">Changed from the quotation{prefill?.from?.number ? ` ${prefill.from.number}` : ''}</p>
+            <ul className="list-disc pl-4 text-xs text-slate-700">
+              {termsCmp.changes.map((c, i) => <li key={i}>{c}</li>)}
+            </ul>
+            {chargesAbove && (
+              <p className="text-xs text-orange-800">Charges {inr(termsCmp.poChargesTotal)} vs {inr(termsCmp.quotedChargesTotal)} quoted (with GST) — charges above the quotation need the Company Admin's approval.</p>
+            )}
+            <p className="text-xs text-slate-700">Why? <span className="text-red-500">*</span> <span className="text-slate-400">— saved on the PO; the Company Admin sees it.</span></p>
+            <div className="flex flex-wrap gap-1.5">
+              {TERMS_CHANGE_REASONS.map(r => (
+                <button
+                  key={r} type="button" onClick={() => toggleTcReason(r)}
+                  className={`text-[11px] rounded-full border px-2.5 py-0.5 ${tcReasons.includes(r) ? 'bg-slate-700 border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-700 hover:border-slate-500'}`}
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
+            <Input className="h-8 text-sm bg-white" value={tcNote} onChange={e => setTcNote(e.target.value)} placeholder={tcReasons.includes('Other') ? 'Explain "Other" *' : 'Note (optional)'} />
+          </div>
+        )}
 
         {/* Transport */}
         <div className="flex items-center gap-3 text-xs text-slate-600">
@@ -341,10 +389,25 @@ export default function PoReviewDialog({ open, onOpenChange, vendor, lines, sett
             {risen.map(l => `${l.itemName} +${l.changePct}%`).join(', ')} above what we last paid {vendor.supplierName} (warning at {warnAt}%). Check before creating.
           </p>
         )}
-        {exposurePct != null && exposurePct >= 0.7 && (
-          <p className={`text-xs flex items-center gap-1.5 ${exposurePct >= 1 ? 'text-red-700' : 'text-amber-700'}`}>
-            <CreditCard className="w-3.5 h-3.5" /> Credit exposure {inr(outstanding + computed.grand)} of {inr(vendor.creditLimit)} limit ({Math.round(exposurePct * 100)}%)
-          </p>
+        {outstanding && (outstanding.total > 0 || vendor?.creditLimit > 0) && (
+          <div className={`text-xs rounded-md border px-3 py-2 ${(owedPct != null && owedPct >= 1) || outstanding.overdue > 0 ? 'border-red-200 bg-red-50 text-red-800' : owedPct != null && owedPct >= 0.7 ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-slate-200 bg-slate-50 text-slate-600'}`}>
+            <p className="flex items-center gap-1.5 font-medium">
+              <CreditCard className="w-3.5 h-3.5" />
+              {outstanding.total > 0 ? <>Unpaid to {vendor.supplierName}: {inr(outstanding.total)}</> : <>Nothing unpaid to {vendor.supplierName}</>}
+              {vendor?.creditLimit > 0 ? <> of {inr(vendor.creditLimit)} credit limit ({Math.round((owedPct || 0) * 100)}%)</> : null}
+              {owedPct != null && owedPct >= 1 && <> — over the limit</>}
+            </p>
+            {outstanding.total > 0 && (
+              <p className="mt-0.5 pl-5">
+                {[
+                  outstanding.material > 0 && `received + QC-passed ${inr(outstanding.material)}`,
+                  outstanding.advance > 0 && `advances due ${inr(outstanding.advance)}`,
+                  outstanding.noPo > 0 && `bills without a PO ${inr(outstanding.noPo)}`,
+                  outstanding.overdue > 0 && `${inr(outstanding.overdue)} overdue`,
+                ].filter(Boolean).join(' · ')}
+              </p>
+            )}
+          </div>
         )}
         {/* Vendor selection check (gap 12) */}
         {groupIds.length > 0 && (
@@ -382,11 +445,11 @@ export default function PoReviewDialog({ open, onOpenChange, vendor, lines, sett
           <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 flex items-start gap-2">
             <ShieldAlert className="w-4 h-4 shrink-0" />
             <span>
-              {overThreshold && selectionFailed
-                ? <>The total is above the Company Admin's ₹{Number(threshold).toLocaleString('en-IN')} limit, and this vendor choice is an exception.</>
-                : overThreshold
-                  ? <>The total is above the Company Admin's ₹{Number(threshold).toLocaleString('en-IN')} limit.</>
-                  : <>This vendor choice is an exception to the selection check, so it needs the Company Admin{threshold != null ? ' even though the total is within the limit' : ''}.</>}
+              Needs the Company Admin: {[
+                overThreshold ? `the total is above the ₹${Number(threshold).toLocaleString('en-IN')} limit` : null,
+                selectionFailed ? 'this vendor choice is an exception to the selection check' : null,
+                chargesAbove ? 'the charges are above the vendor\'s quotation' : null,
+              ].filter(Boolean).join('; ')}.
               {' '}It will be <b>sent for approval</b> — it becomes a real PO (sent to the vendor, invoice made, Store sees it) only once approved. Its items stay locked until then.
             </span>
           </div>

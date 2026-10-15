@@ -6,6 +6,8 @@ import { Label } from '@/components/ui/label';
 import { Loader2, PackageCheck, Upload, AlertCircle, Check, CheckCircle2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest } from '@/lib/queryClient';
+import VendorInvoiceFields, { emptyVendorInvoice, appendVendorInvoice, vendorInvoiceError } from './VendorInvoiceFields';
+import SerialNumbersInput, { isCountableUnit, parseSerials, keyOf } from './SerialNumbersInput';
 
 // One receive per PO line (2026-10), not per PurchaseRequest — a vendor
 // shipment arrives as one physical chunk, so Serial Number/Warranty are
@@ -35,21 +37,60 @@ export default function LineReceiveDialog({ purchaseId, line, prs, onClose, onRe
   const [warrantyCard, setWarrantyCard] = useState(null);
   const [qtyReceived, setQtyReceived] = useState(totalOrdered > 0 ? String(totalOrdered) : '');
   const [factor, setFactor] = useState('');
+  const [vendorInvoice, setVendorInvoice] = useState(emptyVendorInvoice);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const fileRef = useRef(null);
 
+  // Serial numbers (2026-10-13): one per piece when the vendor gave a
+  // warranty and the item is counted in pieces; otherwise one serial / lot
+  // number for the receipt. Warranty cards then: one for all the pieces, or
+  // one for each (never some).
+  const stockUnit = line?.item?.receiveUnit || line?.item?.unit || samplePr?.unit || '';
+  const serialised = quotedWarranty > 0 && Number(warrantyMonths) > 0 && isCountableUnit(stockUnit);
+  const [serialText, setSerialText] = useState('');
+  const [cardMode, setCardMode] = useState('one'); // 'one' | 'each'
+  const [unitCards, setUnitCards] = useState({});   // serial key → File
+  const expectedPieces = useMemo(() => {
+    let n;
+    if (samplePr?.purchaseUnit && totalOrdered > 0) n = needsConversion ? Number(qtyReceived) / Number(factor) : totalOrdered;
+    else n = (prs || []).reduce((s, pr) => s + (Number(pr.quantity) || 0), 0);
+    return Number.isFinite(n) && n > 0 && Math.abs(n - Math.round(n)) < 1e-6 ? Math.round(n) : null;
+  }, [samplePr, totalOrdered, needsConversion, qtyReceived, factor, prs]);
+  const parsed = parseSerials(serialText);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!serialNumber.trim()) {
-      toast({ title: 'Required', description: 'Please enter the Serial Number.', variant: 'destructive' });
+    if (quotedWarranty > 0 && (warrantyMonths === '' || Number(warrantyMonths) < 0)) {
+      toast({ title: 'Required', description: 'Please enter the Warranty Period in months (0 if no warranty).', variant: 'destructive' });
       return;
     }
-    if (quotedWarranty > 0) {
-      if (warrantyMonths === '' || Number(warrantyMonths) < 0) {
-        toast({ title: 'Required', description: 'Please enter the Warranty Period in months (0 if no warranty).', variant: 'destructive' });
+    if (serialised) {
+      if (expectedPieces == null) {
+        toast({ title: 'Check the quantity', description: `The received quantity isn't a whole number of ${stockUnit} — each piece gets its own serial number.`, variant: 'destructive' });
         return;
       }
-      if (Number(warrantyMonths) > 0 && !warrantyCard) {
+      if (parsed.duplicates.length) {
+        toast({ title: 'Repeated serial numbers', description: parsed.duplicates.slice(0, 5).join(', '), variant: 'destructive' });
+        return;
+      }
+      if (parsed.serials.length !== expectedPieces) {
+        toast({ title: 'Serial numbers', description: `${expectedPieces} pieces arrived — enter ${expectedPieces} serial numbers (${parsed.serials.length} entered).`, variant: 'destructive' });
+        return;
+      }
+      if (cardMode === 'one' && !warrantyCard) {
+        toast({ title: 'Required', description: 'Please upload the Warranty Card (image or PDF).', variant: 'destructive' });
+        return;
+      }
+      if (cardMode === 'each' && parsed.serials.some(s => !unitCards[keyOf(s)])) {
+        toast({ title: 'Warranty cards', description: 'Upload a card for every serial number — or switch to one card for all.', variant: 'destructive' });
+        return;
+      }
+    } else {
+      if (!serialNumber.trim()) {
+        toast({ title: 'Required', description: 'Please enter the Serial / Lot Number.', variant: 'destructive' });
+        return;
+      }
+      if (quotedWarranty > 0 && Number(warrantyMonths) > 0 && !warrantyCard) {
         toast({ title: 'Required', description: 'Please upload the Warranty Card (image or PDF).', variant: 'destructive' });
         return;
       }
@@ -65,12 +106,26 @@ export default function LineReceiveDialog({ purchaseId, line, prs, onClose, onRe
       }
     }
 
+    const invErr = vendorInvoiceError(vendorInvoice);
+    if (invErr) { toast({ title: 'Vendor invoice', description: invErr, variant: 'destructive' }); return; }
+
     setIsSubmitting(true);
     try {
       const formData = new FormData();
-      formData.append('serialNumber', serialNumber.trim());
+      appendVendorInvoice(formData, vendorInvoice);
       formData.append('warrantyPeriod', quotedWarranty > 0 ? warrantyMonths : '0');
-      if (warrantyCard) formData.append('warrantyCard', warrantyCard);
+      if (serialised) {
+        formData.append('serialNumbers', JSON.stringify(parsed.serials));
+        if (cardMode === 'each') {
+          parsed.serials.forEach(s => formData.append('warrantyCard', unitCards[keyOf(s)]));
+          formData.append('cardSerials', JSON.stringify(parsed.serials));
+        } else if (warrantyCard) {
+          formData.append('warrantyCard', warrantyCard);
+        }
+      } else {
+        formData.append('serialNumber', serialNumber.trim());
+        if (warrantyCard) formData.append('warrantyCard', warrantyCard);
+      }
       if (needsConversion) {
         formData.append('receivedQuantity', qtyReceived);
         formData.append('conversionFactor', factor);
@@ -78,7 +133,7 @@ export default function LineReceiveDialog({ purchaseId, line, prs, onClose, onRe
 
       await apiRequest('PATCH', `/api/purchase-requests/orders/${purchaseId}/lines/${line._id}/receive`, formData);
 
-      toast({ title: 'Line Received', description: `Recorded for ${prs.length} request${prs.length > 1 ? 's' : ''} — serial number, warranty and card saved.` });
+      toast({ title: 'Line Received', description: serialised ? `${parsed.serials.length} serial numbers saved — they're under Serial Numbers.` : `Recorded for ${prs.length} request${prs.length > 1 ? 's' : ''} — serial / lot number, warranty and card saved.` });
       onReceived?.();
       onClose();
     } catch (error) {
@@ -108,7 +163,7 @@ export default function LineReceiveDialog({ purchaseId, line, prs, onClose, onRe
             <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg p-3">
               <AlertCircle className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
               <p className="text-xs text-amber-800 font-medium">
-                Serial Number is mandatory. Warranty is only asked for when the vendor actually quoted one — Warranty Card is required only then, and only when the warranty is more than 0 months.
+                A serial / lot number is mandatory. Warranty is only asked for when the vendor quoted one. If the item is counted in pieces and has a warranty, every piece needs its own serial number.
               </p>
             </div>
 
@@ -185,47 +240,76 @@ export default function LineReceiveDialog({ purchaseId, line, prs, onClose, onRe
               </div>
             )}
 
-            <div className="space-y-1.5">
-              <Label htmlFor="line-recv-serial" className="text-xs font-semibold text-slate-700 uppercase">
-                Serial Number <span className="text-rose-500">*</span>
-              </Label>
-              <Input
-                id="line-recv-serial"
-                placeholder="e.g. SN-2024-XXXXXX"
-                value={serialNumber}
-                onChange={(e) => setSerialNumber(e.target.value)}
-                className="border-slate-300 font-medium"
-              />
-            </div>
-
             {quotedWarranty > 0 ? (
-              <>
-                <div className="space-y-1.5">
-                  <Label htmlFor="line-recv-warranty" className="text-xs font-semibold text-slate-700 uppercase">
-                    Warranty Period (Months) <span className="text-rose-500">*</span>
-                    <span className="ml-1 font-normal text-slate-400 normal-case">(quoted: {quotedWarranty} months)</span>
-                  </Label>
-                  <Input
-                    id="line-recv-warranty"
-                    type="number"
-                    min="0"
-                    placeholder="e.g. 12"
-                    value={warrantyMonths}
-                    onChange={(e) => setWarrantyMonths(e.target.value)}
-                    className="border-slate-300 font-medium"
-                  />
-                </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="line-recv-warranty" className="text-xs font-semibold text-slate-700 uppercase">
+                  Warranty Period (Months) <span className="text-rose-500">*</span>
+                  <span className="ml-1 font-normal text-slate-400 normal-case">(quoted: {quotedWarranty} months)</span>
+                </Label>
+                <Input
+                  id="line-recv-warranty"
+                  type="number"
+                  min="0"
+                  placeholder="e.g. 12"
+                  value={warrantyMonths}
+                  onChange={(e) => setWarrantyMonths(e.target.value)}
+                  className="border-slate-300 font-medium"
+                />
+              </div>
+            ) : (
+              <p className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                No warranty was quoted for this item — no warranty card needed.
+              </p>
+            )}
 
-                {warrantyMonths !== '' && Number(warrantyMonths) === 0 ? (
-                  <p className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-                    No warranty (0 months) — Warranty Card is not required.
-                  </p>
-                ) : (
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold text-slate-700 uppercase">
-                      Warranty Card <span className="text-rose-500">*</span>
-                      <span className="ml-1 font-normal text-slate-400 normal-case">(JPG, PNG or PDF, max 10 MB)</span>
-                    </Label>
+            {serialised ? (
+              <SerialNumbersInput value={serialText} onChange={setSerialText} expected={expectedPieces} unitLabel={stockUnit} />
+            ) : (
+              <div className="space-y-1.5">
+                <Label htmlFor="line-recv-serial" className="text-xs font-semibold text-slate-700 uppercase">
+                  Serial / Lot Number <span className="text-rose-500">*</span>
+                </Label>
+                <Input
+                  id="line-recv-serial"
+                  placeholder="e.g. SN-2024-XXXXXX"
+                  value={serialNumber}
+                  onChange={(e) => setSerialNumber(e.target.value)}
+                  className="border-slate-300 font-medium"
+                />
+                {quotedWarranty > 0 && Number(warrantyMonths) > 0 && !isCountableUnit(stockUnit) && (
+                  <p className="text-[11px] text-slate-500">Counted in {stockUnit || 'a non-piece unit'} — one lot number for the whole receipt.</p>
+                )}
+              </div>
+            )}
+
+            {quotedWarranty > 0 && warrantyMonths !== '' && Number(warrantyMonths) === 0 && (
+              <p className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                No warranty (0 months) — Warranty Card is not required.
+              </p>
+            )}
+
+            {quotedWarranty > 0 && Number(warrantyMonths) > 0 && (
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-slate-700 uppercase">
+                  Warranty Card <span className="text-rose-500">*</span>
+                  <span className="ml-1 font-normal text-slate-400 normal-case">(JPG, PNG or PDF, max 10 MB)</span>
+                </Label>
+                {serialised && (
+                  <div className="flex gap-1 bg-slate-100 rounded-lg p-1 w-fit">
+                    {[['one', 'One card for all'], ['each', 'A card for each piece']].map(([v, label]) => (
+                      <button
+                        type="button"
+                        key={v}
+                        onClick={() => setCardMode(v)}
+                        className={`text-xs px-2.5 py-1 rounded-md font-medium transition-colors ${cardMode === v ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {!serialised || cardMode === 'one' ? (
+                  <>
                     <div
                       className={`flex items-center gap-3 border-2 border-dashed rounded-lg p-3 cursor-pointer transition-colors ${
                         warrantyCard ? 'border-emerald-400 bg-emerald-50' : 'border-slate-300 hover:border-blue-400 bg-slate-50'
@@ -234,7 +318,7 @@ export default function LineReceiveDialog({ purchaseId, line, prs, onClose, onRe
                     >
                       <Upload className={`w-5 h-5 shrink-0 ${warrantyCard ? 'text-emerald-500' : 'text-slate-400'}`} />
                       <span className="text-sm font-medium text-slate-700 truncate">
-                        {warrantyCard ? warrantyCard.name : 'Click to upload warranty card'}
+                        {warrantyCard ? warrantyCard.name : serialised ? 'Click to upload one card for all the pieces' : 'Click to upload warranty card'}
                       </span>
                       {warrantyCard && <Check className="w-4 h-4 text-emerald-500 shrink-0 ml-auto" />}
                     </div>
@@ -245,14 +329,33 @@ export default function LineReceiveDialog({ purchaseId, line, prs, onClose, onRe
                       className="hidden"
                       onChange={(e) => setWarrantyCard(e.target.files?.[0] || null)}
                     />
+                  </>
+                ) : parsed.serials.length === 0 ? (
+                  <p className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">Enter the serial numbers first — then attach a card to each.</p>
+                ) : (
+                  <div className="max-h-56 overflow-y-auto border border-slate-200 rounded-lg divide-y">
+                    {parsed.serials.map((s, i) => {
+                      const file = unitCards[keyOf(s)];
+                      return (
+                        <label key={`${keyOf(s)}-${i}`} className="flex items-center gap-2 px-3 py-1.5 text-xs cursor-pointer hover:bg-slate-50">
+                          <span className="font-mono font-semibold text-slate-700 w-32 truncate">{s}</span>
+                          <span className={`flex-1 truncate ${file ? 'text-emerald-700' : 'text-slate-400'}`}>{file ? file.name : 'Choose card…'}</span>
+                          {file ? <Check className="w-3.5 h-3.5 text-emerald-500 shrink-0" /> : <Upload className="w-3.5 h-3.5 text-slate-400 shrink-0" />}
+                          <input
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp,application/pdf"
+                            className="hidden"
+                            onChange={(e) => { const f = e.target.files?.[0]; setUnitCards(c => ({ ...c, [keyOf(s)]: f || undefined })); }}
+                          />
+                        </label>
+                      );
+                    })}
                   </div>
                 )}
-              </>
-            ) : (
-              <p className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-                No warranty was quoted for this item — nothing to enter here.
-              </p>
+              </div>
             )}
+
+            <VendorInvoiceFields value={vendorInvoice} onChange={setVendorInvoice} />
           </div>
 
           <div className="px-6 pt-4 pb-6 border-t bg-slate-50 flex justify-end gap-3 shrink-0">

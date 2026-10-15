@@ -54,9 +54,70 @@ const TONE_CLS = {
 };
 const pctText = (pct) => (pct === 0 ? 'Same as' : `${pct > 0 ? '+' : ''}${pct}% vs`);
 
+// ── Periods (2026-10-12, client: last 7 days / 30 days / 1 year / custom) ──
+export const PERIODS = [
+  { value: '7d', label: '7 days', days: 7 },
+  { value: '30d', label: '30 days', days: 30 },
+  { value: '1y', label: '1 year', days: 365 },
+  { value: 'all', label: 'All' },
+  { value: 'custom', label: 'Custom' },
+];
+const localYmd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+// { from, to } as YYYY-MM-DD (null = open) for a period chip.
+export function periodRange(period, custom = {}) {
+  if (period === 'custom') return { from: custom.from || null, to: custom.to || null };
+  const p = PERIODS.find(x => x.value === period);
+  if (!p?.days) return { from: null, to: null };
+  const from = new Date();
+  from.setDate(from.getDate() - (p.days - 1));
+  return { from: localYmd(from), to: null };
+}
+// Last / lowest / average (overall and per vendor) of deliveries in a range —
+// the same sums as the server's summarizePrices. Samples are newest first.
+export function summarizeSamples(samples, { from = null, to = null } = {}) {
+  const fromT = from ? new Date(`${from}T00:00:00`).getTime() : null;
+  const toT = to ? new Date(`${to}T23:59:59.999`).getTime() : null;
+  const usable = (samples || []).filter(x => (fromT == null || new Date(x.date).getTime() >= fromT) && (toT == null || new Date(x.date).getTime() <= toT));
+  const stats = (list) => {
+    if (!list.length) return null;
+    const lowest = list.reduce((a, b) => (b.price < a.price ? b : a));
+    return { last: list[0], lowest, avg: round2(list.reduce((t, x) => t + x.price, 0) / list.length), count: list.length };
+  };
+  const overall = stats(usable);
+  if (!overall) return null;
+  const by = {};
+  for (const x of usable) (by[x.vendorId] = by[x.vendorId] || []).push(x);
+  return { ...overall, byVendor: Object.fromEntries(Object.entries(by).map(([k, v]) => [k, stats(v)])), recent: usable.slice(0, 20) };
+}
+
+export function PeriodChips({ period, onPeriod, custom, onCustom, className = '' }) {
+  return (
+    <div className={`flex flex-wrap items-center gap-1.5 ${className}`}>
+      {PERIODS.map(p => (
+        <button key={p.value} type="button" onClick={() => onPeriod(p.value)}
+          className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${period === p.value ? 'bg-slate-800 text-white border-slate-800' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-400'}`}>
+          {p.label}
+        </button>
+      ))}
+      {period === 'custom' && (
+        <span className="flex items-center gap-1.5 text-xs text-slate-500">
+          <input type="date" className="border rounded px-1.5 h-7 text-xs" value={custom.from || ''} max={custom.to || undefined} onChange={e => onCustom({ ...custom, from: e.target.value })} />
+          to
+          <input type="date" className="border rounded px-1.5 h-7 text-xs" value={custom.to || ''} min={custom.from || undefined} onChange={e => onCustom({ ...custom, to: e.target.value })} />
+        </span>
+      )}
+    </div>
+  );
+}
+
 // The pop-up: every vendor's bought-before prices for one item.
-export function BoughtBeforeDialog({ open, onOpenChange, itemName, unit, history, vendorId = null, vendorName = '', quotePrice = null, warnAt = 10 }) {
+export function BoughtBeforeDialog({ open, onOpenChange, itemName, unit, history: fullHistory, vendorId = null, vendorName = '', quotePrice = null, warnAt = 10 }) {
   const per = unit ? `/${unit}` : '';
+  // Re-cut by period when the deliveries came with the history (2026-10-12).
+  const [period, setPeriod] = useState('all');
+  const [custom, setCustom] = useState({ from: '', to: '' });
+  const canCut = !!fullHistory?.samples?.length;
+  const history = canCut && period !== 'all' ? summarizeSamples(fullHistory.samples, periodRange(period, custom)) : fullHistory;
   const vendors = history
     ? Object.entries(history.byVendor || {}).map(([id, s]) => ({ id, ...s }))
       .sort((a, b) => a.last.price - b.last.price)
@@ -77,8 +138,9 @@ export function BoughtBeforeDialog({ open, onOpenChange, itemName, unit, history
           </div>
         )}
 
+        {canCut && <PeriodChips period={period} onPeriod={setPeriod} custom={custom} onCustom={setCustom} />}
         {!history ? (
-          <p className="text-sm text-slate-500 py-6 text-center">Never bought before{unit ? ` in ${unit}` : ''} — nothing to compare with yet.</p>
+          <p className="text-sm text-slate-500 py-6 text-center">{fullHistory ? 'No deliveries in this period.' : <>Never bought before{unit ? ` in ${unit}` : ''} — nothing to compare with yet.</>}</p>
         ) : (
           <div className="space-y-4">
             <p className="text-sm text-slate-700">

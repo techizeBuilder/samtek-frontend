@@ -72,6 +72,7 @@ import PayableAgeing from "@/pages/accounts/PayableAgeing";
 import PurchaseExpenses from "@/pages/accounts/PurchaseExpenses";
 import PurchaseInventory from "@/pages/accounts/PurchaseInventory";
 import PurchaseOutsourceHub from "@/pages/accounts/purchase/PurchaseOutsourceHub";
+import PurchaseDashboard from "@/pages/accounts/purchase/PurchaseDashboard";
 import GSTAndTDS from "@/pages/accounts/GSTAndTDS";
 import DamageAndExpiry from "@/pages/accounts/DamageAndExpiry";
 import SalesmanSettlement from "@/pages/accounts/SalesmanSettlement";
@@ -1179,6 +1180,12 @@ function Router() {
       <Route path="/accounts/purchases/purchase-outsource">
         <ProtectedRoute requiredRole="Accounts">
           <PurchaseOutsourceHub />
+        </ProtectedRoute>
+      </Route>
+      {/* Purchase Dashboard (2026-10-13, blueprint §21) — the view follows the role. */}
+      <Route path="/accounts/purchases/dashboard">
+        <ProtectedRoute requiredRole="Accounts">
+          <PurchaseDashboard />
         </ProtectedRoute>
       </Route>
       <Route path="/accounts/purchases/inventory">

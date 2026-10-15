@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { PackageCheck, Truck, History } from 'lucide-react';
+import { PackageCheck, Truck, History, Barcode } from 'lucide-react';
+import SerialNumbersTab from '@/components/accounts/purchase/SerialNumbersTab';
 import PurchaseOrderList, { ACTIVE_STATUSES, DONE_STATUSES } from '@/components/accounts/purchase/PurchaseOrderList';
 import LineReceiveDialog from '@/components/accounts/purchase/LineReceiveDialog';
 import LineFabricationReceiveDialog from '@/components/accounts/purchase/LineFabricationReceiveDialog';
@@ -32,10 +33,9 @@ import LineFabricationReceiveDialog from '@/components/accounts/purchase/LineFab
 // one action per line, not per PR.
 export default function PurchaseRequest() {
   const [subTab, setSubTab] = useState('receive');
-  // PurchaseOrderList manages its own fetch internally — bumping this key
-  // forces a clean remount (and therefore a refetch) of the To Receive tab
-  // after a line is successfully received, without reaching into its
-  // internals (keeps ByVendorTab.jsx's own usage completely untouched).
+  // Bumped after a line is received: the To Receive list refetches IN PLACE
+  // (reloadSignal) — the open PO, filters and scroll stay where they were
+  // (2026-10-14; it used to remount the whole list).
   const [toReceiveRefreshKey, setToReceiveRefreshKey] = useState(0);
 
   const [receiveTarget, setReceiveTarget] = useState(null); // { purchaseId, line, prs, isFab }
@@ -64,11 +64,12 @@ export default function PurchaseRequest() {
         <TabsList className="mb-4">
           <TabsTrigger value="receive"><Truck className="w-3.5 h-3.5 mr-1.5" /> To Receive</TabsTrigger>
           <TabsTrigger value="history"><History className="w-3.5 h-3.5 mr-1.5" /> Received</TabsTrigger>
+          <TabsTrigger value="serials"><Barcode className="w-3.5 h-3.5 mr-1.5" /> Serial Numbers</TabsTrigger>
         </TabsList>
 
         <TabsContent value="receive">
           <PurchaseOrderList
-            key={toReceiveRefreshKey}
+            reloadSignal={toReceiveRefreshKey}
             scopeStatuses={ACTIVE_STATUSES}
             emptyMessage="Nothing waiting to be received right now."
             expandPONumber={null}
@@ -96,6 +97,11 @@ export default function PurchaseRequest() {
             expandPONumber={null}
             apiBase="/api/purchase-requests/orders"
           />
+        </TabsContent>
+
+        {/* Serial numbers / lots of everything received (2026-10-13). */}
+        <TabsContent value="serials">
+          <SerialNumbersTab />
         </TabsContent>
       </Tabs>
 

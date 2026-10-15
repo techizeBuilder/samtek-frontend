@@ -10,7 +10,7 @@ import { PoHistoryDialog } from '@/components/accounts/purchase/AuditLog';
 import { GstSplitNote } from '@/components/accounts/purchase/GstSplit';
 import QuoteHistoryDialog from '@/components/accounts/purchase/QuoteHistoryDialog';
 import { BoughtBeforeTag } from '@/components/accounts/purchase/PriceCheck';
-import { ApprovalReasonBadges, SelectionCheckDetails, SelectionCheckLine } from '@/components/accounts/purchase/SelectionCheck';
+import { ApprovalReasonBadges, SelectionCheckDetails, SelectionCheckLine, QuoteTermsChangeDetails } from '@/components/accounts/purchase/SelectionCheck';
 
 // Company Admin → Purchase & Vendor Approval → PO Approvals (procurement-v2,
 // 2026-10-08). The Company Admin sees EVERY PO:
@@ -95,6 +95,9 @@ function POCard({ po, onReview, busy, onHistory, warnAt }) {
                 : <>Requested by {who(po.approval?.requestedBy || po.createdBy)} · {new Date(po.approval?.requestedAt || po.createdAt).toLocaleString()}</>}
             </p>
             {po.selectionCheck && <p className="mt-0.5"><SelectionCheckLine check={po.selectionCheck} /></p>}
+            {po.quoteTermsCheck?.changes?.length > 0 && (
+              <p className="mt-0.5 text-[11px] text-orange-700">Charges / terms changed from {po.quoteTermsCheck.from} — {po.quoteTermsCheck.changes.length} change{po.quoteTermsCheck.changes.length === 1 ? '' : 's'}, with Purchase's reason</p>
+            )}
             {!isPending && !direct && po.approval?.decision && (
               <p className="text-xs text-gray-500 mt-0.5">
                 {po.approval.decision} by {who(po.approval?.reviewedBy)}
@@ -176,6 +179,7 @@ function POCard({ po, onReview, busy, onHistory, warnAt }) {
                 <SelectionCheckDetails check={po.selectionCheck} />
               </div>
             )}
+            <QuoteTermsChangeDetails check={po.quoteTermsCheck} />
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
