@@ -31,6 +31,13 @@ const STATUSES = ['Pending', 'Approved', 'Ordered', 'Received', 'Rejected'];
 // "Closed" + its reason so it isn't mistaken for a QC rejection (2026-10-15).
 const statusLabel = (s) => (s === 'Rejected' ? 'Closed' : s);
 
+// When the request was raised: requestDate (set at creation), createdAt as a
+// fallback for any old record without it. The full time is in the tooltip,
+// since the low-stock cron can raise several in one day.
+const raisedAt = (pr) => pr.requestDate || pr.createdAt;
+const fmtRaisedDay = (d) => (d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—');
+const fmtRaisedFull = (d) => (d ? new Date(d).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '');
+
 // What actually raised this PR — requestFromDepartment is NOT this: every
 // real creation path hardcodes it to 'Store' (confirmed in
 // purchaseRequestController.js — see classifyRaisedBy there), so a
@@ -192,6 +199,7 @@ export default function PurchaseRequestsTab({ onGoToQuote }) {
               <TableHeader>
                 <TableRow>
                   <TableHead>Request ID</TableHead>
+                  <TableHead>Date</TableHead>
                   <TableHead>Code</TableHead>
                   <TableHead>Product</TableHead>
                   <TableHead>Qty</TableHead>
@@ -208,6 +216,9 @@ export default function PurchaseRequestsTab({ onGoToQuote }) {
                   return (
                     <TableRow key={pr._id}>
                       <TableCell className="font-mono text-xs">{pr.requestId}</TableCell>
+                      <TableCell className="text-xs text-slate-600 whitespace-nowrap" title={fmtRaisedFull(raisedAt(pr))}>
+                        {fmtRaisedDay(raisedAt(pr))}
+                      </TableCell>
                       <TableCell className="font-mono text-xs text-slate-500">
                         {pr.item?.code || pr.materialCode || '—'}
                       </TableCell>
