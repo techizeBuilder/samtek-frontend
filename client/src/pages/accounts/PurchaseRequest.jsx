@@ -40,7 +40,13 @@ export default function PurchaseRequest() {
 
   const [receiveTarget, setReceiveTarget] = useState(null); // { purchaseId, line, prs, isFab }
 
-  const openReceiveDialog = (po, line, prRefs) => {
+  const openReceiveDialog = (po, line, allPrRefs) => {
+    // Only the requests still to be received. A line can already have
+    // received requests (a QC replacement arriving on a line that was
+    // received earlier): counting those too made the dialog expect their
+    // pieces again (a 1-piece replacement asked for 6 serials). The server
+    // already works on the not-yet-received requests only.
+    const prRefs = allPrRefs.filter(pr => pr?.status !== 'Received');
     const isFab = prRefs.some(pr => pr.fabricationDimensionLines?.length > 0);
     setReceiveTarget({ purchaseId: po._id, line, prs: prRefs, isFab });
   };
