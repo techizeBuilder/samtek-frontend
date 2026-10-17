@@ -100,7 +100,9 @@ export function RDProvider({ children }) {
     mutationFn: (id) => apiRequest('DELETE', `${BASE}/master-options/${id}`),
     onSuccess: invMasterOptions
   });
-  const saveCustomFieldTemplateMut = useMutation({ mutationFn: (data) => apiRequest('POST', `${BASE}/custom-field-templates`, data), onSuccess: invCustomFieldTemplates });
+  // Renaming a group / field carries over to the products' own custom values
+  // server-side (2026-10-17), so the machine list refetches too.
+  const saveCustomFieldTemplateMut = useMutation({ mutationFn: (data) => apiRequest('POST', `${BASE}/custom-field-templates`, data), onSuccess: () => { invCustomFieldTemplates(); invMachines(); } });
   const deleteCustomFieldTemplateMut = useMutation({ mutationFn: (id) => apiRequest('DELETE', `${BASE}/custom-field-templates/${id}`), onSuccess: invCustomFieldTemplates });
   const discontinueMachineMut = useMutation({ mutationFn: (id) => apiRequest('PUT', `${BASE}/machines/${id}/discontinue`), onSuccess: invMachines });
   const reactivateMachineMut = useMutation({ mutationFn: (id) => apiRequest('PUT', `${BASE}/machines/${id}/reactivate`), onSuccess: invMachines });

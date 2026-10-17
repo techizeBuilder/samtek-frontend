@@ -79,7 +79,9 @@ export default function PlantMaster() {
   });
   const updateOptionMutation = useMutation({
     mutationFn: ({ id, value }) => apiRequest('PUT', `/api/rd/master-options/${id}`, { value }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['rd-master-options'] }),
+    // A rename cascades into the plants themselves server-side — refetch them
+    // too, or the list / view keep the old text until a reload.
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['rd-master-options'] }); qc.invalidateQueries({ queryKey: ['rd-plants'] }); },
   });
   const deleteOptionMutation = useMutation({
     mutationFn: (id) => apiRequest('DELETE', `/api/rd/master-options/${id}`),
@@ -295,6 +297,11 @@ export default function PlantMaster() {
   // any more since there's no per-option delete icon to embed.
   const renderPlantSelect = (label, options, fieldKey, state, setState, opts = {}) => {
     const { disabled = false, disabledHint = 'Select...', resetKeys = [], required = true } = opts;
+    // A saved value no longer in the list is shown as it is — a native
+    // <select> would otherwise show the first option instead (see
+    // ProductMaster.jsx's renderDropdownWithAdd, 2026-10-17).
+    const current = state[fieldKey];
+    const stale = !!current && !options.some(o => o.value === current);
     return (
       <div>
         <Label className="text-xs font-semibold text-slate-600 mb-1 block">{label}{required && ' *'}</Label>
@@ -308,6 +315,7 @@ export default function PlantMaster() {
           }}
         >
           <option value="" disabled>{disabled ? disabledHint : 'Select...'}</option>
+          {stale && <option value={current} disabled>{current} (no longer in the list)</option>}
           {options.map(o => <option key={o.value} value={o.value}>{o.value}</option>)}
         </select>
       </div>

@@ -121,6 +121,9 @@ export default function ProductMaster() {
   const [filterPType, setFilterPType] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
   const [filterPSourceType, setFilterPSourceType] = useState('');
+  // Material Grade (client request, 2026-10-17): its own filter, not part of the
+  // Category chain — any grade with any classification.
+  const [filterMaterialGrade, setFilterMaterialGrade] = useState('');
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(20);
   const [addOpen, setAddOpen] = useState(false);
@@ -217,10 +220,10 @@ export default function ProductMaster() {
 
   // Reset to page 1 whenever a filter/search/page-size changes so the user
   // doesn't land on a now-out-of-range page.
-  useEffect(() => { setPage(1); }, [debouncedSearch, filterStatus, filterRelease, showDiscontinued, filterPType, filterCategory, filterPSourceType, limit]);
+  useEffect(() => { setPage(1); }, [debouncedSearch, filterStatus, filterRelease, showDiscontinued, filterPType, filterCategory, filterPSourceType, filterMaterialGrade, limit]);
 
   const { data: machinesListResponse, isLoading: machinesListLoading } = useQuery({
-    queryKey: ['rd-machines', 'list', { page, limit, search: debouncedSearch, filterStatus, filterRelease, showDiscontinued, filterPType, filterCategory, filterPSourceType }],
+    queryKey: ['rd-machines', 'list', { page, limit, search: debouncedSearch, filterStatus, filterRelease, showDiscontinued, filterPType, filterCategory, filterPSourceType, filterMaterialGrade }],
     queryFn: () => {
       const params = new URLSearchParams({
         page: String(page),
@@ -233,6 +236,7 @@ export default function ProductMaster() {
       if (filterPType) params.set('pType', filterPType);
       if (filterCategory) params.set('category', filterCategory);
       if (filterPSourceType) params.set('pSourceType', filterPSourceType);
+      if (filterMaterialGrade) params.set('materialGrade', filterMaterialGrade);
       return apiRequest('GET', `/api/rd/machines?${params.toString()}`);
     },
     keepPreviousData: true,
@@ -514,6 +518,12 @@ export default function ProductMaster() {
   // now only built via "Manage Custom Fields", not created ad-hoc while adding a product. ──
   const renderDropdownWithAdd = (label, field, fieldKey, options, state, setState, opts = {}) => {
     const { disabled = false, disabledHint = '', parentValueForAdd = '', resetKeys = [], required = true, showAddButton = true } = opts;
+    // A saved value that's no longer in the list (renamed / removed in Manage
+    // Classifications) is shown as it is. A native <select> whose value matches
+    // no option silently SHOWS the first option instead, so the form looked
+    // updated while saving the old value back (2026-10-17, PRO-0014).
+    const current = state[fieldKey];
+    const stale = !!current && !(options || []).some(o => o.value === current);
     return (
       <div className="min-w-0">
         <label className="text-xs font-semibold text-slate-600 mb-1 block">{label}{required && ' *'}</label>
@@ -532,6 +542,7 @@ export default function ProductMaster() {
             }}
           >
             <option value="" disabled>{disabled ? disabledHint : 'Select...'}</option>
+            {stale && <option value={current} disabled>{current} (no longer in the list)</option>}
             {options?.map(o => <option key={o.value} value={o.value}>{o.value}</option>)}
           </select>
           {showAddButton && (
@@ -726,7 +737,9 @@ export default function ProductMaster() {
     const existing = getCustomFieldTemplate(templateForm.pType, templateForm.category, templateForm.pSourceType);
     setTemplateForm(f => ({
       ...f,
-      groups: existing ? existing.groups.map(g => ({ label: g.label, fields: g.fields.map(fl => ({ name: fl.name })) })) : []
+      // _id kept so the server can tell a renamed group / field from a new one
+      // and carry the rename onto existing products (2026-10-17).
+      groups: existing ? existing.groups.map(g => ({ _id: g._id, label: g.label, fields: g.fields.map(fl => ({ _id: fl._id, name: fl.name })) })) : []
     }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [templateForm.pType, templateForm.category, templateForm.pSourceType, templateManagerOpen]);
@@ -736,7 +749,7 @@ export default function ProductMaster() {
   const updateTemplateGroupLabel = (idx, label) => setTemplateForm(f => ({ ...f, groups: f.groups.map((g, i) => i === idx ? { ...g, label } : g) }));
   const addTemplateField = (gIdx) => setTemplateForm(f => ({ ...f, groups: f.groups.map((g, i) => i === gIdx ? { ...g, fields: [...g.fields, { name: '' }] } : g) }));
   const removeTemplateField = (gIdx, fIdx) => setTemplateForm(f => ({ ...f, groups: f.groups.map((g, i) => i === gIdx ? { ...g, fields: g.fields.filter((_, j) => j !== fIdx) } : g) }));
-  const updateTemplateFieldName = (gIdx, fIdx, name) => setTemplateForm(f => ({ ...f, groups: f.groups.map((g, i) => i === gIdx ? { ...g, fields: g.fields.map((fl, j) => j === fIdx ? { name } : fl) } : g) }));
+  const updateTemplateFieldName = (gIdx, fIdx, name) => setTemplateForm(f => ({ ...f, groups: f.groups.map((g, i) => i === gIdx ? { ...g, fields: g.fields.map((fl, j) => j === fIdx ? { ...fl, name } : fl) } : g) }));
 
   // ── Classification Hierarchy panel: the only place P-Type/Category/P-Source Type get
   // created. Clicking an item in a column selects it (and clears the deeper levels); the
@@ -1018,9 +1031,18 @@ export default function ProductMaster() {
               <option value="">{filterCategory ? 'All Product Source Types' : 'Select Sub Category first'}</option>
               {pSourceOptionsFor(filterCategory, masterOptions).map(o => <option key={o.value} value={o.value}>{o.value}</option>)}
             </select>
-            {(filterPType || filterCategory || filterPSourceType) && (
+            <span className="text-xs font-semibold text-slate-500 flex-shrink-0 md:ml-3">Material Grade:</span>
+            <select
+              className="border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              value={filterMaterialGrade}
+              onChange={e => setFilterMaterialGrade(e.target.value)}
+            >
+              <option value="">All Material Grades</option>
+              {(masterOptions.MaterialGrade || []).map(o => <option key={o.value} value={o.value}>{o.value}</option>)}
+            </select>
+            {(filterPType || filterCategory || filterPSourceType || filterMaterialGrade) && (
               <button
-                onClick={() => { setFilterPType(''); setFilterCategory(''); setFilterPSourceType(''); }}
+                onClick={() => { setFilterPType(''); setFilterCategory(''); setFilterPSourceType(''); setFilterMaterialGrade(''); }}
                 className="text-xs font-semibold text-blue-600 hover:text-blue-800 px-2 py-1"
               >
                 Clear

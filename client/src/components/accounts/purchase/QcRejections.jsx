@@ -167,7 +167,7 @@ export default function QcRejections({ canAnswer = true, onCounts }) {
                       <Badge variant="outline" className={`text-[10px] ${STATUS_TONE[r.status] || ''}`}>{r.status}</Badge>
                       {r.replacementOf && <Badge variant="outline" className="text-[10px]">replacement failed again</Badge>}
                     </p>
-                    <p className="text-xs text-slate-600">{r.poNumber} · {r.vendorName} · QC {r.qcJobRef}: "{r.reason || 'no reason'}" · <strong>{inr(r.value)}</strong> · {day(r.createdAt)}</p>
+                    <p className="text-xs text-slate-600">{r.poNumber} · {r.vendorName} · {r.qcJobRef || 'QC'}: "{r.reason || 'no reason'}" · <strong>{inr(r.value)}</strong> · {day(r.createdAt)}</p>
                     {r.outcome && (
                       <p className="text-xs text-slate-600">
                         {OUTCOMES.find(o => o.value === r.outcome)?.label}
