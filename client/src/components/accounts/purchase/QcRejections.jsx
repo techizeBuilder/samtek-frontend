@@ -11,8 +11,9 @@ import { Search, RotateCw, PackageX, RefreshCcw, Ban, Undo2, Wallet } from 'luci
 // QC rejections of purchased material (procurement-v2, accounts Slice 3,
 // 2026-10-12 — client's cases). QC failing a purchase job makes one of these;
 // Purchase asks the vendor and records the answer here. Nothing is emailed to
-// the vendor automatically. Used on Purchase → Purchase Orders → QC Rejections
-// and on Accounts → Purchases → QC Rejections.
+// the vendor automatically. Lives on Purchase → Purchase Orders → QC Rejections
+// only (2026-10-19; the old Accounts → Purchases → QC Rejections page was the
+// same list and now redirects there).
 const inr = (n) => `₹${(Math.round((Number(n) || 0) * 100) / 100).toLocaleString('en-IN')}`;
 const day = (d) => (d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '');
 const localDay = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;

@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import { usePermissions } from '@/hooks/usePermissions';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -219,7 +220,9 @@ export default function SubChildJobWork() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [orderKindFilter, setOrderKindFilter] = useState('all');
   const [page, setPage] = useState(1);
-  useEffect(() => { setPage(1); }, [search, statusFilter, orderKindFilter]);
+  // The server is asked once typing pauses, not on every key (2026-10-19).
+  const searchText = useDebouncedValue(search.trim(), 400);
+  useEffect(() => { setPage(1); }, [searchText, statusFilter, orderKindFilter]);
 
   // ── Sub Child Part pure-outsource rows (sourceType:'JobWorkOrder') —
   // Send/Receive Round dialog state, UNCHANGED from before this rework,
@@ -266,10 +269,10 @@ export default function SubChildJobWork() {
   const [handoffImmPieces, setHandoffImmPieces] = useState('');
 
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['outsource-work', search, statusFilter, orderKindFilter, page],
+    queryKey: ['outsource-work', searchText, statusFilter, orderKindFilter, page],
     queryFn: () => {
       const params = new URLSearchParams({ page: String(page), limit: '20' });
-      if (search) params.set('search', search);
+      if (searchText) params.set('search', searchText);
       if (statusFilter !== 'all') params.set('status', statusFilter);
       if (orderKindFilter !== 'all') params.set('orderKind', orderKindFilter);
       return apiRequest('GET', `/api/outsource-work?${params.toString()}`);

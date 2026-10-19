@@ -72,8 +72,14 @@ function PoActions({ po, reload, onHistory }) {
 // the vendor gave a new date; recorded with their reason.
 const OPEN_FOR_DATES = ['Draft', 'Sent', 'Acknowledged', 'Partially Received'];
 
+const SUB_TABS = ['active', 'history', 'rejections'];
+
 export default function PurchaseOrdersTab({ expandPONumber = null }) {
-  const [sub, setSub] = useState('active');
+  // ?sub=rejections opens QC Rejections directly (dashboard tiles and the old
+  // /accounts/purchases/exchanges address, 2026-10-19).
+  const [sub, setSub] = useState(() => {
+    try { const s = new URLSearchParams(window.location.search).get('sub'); return SUB_TABS.includes(s) ? s : 'active'; } catch { return 'active'; }
+  });
   const [historyPo, setHistoryPo] = useState(null);
   const [revise, setRevise] = useState(null); // { po, line }
   const [listKey, setListKey] = useState(0);

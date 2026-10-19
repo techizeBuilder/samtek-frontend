@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { apiRequest } from '@/lib/queryClient';
 import { Input } from '@/components/ui/input';
 import { ChevronDown, ChevronUp, RotateCw, Award, Search, X, Info, AlertTriangle } from 'lucide-react';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 
 // Vendor score (2026-10-13) — the client blueprint's weighted score (§11–§12),
 // 0–100, worked out from what actually happened (services/vendorScoreService.js
@@ -61,8 +62,11 @@ function PartBars({ parts, weights, below }) {
   );
 }
 
-// One small table of the events behind a part.
-function EvidenceTable({ title, pct, weight, note, head, rows, empty }) {
+// One small table of the events behind a part. The score above uses every
+// event; the table lists the newest ones (2026-10-19): `total` = how many
+// there are, so a cut-off list says so, and `flags[i]` marks a row older than
+// 12 months — it counts in the lifetime score only.
+function EvidenceTable({ title, pct, weight, note, head, rows, flags = [], total = null, empty }) {
   return (
     <div className="border rounded-md overflow-hidden">
       <div className="flex items-center justify-between bg-slate-50 px-3 py-1.5">
@@ -74,8 +78,19 @@ function EvidenceTable({ title, pct, weight, note, head, rows, empty }) {
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead><tr className="text-[10px] uppercase text-slate-400">{head.map((h, i) => <th key={i} className="text-left font-semibold px-3 py-1">{h}</th>)}</tr></thead>
-            <tbody className="divide-y">{rows.map((r, i) => <tr key={i}>{r.map((c, j) => <td key={j} className="px-3 py-1 text-slate-600 whitespace-nowrap">{c}</td>)}</tr>)}</tbody>
+            <tbody className="divide-y">{rows.map((r, i) => (
+              <tr key={i} className={flags[i] ? 'opacity-50' : ''} title={flags[i] ? 'Older than 12 months — counts in the lifetime score only' : undefined}>
+                {r.map((c, j) => (
+                  <td key={j} className="px-3 py-1 text-slate-600 whitespace-nowrap">
+                    {c}{flags[i] && j === r.length - 1 && <span className="ml-1.5 text-[9px] uppercase tracking-wide text-slate-400 border border-slate-200 rounded px-1">lifetime only</span>}
+                  </td>
+                ))}
+              </tr>
+            ))}</tbody>
           </table>
+          {total != null && total > rows.length && (
+            <p className="px-3 py-1.5 text-[11px] text-slate-400 border-t">Showing the newest {rows.length} of {total} — the score above uses all {total}.</p>
+          )}
         </div>
       )}
     </div>
@@ -85,36 +100,44 @@ function EvidenceTable({ title, pct, weight, note, head, rows, empty }) {
 function Evidence({ score, weights }) {
   const e = score?.evidence || {};
   const p = score?.parts || {};
+  const t = score?.evidenceTotals || {};
   const s = (n) => <span className="font-semibold tabular-nums">{Math.round(n)}</span>;
+  // Rows + which of them are older than 12 months (lifetime only).
+  const lines = (list, fn) => ({ rows: (list || []).map(fn), flags: (list || []).map(x => !!x.lifetimeOnly) });
+  const price = lines(e.price, x => [day(x.date), x.poNumber, x.item, `${inr(x.price)}${x.unit ? `/${x.unit}` : ''}`, `${inr(x.lowest)} ${x.lowestOwn ? '(theirs)' : `(${x.lowestKind})`}`, s(x.score)]);
+  const quality = lines(e.quality, x => [day(x.date), x.poNumber, x.item, x.accepted, x.rejected.length ? x.rejected.map(r => `${r.qty} ${r.severity}${r.refused ? ' (refused)' : ''}`).join(', ') : '—', s(x.score)]);
+  const delivery = lines(e.delivery, x => [day(x.received), x.poNumber, `${x.item}${x.kind === 'Replacement' ? ' (replacement)' : ''}`, x.kind === 'Before advance' ? 'Before the advance' : day(x.promised), x.kind === 'Before advance' ? 'Early' : x.daysLate ? `${x.daysLate} d` : 'On time', s(x.score)]);
+  const credit = lines(e.credit, x => [day(x.date), x.poNumber, x.creditDays, `${x.advancePercent}%`, s(x.score)]);
+  const wQuotes = lines(e.warrantyDuration, x => [day(x.date), `Quote · ${x.item}`, `${x.months} mo (best ${x.best})`, s(x.score)]);
+  const wClaims = lines(e.claims, x => [day(x.date), `Claim ${x.number}`, `${x.outcome}${x.stars ? ` · ${x.stars}★` : ''}`, s(x.score)]);
+  const response = lines(e.response, x => [day(x.sentAt), `${x.number} (${x.items} items)`, x.submittedAt ? day(x.submittedAt) : 'No reply', s(x.score)]);
+  const warrantyTotal = t.warrantyDuration != null || t.claims != null ? (t.warrantyDuration || 0) + (t.claims || 0) : null;
   return (
     <div className="grid lg:grid-cols-2 gap-3">
       <EvidenceTable title="Price" pct={p.price?.pct} weight={weights?.price}
         note="Each delivered price (before GST) against the lowest any vendor charged or quoted for that item. Lowest = 100."
         head={['Delivered', 'PO', 'Item', 'Price', 'Lowest', 'Score']} empty="No item another vendor also priced."
-        rows={(e.price || []).map(x => [day(x.date), x.poNumber, x.item, `${inr(x.price)}${x.unit ? `/${x.unit}` : ''}`, `${inr(x.lowest)} ${x.lowestOwn ? '(theirs)' : `(${x.lowestKind})`}`, s(x.score)])} />
+        {...price} total={t.price ?? null} />
       <EvidenceTable title="Quality" pct={p.quality?.pct} weight={weights?.quality}
         note="Share QC accepted. Rejected pieces count 1× Minor, 1.5× Major, 2× Critical — twice if the vendor refused to replace or refund."
         head={['QC', 'PO', 'Item', 'Accepted', 'Rejected', 'Score']} empty="No QC decisions yet."
-        rows={(e.quality || []).map(x => [day(x.date), x.poNumber, x.item, x.accepted, x.rejected.length ? x.rejected.map(r => `${r.qty} ${r.severity}${r.refused ? ' (refused)' : ''}`).join(', ') : '—', s(x.score)])} />
+        {...quality} total={t.quality ?? null} />
       <EvidenceTable title="Delivery" pct={p.delivery?.pct} weight={weights?.delivery}
         note="Against the date first promised (a replacement against the date given for it). −10 for each day late. Received before the advance was paid = early (100)."
         head={['Received', 'PO', 'Item', 'Promised', 'Late', 'Score']} empty="No deliveries yet."
-        rows={(e.delivery || []).map(x => [day(x.received), x.poNumber, `${x.item}${x.kind === 'Replacement' ? ' (replacement)' : ''}`, x.kind === 'Before advance' ? 'Before the advance' : day(x.promised), x.kind === 'Before advance' ? 'Early' : x.daysLate ? `${x.daysLate} d` : 'On time', s(x.score)])} />
+        {...delivery} total={t.delivery ?? null} />
       <EvidenceTable title="Credit terms" pct={p.credit?.pct} weight={weights?.credit}
         note="Each PO: half for credit days (full at 30+), half for the advance (0% = full)."
         head={['Ordered', 'PO', 'Credit days', 'Advance', 'Score']} empty="No POs yet."
-        rows={(e.credit || []).map(x => [day(x.date), x.poNumber, x.creditDays, `${x.advancePercent}%`, s(x.score)])} />
+        {...credit} total={t.credit ?? null} />
       <EvidenceTable title="Warranty" pct={p.warranty?.pct} weight={weights?.warranty}
         note={`Two halves: warranty months quoted vs the best quoted for the item (${pctText(p.warranty?.duration)}), and warranty claims (${pctText(p.warranty?.claims)}) — our ★, resolved or not, response speed.`}
         head={['Date', 'What', 'Detail', 'Score']} empty="No warranty quoted and no claims."
-        rows={[
-          ...(e.warrantyDuration || []).map(x => [day(x.date), `Quote · ${x.item}`, `${x.months} mo (best ${x.best})`, s(x.score)]),
-          ...(e.claims || []).map(x => [day(x.date), `Claim ${x.number}`, `${x.outcome}${x.stars ? ` · ${x.stars}★` : ''}`, s(x.score)]),
-        ]} />
+        rows={[...wQuotes.rows, ...wClaims.rows]} flags={[...wQuotes.flags, ...wClaims.flags]} total={warrantyTotal} />
       <EvidenceTable title="Response" pct={p.response?.pct} weight={weights?.response}
         note="Quotation requests emailed: answered (70) and how fast (30 — within a day is full). No reply before the link ran out = 0."
         head={['Sent', 'Request', 'Answered', 'Score']} empty="No quotation requests yet."
-        rows={(e.response || []).map(x => [day(x.sentAt), `${x.number} (${x.items} items)`, x.submittedAt ? day(x.submittedAt) : 'No reply', s(x.score)])} />
+        {...response} total={t.response ?? null} />
     </div>
   );
 }
@@ -291,39 +314,38 @@ export default function VendorRatingsTab() {
   const [searchTerm, setSearchTerm] = useState('');
   const [scoredOnly, setScoredOnly] = useState(false);
   const [sortBy, setSortBy] = useState('scoreDesc'); // scoreDesc | scoreAsc | name
+  // A page at a time, searched / sorted on the server (2026-10-19) — it loaded
+  // every vendor with every score part in one response.
+  const searchText = useDebouncedValue(searchTerm.trim(), 400);
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({ page: 1, pages: 1, total: 0 });
+  const [totalVendors, setTotalVendors] = useState(0);
+  useEffect(() => { setPage(1); }, [searchText, scoredOnly, sortBy]);
 
-  const load = async () => {
+  const load = async (fresh = false) => {
     setLoading(true);
     try {
-      const res = await apiRequest('GET', '/api/suppliers/vendor-ratings');
+      const params = new URLSearchParams({ page: String(page), limit: '20', sort: sortBy, ...(searchText ? { search: searchText } : {}), ...(scoredOnly ? { scoredOnly: 'true' } : {}), ...(fresh ? { fresh: '1' } : {}) });
+      const res = await apiRequest('GET', `/api/suppliers/vendor-ratings?${params}`);
       setVendors(res?.data || []);
       setWeights(res?.weights || null);
       if (res?.watchlistBelow != null) setBelow(res.watchlistBelow);
+      setPagination(res?.pagination || { page: 1, pages: 1, total: (res?.data || []).length });
+      setTotalVendors(res?.totalVendors ?? (res?.data || []).length);
     } finally {
       setLoading(false);
     }
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [page, searchText, scoredOnly, sortBy]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const visibleVendors = vendors
-    .filter(v => {
-      if (scoredOnly && v.score == null) return false;
-      if (searchTerm && !(v.supplierName || '').toLowerCase().includes(searchTerm.toLowerCase())) return false;
-      return true;
-    })
-    .sort((a, b) => {
-      if (sortBy === 'name') return (a.supplierName || '').localeCompare(b.supplierName || '');
-      if (a.score == null) return 1;
-      if (b.score == null) return -1;
-      return sortBy === 'scoreAsc' ? a.score - b.score : b.score - a.score;
-    });
+  const visibleVendors = vendors;
   const anyFilterActive = searchTerm || scoredOnly;
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-slate-500">Each vendor's score out of 100, from deliveries, QC, prices, terms, warranty and quotation replies — expand a vendor to see every event behind it.</p>
-        <Button size="sm" variant="outline" onClick={load}><RotateCw className="w-3.5 h-3.5 mr-1" /> Refresh</Button>
+        <Button size="sm" variant="outline" onClick={() => load(true)}><RotateCw className="w-3.5 h-3.5 mr-1" /> Refresh</Button>
       </div>
 
       <HowScoreWorks weights={weights} below={below} />
@@ -348,14 +370,23 @@ export default function VendorRatingsTab() {
         )}
       </div>
 
-      {loading ? (
+      {loading && vendors.length === 0 ? (
         <p className="text-slate-400 py-10 text-center">Loading...</p>
-      ) : vendors.length === 0 ? (
+      ) : totalVendors === 0 ? (
         <p className="text-slate-400 py-10 text-center">No vendors yet.</p>
       ) : visibleVendors.length === 0 ? (
         <p className="text-slate-400 py-10 text-center">No vendors match these filters.</p>
       ) : (
         visibleVendors.map(v => <VendorRow key={v._id} vendor={v} weights={weights} below={below} />)
+      )}
+      {pagination.pages > 1 && (
+        <div className="flex items-center justify-between text-sm text-slate-500 pt-1">
+          <span>{pagination.total} vendor{pagination.total === 1 ? '' : 's'} · page {pagination.page} of {pagination.pages}</span>
+          <span className="flex gap-2">
+            <Button size="sm" variant="outline" disabled={page <= 1 || loading} onClick={() => setPage(p => Math.max(1, p - 1))}>Previous</Button>
+            <Button size="sm" variant="outline" disabled={page >= pagination.pages || loading} onClick={() => setPage(p => p + 1)}>Next</Button>
+          </span>
+        </div>
       )}
     </div>
   );

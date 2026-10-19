@@ -73,6 +73,10 @@ export default function LineReceiveDialog({ purchaseId, line, prs, onClose, onRe
         toast({ title: 'Repeated serial numbers', description: parsed.duplicates.slice(0, 5).join(', '), variant: 'destructive' });
         return;
       }
+      if (parsed.spaced.length) {
+        toast({ title: 'No spaces in a serial number', description: `Type it exactly as on the piece: ${parsed.spaced.slice(0, 5).map(s => `"${s}"`).join(', ')}`, variant: 'destructive' });
+        return;
+      }
       if (parsed.serials.length !== expectedPieces) {
         toast({ title: 'Serial numbers', description: `${expectedPieces} pieces arrived — enter ${expectedPieces} serial numbers (${parsed.serials.length} entered).`, variant: 'destructive' });
         return;

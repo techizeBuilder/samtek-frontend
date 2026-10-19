@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
+import { childOptions } from '@/lib/classificationTree';
 import { usePermissions } from '@/hooks/usePermissions';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -37,9 +38,12 @@ const MANUFACTURING_SOURCE_TYPES = ['In House Manufacturing', 'Out Source Manufa
 // a machine's own `pType` is the UI's "Category", `category` is "Sub
 // Category".
 const categoryOptionsFor = (pTypeVal, masterOptions) =>
-  (masterOptions.Category || []).filter(o => o.parentValue === pTypeVal);
-const pSourceOptionsFor = (categoryVal, masterOptions) =>
-  (masterOptions.PSourceType || []).filter(o => o.parentValue === categoryVal);
+  childOptions(masterOptions, 'Category', [['PType', pTypeVal]]);
+// The Source Types of the chosen Sub Category under the chosen Category
+// (2026-10-19: a same-named Sub Category elsewhere has its own —
+// lib/classificationTree.js).
+const pSourceOptionsFor = (pTypeVal, categoryVal, masterOptions) =>
+  childOptions(masterOptions, 'PSourceType', [['PType', pTypeVal], ['Category', categoryVal]]);
 
 export default function ProductMasterQC() {
   const { hasFeatureAccess } = usePermissions();
@@ -138,7 +142,7 @@ export default function ProductMasterQC() {
               onChange={e => { setFilterPSourceType(e.target.value); setSelectedProductId(''); }}
             >
               <option value="">{filterCategory ? 'All Product Source Types' : 'Select Sub Category first'}</option>
-              {pSourceOptionsFor(filterCategory, masterOptions).map(o => <option key={o.value} value={o.value}>{o.value}</option>)}
+              {pSourceOptionsFor(filterPType, filterCategory, masterOptions).map(o => <option key={o.value} value={o.value}>{o.value}</option>)}
             </select>
             {(filterPType || filterCategory || filterPSourceType) && (
               <button

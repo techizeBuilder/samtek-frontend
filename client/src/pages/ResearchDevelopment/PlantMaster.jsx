@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Factory, Plus, Search, Eye, Edit2, Ban, RefreshCw, XCircle, Trash2, Settings2, Zap } from 'lucide-react';
 import { showSuccessToast, showSmartToast } from '@/lib/toast-utils';
 import { usePermissions } from '@/hooks/usePermissions';
+import { childOptions, resolvePath } from '@/lib/classificationTree';
 
 const emptyForm = {
   category: '', subCategory: '', name: '', productionRate: '', isDiscontinued: false,
@@ -22,17 +23,20 @@ const emptyHierarchyForm = { category: '', subCategory: '', plantName: '', plant
 // PlantProduction) — pre-entered ahead of actual plant creation, same
 // "manage outside the form" pattern as Product Master, but no custom-fields
 // feature (confirmed 2026-09-02).
+// Each list is the children of the chosen parent OPTION down the chosen path
+// (2026-10-19, client bug — two same-named Sub Categories under different
+// Categories have their own Plant Names; lib/classificationTree.js).
 const subCategoryOptionsFor = (categoryVal, masterOptions) =>
-  (masterOptions.PlantSubCategory || []).filter(o => o.parentValue === categoryVal);
-const plantNameOptionsFor = (subCategoryVal, masterOptions) =>
-  (masterOptions.PlantName || []).filter(o => o.parentValue === subCategoryVal);
-const plantProductionOptionsFor = (plantNameVal, masterOptions) =>
-  (masterOptions.PlantProduction || []).filter(o => o.parentValue === plantNameVal);
+  childOptions(masterOptions, 'PlantSubCategory', [['PlantCategory', categoryVal]]);
+const plantNameOptionsFor = (categoryVal, subCategoryVal, masterOptions) =>
+  childOptions(masterOptions, 'PlantName', [['PlantCategory', categoryVal], ['PlantSubCategory', subCategoryVal]]);
+const plantProductionOptionsFor = (categoryVal, subCategoryVal, plantNameVal, masterOptions) =>
+  childOptions(masterOptions, 'PlantProduction', [['PlantCategory', categoryVal], ['PlantSubCategory', subCategoryVal], ['PlantName', plantNameVal]]);
 
 // Product Master's own P-Type/Category cascade (unrelated to Plant's own
 // classification above) — used only to narrow the machine picker.
 const machineCategoryOptionsFor = (pTypeVal, masterOptions) =>
-  (masterOptions.Category || []).filter(o => o.parentValue === pTypeVal);
+  childOptions(masterOptions, 'Category', [['PType', pTypeVal]]);
 
 const FIELD_KEY_MAP = { PlantCategory: 'category', PlantSubCategory: 'subCategory', PlantName: 'plantName', PlantProduction: 'plantProduction' };
 const fieldLabel = (field) => ({ PlantCategory: 'Category', PlantSubCategory: 'Sub Category', PlantName: 'Plant Name', PlantProduction: 'Production' }[field] || field);
@@ -101,7 +105,14 @@ export default function PlantMaster() {
     const value = hierarchyInputs[fieldKey]?.trim();
     if (!value) return;
     try {
-      await addOptionMutation.mutateAsync({ field, value, parentValue: parentValue || null });
+      // Linked to the exact parent option selected (2026-10-19, client bug).
+      const f = hierarchyForm;
+      const path = field === 'PlantSubCategory' ? [['PlantCategory', f.category]]
+        : field === 'PlantName' ? [['PlantCategory', f.category], ['PlantSubCategory', f.subCategory]]
+          : field === 'PlantProduction' ? [['PlantCategory', f.category], ['PlantSubCategory', f.subCategory], ['PlantName', f.plantName]]
+            : null;
+      const parent = path ? resolvePath(masterOptions, path) : null;
+      await addOptionMutation.mutateAsync({ field, value, parentValue: parent?.value ?? (parentValue || null), parentId: parent?._id || null });
       setHierarchyInputs(v => ({ ...v, [fieldKey]: '' }));
       selectHierarchyValue(fieldKey, value);
       showSuccessToast(`${fieldLabel(field)} Added`, `"${value}" added successfully`);
@@ -429,10 +440,10 @@ export default function PlantMaster() {
         })}
       </div>
       <div className="grid grid-cols-2 gap-3">
-        {renderPlantSelect('Plant Name', plantNameOptionsFor(state.subCategory, masterOptions), 'name', state, setState, {
+        {renderPlantSelect('Plant Name', plantNameOptionsFor(state.category, state.subCategory, masterOptions), 'name', state, setState, {
           disabled: !state.subCategory, disabledHint: 'Select Sub Category first', resetKeys: ['productionRate'],
         })}
-        {renderPlantSelect('Production', plantProductionOptionsFor(state.name, masterOptions), 'productionRate', state, setState, {
+        {renderPlantSelect('Production', plantProductionOptionsFor(state.category, state.subCategory, state.name, masterOptions), 'productionRate', state, setState, {
           disabled: !state.name, disabledHint: 'Select Plant Name first', required: false,
         })}
       </div>
@@ -716,12 +727,12 @@ export default function PlantMaster() {
               })}
               {renderHierarchyColumn({
                 label: 'Plant Name', field: 'PlantName', fieldKey: 'plantName',
-                options: plantNameOptionsFor(hierarchyForm.subCategory, masterOptions),
+                options: plantNameOptionsFor(hierarchyForm.category, hierarchyForm.subCategory, masterOptions),
                 disabled: !hierarchyForm.subCategory, disabledHint: 'Select a Sub Category first', parentValue: hierarchyForm.subCategory
               })}
               {renderHierarchyColumn({
                 label: 'Production', field: 'PlantProduction', fieldKey: 'plantProduction',
-                options: plantProductionOptionsFor(hierarchyForm.plantName, masterOptions),
+                options: plantProductionOptionsFor(hierarchyForm.category, hierarchyForm.subCategory, hierarchyForm.plantName, masterOptions),
                 disabled: !hierarchyForm.plantName, disabledHint: 'Select a Plant Name first', parentValue: hierarchyForm.plantName
               })}
             </div>

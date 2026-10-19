@@ -194,7 +194,8 @@ const accountsMenuItems = [
       { label: 'Inventory', path: '/accounts/purchases/inventory', feature: 'purchases' },
       { label: 'Purchase Invoice', path: '/accounts/purchases/invoices', feature: 'purchases' },
       // { label: 'Purchase Return', path: '/accounts/purchases/returns', feature: 'purchases' },
-      { label: 'QC Rejections', path: '/accounts/purchases/exchanges', feature: 'purchases' },
+      // QC Rejections moved into Purchase & Outsource → Purchase Orders (2026-10-19);
+      // the old address redirects there.
       { label: 'Vendor Payment', path: '/accounts/purchases/payments', feature: 'purchases' },
       { label: 'Payable Ageing', path: '/accounts/purchases/ageing', feature: 'purchases' },
       { label: 'Purchase Expenses', path: '/accounts/purchases/expenses', feature: 'purchases' },

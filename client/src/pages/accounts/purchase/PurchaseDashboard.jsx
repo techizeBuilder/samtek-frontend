@@ -67,8 +67,8 @@ function WorkTiles({ work, go, team }) {
       <Tile icon={Truck} title={team ? 'Deliveries' : 'My deliveries'} value={d.overdue} tone={d.overdue ? 'red' : d.today ? 'amber' : 'plain'}
         sub={`overdue · ${d.today} due today · ${d.soon} due in 3 days`} onClick={() => go(`${PURCHASE}?tab=orders`)} />
       <Tile icon={PackageX} title="QC rejections to settle" value={w.rejections.awaiting} tone={w.rejections.awaitingLong ? 'red' : w.rejections.awaiting ? 'amber' : 'plain'}
-        sub={`${w.rejections.awaitingLong} waiting over 3 days for the vendor's answer`} onClick={() => go('/accounts/purchases/exchanges')} />
-      <Tile icon={RefreshCw} title="Replacements expected" value={w.rejections.replacements} sub="Vendor will replace QC-rejected material" onClick={() => go('/accounts/purchases/exchanges')} />
+        sub={`${w.rejections.awaitingLong} waiting over 3 days for the vendor's answer`} onClick={() => go(`${PURCHASE}?tab=orders&sub=rejections`)} />
+      <Tile icon={RefreshCw} title="Replacements expected" value={w.rejections.replacements} sub="Vendor will replace QC-rejected material" onClick={() => go(`${PURCHASE}?tab=orders&sub=rejections`)} />
     </Section>
   );
 }
@@ -182,7 +182,15 @@ function AdminView({ data, openTab }) {
           sub={`owed now · ${inr(data.money.overdue)} overdue · ${inr(data.money.refundsDue)} refunds due to us`} />
       </Section>
       <Section title="The period">
-        <Tile icon={IndianRupee} title="Purchase value" value={inr(pv.total)} sub={`${pv.pos} PO${pv.pos === 1 ? '' : 's'}`}>
+        {/* What was billed (2026-10-19, B10): POs at their bill (after cancellations,
+            short closes, QC refunds) + bills without a PO. The ordered figure stays visible. */}
+        <Tile icon={IndianRupee} title="Purchase value" value={inr(pv.total)}
+          sub={`billed · ${pv.pos} PO${pv.pos === 1 ? '' : 's'}${pv.noPoBills?.count ? ` + ${pv.noPoBills.count} bill${pv.noPoBills.count === 1 ? '' : 's'} without a PO` : ''}`}>
+          {pv.ordered != null && (
+            <span className="text-[11px] text-slate-500" title="What the POs were placed for, and how much fell away since (cancelled, short closed, QC refunds / refusals)">
+              Ordered {inr(pv.ordered)}{pv.fellAway > 0 ? ` · ${inr(pv.fellAway)} fell away` : ''}{pv.noPoBills?.total ? ` · + ${inr(pv.noPoBills.total)} without a PO` : ''}
+            </span>
+          )}
           <span className="flex items-end gap-1 h-12 mt-1">
             {pv.trend.map(t => (
               <span key={t.month} className="flex flex-col items-center gap-0.5 flex-1" title={`${monthShort(t.month)}: ${inr(t.value)}`}>
@@ -198,7 +206,7 @@ function AdminView({ data, openTab }) {
           sub={`lines above the vendor's last price · ${inr(data.priceRises.extra)} extra`}>
           {data.priceRises.examples.slice(0, 2).map((e, i) => <span key={i} className="text-[11px] text-slate-500 truncate">{e.item} · {e.vendor} +{e.change}%</span>)}
         </Tile>
-        <Tile icon={PieChart} title="Top 3 vendors" value={data.concentration.topShare == null ? '—' : `${data.concentration.topShare}%`} sub="of purchase value">
+        <Tile icon={PieChart} title="Top 3 vendors" value={data.concentration.topShare == null ? '—' : `${data.concentration.topShare}%`} sub="of purchase value (billed)">
           {data.concentration.vendors.map(v => <span key={v.vendorId} className="text-[11px] text-slate-500 truncate">{v.name} {v.share}%</span>)}
         </Tile>
         <Tile icon={Percent} title="3-vendor compliance" value={data.compliance.pct == null ? '—' : `${data.compliance.pct}%`}

@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { showSuccessToast, showSmartToast } from '@/lib/toast-utils';
 import { UNIT_TYPES, getUnitsForType } from '@/utils/unitTypes';
+import { childOptions, resolvePath } from '@/lib/classificationTree';
 
 // Predefined fallback options for the smart suggestions in the + modal
 const DEFAULT_OPTIONS = {
@@ -36,20 +37,24 @@ const DEFAULT_OPTIONS = {
 // Cascade: P-Type -> Category -> P-Source Type. Strict linking — a Category only shows
 // under the exact P-Type it was created under, and a P-Source Type only under the exact
 // Category it was created under (which is itself already scoped to one P-Type).
+// Each list is the children of the chosen parent OPTION, found down the chosen
+// path (2026-10-19, client bug): a Sub Category "Chakki" under one Category
+// no longer shows the Product Names / Variants / Source Types of a "Chakki"
+// under another (lib/classificationTree.js).
 const categoryOptionsFor = (pTypeVal, masterOptions) =>
-  (masterOptions.Category || []).filter(o => o.parentValue === pTypeVal);
-const pSourceOptionsFor = (categoryVal, masterOptions) =>
-  (masterOptions.PSourceType || []).filter(o => o.parentValue === categoryVal);
+  childOptions(masterOptions, 'Category', [['PType', pTypeVal]]);
+const pSourceOptionsFor = (pTypeVal, categoryVal, masterOptions) =>
+  childOptions(masterOptions, 'PSourceType', [['PType', pTypeVal], ['Category', categoryVal]]);
 // Full linear chain: Category -> Sub Category -> Product Name -> Variant ->
 // Product Source Type. Product Name is scoped to Sub Category (categoryVal
 // here — transitively linked to Category too, since Sub Category is itself
 // scoped to Category); Product Source Type keeps its own existing Sub
 // Category scope unchanged, just moved later in display order (confirmed
 // 2026-09-02).
-const productNameOptionsFor = (categoryVal, masterOptions) =>
-  (masterOptions.ProductName || []).filter(o => o.parentValue === categoryVal);
-const productVariantOptionsFor = (nameVal, masterOptions) =>
-  (masterOptions.ProductVariant || []).filter(o => o.parentValue === nameVal);
+const productNameOptionsFor = (pTypeVal, categoryVal, masterOptions) =>
+  childOptions(masterOptions, 'ProductName', [['PType', pTypeVal], ['Category', categoryVal]]);
+const productVariantOptionsFor = (pTypeVal, categoryVal, nameVal, masterOptions) =>
+  childOptions(masterOptions, 'ProductVariant', [['PType', pTypeVal], ['Category', categoryVal], ['ProductName', nameVal]]);
 
 const FIELD_KEY_MAP = {
   'P-Type': 'pType', 'Category': 'category', 'P-SourceType': 'pSourceType', 'Metrology': 'metrology',
@@ -221,6 +226,28 @@ export default function ProductMaster() {
   // Reset to page 1 whenever a filter/search/page-size changes so the user
   // doesn't land on a now-out-of-range page.
   useEffect(() => { setPage(1); }, [debouncedSearch, filterStatus, filterRelease, showDiscontinued, filterPType, filterCategory, filterPSourceType, filterMaterialGrade, limit]);
+
+  // Material Grade filter list (client, 2026-10-19): with a Category / Sub
+  // Category chosen, only the grades its products actually use; with none,
+  // every grade.
+  const { data: usedGradesRes } = useQuery({
+    queryKey: ['rd-machines', 'material-grades', { filterPType, filterCategory, filterPSourceType, showDiscontinued }],
+    queryFn: () => {
+      const params = new URLSearchParams({ discontinued: showDiscontinued ? 'true' : 'false' });
+      if (filterPType) params.set('pType', filterPType);
+      if (filterCategory) params.set('category', filterCategory);
+      if (filterPSourceType) params.set('pSourceType', filterPSourceType);
+      return apiRequest('GET', `/api/rd/machines/material-grades?${params.toString()}`);
+    },
+    enabled: !!filterPType,
+  });
+  const materialGradeFilterOptions = filterPType
+    ? (usedGradesRes?.data || []).map(value => ({ value }))
+    : (masterOptions.MaterialGrade || []);
+  // A grade picked earlier that this Category / Sub Category doesn't use is cleared.
+  useEffect(() => {
+    if (filterPType && usedGradesRes?.data && filterMaterialGrade && !usedGradesRes.data.includes(filterMaterialGrade)) setFilterMaterialGrade('');
+  }, [filterPType, usedGradesRes, filterMaterialGrade]);
 
   const { data: machinesListResponse, isLoading: machinesListLoading } = useQuery({
     queryKey: ['rd-machines', 'list', { page, limit, search: debouncedSearch, filterStatus, filterRelease, showDiscontinued, filterPType, filterCategory, filterPSourceType, filterMaterialGrade }],
@@ -405,10 +432,39 @@ export default function ProductMaster() {
               <div className="col-span-2 md:col-span-1">
                 <label className="text-[10px] font-semibold text-slate-500 uppercase">Power Source</label>
                 <div className="flex gap-2 mt-1">
+                  {/* Deletable from the list (2026-10-19, client) — same as Metrology /
+                      Material Grade; the server refuses one a product still uses. */}
                   <Select value={pr.powerSource} onValueChange={(v) => updatePowerRow(setState, idx, { powerSource: v })}>
-                    <SelectTrigger className="h-9 bg-white"><SelectValue placeholder="Select..." /></SelectTrigger>
+                    <SelectTrigger className="h-9 bg-white"><SelectValue placeholder="Select...">{pr.powerSource}</SelectValue></SelectTrigger>
                     <SelectContent>
-                      {(masterOptions.PowerSource || []).map(o => <SelectItem key={o.value} value={o.value}>{o.value}</SelectItem>)}
+                      {(masterOptions.PowerSource || []).map(o => (
+                        <SelectItem key={o.value} value={o.value}>
+                          <span className="flex items-center justify-between w-full gap-2">
+                            <span className="truncate">{o.value}</span>
+                            <span
+                              role="button"
+                              tabIndex={-1}
+                              title={`Delete "${o.value}"`}
+                              onPointerDown={(e) => e.stopPropagation()}
+                              onPointerUp={(e) => e.stopPropagation()}
+                              onClick={async (e) => {
+                                e.stopPropagation(); e.preventDefault();
+                                if (!window.confirm(`Delete "${o.value}"? This removes it from the list for everyone.`)) return;
+                                try {
+                                  await deleteMasterOption(o._id);
+                                  if (pr.powerSource === o.value) updatePowerRow(setState, idx, { powerSource: '' });
+                                  showSuccessToast('Option Deleted', `"${o.value}" removed`);
+                                } catch (err) {
+                                  showSmartToast(err, 'Failed to delete option');
+                                }
+                              }}
+                              className="flex-shrink-0 p-0.5 rounded text-slate-300 hover:text-red-600 hover:bg-red-50 transition-colors"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </span>
+                          </span>
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                   <Button
@@ -770,11 +826,24 @@ export default function ProductMaster() {
     });
   };
 
+  // The parent OPTION of a new value, from what's selected in the dialog —
+  // sent as parentId so it's linked to this exact parent, not any same-named
+  // one (2026-10-19, client bug).
+  const hierarchyParentOf = (field) => {
+    const f = templateForm;
+    const path = field === 'Category' ? [['PType', f.pType]]
+      : (field === 'ProductName' || field === 'P-SourceType') ? [['PType', f.pType], ['Category', f.category]]
+        : field === 'ProductVariant' ? [['PType', f.pType], ['Category', f.category], ['ProductName', f.productName]]
+          : null;
+    return path ? resolvePath(masterOptions, path) : null;
+  };
+
   const handleAddHierarchyValue = async (field, fieldKey, parentValue) => {
     const value = hierarchyInputs[fieldKey]?.trim();
     if (!value) return;
     try {
-      await addMasterOption({ field, value, parentValue: parentValue || null });
+      const parent = hierarchyParentOf(field);
+      await addMasterOption({ field, value, parentValue: parent?.value ?? (parentValue || null), parentId: parent?._id || null });
       setHierarchyInputs(v => ({ ...v, [fieldKey]: '' }));
       selectHierarchyValue(fieldKey, value);
       showSuccessToast(`${label(field)} Added`, `"${value}" added successfully`);
@@ -1029,7 +1098,7 @@ export default function ProductMaster() {
               onChange={e => setFilterPSourceType(e.target.value)}
             >
               <option value="">{filterCategory ? 'All Product Source Types' : 'Select Sub Category first'}</option>
-              {pSourceOptionsFor(filterCategory, masterOptions).map(o => <option key={o.value} value={o.value}>{o.value}</option>)}
+              {pSourceOptionsFor(filterPType, filterCategory, masterOptions).map(o => <option key={o.value} value={o.value}>{o.value}</option>)}
             </select>
             <span className="text-xs font-semibold text-slate-500 flex-shrink-0 md:ml-3">Material Grade:</span>
             <select
@@ -1038,7 +1107,7 @@ export default function ProductMaster() {
               onChange={e => setFilterMaterialGrade(e.target.value)}
             >
               <option value="">All Material Grades</option>
-              {(masterOptions.MaterialGrade || []).map(o => <option key={o.value} value={o.value}>{o.value}</option>)}
+              {materialGradeFilterOptions.map(o => <option key={o.value} value={o.value}>{o.value}</option>)}
             </select>
             {(filterPType || filterCategory || filterPSourceType || filterMaterialGrade) && (
               <button
@@ -1134,13 +1203,13 @@ export default function ProductMaster() {
                 {renderDropdownWithAdd('Sub Category', 'Category', 'category', categoryOptionsFor(form.pType, masterOptions), form, setForm, {
                   disabled: !form.pType, disabledHint: 'Select Category first', resetKeys: ['pSourceType', 'name', 'variant'], showAddButton: false
                 })}
-                {renderDropdownWithAdd('Product Name', 'ProductName', 'name', productNameOptionsFor(form.category, masterOptions), form, setForm, {
+                {renderDropdownWithAdd('Product Name', 'ProductName', 'name', productNameOptionsFor(form.pType, form.category, masterOptions), form, setForm, {
                   disabled: !form.category, disabledHint: 'Select Sub Category first', resetKeys: ['variant'], showAddButton: false
                 })}
-                {renderDropdownWithAdd('Product Variant', 'ProductVariant', 'variant', productVariantOptionsFor(form.name, masterOptions), form, setForm, {
+                {renderDropdownWithAdd('Product Variant', 'ProductVariant', 'variant', productVariantOptionsFor(form.pType, form.category, form.name, masterOptions), form, setForm, {
                   disabled: !form.name, disabledHint: 'Select Product Name first', required: false, showAddButton: false
                 })}
-                {renderDropdownWithAdd('Product Source Type', 'P-SourceType', 'pSourceType', pSourceOptionsFor(form.category, masterOptions), form, setForm, {
+                {renderDropdownWithAdd('Product Source Type', 'P-SourceType', 'pSourceType', pSourceOptionsFor(form.pType, form.category, masterOptions), form, setForm, {
                   disabled: !form.category, disabledHint: 'Select Sub Category first', showAddButton: false
                 })}
               </div>
@@ -1263,13 +1332,13 @@ export default function ProductMaster() {
                 {renderDropdownWithAdd('Sub Category', 'Category', 'category', categoryOptionsFor(editForm.pType, masterOptions), editForm, setEditForm, {
                   disabled: !editForm.pType, disabledHint: 'Select Category first', resetKeys: ['pSourceType', 'name', 'variant'], showAddButton: false
                 })}
-                {renderDropdownWithAdd('Product Name', 'ProductName', 'name', productNameOptionsFor(editForm.category, masterOptions), editForm, setEditForm, {
+                {renderDropdownWithAdd('Product Name', 'ProductName', 'name', productNameOptionsFor(editForm.pType, editForm.category, masterOptions), editForm, setEditForm, {
                   disabled: !editForm.category, disabledHint: 'Select Sub Category first', resetKeys: ['variant'], showAddButton: false
                 })}
-                {renderDropdownWithAdd('Product Variant', 'ProductVariant', 'variant', productVariantOptionsFor(editForm.name, masterOptions), editForm, setEditForm, {
+                {renderDropdownWithAdd('Product Variant', 'ProductVariant', 'variant', productVariantOptionsFor(editForm.pType, editForm.category, editForm.name, masterOptions), editForm, setEditForm, {
                   disabled: !editForm.name, disabledHint: 'Select Product Name first', required: false, showAddButton: false
                 })}
-                {renderDropdownWithAdd('Product Source Type', 'P-SourceType', 'pSourceType', pSourceOptionsFor(editForm.category, masterOptions), editForm, setEditForm, {
+                {renderDropdownWithAdd('Product Source Type', 'P-SourceType', 'pSourceType', pSourceOptionsFor(editForm.pType, editForm.category, masterOptions), editForm, setEditForm, {
                   disabled: !editForm.category, disabledHint: 'Select Sub Category first', showAddButton: false
                 })}
               </div>
@@ -1735,17 +1804,17 @@ export default function ProductMaster() {
               })}
               {renderHierarchyColumn({
                 fieldLabel: 'Product Name', field: 'ProductName', fieldKey: 'productName',
-                options: productNameOptionsFor(templateForm.category, masterOptions),
+                options: productNameOptionsFor(templateForm.pType, templateForm.category, masterOptions),
                 disabled: !templateForm.category, disabledHint: 'Select a Sub Category first', parentValue: templateForm.category
               })}
               {renderHierarchyColumn({
                 fieldLabel: 'Variant', field: 'ProductVariant', fieldKey: 'productVariant',
-                options: productVariantOptionsFor(templateForm.productName, masterOptions),
+                options: productVariantOptionsFor(templateForm.pType, templateForm.category, templateForm.productName, masterOptions),
                 disabled: !templateForm.productName, disabledHint: 'Select a Product Name first', parentValue: templateForm.productName
               })}
               {renderHierarchyColumn({
                 fieldLabel: 'Product Source Type', field: 'P-SourceType', fieldKey: 'pSourceType',
-                options: pSourceOptionsFor(templateForm.category, masterOptions),
+                options: pSourceOptionsFor(templateForm.pType, templateForm.category, masterOptions),
                 disabled: !templateForm.category, disabledHint: 'Select a Sub Category first', parentValue: templateForm.category
               })}
             </div>

@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Plus, Search, Edit2, Trash2, Eye, Wallet, Receipt, ArrowUpRight, ArrowDownRight, CheckCircle2, History } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, Eye, Wallet, Receipt, ArrowUpRight, ArrowDownRight, CheckCircle2, History, Scale } from 'lucide-react';
 import { api } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -54,6 +54,24 @@ const BankAndCash = () => {
   const [selectedAccount, setSelectedAccount] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const [accountToDelete, setAccountToDelete] = useState(null);
+  // "Adjust balance" (B13, 2026-10-19): match a book account to the real bank /
+  // cash count — the difference is posted as one ledger line with the reason.
+  const [adjust, setAdjust] = useState(null); // { account, actual, reason, saving }
+  const saveAdjust = async () => {
+    if (!adjust) return;
+    if (adjust.actual === '' || !Number.isFinite(Number(adjust.actual))) return toast({ title: 'Enter the balance the bank shows now', variant: 'destructive' });
+    if (!adjust.reason.trim()) return toast({ title: 'Give a reason for the adjustment', variant: 'destructive' });
+    setAdjust(a => ({ ...a, saving: true }));
+    try {
+      const res = await api.post(`/accounts/${adjust.account.id}/adjust-balance`, { actualBalance: Number(adjust.actual), reason: adjust.reason.trim() });
+      toast({ title: 'Balance adjusted', description: res?.message });
+      setAdjust(null);
+      fetchData();
+    } catch (error) {
+      toast({ title: 'Not adjusted', description: error.message, variant: 'destructive' });
+      setAdjust(a => (a ? { ...a, saving: false } : a));
+    }
+  };
 
   // Form States
   const [accountForm, setAccountForm] = useState({
@@ -133,7 +151,8 @@ const BankAndCash = () => {
       errors.name = 'Account name is required';
       hasError = true;
     }
-    if (!accountForm.balance) {
+    // Only when adding — an edit never changes the balance (B13).
+    if (!isEditing && accountForm.balance === '') {
       errors.balance = 'Opening balance is required';
       hasError = true;
     }
@@ -151,7 +170,9 @@ const BankAndCash = () => {
         accountType: 'Asset',
         isBankOrCash: true,
         type: accountForm.type,
-        balance: parseFloat(accountForm.balance),
+        // The opening balance is sent only when adding (posted as its own
+        // ledger line); an edit leaves the balance alone — use Adjust balance (B13).
+        ...(isEditing ? {} : { balance: parseFloat(accountForm.balance) }),
         bankDetails: accountForm.type === 'Bank' ? {
           bankName: accountForm.bankName,
           accountNumber: accountForm.accountNumber
@@ -338,23 +359,32 @@ const BankAndCash = () => {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="openingBalance">Opening Balance <span className="text-red-500">*</span></Label>
-                    <Input
-                      id="openingBalance"
-                      type="number"
-                      placeholder="0.00"
-                      value={accountForm.balance}
-                      className={accountFormErrors.balance ? 'border-red-500 focus-visible:ring-red-500' : ''}
-                      onChange={(e) => {
-                        setAccountForm({ ...accountForm, balance: e.target.value });
-                        if (e.target.value) setAccountFormErrors(prev => ({ ...prev, balance: '' }));
-                      }}
-                    />
-                    {accountFormErrors.balance && (
-                      <p className="text-xs text-red-500">{accountFormErrors.balance}</p>
-                    )}
-                  </div>
+                  {isEditing ? (
+                    <div className="grid gap-1">
+                      <Label>Current Balance</Label>
+                      <p className="text-lg font-bold text-slate-900">₹{Number(selectedAccount?.balance || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+                      <p className="text-xs text-slate-500">Changes only through entries. To match the real bank, use <strong>Adjust balance</strong> (⚖) in the list.</p>
+                    </div>
+                  ) : (
+                    <div className="grid gap-2">
+                      <Label htmlFor="openingBalance">Opening Balance <span className="text-red-500">*</span></Label>
+                      <Input
+                        id="openingBalance"
+                        type="number"
+                        placeholder="0.00"
+                        value={accountForm.balance}
+                        className={accountFormErrors.balance ? 'border-red-500 focus-visible:ring-red-500' : ''}
+                        onChange={(e) => {
+                          setAccountForm({ ...accountForm, balance: e.target.value });
+                          if (e.target.value) setAccountFormErrors(prev => ({ ...prev, balance: '' }));
+                        }}
+                      />
+                      <p className="text-xs text-slate-500">What the real account holds today — recorded as its first ledger line.</p>
+                      {accountFormErrors.balance && (
+                        <p className="text-xs text-red-500">{accountFormErrors.balance}</p>
+                      )}
+                    </div>
+                  )}
                   {accountForm.type === 'Bank' && (
                     <div className="grid gap-2">
                       <Label>Bank Details</Label>
@@ -386,6 +416,42 @@ const BankAndCash = () => {
                   <Button className="bg-slate-900 text-white hover:bg-slate-800" onClick={handleAccountSubmit}>
                     {isEditing ? 'Save Changes' : 'Create Account'}
                   </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+
+            {/* Adjust balance (B13, 2026-10-19) */}
+            <Dialog open={!!adjust} onOpenChange={(open) => { if (!open) setAdjust(null); }}>
+              <DialogContent className="sm:max-w-[440px]">
+                <DialogHeader>
+                  <DialogTitle className="text-xl font-bold text-slate-900">Adjust balance — {adjust?.account?.name}</DialogTitle>
+                </DialogHeader>
+                {adjust && (() => {
+                  const current = Number(adjust.account.balance) || 0;
+                  const diff = adjust.actual === '' || !Number.isFinite(Number(adjust.actual)) ? null : Math.round((Number(adjust.actual) - current) * 100) / 100;
+                  return (
+                    <div className="grid gap-4 py-2">
+                      <p className="text-sm text-slate-600">In the books: <strong>₹{current.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong></p>
+                      <div className="grid gap-2">
+                        <Label htmlFor="adjActual">Balance the bank shows now <span className="text-red-500">*</span></Label>
+                        <Input id="adjActual" type="number" placeholder="0.00" value={adjust.actual} onChange={(e) => setAdjust(a => ({ ...a, actual: e.target.value }))} />
+                        {diff != null && (
+                          <p className={`text-xs ${diff === 0 ? 'text-slate-500' : 'text-amber-700'}`}>
+                            {diff === 0 ? 'Already matches — nothing to adjust.' : `One ledger line of ${diff > 0 ? '+' : '−'}₹${Math.abs(diff).toLocaleString('en-IN')} will be added.`}
+                          </p>
+                        )}
+                      </div>
+                      <div className="grid gap-2">
+                        <Label htmlFor="adjReason">Reason <span className="text-red-500">*</span></Label>
+                        <Input id="adjReason" placeholder='e.g. "bank charges not entered", "matched to statement 16 Oct"' value={adjust.reason} onChange={(e) => setAdjust(a => ({ ...a, reason: e.target.value }))} />
+                      </div>
+                      <p className="text-[11px] text-slate-400">Shown in the Ledger with your name and the date. The difference is worked out from the balance at the moment you save.</p>
+                    </div>
+                  );
+                })()}
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setAdjust(null)}>Cancel</Button>
+                  <Button className="bg-slate-900 text-white hover:bg-slate-800" disabled={adjust?.saving} onClick={saveAdjust}>{adjust?.saving ? 'Saving…' : 'Record adjustment'}</Button>
                 </DialogFooter>
               </DialogContent>
             </Dialog>
@@ -719,6 +785,17 @@ const BankAndCash = () => {
                                     onClick={() => handleEdit(account)}
                                   >
                                     <Edit2 className="w-4 h-4" />
+                                  </Button>
+                                )}
+                                {canEdit && (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 text-amber-600 hover:bg-amber-50"
+                                    title="Adjust balance to match the real bank"
+                                    onClick={() => setAdjust({ account, actual: '', reason: '', saving: false })}
+                                  >
+                                    <Scale className="w-4 h-4" />
                                   </Button>
                                 )}
                                 {canDeleteAccount && (

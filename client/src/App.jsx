@@ -64,7 +64,6 @@ import AccountsPurchases from "@/pages/accounts/Purchases";
 import VendorMaster from "@/pages/accounts/VendorMaster";
 import PurchaseInvoices from "@/pages/accounts/PurchaseInvoices";
 import PurchaseReturns from "@/pages/accounts/PurchaseReturns";
-import PurchaseExchanges from "@/pages/accounts/PurchaseExchanges";
 import PurchaseReports from "@/pages/accounts/PurchaseReports";
 import PurchaseRequest from "@/pages/accounts/PurchaseRequest";
 import VendorPayments from "@/pages/accounts/VendorPayments";
@@ -1209,10 +1208,11 @@ function Router() {
           <PurchaseReturns />
         </ProtectedRoute>
       </Route>
+      {/* QC Rejections live in one place now: Purchase & Outsource → Purchase
+          Orders → QC Rejections (2026-10-19). The old page showed the same
+          list; its address still works and opens that tab. */}
       <Route path="/accounts/purchases/exchanges">
-        <ProtectedRoute requiredRole="Accounts">
-          <PurchaseExchanges />
-        </ProtectedRoute>
+        <Redirect to="/accounts/purchases/purchase-outsource?tab=orders&sub=rejections" />
       </Route>
       <Route path="/accounts/purchases/payments">
         <ProtectedRoute requiredRole="Accounts">

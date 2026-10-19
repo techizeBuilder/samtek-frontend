@@ -66,7 +66,10 @@ export default function RfqPoTab({ focusItemId = null, onPOCreated }) {
   // have none yet, then re-reads the board.
   const loadBoard = async () => {
     const [prRes, boardRes] = await Promise.all([
-      apiRequest('GET', '/api/purchase-requests?limit=500'),
+      // Only the still-open requests, filtered on the server (2026-10-19): it
+      // asked for the newest 500 of ANY status and kept the open ones here, so
+      // past 500 requests the older open ones silently dropped off the board.
+      apiRequest('GET', '/api/purchase-requests?status=Pending,Approved&limit=1000'),
       apiRequest('GET', '/api/item-quote-groups/board'),
     ]);
     // Requests still to buy: not on a PO and not refused (a Store-rejected or

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
+import { childOptions } from '@/lib/classificationTree';
 import { useAuth } from '@/hooks/useAuth';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -15,9 +16,12 @@ import StockAuditHistoryModal from '@/components/inventory/StockAuditHistoryModa
 // create/edit/discontinue/BOM actions. Store just needs visibility into
 // what finished-goods machines exist.
 const categoryOptionsFor = (pTypeVal, masterOptions) =>
-  (masterOptions.Category || []).filter(o => o.parentValue === pTypeVal);
-const pSourceOptionsFor = (categoryVal, masterOptions) =>
-  (masterOptions.PSourceType || []).filter(o => o.parentValue === categoryVal);
+  childOptions(masterOptions, 'Category', [['PType', pTypeVal]]);
+// The Source Types of the chosen Sub Category under the chosen Category
+// (2026-10-19: a same-named Sub Category elsewhere has its own —
+// lib/classificationTree.js).
+const pSourceOptionsFor = (pTypeVal, categoryVal, masterOptions) =>
+  childOptions(masterOptions, 'PSourceType', [['PType', pTypeVal], ['Category', categoryVal]]);
 
 const designStatusBadge = (status) => {
   const map = {
@@ -131,7 +135,7 @@ export default function ProductMasterTab() {
               onChange={e => setFilterPSourceType(e.target.value)}
             >
               <option value="">{filterCategory ? 'All Product Source Types' : 'Select Sub Category first'}</option>
-              {pSourceOptionsFor(filterCategory, masterOptions).map(o => <option key={o.value} value={o.value}>{o.value}</option>)}
+              {pSourceOptionsFor(filterPType, filterCategory, masterOptions).map(o => <option key={o.value} value={o.value}>{o.value}</option>)}
             </select>
             {(filterPType || filterCategory || filterPSourceType) && (
               <button

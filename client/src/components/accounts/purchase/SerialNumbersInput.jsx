@@ -13,12 +13,14 @@ export const isCountableUnit = (unit) => COUNTABLE.test(String(unit || '').trim(
 
 export const keyOf = (s) => String(s || '').trim().toUpperCase();
 
+// `spaced`: serials with a space inside — refused (real serials never have
+// one; 2026-10-17). Hyphens count: TLA-01 and TLA01 are different serials.
 export function parseSerials(text) {
   const serials = String(text || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean);
   const seen = new Set();
   const dup = new Set();
   serials.forEach(s => { const k = keyOf(s); if (seen.has(k)) dup.add(s); else seen.add(k); });
-  return { serials, duplicates: [...dup] };
+  return { serials, duplicates: [...dup], spaced: serials.filter(s => /\s/.test(s)) };
 }
 
 // "GEN-" + 0101 … 0110 → GEN-0101 … GEN-0110 (the padding follows "from").
@@ -36,9 +38,9 @@ export default function SerialNumbersInput({ value, onChange, expected, unitLabe
   const [prefix, setPrefix] = useState('');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
-  const { serials, duplicates } = parseSerials(value);
+  const { serials, duplicates, spaced } = parseSerials(value);
   const range = rangeOf(prefix, from, to);
-  const exact = expected != null && serials.length === expected && !duplicates.length;
+  const exact = expected != null && serials.length === expected && !duplicates.length && !spaced.length;
 
   const addRange = () => {
     if (!range) return;
@@ -82,6 +84,7 @@ export default function SerialNumbersInput({ value, onChange, expected, unitLabe
         <span>
           {serials.length} of {expected ?? '?'} {unitLabel || 'pieces'} entered
           {duplicates.length > 0 && <span className="text-rose-600"> — repeated: {duplicates.slice(0, 5).join(', ')}{duplicates.length > 5 ? '…' : ''}</span>}
+          {spaced.length > 0 && <span className="text-rose-600"> — no spaces inside a serial: {spaced.slice(0, 5).map(s => `"${s}"`).join(', ')}{spaced.length > 5 ? '…' : ''}</span>}
         </span>
       </div>
     </div>

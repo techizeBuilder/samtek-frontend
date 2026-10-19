@@ -1,5 +1,6 @@
 import { fileHref } from '@/components/accounts/vendor/vendorUi';
 import React, { useState } from 'react';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -49,9 +50,26 @@ const PurchaseInvoices = () => {
     const [selectedVendor, setSelectedVendor] = useState('');
     const [viewInvoice, setViewInvoice] = useState(null);
     const [gstType, setGstType] = useState('CGST_SGST');
+    // What the GSTINs say for the chosen vendor (bug B9, 2026-10-19) — the same
+    // rule a PO uses; it presets GST Type, which can still be changed.
+    const [gstSuggestion, setGstSuggestion] = useState(null);
+    const pickVendor = async (vendorId) => {
+        setSelectedVendor(vendorId);
+        setGstSuggestion(null);
+        if (!vendorId) return;
+        try {
+            const res = await apiRequest('GET', `/api/accounts/purchases/invoices/gst-type?vendorId=${vendorId}`);
+            const s = res?.data || null;
+            setGstSuggestion(s);
+            if (s?.type) setGstType(s.type);
+        } catch {
+            // No suggestion — the dropdown stays as it is.
+        }
+    };
     const [page, setPage] = useState(1);
     const [stage, setStage] = useState('All');
     const [itemSearchTerm, setItemSearchTerm] = useState('');
+    const itemSearchText = useDebouncedValue(itemSearchTerm.trim(), 400);
 
     const { data: invoicesData } = useQuery({
         queryKey: ['/api/accounts/purchases/invoices', page, stage],
@@ -69,8 +87,9 @@ const PurchaseInvoices = () => {
     // had no search at all, so anything past the first page was simply
     // unreachable.
     const { data: inventoryData } = useQuery({
-        queryKey: ['/api/accounts/purchases/items', itemSearchTerm],
-        queryFn: () => apiRequest('GET', `/api/accounts/purchases/items?search=${encodeURIComponent(itemSearchTerm)}&limit=50`),
+        // Asked once typing pauses, not on every key (2026-10-19).
+        queryKey: ['/api/accounts/purchases/items', itemSearchText],
+        queryFn: () => apiRequest('GET', `/api/accounts/purchases/items?search=${encodeURIComponent(itemSearchText)}&limit=50`),
     });
 
     const mutation = useMutation({
@@ -240,9 +259,7 @@ const PurchaseInvoices = () => {
                                 <select
                                     className="w-full border rounded-lg p-2 mt-1"
                                     value={selectedVendor}
-                                    onChange={(e) => {
-                                        setSelectedVendor(e.target.value);
-                                    }}
+                                    onChange={(e) => pickVendor(e.target.value)}
                                     required
                                 >
                                     <option value="">Select Vendor</option>
@@ -270,6 +287,19 @@ const PurchaseInvoices = () => {
                                     <option value="CGST_SGST">Local (CGST + SGST)</option>
                                     <option value="IGST">Inter-state (IGST)</option>
                                 </select>
+                                {gstSuggestion?.type && (
+                                    <p className={`text-[11px] mt-1 ${gstType === gstSuggestion.type ? 'text-slate-500' : 'text-amber-700'}`}>
+                                        {gstSuggestion.type === 'CGST_SGST'
+                                            ? `From the GSTINs: both in ${gstSuggestion.ours?.name} — local.`
+                                            : `From the GSTINs: ${gstSuggestion.theirs?.name} → ${gstSuggestion.ours?.name} — inter-state.`}
+                                        {gstType !== gstSuggestion.type && ' You chose differently — check the vendor\'s bill.'}
+                                    </p>
+                                )}
+                                {gstSuggestion && !gstSuggestion.type && (
+                                    <p className="text-[11px] mt-1 text-amber-700">
+                                        Can't tell from the GSTINs — {gstSuggestion.missing === 'company' ? "the company's GSTIN / state isn't set" : "this vendor's GSTIN / state isn't set in Vendor Master"}. Choose it from the vendor's bill.
+                                    </p>
+                                )}
                             </div>
                         </div>
 

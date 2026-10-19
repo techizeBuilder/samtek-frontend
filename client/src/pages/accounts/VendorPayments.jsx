@@ -61,11 +61,17 @@ const VendorPayments = () => {
     });
     const paymentStats = statsResponse?.data;
 
+    // A page at a time (2026-10-19) — only the newest 20 could ever be seen.
+    const [historyPage, setHistoryPage] = useState(1);
+    React.useEffect(() => { setHistoryPage(1); }, [selectedVendor]);
     const { data: historyResponse } = useQuery({
-        queryKey: ['/api/accounts/purchases/payments', selectedVendor],
-        queryFn: () => apiRequest('GET', `/api/accounts/purchases/payments?limit=20${selectedVendor ? `&vendorId=${selectedVendor}` : ''}`)
+        queryKey: ['/api/accounts/purchases/payments', selectedVendor, historyPage],
+        queryFn: () => apiRequest('GET', `/api/accounts/purchases/payments?limit=20&page=${historyPage}${selectedVendor ? `&vendorId=${selectedVendor}` : ''}`),
+        keepPreviousData: true,
     });
     const history = historyResponse?.data?.payments || [];
+    const historyPages = historyResponse?.data?.pagination?.pages || 1;
+    const historyTotal = historyResponse?.data?.pagination?.total || history.length;
 
     const { data: bankAccountsResponse } = useQuery({
         queryKey: ['/api/accounts/bank-cash/summary'],
@@ -413,6 +419,15 @@ const VendorPayments = () => {
                                     ))}
                                 </tbody>
                             </table>
+                        </div>
+                    )}
+                    {historyPages > 1 && (
+                        <div className="flex items-center justify-between px-4 py-3 border-t text-xs text-slate-500">
+                            <span>{historyTotal} payments · page {historyPage} of {historyPages}</span>
+                            <span className="flex gap-2">
+                                <Button type="button" size="sm" variant="outline" className="h-7 text-xs" disabled={historyPage <= 1} onClick={() => setHistoryPage(p => Math.max(1, p - 1))}>Previous</Button>
+                                <Button type="button" size="sm" variant="outline" className="h-7 text-xs" disabled={historyPage >= historyPages} onClick={() => setHistoryPage(p => p + 1)}>Next</Button>
+                            </span>
                         </div>
                     )}
                 </CardContent>

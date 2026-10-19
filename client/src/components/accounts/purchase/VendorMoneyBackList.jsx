@@ -55,14 +55,26 @@ function RefundForm({ item, bankAccounts, onDone }) {
   );
 }
 
+// Open (default) / Settled / All, a page at a time (bug B2c, 2026-10-19) — the
+// open items can't drop out of sight behind old settled ones.
+const VIEWS = [['open', 'Open'], ['done', 'Settled'], ['all', 'All']];
+
 export default function VendorMoneyBackList({ vendorId = '', bankAccounts = [], canEdit = true }) {
   const { toast } = useToast();
   const [refunding, setRefunding] = useState(null);
+  const [view, setView] = useState('open');
+  const [page, setPage] = useState(1);
+  React.useEffect(() => { setPage(1); }, [vendorId, view]);
   const { data } = useQuery({
-    queryKey: [KEY, vendorId],
-    queryFn: () => apiRequest('GET', `${KEY}${vendorId ? `?vendorId=${vendorId}` : ''}`),
+    queryKey: [KEY, vendorId, 'list', view, page],
+    queryFn: () => apiRequest('GET', `${KEY}?${new URLSearchParams({ ...(vendorId ? { vendorId } : {}), view, page: String(page), limit: '20' })}`),
+    keepPreviousData: true,
   });
   const items = data?.data?.items || [];
+  const counts = data?.data?.counts || { open: 0, openAmount: 0, done: 0 };
+  const pagination = data?.data?.pagination || { page: 1, pages: 1, total: 0 };
+  // Settling the last item of a later page leaves it empty — step back.
+  React.useEffect(() => { if (page > pagination.pages) setPage(pagination.pages); }, [page, pagination.pages]);
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: [KEY] });
     queryClient.invalidateQueries({ queryKey: ['/api/accounts/bank-cash/summary'] });
@@ -77,15 +89,21 @@ export default function VendorMoneyBackList({ vendorId = '', bankAccounts = [], 
       toast({ title: 'Not saved', description: err.message, variant: 'destructive' });
     }
   };
-  const openItems = items.filter(i => ['To decide', 'Refund due', 'Credit available'].includes(i.status));
-  const shown = items.slice(0, 30);
+  const shown = items;
 
   return (
     <div className="space-y-2">
       <p className="text-xs text-slate-500">
-        Advance that came off a PO's bill — on QC-rejected material the vendor took back, or on cancelled lines. {openItems.length ? <strong>{openItems.length} open.</strong> : 'Nothing open.'}
+        Advance that came off a PO's bill — on QC-rejected material the vendor took back, or on cancelled lines. {counts.open ? <strong>{counts.open} open ({inr(counts.openAmount)}).</strong> : 'Nothing open.'}
       </p>
-      {shown.length === 0 ? <p className="text-sm text-slate-400 italic py-4 text-center">Nothing yet.</p> : (
+      <div className="flex items-center gap-1.5">
+        {VIEWS.map(([k, label]) => (
+          <Button key={k} type="button" size="sm" variant={view === k ? 'default' : 'outline'} className="h-7 text-xs rounded-full" onClick={() => setView(k)}>
+            {label}{k === 'open' ? ` (${counts.open})` : k === 'done' ? ` (${counts.done})` : ''}
+          </Button>
+        ))}
+      </div>
+      {shown.length === 0 ? <p className="text-sm text-slate-400 italic py-4 text-center">{view === 'open' ? 'Nothing open.' : 'Nothing yet.'}</p> : (
         <div className="divide-y border rounded-lg bg-white">
           {shown.map(i => (
             <div key={i._id} className="p-3 text-sm">
@@ -117,6 +135,15 @@ export default function VendorMoneyBackList({ vendorId = '', bankAccounts = [], 
               {refunding === i._id && <RefundForm item={i} bankAccounts={bankAccounts} onDone={refresh} />}
             </div>
           ))}
+        </div>
+      )}
+      {pagination.pages > 1 && (
+        <div className="flex items-center justify-between text-xs text-slate-500">
+          <span>{pagination.total} in this view · page {pagination.page} of {pagination.pages}</span>
+          <span className="flex gap-1.5">
+            <Button type="button" size="sm" variant="outline" className="h-7 text-xs" disabled={page <= 1} onClick={() => setPage(p => Math.max(1, p - 1))}>Previous</Button>
+            <Button type="button" size="sm" variant="outline" className="h-7 text-xs" disabled={page >= pagination.pages} onClick={() => setPage(p => p + 1)}>Next</Button>
+          </span>
         </div>
       )}
     </div>

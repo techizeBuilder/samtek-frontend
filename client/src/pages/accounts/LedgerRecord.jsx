@@ -15,6 +15,15 @@ import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { useReactToPrint } from 'react-to-print';
 
+// The side of a balance (bug B12, 2026-10-17). The server gives each account's
+// balance on its NORMAL side as positive: Asset / Expense = debit, Liability /
+// Equity / Revenue = credit. The page used to call every positive balance
+// "Db", so ₹5,000 owed to a vendor (Accounts Payable) read "₹5,000 Db".
+const sideOf = (amount, accountType) => {
+    const debitNatured = ['Asset', 'Expense'].includes(accountType);
+    return (amount >= 0) === debitNatured ? 'Db' : 'Cr';
+};
+
 const LedgerRecord = () => {
     const { toast } = useToast();
     const printRef = useRef();
@@ -26,6 +35,10 @@ const LedgerRecord = () => {
     const [loading, setLoading] = useState(false);
     const [records, setRecords] = useState([]);
     const [openingBalance, setOpeningBalance] = useState(0);
+    // The whole period's Debit / Credit and closing balance, from the server
+    // (bug B8 — they used to be added up from the 15 rows on screen).
+    const [periodTotals, setPeriodTotals] = useState(null);
+    const [closingBalance, setClosingBalance] = useState(null);
     const [accountInfo, setAccountInfo] = useState(null);
     const [pagination, setPagination] = useState({ page: 1, limit: 15, total: 0, pages: 0 });
     const [selectedRecordForReceipt, setSelectedRecordForReceipt] = useState(null);
@@ -127,6 +140,8 @@ const LedgerRecord = () => {
             if (res.success) {
                 setRecords(res.records);
                 setOpeningBalance(res.openingBalance);
+                setPeriodTotals(res.totals || null);
+                setClosingBalance(typeof res.closingBalance === 'number' ? res.closingBalance : null);
                 setAccountInfo(res.account);
                 setPagination(res.pagination);
             }
@@ -171,10 +186,17 @@ const LedgerRecord = () => {
             minimumFractionDigits: 2
         }).format(absAmount);
 
-        const suffix = amount >= 0 ? ' Db' : ' Cr';
-        // Adjust suffix based on account type if possible, but standard is Db/Cr
-        return `${formatted}${suffix}`;
+        return `${formatted} ${sideOf(amount, accountInfo?.type)}`;
     };
+
+    const pageSum = (key) => records.reduce((sum, r) => sum + (r[key] || 0), 0);
+    const totalDebit = periodTotals ? periodTotals.debit : pageSum('debit');
+    const totalCredit = periodTotals ? periodTotals.credit : pageSum('credit');
+    const closing = closingBalance ?? (records.length > 0 && pagination.page === 1 ? records[0].balance : openingBalance);
+
+    // Two accounts with the same name (e.g. an older "Accounts Payable" and the
+    // purchase ledger's own) look identical in the list — show which is which (B7).
+    const nameCounts = accounts.reduce((m, a) => m.set(a.accountName, (m.get(a.accountName) || 0) + 1), new Map());
 
     const renderPagination = () => {
         if (pagination.pages <= 1) return null;
@@ -264,6 +286,11 @@ const LedgerRecord = () => {
                                                 {acc.bankDetails?.bankName && (
                                                     <span className="text-[10px] text-slate-400 ml-1">({acc.bankDetails.bankName})</span>
                                                 )}
+                                                {nameCounts.get(acc.accountName) > 1 && (
+                                                    <span className="text-[10px] text-slate-400 ml-1">
+                                                        {acc.systemKey ? '(purchases — posted automatically)' : `(${acc.accountNumber})`}
+                                                    </span>
+                                                )}
                                             </SelectItem>
                                         ))}
                                     </SelectContent>
@@ -334,7 +361,7 @@ const LedgerRecord = () => {
                                 <div>
                                     <p className="text-xs font-medium text-emerald-600 uppercase">Total Debit</p>
                                     <p className="text-lg font-bold text-slate-900">
-                                        ₹{records.reduce((sum, r) => sum + (r.debit || 0), 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                                        ₹{totalDebit.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                                     </p>
                                 </div>
                             </CardContent>
@@ -347,7 +374,7 @@ const LedgerRecord = () => {
                                 <div>
                                     <p className="text-xs font-medium text-rose-600 uppercase">Total Credit</p>
                                     <p className="text-lg font-bold text-slate-900">
-                                        ₹{records.reduce((sum, r) => sum + (r.credit || 0), 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                                        ₹{totalCredit.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                                     </p>
                                 </div>
                             </CardContent>
@@ -360,7 +387,7 @@ const LedgerRecord = () => {
                                 <div>
                                     <p className="text-xs font-medium text-slate-400 uppercase">Closing Balance</p>
                                     <p className="text-lg font-bold">
-                                        {formatCurrency(records.length > 0 ? records[0].balance : openingBalance)}
+                                        {formatCurrency(closing)}
                                     </p>
                                 </div>
                             </CardContent>
@@ -514,19 +541,19 @@ const LedgerRecord = () => {
                                     <div className="p-4 bg-slate-50 rounded-xl">
                                         <p className="text-xs text-slate-400 font-bold uppercase mb-1">Total Debits</p>
                                         <p className="text-xl font-bold text-slate-900">
-                                            ₹{records.reduce((sum, r) => sum + r.debit, 0).toLocaleString('en-IN')}
+                                            ₹{totalDebit.toLocaleString('en-IN')}
                                         </p>
                                     </div>
                                     <div className="p-4 bg-slate-50 rounded-xl">
                                         <p className="text-xs text-slate-400 font-bold uppercase mb-1">Total Credits</p>
                                         <p className="text-xl font-bold text-slate-900">
-                                            ₹{records.reduce((sum, r) => sum + r.credit, 0).toLocaleString('en-IN')}
+                                            ₹{totalCredit.toLocaleString('en-IN')}
                                         </p>
                                     </div>
                                     <div className="p-4 bg-slate-900 rounded-xl text-white">
                                         <p className="text-xs text-slate-300 font-bold uppercase mb-1">Closing Balance</p>
                                         <p className="text-xl font-bold">
-                                            {formatCurrency(records.length > 0 ? records[records.length - 1].balance : openingBalance)}
+                                            {formatCurrency(closing)}
                                         </p>
                                     </div>
                                 </div>
@@ -641,7 +668,7 @@ const ReceiptTemplate = React.forwardRef(({ record, accountInfo, companyData }, 
                         <td className="py-6 px-6 font-black text-slate-900 uppercase">Closing Balance</td>
                         <td className="py-6 px-6 text-right text-2xl font-black text-slate-900">
                             ₹ {Math.abs(record.balance).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                            <span className="text-xs ml-1">{record.balance >= 0 ? 'Db' : 'Cr'}</span>
+                            <span className="text-xs ml-1">{sideOf(record.balance, accountInfo?.type)}</span>
                         </td>
                     </tr>
                 </tbody>
