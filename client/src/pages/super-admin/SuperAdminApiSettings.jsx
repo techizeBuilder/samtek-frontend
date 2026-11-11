@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
+import CompanySelector from '@/components/CompanySelector';
 import {
   Select,
   SelectContent,
@@ -68,21 +69,25 @@ export default function SuperAdminApiSettings() {
     enabled: false,
     apiKey: '',
     callerID: '',
+    assignedCompanyIds: [],
   });
 
   const [indiamartForm, setIndiamartForm] = useState({
     enabled: false,
     accounts: [],
+    assignedCompanyIds: [],
   });
 
   const [websiteForm, setWebsiteForm] = useState({
     enabled: false,
     apiKey: '',
+    assignedCompanyIds: [],
   });
 
   const [googleAdsForm, setGoogleAdsForm] = useState({
     enabled: false,
     webhookKey: '',
+    assignedCompanyIds: [],
   });
   const [showGoogleAdsKey, setShowGoogleAdsKey] = useState(false);
 
@@ -91,6 +96,7 @@ export default function SuperAdminApiSettings() {
     verifyToken: '',
     pageAccessToken: '',
     pageId: '',
+    assignedCompanyIds: [],
   });
   const [showFbVerifyToken, setShowFbVerifyToken] = useState(false);
   const [showFbPageToken, setShowFbPageToken] = useState(false);
@@ -116,6 +122,10 @@ export default function SuperAdminApiSettings() {
 
   const companies = companiesData?.companies || [];
 
+  // settings.<type>.assignedCompanyIds arrives populated (full Company docs,
+  // see getApiSettings) — the form/selector only works with plain id strings.
+  const toCompanyIds = (arr) => (arr || []).map(c => c?._id || c).filter(Boolean);
+
   useEffect(() => {
     if (settingsData?.settings) {
       const s = settingsData.settings;
@@ -123,6 +133,7 @@ export default function SuperAdminApiSettings() {
         enabled: s.ivr?.enabled || false,
         apiKey: s.ivr?.apiKey || '',
         callerID: s.ivr?.callerID || '',
+        assignedCompanyIds: toCompanyIds(s.ivr?.assignedCompanyIds),
       });
       let accounts = s.indiamart?.accounts || [];
       if (accounts.length === 0 && (s.indiamart?.sellerMobile || s.indiamart?.authKey)) {
@@ -136,20 +147,24 @@ export default function SuperAdminApiSettings() {
       setIndiamartForm({
         enabled: s.indiamart?.enabled || false,
         accounts: accounts,
+        assignedCompanyIds: toCompanyIds(s.indiamart?.assignedCompanyIds),
       });
       setWebsiteForm({
         enabled: s.website?.enabled || false,
         apiKey: s.website?.apiKey || '',
+        assignedCompanyIds: toCompanyIds(s.website?.assignedCompanyIds),
       });
       setGoogleAdsForm({
         enabled: s.googleAds?.enabled || false,
         webhookKey: s.googleAds?.webhookKey || '',
+        assignedCompanyIds: toCompanyIds(s.googleAds?.assignedCompanyIds),
       });
       setFacebookForm({
         enabled: s.facebook?.enabled || false,
         verifyToken: s.facebook?.verifyToken || '',
         pageAccessToken: s.facebook?.pageAccessToken || '',
         pageId: s.facebook?.pageId || '',
+        assignedCompanyIds: toCompanyIds(s.facebook?.assignedCompanyIds),
       });
       setWhatsappForm({
         enabled: s.whatsapp?.enabled || false,
@@ -182,6 +197,7 @@ export default function SuperAdminApiSettings() {
         enabled: ivrForm.enabled,
         apiKey: ivrForm.apiKey.trim(),
         callerID: ivrForm.callerID.trim(),
+        assignedCompanyIds: ivrForm.assignedCompanyIds,
       },
       indiamart: current.indiamart,
       website: current.website,
@@ -208,6 +224,7 @@ export default function SuperAdminApiSettings() {
         accounts: cleanedAccounts,
         sellerMobile: cleanedAccounts[0]?.sellerMobile || '',
         authKey: cleanedAccounts[0]?.authKey || '',
+        assignedCompanyIds: indiamartForm.assignedCompanyIds,
       },
       website: current.website,
       googleAds: current.googleAds,
@@ -225,6 +242,7 @@ export default function SuperAdminApiSettings() {
         ...current.website,
         enabled: websiteForm.enabled,
         apiKey: websiteForm.apiKey.trim(),
+        assignedCompanyIds: websiteForm.assignedCompanyIds,
       },
       googleAds: current.googleAds,
       facebook: current.facebook,
@@ -242,6 +260,7 @@ export default function SuperAdminApiSettings() {
         ...current.googleAds,
         enabled: googleAdsForm.enabled,
         webhookKey: googleAdsForm.webhookKey.trim(),
+        assignedCompanyIds: googleAdsForm.assignedCompanyIds,
       },
       facebook: current.facebook,
       whatsapp: current.whatsapp,
@@ -261,6 +280,7 @@ export default function SuperAdminApiSettings() {
         verifyToken: facebookForm.verifyToken.trim(),
         pageAccessToken: facebookForm.pageAccessToken.trim(),
         pageId: facebookForm.pageId.trim(),
+        assignedCompanyIds: facebookForm.assignedCompanyIds,
       },
       whatsapp: current.whatsapp,
     });
@@ -439,6 +459,24 @@ export default function SuperAdminApiSettings() {
                   />
                 </div>
 
+                {/* Target Companies */}
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-2">
+                    <Building2 className="h-4 w-4 text-gray-500" />
+                    Companies receiving these calls/leads
+                  </Label>
+                  <CompanySelector
+                    multiple
+                    value={ivrForm.assignedCompanyIds}
+                    onChange={(ids) => setIvrForm({ ...ivrForm, assignedCompanyIds: ids })}
+                    placeholder="Select one or more companies..."
+                    className="w-full"
+                  />
+                  <p className="text-xs text-gray-500">
+                    Every call log (and any lead it matches by mobile number) is created once for each company selected here. Pick none and this integration has nowhere to deliver calls.
+                  </p>
+                </div>
+
                 {/* API Key */}
                 <div className="space-y-2">
                   <Label className="flex items-center gap-2">
@@ -534,6 +572,24 @@ export default function SuperAdminApiSettings() {
                     checked={indiamartForm.enabled}
                     onCheckedChange={(v) => setIndiamartForm({ ...indiamartForm, enabled: v })}
                   />
+                </div>
+
+                {/* Target Companies */}
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-2">
+                    <Building2 className="h-4 w-4 text-gray-500" />
+                    Companies receiving these leads
+                  </Label>
+                  <CompanySelector
+                    multiple
+                    value={indiamartForm.assignedCompanyIds}
+                    onChange={(ids) => setIndiamartForm({ ...indiamartForm, assignedCompanyIds: ids })}
+                    placeholder="Select one or more companies..."
+                    className="w-full"
+                  />
+                  <p className="text-xs text-gray-500">
+                    Every IndiaMART enquiry (across all accounts below) is created once for each company selected here. Pick none and leads have nowhere to land.
+                  </p>
                 </div>
 
                 {/* IndiaMART Accounts List */}
@@ -739,6 +795,24 @@ export default function SuperAdminApiSettings() {
                   />
                 </div>
 
+                {/* Target Companies */}
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-2">
+                    <Building2 className="h-4 w-4 text-gray-500" />
+                    Companies receiving these leads
+                  </Label>
+                  <CompanySelector
+                    multiple
+                    value={websiteForm.assignedCompanyIds}
+                    onChange={(ids) => setWebsiteForm({ ...websiteForm, assignedCompanyIds: ids })}
+                    placeholder="Select one or more companies..."
+                    className="w-full"
+                  />
+                  <p className="text-xs text-gray-500">
+                    Every form submission is created once for each company selected here — not shared, a separate lead per company. Pick none and submissions have nowhere to land.
+                  </p>
+                </div>
+
                 {/* API Key */}
                 <div className="space-y-2">
                   <Label className="flex items-center gap-2">
@@ -805,6 +879,24 @@ export default function SuperAdminApiSettings() {
                     checked={googleAdsForm.enabled}
                     onCheckedChange={(v) => setGoogleAdsForm({ ...googleAdsForm, enabled: v })}
                   />
+                </div>
+
+                {/* Target Companies */}
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-2">
+                    <Building2 className="h-4 w-4 text-gray-500" />
+                    Companies receiving these leads
+                  </Label>
+                  <CompanySelector
+                    multiple
+                    value={googleAdsForm.assignedCompanyIds}
+                    onChange={(ids) => setGoogleAdsForm({ ...googleAdsForm, assignedCompanyIds: ids })}
+                    placeholder="Select one or more companies..."
+                    className="w-full"
+                  />
+                  <p className="text-xs text-gray-500">
+                    Every Google Ads lead is created once for each company selected here. Pick none and leads have nowhere to land.
+                  </p>
                 </div>
 
                 {/* Webhook Key */}
@@ -900,6 +992,24 @@ export default function SuperAdminApiSettings() {
                     checked={facebookForm.enabled}
                     onCheckedChange={(v) => setFacebookForm({ ...facebookForm, enabled: v })}
                   />
+                </div>
+
+                {/* Target Companies */}
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-2">
+                    <Building2 className="h-4 w-4 text-gray-500" />
+                    Companies receiving these leads
+                  </Label>
+                  <CompanySelector
+                    multiple
+                    value={facebookForm.assignedCompanyIds}
+                    onChange={(ids) => setFacebookForm({ ...facebookForm, assignedCompanyIds: ids })}
+                    placeholder="Select one or more companies..."
+                    className="w-full"
+                  />
+                  <p className="text-xs text-gray-500">
+                    Every Facebook/Instagram lead is created once for each company selected here. Pick none and leads have nowhere to land.
+                  </p>
                 </div>
 
                 {/* Verify Token */}

@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
+import CompanySelector from '@/components/CompanySelector';
 import {
   Building2, Settings, Globe, Mail, Zap, PhoneCall, Eye, EyeOff, Megaphone, Facebook, MessageCircle,
   Plus, Pencil, Trash2, Save, RefreshCw, Info, Key, Phone, CheckCircle2,
@@ -301,12 +302,12 @@ export default function AdminSettings() {
   const [activeApiTab, setActiveApiTab] = useState('acefone');
   const [showApiKey, setShowApiKey] = useState(false);
   const [visibleKeys, setVisibleKeys] = useState({});
-  const [ivrForm, setIvrForm]         = useState({ enabled: false, apiKey: '', callerID: '' });
-  const [indiamartForm, setIndiamartForm] = useState({ enabled: false, accounts: [] });
-  const [websiteForm, setWebsiteForm]     = useState({ enabled: false, apiKey: '' });
-  const [googleAdsForm, setGoogleAdsForm] = useState({ enabled: false, webhookKey: '' });
+  const [ivrForm, setIvrForm]         = useState({ enabled: false, apiKey: '', callerID: '', assignedCompanyIds: [] });
+  const [indiamartForm, setIndiamartForm] = useState({ enabled: false, accounts: [], assignedCompanyIds: [] });
+  const [websiteForm, setWebsiteForm]     = useState({ enabled: false, apiKey: '', assignedCompanyIds: [] });
+  const [googleAdsForm, setGoogleAdsForm] = useState({ enabled: false, webhookKey: '', assignedCompanyIds: [] });
   const [showGoogleAdsKey, setShowGoogleAdsKey] = useState(false);
-  const [facebookForm, setFacebookForm] = useState({ enabled: false, verifyToken: '', pageAccessToken: '', pageId: '' });
+  const [facebookForm, setFacebookForm] = useState({ enabled: false, verifyToken: '', pageAccessToken: '', pageId: '', assignedCompanyIds: [] });
   const [showFbVerifyToken, setShowFbVerifyToken] = useState(false);
   const [showFbPageToken, setShowFbPageToken] = useState(false);
   const [whatsappForm, setWhatsappForm] = useState({ enabled: false, phoneNumberId: '', accessToken: '' });
@@ -317,21 +318,26 @@ export default function AdminSettings() {
     queryFn: () => apiFetch('/super-admin/api-settings'),
     enabled: category === 'api',
   });
+  // settings.<type>.assignedCompanyIds arrives populated (full Company docs) —
+  // the selector only works with plain id strings.
+  const toCompanyIds = (arr) => (arr || []).map(c => c?._id || c).filter(Boolean);
+
   useEffect(() => {
     if (!apiData?.settings) return;
     const s = apiData.settings;
-    setIvrForm({ enabled: s.ivr?.enabled || false, apiKey: s.ivr?.apiKey || '', callerID: s.ivr?.callerID || '' });
+    setIvrForm({ enabled: s.ivr?.enabled || false, apiKey: s.ivr?.apiKey || '', callerID: s.ivr?.callerID || '', assignedCompanyIds: toCompanyIds(s.ivr?.assignedCompanyIds) });
     let accs = s.indiamart?.accounts || [];
     if (accs.length === 0 && (s.indiamart?.sellerMobile || s.indiamart?.authKey))
       accs = [{ apiName: 'Primary Account', sellerMobile: s.indiamart.sellerMobile || '', authKey: s.indiamart.authKey || '', lastSyncedAt: s.indiamart.lastSyncedAt }];
-    setIndiamartForm({ enabled: s.indiamart?.enabled || false, accounts: accs });
-    setWebsiteForm({ enabled: s.website?.enabled || false, apiKey: s.website?.apiKey || '' });
-    setGoogleAdsForm({ enabled: s.googleAds?.enabled || false, webhookKey: s.googleAds?.webhookKey || '' });
+    setIndiamartForm({ enabled: s.indiamart?.enabled || false, accounts: accs, assignedCompanyIds: toCompanyIds(s.indiamart?.assignedCompanyIds) });
+    setWebsiteForm({ enabled: s.website?.enabled || false, apiKey: s.website?.apiKey || '', assignedCompanyIds: toCompanyIds(s.website?.assignedCompanyIds) });
+    setGoogleAdsForm({ enabled: s.googleAds?.enabled || false, webhookKey: s.googleAds?.webhookKey || '', assignedCompanyIds: toCompanyIds(s.googleAds?.assignedCompanyIds) });
     setFacebookForm({
       enabled: s.facebook?.enabled || false,
       verifyToken: s.facebook?.verifyToken || '',
       pageAccessToken: s.facebook?.pageAccessToken || '',
       pageId: s.facebook?.pageId || '',
+      assignedCompanyIds: toCompanyIds(s.facebook?.assignedCompanyIds),
     });
     setWhatsappForm({
       enabled: s.whatsapp?.enabled || false,
@@ -346,14 +352,14 @@ export default function AdminSettings() {
     onError: e => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
   });
   const cur = apiData?.settings || {};
-  const saveAcefone   = () => saveApiM.mutate({ ivr: { ...cur.ivr, enabled: ivrForm.enabled, apiKey: ivrForm.apiKey.trim(), callerID: ivrForm.callerID.trim() }, indiamart: cur.indiamart, website: cur.website, googleAds: cur.googleAds, facebook: cur.facebook, whatsapp: cur.whatsapp });
+  const saveAcefone   = () => saveApiM.mutate({ ivr: { ...cur.ivr, enabled: ivrForm.enabled, apiKey: ivrForm.apiKey.trim(), callerID: ivrForm.callerID.trim(), assignedCompanyIds: ivrForm.assignedCompanyIds }, indiamart: cur.indiamart, website: cur.website, googleAds: cur.googleAds, facebook: cur.facebook, whatsapp: cur.whatsapp });
   const saveIndiamart = () => {
     const c = indiamartForm.accounts.map(a => ({ apiName: (a.apiName||'').trim(), sellerMobile: (a.sellerMobile||'').trim(), authKey: (a.authKey||'').trim(), lastSyncedAt: a.lastSyncedAt }));
-    saveApiM.mutate({ ivr: cur.ivr, indiamart: { ...cur.indiamart, enabled: indiamartForm.enabled, accounts: c, sellerMobile: c[0]?.sellerMobile||'', authKey: c[0]?.authKey||'' }, website: cur.website, googleAds: cur.googleAds, facebook: cur.facebook, whatsapp: cur.whatsapp });
+    saveApiM.mutate({ ivr: cur.ivr, indiamart: { ...cur.indiamart, enabled: indiamartForm.enabled, accounts: c, sellerMobile: c[0]?.sellerMobile||'', authKey: c[0]?.authKey||'', assignedCompanyIds: indiamartForm.assignedCompanyIds }, website: cur.website, googleAds: cur.googleAds, facebook: cur.facebook, whatsapp: cur.whatsapp });
   };
-  const saveWebsite   = () => saveApiM.mutate({ ivr: cur.ivr, indiamart: cur.indiamart, website: { ...cur.website, enabled: websiteForm.enabled, apiKey: websiteForm.apiKey.trim() }, googleAds: cur.googleAds, facebook: cur.facebook, whatsapp: cur.whatsapp });
-  const saveGoogleAds = () => saveApiM.mutate({ ivr: cur.ivr, indiamart: cur.indiamart, website: cur.website, googleAds: { ...cur.googleAds, enabled: googleAdsForm.enabled, webhookKey: googleAdsForm.webhookKey.trim() }, facebook: cur.facebook, whatsapp: cur.whatsapp });
-  const saveFacebook  = () => saveApiM.mutate({ ivr: cur.ivr, indiamart: cur.indiamart, website: cur.website, googleAds: cur.googleAds, facebook: { ...cur.facebook, enabled: facebookForm.enabled, verifyToken: facebookForm.verifyToken.trim(), pageAccessToken: facebookForm.pageAccessToken.trim(), pageId: facebookForm.pageId.trim() }, whatsapp: cur.whatsapp });
+  const saveWebsite   = () => saveApiM.mutate({ ivr: cur.ivr, indiamart: cur.indiamart, website: { ...cur.website, enabled: websiteForm.enabled, apiKey: websiteForm.apiKey.trim(), assignedCompanyIds: websiteForm.assignedCompanyIds }, googleAds: cur.googleAds, facebook: cur.facebook, whatsapp: cur.whatsapp });
+  const saveGoogleAds = () => saveApiM.mutate({ ivr: cur.ivr, indiamart: cur.indiamart, website: cur.website, googleAds: { ...cur.googleAds, enabled: googleAdsForm.enabled, webhookKey: googleAdsForm.webhookKey.trim(), assignedCompanyIds: googleAdsForm.assignedCompanyIds }, facebook: cur.facebook, whatsapp: cur.whatsapp });
+  const saveFacebook  = () => saveApiM.mutate({ ivr: cur.ivr, indiamart: cur.indiamart, website: cur.website, googleAds: cur.googleAds, facebook: { ...cur.facebook, enabled: facebookForm.enabled, verifyToken: facebookForm.verifyToken.trim(), pageAccessToken: facebookForm.pageAccessToken.trim(), pageId: facebookForm.pageId.trim(), assignedCompanyIds: facebookForm.assignedCompanyIds }, whatsapp: cur.whatsapp });
   const saveWhatsapp  = () => saveApiM.mutate({ ivr: cur.ivr, indiamart: cur.indiamart, website: cur.website, googleAds: cur.googleAds, facebook: cur.facebook, whatsapp: { ...cur.whatsapp, enabled: whatsappForm.enabled, phoneNumberId: whatsappForm.phoneNumberId.trim(), accessToken: whatsappForm.accessToken.trim() } });
   const generateRandomKey = () => {
     const bytes = new Uint8Array(24);
@@ -867,6 +873,10 @@ export default function AdminSettings() {
                       <Switch checked={ivrForm.enabled} onCheckedChange={v => setIvrForm(f => ({ ...f, enabled: v }))} />
                     </div>
                     <div className="space-y-1.5">
+                      <Label className="text-sm flex items-center gap-1.5"><Building2 className="h-3.5 w-3.5 text-gray-400" />Companies receiving these calls/leads</Label>
+                      <CompanySelector multiple value={ivrForm.assignedCompanyIds} onChange={ids => setIvrForm(f => ({ ...f, assignedCompanyIds: ids }))} placeholder="Select one or more companies..." className="w-full" />
+                    </div>
+                    <div className="space-y-1.5">
                       <Label className="text-sm flex items-center gap-1.5"><Key className="h-3.5 w-3.5 text-gray-400" />Acefone API Key</Label>
                       <div className="relative">
                         <Input type={showApiKey ? 'text' : 'password'} value={ivrForm.apiKey} onChange={e => setIvrForm(f => ({ ...f, apiKey: e.target.value }))} className="pr-10" placeholder="Enter API Key" />
@@ -890,6 +900,10 @@ export default function AdminSettings() {
                     <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
                       <div><p className="text-sm font-medium">Enable IndiaMART Sync</p><p className="text-xs text-gray-500">Auto-fetch leads every 10 minutes</p></div>
                       <Switch checked={indiamartForm.enabled} onCheckedChange={v => setIndiamartForm(f => ({ ...f, enabled: v }))} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-sm flex items-center gap-1.5"><Building2 className="h-3.5 w-3.5 text-gray-400" />Companies receiving these leads</Label>
+                      <CompanySelector multiple value={indiamartForm.assignedCompanyIds} onChange={ids => setIndiamartForm(f => ({ ...f, assignedCompanyIds: ids }))} placeholder="Select one or more companies..." className="w-full" />
                     </div>
                     <div className="flex items-center justify-between">
                       <Label className="text-sm font-medium">Accounts</Label>
@@ -942,6 +956,10 @@ export default function AdminSettings() {
                       <Switch checked={websiteForm.enabled} onCheckedChange={v => setWebsiteForm(f => ({ ...f, enabled: v }))} />
                     </div>
                     <div className="space-y-1.5">
+                      <Label className="text-sm flex items-center gap-1.5"><Building2 className="h-3.5 w-3.5 text-gray-400" />Companies receiving these leads</Label>
+                      <CompanySelector multiple value={websiteForm.assignedCompanyIds} onChange={ids => setWebsiteForm(f => ({ ...f, assignedCompanyIds: ids }))} placeholder="Select one or more companies..." className="w-full" />
+                    </div>
+                    <div className="space-y-1.5">
                       <Label className="text-sm flex items-center gap-1.5"><Key className="h-3.5 w-3.5 text-gray-400" />Webhook API Key</Label>
                       <Input value={websiteForm.apiKey} onChange={e => setWebsiteForm(f => ({ ...f, apiKey: e.target.value }))} placeholder="Enter webhook secret key" />
                     </div>
@@ -963,6 +981,10 @@ export default function AdminSettings() {
                     <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
                       <div><p className="text-sm font-medium">Enable Google Ads Webhook</p><p className="text-xs text-gray-500">Accept leads from Google Ads Lead Form extensions</p></div>
                       <Switch checked={googleAdsForm.enabled} onCheckedChange={v => setGoogleAdsForm(f => ({ ...f, enabled: v }))} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-sm flex items-center gap-1.5"><Building2 className="h-3.5 w-3.5 text-gray-400" />Companies receiving these leads</Label>
+                      <CompanySelector multiple value={googleAdsForm.assignedCompanyIds} onChange={ids => setGoogleAdsForm(f => ({ ...f, assignedCompanyIds: ids }))} placeholder="Select one or more companies..." className="w-full" />
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-sm flex items-center gap-1.5"><Key className="h-3.5 w-3.5 text-gray-400" />Webhook Key</Label>
@@ -999,6 +1021,10 @@ export default function AdminSettings() {
                     <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
                       <div><p className="text-sm font-medium">Enable Facebook Ads Webhook</p><p className="text-xs text-gray-500">Accept leads from Facebook/Instagram Lead Ads forms</p></div>
                       <Switch checked={facebookForm.enabled} onCheckedChange={v => setFacebookForm(f => ({ ...f, enabled: v }))} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-sm flex items-center gap-1.5"><Building2 className="h-3.5 w-3.5 text-gray-400" />Companies receiving these leads</Label>
+                      <CompanySelector multiple value={facebookForm.assignedCompanyIds} onChange={ids => setFacebookForm(f => ({ ...f, assignedCompanyIds: ids }))} placeholder="Select one or more companies..." className="w-full" />
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-sm flex items-center gap-1.5"><Key className="h-3.5 w-3.5 text-gray-400" />Verify Token</Label>
