@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import axios from "axios";
+import { openUserDocument } from "../../openUserDocument";
 import {
   Mail,
   Phone,
@@ -329,14 +330,13 @@ export default function PersonalInformation() {
                     <div className="text-[9px] text-gray-400 mb-2 truncate">
                       {doc.fileName || doc.fileUrl.split('/').pop()}
                     </div>
-                    <a
-                      href={doc.fileUrl.startsWith('http') ? doc.fileUrl : `${BASE_URL}/${doc.fileUrl.replace(/\\/g, '/')}`}
-                      target="_blank"
-                      rel="noreferrer"
+                    <button
+                      type="button"
+                      onClick={() => openUserDocument(doc._id)}
                       className="w-full flex items-center justify-center gap-1 py-1 px-2 bg-blue-50 text-blue-600 rounded text-[10px] font-bold hover:bg-blue-100 transition-colors"
                     >
                       <Eye size={12} /> View Document
-                    </a>
+                    </button>
                   </div>
                 ))
               ) : (

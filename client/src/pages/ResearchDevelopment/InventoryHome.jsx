@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import ModernInventoryUI from '@/components/inventory/ModernInventoryUI';
 import ChildPartInventoryTab from '@/components/inventory/ChildPartInventoryTab';
 import SubChildPartMasterInventoryTab from '@/components/inventory/SubChildPartMasterInventoryTab';
-import { Package2, Layers, Boxes } from 'lucide-react';
+import MachineInventoryTab from '@/components/inventory/MachineInventoryTab';
+import { Package2, Layers, Boxes, Factory } from 'lucide-react';
 
 // Thin wrapper — everything about plain Inventory (ModernInventoryUI) stays
 // completely untouched. Two more tabs sit alongside it for the corrected
@@ -17,6 +18,7 @@ export default function InventoryHome() {
     { key: 'inventory', label: 'Inventory', icon: Package2 },
     { key: 'childParts', label: 'Child Part Inventory', icon: Layers },
     { key: 'subChildParts', label: 'Sub Child Part Inventory', icon: Boxes },
+    { key: 'machines', label: 'Machines', icon: Factory },
   ];
 
   return (
@@ -42,6 +44,7 @@ export default function InventoryHome() {
       {tab === 'inventory' && <ModernInventoryUI />}
       {tab === 'childParts' && <ChildPartInventoryTab />}
       {tab === 'subChildParts' && <SubChildPartMasterInventoryTab />}
+      {tab === 'machines' && <MachineInventoryTab />}
     </div>
   );
 }

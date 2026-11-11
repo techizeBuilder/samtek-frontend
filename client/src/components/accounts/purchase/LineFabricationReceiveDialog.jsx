@@ -37,7 +37,7 @@ function mergeUnionLines(prs) {
 // original single-PR FabricationReceiveDialog already allowed. No Serial
 // Number/Warranty fields at all — those don't apply to raw fabrication
 // stock, same as the per-PR version.
-export default function LineFabricationReceiveDialog({ purchaseId, line, prs, onClose, onReceived }) {
+export default function LineFabricationReceiveDialog({ purchaseId, line, prs, laterDelivery = false, onClose, onReceived }) {
   const { toast } = useToast();
   const [lines, setLines] = useState([]); // [{ values, quantity }]
   const [addingVariantId, setAddingVariantId] = useState('');
@@ -67,8 +67,10 @@ export default function LineFabricationReceiveDialog({ purchaseId, line, prs, on
   useEffect(() => {
     // Since 2026-10-09 a fabrication PO line records the size × pieces actually
     // ORDERED (which can be more than the requests asked for) — pre-fill from
-    // that; older lines fall back to the requests' own breakdown.
-    if (line?.fabricationDimensionLines?.length) {
+    // that; older lines fall back to the requests' own breakdown. A later
+    // delivery on the line (a QC replacement, 2026-10-30) is only what those
+    // requests still bring — e.g. the 3 replaced pieces, not the 10 ordered.
+    if (!laterDelivery && line?.fabricationDimensionLines?.length) {
       setLines(line.fabricationDimensionLines.map(l => ({ values: l.values, quantity: String(l.quantity) })));
     } else if (prs?.length) {
       setLines(mergeUnionLines(prs).map(l => ({ values: l.values, quantity: String(l.quantity) })));

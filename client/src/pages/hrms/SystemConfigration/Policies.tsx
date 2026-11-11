@@ -131,7 +131,11 @@ export default function Policies() {
     overtimeEnabled: true,
     overtimeAfter: 8,
     overtimeType: "Paid",
+    // 0 = Sunday … 6 = Saturday. Not working days for payroll (2026-11-11).
+    weeklyOffDays: [0] as number[],
   };
+  const WEEK_DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const WEEK_DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
   const [attendance, setAttendance] = useState(DEFAULT_ATTENDANCE);
   const [attendanceForm, setAttendanceForm] = useState(DEFAULT_ATTENDANCE);
   const [openEditAttendance, setOpenEditAttendance] = useState(false);
@@ -285,6 +289,19 @@ export default function Policies() {
             </button>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="border border-gray-100 rounded-2xl bg-white p-6 shadow-sm hover:shadow-md transition-all duration-300">
+              <div className="w-12 h-12 rounded-xl bg-green-50 text-green-600 flex items-center justify-center mb-4">
+                <Timer size={24} />
+              </div>
+              <h3 className="text-lg font-bold text-gray-900 mb-2">Weekly Off</h3>
+              <p className="text-sm text-gray-500 mb-4">Not working days: not paid and not absence. People on the attendance device follow the device's own weekly off.</p>
+              <div className="p-3 bg-green-50 rounded-xl">
+                <p className="text-lg font-bold text-green-700">
+                  {(attendance.weeklyOffDays ?? [0]).length ? (attendance.weeklyOffDays ?? [0]).map((d: number) => WEEK_DAY_NAMES[d]).join(", ") : "None"}
+                </p>
+              </div>
+            </div>
+
             <div className="border border-gray-100 rounded-2xl bg-white p-6 shadow-sm hover:shadow-md transition-all duration-300">
               <div className="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center mb-4">
                 <Timer size={24} />
@@ -600,6 +617,27 @@ export default function Policies() {
                   </div>
                 </div>
               </div>
+            </div>
+
+            <div className="px-6 pb-4">
+              <label className="text-xs font-bold text-gray-500 uppercase block mb-2">Weekly Off</label>
+              <div className="flex flex-wrap gap-2">
+                {WEEK_DAYS.map((label, d) => {
+                  const days: number[] = attendanceForm.weeklyOffDays ?? [0];
+                  const on = days.includes(d);
+                  return (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => setAttendanceForm({ ...attendanceForm, weeklyOffDays: on ? days.filter((x) => x !== d) : [...days, d].sort((a, b) => a - b) })}
+                      className={`px-3 py-1.5 rounded-lg border text-sm font-semibold ${on ? "bg-[#49A7F5] text-white border-[#49A7F5]" : "bg-white text-gray-600 border-gray-200"}`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-gray-500 mt-2">Payroll doesn't count these days, for people without a Device Code. The device's own weekly off counts for people on it.</p>
             </div>
 
             <div className="flex justify-end gap-3 px-6 py-4 border-t bg-gray-50">

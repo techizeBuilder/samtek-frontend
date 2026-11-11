@@ -16,10 +16,12 @@ import {
 } from '@/components/accounts/vendor/vendorUi';
 import LowVendorCoverageTab from './purchaseApprovals/LowVendorCoverageTab';
 import PoApprovalsTab from './purchaseApprovals/PoApprovalsTab';
+import OutsourceApprovalsTab from './purchaseApprovals/OutsourceApprovalsTab';
 import PurchaseRulesSettingsTab from './purchaseApprovals/PurchaseRulesSettingsTab';
 import { AuditLogTable } from '@/components/accounts/purchase/AuditLog';
 import PriceHistory from '@/components/accounts/purchase/PriceHistory';
 import { PurchaserScoreList } from '@/components/accounts/purchase/PurchaserScore';
+import VendorRatingsTab from '@/pages/accounts/purchase/VendorRatingsTab';
 import PurchaseDashboard from '@/pages/accounts/purchase/PurchaseDashboard';
 
 // Company Admin's "Purchase & Vendor Approval" page (procurement-v2,
@@ -37,6 +39,8 @@ const TABS = [
   // procurement-v2, 2026-10-08 — company-wide purchase rules (min vendors per
   // item, PO approval threshold) and the items short of vendors.
   { id: 'POApprovals', label: 'PO Approvals', types: null },
+  // outsource-v2 slice 2 (2026-10-20) — job-work orders above the outsource limit.
+  { id: 'OutsourceApprovals', label: 'Outsource Orders', types: null },
   { id: 'LowCoverage', label: 'Low Vendor Coverage', types: null },
   { id: 'Settings', label: 'Settings', types: null },
   // gap 17 (2026-10-10) — every step of every PO.
@@ -45,6 +49,8 @@ const TABS = [
   { id: 'PriceHistory', label: 'Price History', types: null },
   // 2026-10-13 — blueprint §13: each purchaser's process score.
   { id: 'PurchaserScore', label: 'Purchaser Score', types: null },
+  // 2026-10-29 (client) — the same vendor scores Purchase sees, read-only.
+  { id: 'VendorRatings', label: 'Vendor Ratings', types: null },
   // 2026-10-13 — blueprint §21: what needs you, and how purchasing is going.
   { id: 'PurchaseDashboard', label: 'Dashboard', types: null },
 ];
@@ -52,8 +58,8 @@ const TABS = [
 // to eight. A parent's badge is the sum of its children's pending counts.
 const GROUPS = [
   { id: 'dashboard', label: 'Dashboard', tabs: ['PurchaseDashboard'] },
-  { id: 'vendors', label: 'Vendors', tabs: ['NewVendor', 'DetailsChange', 'Status', 'Watchlist', 'LowCoverage', 'PriceHistory'] },
-  { id: 'orders', label: 'Purchase Orders', tabs: ['POApprovals', 'AuditLog'] },
+  { id: 'vendors', label: 'Vendors', tabs: ['NewVendor', 'DetailsChange', 'Status', 'Watchlist', 'VendorRatings', 'LowCoverage', 'PriceHistory'] },
+  { id: 'orders', label: 'Purchase Orders', tabs: ['POApprovals', 'OutsourceApprovals', 'AuditLog'] },
   { id: 'purchasers', label: 'Purchasers', tabs: ['PurchaserScore'] },
   { id: 'settings', label: 'Settings', tabs: ['Settings'] },
 ];
@@ -61,11 +67,13 @@ const GROUPS = [
 const CUSTOM_TABS = {
   Watchlist: () => <WatchlistTab />,
   POApprovals: () => <PoApprovalsTab />,
+  OutsourceApprovals: ({ link }) => <OutsourceApprovalsTab initialStatus={link?.tab === 'OutsourceApprovals' ? link.status : null} initialSearch={link?.tab === 'OutsourceApprovals' ? link.search : null} />,
   LowCoverage: () => <LowVendorCoverageTab />,
   Settings: () => <PurchaseRulesSettingsTab />,
   AuditLog: () => <AuditLogTable />,
   PriceHistory: () => <PriceHistory />,
   PurchaserScore: () => <PurchaserScoreList />,
+  VendorRatings: () => <VendorRatingsTab />,
   PurchaseDashboard: ({ openTab }) => <PurchaseDashboard onOpenTab={openTab} />,
 };
 const STATUS_TABS = ['Pending', 'Approved', 'Rejected'];
@@ -199,12 +207,14 @@ function VendorDetails({ vendor }) {
 // ── Tab 1: New vendor ────────────────────────────────────────────────────────
 function NewVendorCard({ request, onReview, busy }) {
   const vendor = request.vendor || {};
-  const hasGst = !!String(vendor.gstNumber || '').trim();
+  // Which documents to tick, and which the vendor still lacks — from the
+  // Company Admin's Vendor documents setting (2026-10-28), worked out by the server.
+  const docChecks = request.docChecks || { verify: [], missing: [] };
   const [open, setOpen] = useState(request.status === 'Pending');
-  const [checks, setChecks] = useState({ gstVerified: false, panVerified: false, bankVerified: false, documentsVerified: false });
+  const [checks, setChecks] = useState({});
   const [riskClass, setRiskClass] = useState(vendor.riskClass || '');
   const [remarks, setRemarks] = useState('');
-  const allTicked = (!hasGst || checks.gstVerified) && checks.panVerified && checks.bankVerified && checks.documentsVerified;
+  const allTicked = docChecks.missing.length === 0 && docChecks.verify.every(c => checks[c.name]);
   const toggle = (k) => setChecks(c => ({ ...c, [k]: !c[k] }));
 
   return (
@@ -226,16 +236,19 @@ function NewVendorCard({ request, onReview, busy }) {
           <div className="mt-4 border-t pt-3 flex flex-wrap gap-4 justify-between items-start">
             <div className="space-y-1.5 text-sm">
               <p className="text-xs font-semibold text-slate-500 uppercase">Verification — tick after checking</p>
-              {[
-                ['gstVerified', hasGst ? 'GSTIN checked against the GST certificate' : 'GSTIN — not GST-registered (nothing to check)', !hasGst],
-                ['panVerified', 'PAN checked against the PAN card', false],
-                ['bankVerified', 'Bank details checked against the cancelled cheque / bank proof', false],
-                ['documentsVerified', 'Documents are genuine and in date', false],
-              ].map(([k, label, disabled]) => (
-                <label key={k} className={`flex items-center gap-2 ${disabled ? 'text-slate-400' : 'cursor-pointer'}`}>
-                  <input type="checkbox" checked={disabled ? true : checks[k]} disabled={disabled} onChange={() => toggle(k)} /> {label}
+              {docChecks.verify.length === 0 && docChecks.missing.length === 0 && (
+                <p className="text-xs text-slate-400">No document needs a tick for this vendor.</p>
+              )}
+              {docChecks.verify.map(c => (
+                <label key={c.name} className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={!!checks[c.name]} onChange={() => toggle(c.name)} /> {c.label}
                 </label>
               ))}
+              {docChecks.missing.length > 0 && (
+                <p className="text-xs text-red-600 max-w-md">
+                  Missing: <b>{docChecks.missing.join(', ')}</b> — reject this request so Purchase can add {docChecks.missing.length > 1 ? 'them' : 'it'}.
+                </p>
+              )}
               <div className="flex items-center gap-2 pt-1">
                 <span className="text-xs text-slate-500">Risk class:</span>
                 <select value={riskClass} onChange={e => setRiskClass(e.target.value)} className="border rounded-md px-2 py-1 text-sm">
@@ -249,8 +262,8 @@ function NewVendorCard({ request, onReview, busy }) {
             <ReviewBar
               busy={busy}
               approveDisabled={!allTicked}
-              approveHint={!allTicked ? 'Tick every verification check to approve' : undefined}
-              onApprove={() => onReview(request._id, 'approve', remarks, { verification: { ...checks, gstVerified: hasGst ? checks.gstVerified : false }, riskClass })}
+              approveHint={!allTicked ? (docChecks.missing.length ? 'A required document is missing' : 'Tick every verification check to approve') : undefined}
+              onApprove={() => onReview(request._id, 'approve', remarks, { verification: { checkedDocuments: docChecks.verify.filter(c => checks[c.name]).map(c => c.name) }, riskClass })}
               onReject={(reason) => onReview(request._id, 'reject', reason)}
             />
           </div>
@@ -427,9 +440,17 @@ function WatchlistTab() {
 export default function PurchaseVendorApprovals() {
   const { toast } = useToast();
   const qc = useQueryClient();
-  // The Dashboard opens first (2026-10-13).
-  const [group, setGroup] = useState('dashboard');
-  const [tab, setTab] = useState('PurchaseDashboard');
+  // The Dashboard opens first (2026-10-13) — unless a link names a tab
+  // (?tab=OutsourceApprovals&status=…&search=…, from a notification, 2026-10-23).
+  const [link] = useState(() => {
+    try {
+      const p = new URLSearchParams(window.location.search);
+      const t = TABS.find(x => x.id === p.get('tab'));
+      return t ? { tab: t.id, group: GROUPS.find(g => g.tabs.includes(t.id))?.id, status: p.get('status'), search: p.get('search') } : null;
+    } catch { return null; }
+  });
+  const [group, setGroup] = useState(link?.group || 'dashboard');
+  const [tab, setTab] = useState(link?.tab || 'PurchaseDashboard');
   const [status, setStatus] = useState('Pending');
   const tabDef = TABS.find(t => t.id === tab);
   const groupDef = GROUPS.find(g => g.id === group);
@@ -448,8 +469,14 @@ export default function PurchaseVendorApprovals() {
     queryKey: ['po-approvals', 'Pending', 'count'],
     queryFn: () => apiRequest('GET', '/api/po-approvals?status=Pending&page=1&limit=1'),
   });
+  // Outsource orders waiting for a decision (outsource-v2 slice 2).
+  const { data: outsourcePending } = useQuery({
+    queryKey: ['outsource-approvals', 'Pending', 'count'],
+    queryFn: () => apiRequest('GET', '/api/outsource-approvals?status=Pending&page=1&limit=1'),
+  });
   const tabCount = (id) => {
     if (id === 'POApprovals') return poPending?.pagination?.total || 0;
+    if (id === 'OutsourceApprovals') return outsourcePending?.pendingCount || 0;
     const t = TABS.find(x => x.id === id);
     return t?.types ? pendingCount(t.types) : 0;
   };
@@ -524,7 +551,7 @@ export default function PurchaseVendorApprovals() {
       </div>
       )}
 
-      {CUSTOM_TABS[tab] ? CUSTOM_TABS[tab]({ openTab }) : (
+      {CUSTOM_TABS[tab] ? CUSTOM_TABS[tab]({ openTab, link }) : (
         <>
           <div className="flex gap-1.5 mb-4">
             {STATUS_TABS.map(s => (

@@ -4,7 +4,7 @@ import {
   PieChart, ShoppingCart, CreditCard, RotateCcw, Calendar, FileText, CheckCircle,
   BarChart, Clock, AlertTriangle, History, Target, Star, MessageSquare, Briefcase,
   ClipboardList, CalendarCheck, CheckSquare, UserCircle, Beaker, ShieldAlert,
-  FolderOpen, Upload, Pen, User, Bell, Megaphone, Inbox, ShieldCheck, Image, PackagePlus, Lock
+  FolderOpen, Upload, Pen, User, Bell, Megaphone, Inbox, ShieldCheck, Image, PackagePlus, Lock, PackageCheck, Tag
 } from 'lucide-react';
 
 // ============================================================
@@ -65,7 +65,7 @@ const packingMenuItems = [
   { label: 'My Task', path: '/packing/my-task', icon: CheckSquare, module: 'packing' },
   { label: 'Packing Sheet', path: '/packing/packing-sheet', icon: FileText, module: 'packing', feature: 'packingSheet' },
   { label: 'Packing History', path: '/packing/history', icon: BarChart, module: 'packing', feature: 'packingHistory' },
-  { label: 'Expenses', path: '/packaging-dispatch/expenses', icon: Receipt, module: 'packing' },
+  { label: 'Expenses', path: '/packaging-dispatch/expenses', icon: Receipt, module: 'packing', feature: 'expenses' },
   {
     label: 'Training Management',
     path: '/lms',
@@ -96,13 +96,12 @@ const packagingDispatchMenuItems = [
   { label: 'Active Dispatches', path: '/dispatch/active', icon: CheckSquare, module: 'dispatches', feature: 'activeDispatches' },
   { label: 'Dispatch History', path: '/dispatch/completed', icon: BarChart, module: 'dispatches', feature: 'dispatchHistory' },
   { label: 'Delivery Challan', path: '/dispatch/delivery-challan', icon: FileText, module: 'dispatches', feature: 'deliveryChallan' },
-  // Stub (2026-10) — just shows POs where Purchase marked transport as the
-  // company's responsibility (By Vendor tab). No feature key of its own
-  // yet (same reasoning as the backend route reusing dashboardView) —
-  // shown to anyone with dispatches access, like Dashboard/Task Management
-  // above.
-  { label: 'Vendor Pickups', path: '/dispatch/vendor-pickups', icon: Truck, module: 'dispatches' },
-  { label: 'Expenses', path: '/packaging-dispatch/expenses', icon: Receipt, module: 'dispatches' },
+  // Vendor trips (outsource-v2 slice 6, 2026-10-20): "We pick up" POs and
+  // outsource sends; its own permission now (dispatches › vendorPickups),
+  // which also covers the Vehicles list.
+  { label: 'Vendor Pickups', path: '/dispatch/vendor-pickups', icon: Truck, module: 'dispatches', feature: 'vendorPickups' },
+  { label: 'Vehicles', path: '/dispatch/vehicles', icon: Truck, module: 'dispatches', feature: 'vendorPickups' },
+  { label: 'Expenses', path: '/packaging-dispatch/expenses', icon: Receipt, module: 'dispatches', feature: 'expenses' },
   {
     label: 'Training Management',
     path: '/lms',
@@ -260,7 +259,8 @@ const hrAdminMenuItems = [
     module: 'hrms',
     submodules: [
       { label: 'Attendance Record', path: '/hrms/SuperAdmin/attendance-record', feature: 'attendanceRecord' },
-      { label: 'Attendance Requests', path: '/hrms/SuperAdmin/attendance-requests', feature: 'attendanceRequests' }
+      { label: 'Attendance Requests', path: '/hrms/SuperAdmin/attendance-requests', feature: 'attendanceRequests' },
+      { label: 'Attendance Device', path: '/hrms/SuperAdmin/attendance-device', feature: 'attendanceRecord' }
     ]
   },
   {
@@ -446,11 +446,12 @@ const companyAdminMenuItems = [
   // own company's Lead & Quotation Setting requests), not a togglable feature,
   // so it's gated by role alone — same convention as Sidebar.jsx's
   // `item.feature ? hasFeatureAccess(...) : true` fallback for module-level items.
+  { label: 'Attendance Device', path: '/hrms/CompanyAdmin/attendance-device', icon: Clock, module: 'hrms' },
   { label: 'Lead & Quotation Settings', path: '/hrms/CompanyAdmin/lead-settings', icon: ClipboardList, module: 'hrms' },
   // procurement-v2 (2026-10-08): every Purchase/Vendor approval the client's
   // blueprint gives to Purchase Head / Manager / Management is the Company
   // Admin's — role-defining like the item above, so gated by role alone.
-  { label: 'Purchase & Vendor Approval', path: '/hrms/CompanyAdmin/purchase-approvals', icon: ShieldCheck, module: 'hrms' },
+  { label: 'Purchase Approvals', path: '/hrms/CompanyAdmin/purchase-approvals', icon: ShieldCheck, module: 'hrms' },
 ];
 
 const rdMenuItems = [
@@ -553,9 +554,13 @@ const storeMenuItems = [
   { label: 'Orders', path: '/store/orders', icon: Receipt, module: 'Store', feature: 'orders' },
   { label: 'Purchase Orders', path: '/store/purchases/requests', icon: ShoppingCart, module: 'Store', feature: 'purchaseOrders' },
   { label: 'Material Transfers', path: '/store/material-issues', icon: Handshake, module: 'Store', feature: 'materialTransfers' },
+  // Outsourced work Dispatch brings back (2026-10-21) — receive it, its
+  // leftovers, work waiting at Store, and the list of everything received.
+  { label: 'Outsource Receive', path: '/store/outsource-receive', icon: PackageCheck, module: 'Store', feature: 'outsourceReceive' },
   // What production / job-work orders have reserved (2026-10-09) — read-only,
   // shown to anyone who can see Store's Inventory.
   { label: 'Reservations', path: '/store/reservations', icon: Lock, module: 'Store', feature: 'inventory' },
+  { label: 'Label carriers', path: '/store/label-carriers', icon: Tag, module: 'Store', feature: 'inventory' },
   { label: 'Defective Inventory', path: '/store/defective-inventory', icon: AlertTriangle, module: 'Store', feature: 'defectiveInventory' },
   { label: 'Task Management', path: '/store/task-management', icon: CheckSquare, module: 'store' },
   { label: 'My Task', path: '/store/my-task', icon: CheckSquare, module: 'store' },
@@ -635,34 +640,39 @@ export const getMenuItemsByRole = (role) => {
     case 'Superadmin':
     case 'Super Admin':
       return superAdminMenuItems;
-    // Department-tier Employee roles get their ERP menu PLUS the standard
-    // HRMS self-service block (Profile/Attendance/Leave/Holidays/Payroll/
-    // Requests) — Head roles and the bare department role keep just the ERP
-    // menu, unchanged.
+    // Department-tier Employee and Head roles get their ERP menu PLUS the
+    // standard HRMS self-service block (Profile/Attendance/Leave/Holidays/
+    // Payroll/Requests): Heads have salaries and take leave too (2026-11-06). The
+    // bare department role keeps just the ERP menu, unchanged.
     case 'Production Employee':
       return [...productionMenuItems, ...employeeSelfServiceItems({ skipExpenses: true })];
-    case 'Production':
     case 'Production Head':
+      return [...productionMenuItems, ...employeeSelfServiceItems({ skipExpenses: true })];
+    case 'Production':
       return productionMenuItems;
     case 'Packing Employee':
       return [...packingMenuItems, ...employeeSelfServiceItems({ skipExpenses: true })];
-    case 'Packing':
     case 'Packing Head':
+      return [...packingMenuItems, ...employeeSelfServiceItems({ skipExpenses: true })];
+    case 'Packing':
       return packingMenuItems;
     case 'Dispatch Employee':
       return [...packagingDispatchMenuItems, ...employeeSelfServiceItems({ skipExpenses: true })];
-    case 'Dispatch':
     case 'Dispatch Head':
+      return [...packagingDispatchMenuItems, ...employeeSelfServiceItems({ skipExpenses: true })];
+    case 'Dispatch':
       return packagingDispatchMenuItems;
     case 'Sales Employee':
       return [...salesMenuItems, ...employeeSelfServiceItems()];
-    case 'Sales':
     case 'Sales Head':
+      return [...salesMenuItems, ...employeeSelfServiceItems()];
+    case 'Sales':
       return salesMenuItems;
     case 'Account Employee':
       return [...accountsMenuItems, ...employeeSelfServiceItems({ skipExpenses: true })];
-    case 'Accounts':
     case 'Accounts Head':
+      return [...accountsMenuItems, ...employeeSelfServiceItems({ skipExpenses: true })];
+    case 'Accounts':
       return accountsMenuItems;
     case 'Hr Admin':
     case 'HR-Admin':
@@ -676,21 +686,21 @@ export const getMenuItemsByRole = (role) => {
     case 'Research Development Employee':
       return [...rdMenuItems, ...employeeSelfServiceItems({ skipExpenses: true })];
     case 'Research & Development Head':
-      return rdMenuItems;
+      return [...rdMenuItems, ...employeeSelfServiceItems({ skipExpenses: true })];
     case 'Store Employee':
       return [...storeMenuItems, ...employeeSelfServiceItems()];
     case 'Store Head':
-      return storeMenuItems;
+      return [...storeMenuItems, ...employeeSelfServiceItems()];
     case 'Complaint Management Head':
-      return complaintHeadMenuItems;
+      return [...complaintHeadMenuItems, ...employeeSelfServiceItems({ skipExpenses: true })];
     case 'Complaint Management Employee':
       return [...complaintAgentMenuItems, ...employeeSelfServiceItems({ skipExpenses: true })];
     case 'QC Employee':
       return [...qcMenuItems, ...employeeSelfServiceItems()];
     case 'QC Head':
-      return qcMenuItems;
+      return [...qcMenuItems, ...employeeSelfServiceItems()];
     case 'Marketing Head':
-      return marketingMenuItems;
+      return [...marketingMenuItems, ...employeeSelfServiceItems({ skipExpenses: true })];
     case 'Marketing Employee':
       return [...marketingEmployeeMenuItems, ...employeeSelfServiceItems({ skipExpenses: true })];
     case 'MIS Admin':
@@ -735,8 +745,15 @@ function buildRoutePermissionIndex() {
     // guard matches on pathname only, permission is really about the base path.
     const cleanPath = path.split('?')[0];
     if (!index.has(cleanPath)) {
-      index.set(cleanPath, { module, feature: feature || null });
+      index.set(cleanPath, { module, feature: feature || null, anyOf: [{ module, feature: feature || null }] });
+      return;
     }
+    // The same page in another department's menu (e.g. '/packaging-dispatch/expenses'
+    // under both Packing and Dispatch): either department's grant opens it — the
+    // sidebar shows it to both. Within one module the first entry still wins
+    // (see the submodule note below), so a featureless parent can't widen it.
+    const entry = index.get(cleanPath);
+    if (!entry.anyOf.some(a => a.module === module)) entry.anyOf.push({ module, feature: feature || null });
   };
 
   for (const menuArray of ALL_MENU_ARRAYS) {
@@ -777,6 +794,10 @@ const routePermissionIndex = buildRoutePermissionIndex();
 export function getRoutePermission(pathname) {
   if (!pathname) return null;
   const cleanPath = pathname.split('?')[0];
+
+  // Self-service: someone's own attendance, leave, payslips and documents. There's
+  // nothing to grant; the role check on the route still applies (2026-11-11).
+  if (cleanPath.startsWith('/hrms/Employee/')) return null;
 
   const exact = routePermissionIndex.get(cleanPath);
   if (exact) return exact;

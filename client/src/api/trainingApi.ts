@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { watchEmailWarnings } from '@/lib/emailWarning';
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
@@ -6,6 +7,7 @@ const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 export const trainingClient = axios.create({
   baseURL: `${API_BASE}/training`,
 });
+watchEmailWarnings(trainingClient);
 
 // Auto-attach the auth token to every request
 trainingClient.interceptors.request.use((config) => {

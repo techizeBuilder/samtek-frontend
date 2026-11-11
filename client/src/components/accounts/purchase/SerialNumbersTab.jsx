@@ -19,10 +19,90 @@ const TONE = {
   'QC rejected': 'bg-red-50 text-red-700 border-red-200',
 };
 const STATUSES = ['all', 'In QC', 'Accepted', 'Part rejected', 'QC rejected'];
-const KINDS = [['', 'Serials & lots'], ['serial', 'Serials only'], ['lot', 'Lots only']];
+const KINDS = [['', 'Serials & lots'], ['serial', 'Serials only'], ['lot', 'Lots only'], ['sticker', 'Stickers (our parts)']];
 const LIMIT = 50;
 
+// Went ahead with fewer serials than pieces, after the warning (2026-11-03).
+function SkippedSerials() {
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const q = useDebouncedValue(search.trim(), 300);
+  const params = new URLSearchParams({ page: String(page), limit: String(LIMIT) });
+  if (q) params.set('search', q);
+  const { data, isLoading } = useQuery({
+    queryKey: ['/api/serial-numbers/skips', q, page],
+    queryFn: () => apiRequest('GET', `/api/serial-numbers/skips?${params}`),
+    keepPreviousData: true,
+  });
+  const rows = data?.rows || [];
+  const total = data?.total || 0;
+  const pages = Math.max(1, Math.ceil(total / LIMIT));
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 min-w-[220px] max-w-md">
+          <Search className="w-4 h-4 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+          <Input className="pl-8 bg-white" placeholder="Item, screen, order or person…" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
+        </div>
+        <span className="text-xs text-slate-500 ml-auto">{total} record{total === 1 ? '' : 's'}</span>
+      </div>
+      <div className="bg-white border rounded-lg overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-slate-50 text-[11px] uppercase text-slate-500">
+            <tr>
+              <th className="text-left font-semibold px-3 py-2">When</th>
+              <th className="text-left font-semibold px-3 py-2">Item</th>
+              <th className="text-left font-semibold px-3 py-2">Screen</th>
+              <th className="text-right font-semibold px-3 py-2">Pieces</th>
+              <th className="text-right font-semibold px-3 py-2">Serials picked</th>
+              <th className="text-left font-semibold px-3 py-2">Order / ticket</th>
+              <th className="text-left font-semibold px-3 py-2">Who</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {isLoading ? (
+              <tr><td colSpan={7} className="px-3 py-8 text-center text-slate-400">Loading…</td></tr>
+            ) : rows.length === 0 ? (
+              <tr><td colSpan={7} className="px-3 py-8 text-center text-slate-400 italic">{q ? 'Nothing matches.' : 'Nobody has gone ahead without a serial number yet.'}</td></tr>
+            ) : rows.map(r => (
+              <tr key={r._id}>
+                <td className="px-3 py-2 whitespace-nowrap text-slate-600">{day(r.createdAt)}</td>
+                <td className="px-3 py-2 text-slate-700">{r.itemName}</td>
+                <td className="px-3 py-2 text-slate-700">{r.screen}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{r.qty}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{r.picked}</td>
+                <td className="px-3 py-2 text-slate-600">{r.reference || '—'}</td>
+                <td className="px-3 py-2 text-slate-600">{r.byName || '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {pages > 1 && (
+        <div className="flex items-center justify-end gap-2 text-xs text-slate-500">
+          <Button size="sm" variant="outline" className="h-7" disabled={page <= 1} onClick={() => setPage(p => p - 1)}><ChevronLeft className="w-3.5 h-3.5" /></Button>
+          Page {page} of {pages}
+          <Button size="sm" variant="outline" className="h-7" disabled={page >= pages} onClick={() => setPage(p => p + 1)}><ChevronRight className="w-3.5 h-3.5" /></Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function SerialNumbersTab() {
+  const [view, setView] = useState('serials');
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-2">
+        <Button size="sm" variant={view === 'serials' ? 'default' : 'outline'} onClick={() => setView('serials')}>Serials &amp; lots</Button>
+        <Button size="sm" variant={view === 'skipped' ? 'default' : 'outline'} onClick={() => setView('skipped')}>Went without a serial</Button>
+      </div>
+      {view === 'serials' ? <SerialList /> : <SkippedSerials />}
+    </div>
+  );
+}
+
+function SerialList() {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('all');
   const [kind, setKind] = useState('');
@@ -69,17 +149,20 @@ export default function SerialNumbersTab() {
               <th className="text-left font-semibold px-3 py-2">Received</th>
               <th className="text-left font-semibold px-3 py-2">Vendor warranty</th>
               <th className="text-left font-semibold px-3 py-2">Status</th>
+              <th className="text-left font-semibold px-3 py-2">Where it is</th>
             </tr>
           </thead>
           <tbody className="divide-y">
             {isLoading ? (
-              <tr><td colSpan={6} className="px-3 py-8 text-center text-slate-400">Loading…</td></tr>
+              <tr><td colSpan={7} className="px-3 py-8 text-center text-slate-400">Loading…</td></tr>
             ) : rows.length === 0 ? (
-              <tr><td colSpan={6} className="px-3 py-8 text-center text-slate-400 italic">{q || status !== 'all' || kind ? 'Nothing matches.' : 'Nothing received with a serial number yet.'}</td></tr>
+              <tr><td colSpan={7} className="px-3 py-8 text-center text-slate-400 italic">{q || status !== 'all' || kind ? 'Nothing matches.' : 'Nothing received with a serial number yet.'}</td></tr>
             ) : rows.map(u => (
               <tr key={u._id} className="align-top">
                 <td className="px-3 py-2">
-                  <p className="font-mono font-semibold text-slate-800">{u.serialNumber}</p>
+                  <p className="font-mono font-semibold text-slate-800">{u.isSticker ? u.labelNo : u.serialNumber}</p>
+                  {u.isSticker && <p className="text-[11px] text-slate-500">sticker · built in {u.builtIn?.orderNo}</p>}
+                  {u.isSticker && (u.contains?.units || []).length > 0 && <p className="text-[11px] text-slate-500">holds {(u.contains.units || []).map(x => x.serialNumber).join(', ')}</p>}
                   {u.isLot && <p className="text-[11px] text-slate-500">Lot · {u.lotQty} {u.qtyUnit}</p>}
                 </td>
                 <td className="px-3 py-2 text-slate-700">{u.itemName}</td>
@@ -110,6 +193,12 @@ export default function SerialNumbersTab() {
                       {u.claims.count} warranty claim{u.claims.count > 1 ? 's' : ''} · {u.claims.latestNumber} {u.claims.latestOutcome || u.claims.latestStatus}
                     </p>
                   )}
+                </td>
+                <td className="px-3 py-2 text-[11px] text-slate-600 min-w-[180px]">
+                  {/* Serial number work step 2: where it went — order, part, customer. */}
+                  {u.where?.steps?.length ? u.where.steps.map((st, i) => (
+                    <span key={i}>{i > 0 && ' → '}<span className={st.what === 'Customer order' || st.what === 'Sold' ? 'font-semibold text-emerald-700' : ''}>{st.what}{st.ref ? ` ${st.ref}` : ''}</span></span>
+                  )) : <span className="text-slate-400">—</span>}
                 </td>
               </tr>
             ))}

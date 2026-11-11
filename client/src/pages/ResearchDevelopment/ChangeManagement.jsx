@@ -268,6 +268,9 @@ export default function ChangeManagement() {
                     Reject Change
                   </button>
                 </div>
+                {resolveAction === 'approve' && (
+                  <p className="text-xs text-slate-500 mt-2">Approving unlocks this machine's BOM. Lock it again from BOM Management when the edit is done.</p>
+                )}
               </div>
               <div>
                 <label className="text-xs font-semibold text-slate-600 mb-1 block">R&D Notes / Reason *</label>

@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { ChevronDown, ClipboardList, Layers, FileText, Wrench } from 'lucide-react';
 import MasterChecklistPanel from '@/components/qc/MasterChecklistPanel';
 import StepChecklistCards from '@/components/qc/StepChecklistCards';
+import IncomingChecklistCard from '@/components/qc/IncomingChecklistCard';
 
 const resolveMediaUrl = (url) => (!url ? '' : (url.startsWith('http') || url.startsWith('data:')) ? url : `${config.baseURL}${url}`);
 
@@ -107,6 +108,7 @@ export default function ChildPartInventoryQC() {
 
   const [selectedItemId, setSelectedItemId] = useState('');
   const [masterDialogOpen, setMasterDialogOpen] = useState(false);
+  const [incomingMasterOpen, setIncomingMasterOpen] = useState(false);
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['child-part-qc-list'],
@@ -117,10 +119,15 @@ export default function ChildPartInventoryQC() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-end">
+      <div className="flex flex-col items-end gap-2">
         <Button variant="outline" onClick={() => setMasterDialogOpen(true)}>
           <ClipboardList className="h-4 w-4 mr-1.5" /> Manage Master Checklist
         </Button>
+        {canManage && (
+          <Button variant="outline" onClick={() => setIncomingMasterOpen(true)}>
+            <ClipboardList className="h-4 w-4 mr-1.5" /> Manage Incoming Master List
+          </Button>
+        )}
       </div>
 
       <Card className="border-none shadow-sm">
@@ -171,6 +178,12 @@ export default function ChildPartInventoryQC() {
             module={MODULE} itemId={selectedItemId} itemCode={selectedItem?.code}
             canManage={canManage} onManageMaster={() => setMasterDialogOpen(true)}
           />
+
+          <IncomingChecklistCard
+            module={MODULE} itemId={selectedItemId}
+            bought={selectedItem?.partSourcing === 'buy'}
+            canManage={canManage} onManageMaster={() => setIncomingMasterOpen(true)}
+          />
         </>
       )}
 
@@ -181,6 +194,17 @@ export default function ChildPartInventoryQC() {
           <MasterChecklistPanel module={MODULE} stage="process" featureKey="qcChildPart" />
           <DialogFooter>
             <Button variant="outline" onClick={() => setMasterDialogOpen(false)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={incomingMasterOpen} onOpenChange={setIncomingMasterOpen}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>Manage Master Checklist — Incoming (bought)</DialogTitle></DialogHeader>
+          <p className="text-xs text-slate-500 -mt-2">Checks for a finished part received from a vendor — separate from the build-step list.</p>
+          <MasterChecklistPanel module={MODULE} stage="incoming" featureKey={"qcChildPart"} />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIncomingMasterOpen(false)}>Close</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import SerialPicker, { emptyPick } from '@/components/serials/SerialPicker';
+import { useConfirmWarnings } from '@/components/serials/useConfirmWarnings';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useProduction, useProductionOrdersList, computeOrderProgress, PROCESS_TYPE_MAP, stepsForOrderKind } from '@/contexts/ProductionContext';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -17,6 +19,7 @@ import StepMaterialStatus from '@/components/production/StepMaterialStatus';
 import { apiRequest } from '@/lib/queryClient';
 import { config } from '@/config/environment';
 import { showSmartToast } from '@/lib/toast-utils';
+import RejectionEvidence from '@/components/qc/RejectionEvidence';
 
 const IMAGE_EXTS = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'];
 const fileExt = (url) => (url || '').split('.').pop()?.toLowerCase().split('?')[0] || '';
@@ -229,7 +232,28 @@ export default function ProcessExecution() {
 
   // How many physical machines this order builds, and which one is on screen.
   const unitCount = getUnitCountFor(selectedOrder);
+  // A Sub Child Part goes out for outsourcing as ONE batch (its whole qty) —
+  // only Child Part / Machine orders pick units (2026-10-22 fix: the dialog
+  // offered "Unit 1 / Unit 2" for a 2-piece Sub Child Part).
+  const outsourceUnitCount = selectedOrder?.orderKind === 'SubChildPart' ? 1 : unitCount;
   const activeProcesses = getUnitProcessesFor(selectedOrder, activeUnit);
+  // Outsource v2 slice 4 (2026-10-24): Production types its own cost /
+  // expense at the unit's (a Sub Child Part: the batch's) LAST IN-HOUSE step —
+  // every later step outsourced — not only at the true last step. Asked once.
+  const isLastInHouse = (procs, i) => !!procs?.[i] && procs[i].type !== 'Outsourcing' && procs.slice(i + 1).every(p => p.type === 'Outsourcing');
+  const costEntered = (selectedOrder?.unitCosts || []).some(u => u.unitIndex === (selectedOrder?.orderKind === 'SubChildPart' ? 0 : activeUnit - 1) && u.productionCost != null);
+  const asksCost = (i) => i === activeProcesses.length - 1 || (isLastInHouse(activeProcesses, i) && !costEntered);
+  const [lastInHouseDialog, setLastInHouseDialog] = useState(null); // { step }
+  const [lihCost, setLihCost] = useState('');
+  const [lihExpense, setLihExpense] = useState('');
+  const closeLih = () => { setLastInHouseDialog(null); setLihCost(''); setLihExpense(''); };
+  // The unit's build cost so far (2026-10-24 — the user: show the outsourced
+  // money as it builds up, marked not final). Same numbers the BOM push uses.
+  const unitCostQ = useQuery({
+    queryKey: ['unit-cost', selectedOrder?._id, selectedOrder?.orderKind === 'SubChildPart' ? 1 : activeUnit, selectedOrder?.updatedAt],
+    queryFn: () => apiRequest('GET', `/api/production-mfg/orders/${selectedOrder._id}/unit-cost?unit=${selectedOrder?.orderKind === 'SubChildPart' ? 1 : activeUnit}`).then(r => r.data),
+    enabled: !!selectedOrder?._id && !!selectedOrder?.processes?.length,
+  });
   // QC multi-checkpoint redesign (slice 2, 2026-09-26) — Sub Child Part's own
   // multi-step case (whole-batch submit), Stage B (2026-09-26) — Child
   // Part's own (per-unit submit), and Stage C (2026-09-28) — Machine's own
@@ -293,6 +317,11 @@ export default function ProcessExecution() {
   // thing on this page shared by both Machine and Child Part orders, so it
   // picks its endpoint off this flag.
   const isMachineOrder = !!selectedOrder && !isSubChildPartOrder && !isInHouseSubChildPart;
+  // outsource-v2 (2026-10-20): a hybrid Sub Child Part whose first step is
+  // Out Source sends its raw material to the vendor with that first trip —
+  // Purchase's send takes it out of Store — so Production never issues it
+  // (the server refuses too).
+  const scpMaterialGoesToVendor = isInHouseSubChildPart && selectedOrder?.processes?.[0]?.type === 'Outsourcing';
   // 3-way branch (2026-09-19) — Sub Child Part orders get their own Material
   // List now too (subChildPartOrderService.js's buildSubChildPartRawMaterialList/
   // requestSubChildPartRawMaterial), same {categories:[...]} shape and same
@@ -327,6 +356,14 @@ export default function ProcessExecution() {
   const [issueQty, setIssueQty] = useState('');
   const [returnRow, setReturnRow] = useState(null);
   const [returnForm, setReturnForm] = useState({ qty: '', type: 'Excess', reason: '', lenValue: '', lenUnit: 'Millimeter', widValue: '', widUnit: 'Millimeter' });
+  // Serial number work step 2: which tracked serials / stickers come back.
+  const [returnSerials, setReturnSerials] = useState(emptyPick());
+  const [returnSerialsOk, setReturnSerialsOk] = useState(true);
+  // A part its cascade delivered has no sticker: what's inside it (2 Nov review).
+  const [returnInside, setReturnInside] = useState(emptyPick());
+  const [returnInsideOk, setReturnInsideOk] = useState(true);
+  const [returnNothingInside, setReturnNothingInside] = useState(false);
+  const isFabRow = (row) => ['Sheet Metal', 'Length Fabrication'].includes(row?.category);
 
   const issueMut = useMutation({
     mutationFn: ({ demandKey, requestQuantity }) =>
@@ -340,14 +377,47 @@ export default function ProcessExecution() {
     onSuccess: () => { refreshScpMaterial(); showSmartToast({ message: 'Material received.' }, ''); },
     onError: (e) => showSmartToast(e, 'Receive Failed'),
   });
+  const { runChecked, warningDialog } = useConfirmWarnings();
   const returnMut = useMutation({
-    mutationFn: (body) => apiRequest('POST', `/api/production-mfg/orders/${selectedOrderKey}/materials/return`, body),
-    onSuccess: () => { refreshScpMaterial(); showSmartToast({ message: 'Return request submitted — awaiting Store.' }, ''); setReturnRow(null); },
+    mutationFn: (body) => runChecked((acknowledgeWarnings) => apiRequest('POST', `/api/production-mfg/orders/${selectedOrderKey}/materials/return`, { ...body, acknowledgeWarnings })),
+    onSuccess: (res) => { if (!res) return; refreshScpMaterial(); showSmartToast({ message: 'Return request submitted — awaiting Store.' }, ''); setReturnRow(null); },
     onError: (e) => showSmartToast(e, 'Return Failed'),
   });
 
+  // outsource-v2 slice 6 — what this order hands to Dispatch for an outsource
+  // trip (the units, and its part of the material, from the Outsource Order's
+  // material plan).
+  const dispatchHandoversQ = useQuery({
+    queryKey: ['production-dispatch-handovers', selectedOrderKey],
+    queryFn: () => apiRequest('GET', `/api/dispatch-trips/production/orders/${selectedOrderKey}`).then(r => r.data || []),
+    enabled: !!selectedOrderKey,
+  });
+  const dispatchHandoverMut = useMutation({
+    mutationFn: ({ tripId, jobId }) => apiRequest('POST', `/api/dispatch-trips/${tripId}/jobs/${jobId}/production-handover`, { productionOrder: selectedOrderKey }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['production-dispatch-handovers'] }); showSmartToast({ message: 'Handed over to Dispatch.' }, ''); },
+    onError: (e) => showSmartToast(e, 'Hand Over Failed'),
+  });
+
+  // What can go back, from the server; the Sub Child Part batch list doesn't send it.
+  const returnRoom = (row) => {
+    if (row?.returnable) return row.returnable;
+    const held = (row?.issuedQty || 0) - (row?.returnPendingQty || 0);
+    return { excess: held, defect: held };
+  };
+  // What has already gone from this line, for the Availability column.
+  const usageSummary = (row) => {
+    const r3 = (n) => Math.round((n || 0) * 1000) / 1000;
+    const used = r3(row.usage?.used), withVendor = r3(row.usage?.withVendor);
+    const whole = row.issueTotal > 0 && used + withVendor >= row.issueTotal - 1e-6;
+    const text = whole && !withVendor ? 'Used'
+      : whole && !used ? 'With vendor'
+      : [used > 0 && `${used} used`, withVendor > 0 && `${withVendor} with vendor`].filter(Boolean).join(' · ');
+    return { used, withVendor, whole, text };
+  };
   const openReturn = (row) => {
-    setReturnForm({ qty: '', type: 'Excess', reason: '', lenValue: '', lenUnit: 'Millimeter', widValue: '', widUnit: 'Millimeter' });
+    setReturnForm({ qty: '', type: returnRoom(row).excess > 0 ? 'Excess' : 'Defect', reason: '', lenValue: '', lenUnit: 'Millimeter', widValue: '', widUnit: 'Millimeter' });
+    setReturnSerials(emptyPick()); setReturnSerialsOk(true);
+    setReturnInside(emptyPick()); setReturnInsideOk(true); setReturnNothingInside(false);
     setReturnRow(row);
   };
   const submitReturn = () => {
@@ -357,6 +427,7 @@ export default function ProcessExecution() {
       returnQuantity: Number(returnForm.qty),
       reason: returnForm.reason,
       returnType: returnForm.type,
+      ...(isFabRow(returnRow) ? {} : { unitIds: returnSerials.unitIds, labelIds: returnSerials.labelIds, insideUnitIds: returnInside.unitIds, insideLabelIds: returnInside.labelIds, nothingInside: returnNothingInside }),
     };
     if (isSheet) {
       body.leftoverLengthValue = Number(returnForm.lenValue);
@@ -618,6 +689,21 @@ export default function ProcessExecution() {
   };
 
   const handleSendForOutsourcing = async (stepIndex) => {
+    // A Sub Child Part QC rework resend (2026-10-27): only the pieces QC sent
+    // back go, and only this step — a later step goes out with the whole
+    // batch afterwards (the server refuses it too). Shown with its quantity.
+    if (selectedOrder?.orderKind === 'SubChildPart' && activeProcesses[stepIndex]?.reworks?.length > 0) {
+      try {
+        const info = (await apiRequest('GET', `/api/outsource-work/orders/${selectedOrderKey}/rework?stepIndex=${stepIndex}`))?.data;
+        if (info?.rework) {
+          setOutsourceSendPicker({ run: [stepIndex], selectedCount: 1, eligibleUnitsByCount: {}, selectedUnits: new Set(), reworkQty: info.qty });
+          return;
+        }
+      } catch (error) {
+        showSmartToast(error, 'Send for Outsourcing Failed');
+        return;
+      }
+    }
     // Walk forward from stepIndex while still an untouched Out Source step —
     // same contiguity rule validateContiguousOutSourceRun enforces server-
     // side, computed here just to know whether there's a real bundling
@@ -628,14 +714,14 @@ export default function ProcessExecution() {
       if (p.type !== 'Outsourcing' || p.outsourceStatus !== 'NotStarted') break;
       run.push(i);
     }
-    if (run.length === 1 && unitCount === 1) {
+    if (run.length === 1 && outsourceUnitCount === 1) {
       await sendOutsourceHandoff(run, [activeUnit - 1]);
       return;
     }
     setOutsourceBusy(true);
     try {
       const eligibleUnitsByCount = {};
-      if (unitCount > 1) {
+      if (outsourceUnitCount > 1) {
         const results = await Promise.all(run.map((_, i) => {
           const stepIndices = run.slice(0, i + 1);
           return apiRequest('GET', `/api/outsource-work/orders/${selectedOrderKey}/eligible-units?stepIndices=${stepIndices.join(',')}&unitIndex=${activeUnit - 1}`);
@@ -950,6 +1036,18 @@ export default function ProcessExecution() {
                 <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
                   <p className="text-xs text-blue-500 mb-1">Quantity</p>
                   <p className="font-bold text-blue-800 text-base">{unitCount} unit{unitCount > 1 ? 's' : ''}</p>
+                  {/* Pieces lost at a vendor (2026-10-27 — partial returns). */}
+                  {(selectedOrder.lostAtVendor || []).length > 0 && (() => {
+                    const lost = selectedOrder.lostAtVendor.reduce((s, l) => s + l.qty, 0);
+                    return <p className="text-[11px] text-amber-700 mt-0.5">{lost} lost at vendor → {Math.max(0, unitCount - lost)} in the batch{selectedOrder.lostAtVendor.some(l => l.replacementOrderCode) ? ` · replacement ${selectedOrder.lostAtVendor.filter(l => l.replacementOrderCode).map(l => l.replacementOrderCode).join(', ')}` : ''}</p>;
+                  })()}
+                  {selectedOrder.closedAllLost && <p className="text-[11px] font-semibold text-red-700 mt-0.5">All lost at the vendor: 0 made. This order is closed.</p>}
+                  {selectedOrder.deliverToParent && selectedOrder.parentOrderNo && <p className="text-[11px] text-indigo-700 mt-0.5">built for {selectedOrder.parentOrderNo} — finished parts go straight to it ({selectedOrder.deliveredToParentQty || 0} delivered)</p>}
+                  {selectedOrder.replacesLostOf?.orderCode && <p className="text-[11px] text-slate-500 mt-0.5">replaces pieces of {selectedOrder.replacesLostOf.orderCode}{selectedOrder.replacesLostOf.why ? ` (${selectedOrder.replacesLostOf.why})` : ''}</p>}
+                  {/* Replacements raised for QC scrap / rejects (2026-10-27). */}
+                  {(selectedOrder.replacements || []).map((x, i) => (
+                    <p key={i} className="text-[11px] text-amber-700 mt-0.5">{x.qty} {x.why ? x.why.toLowerCase() : 'scrapped'} → replacement {x.orderCode}</p>
+                  ))}
                 </div>
                 <div className="bg-slate-50 rounded-lg p-3">
                   <p className="text-xs text-slate-400 mb-1">Priority</p>
@@ -1099,6 +1197,32 @@ export default function ProcessExecution() {
             </CardContent>
           </Card>
 
+          {(selectedOrder?.workAtStore || []).length > 0 && (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 px-4 py-2 text-sm text-emerald-800">
+              Outsourced work waiting at Store for {selectedOrder.orderKind === 'SubChildPart' ? 'this batch' : `unit${selectedOrder.workAtStore.length === 1 ? '' : 's'} ${selectedOrder.workAtStore.map(w => w.unitIndex + 1).join(', ')}`} — it comes to you by itself once QC passes it; until then its next step can't be given to a team.
+            </div>
+          )}
+
+          {(dispatchHandoversQ.data || []).length > 0 && (
+            <Card className="border border-violet-200 bg-violet-50/40 shadow-sm">
+              <CardContent className="p-4 space-y-2">
+                <p className="text-sm font-semibold text-violet-800 flex items-center gap-2"><Send className="h-4 w-4" /> To hand over to Dispatch</p>
+                {dispatchHandoversQ.data.map(h => (
+                  <div key={`${h.tripId}-${h.jobId}`} className="flex items-center justify-between gap-2 flex-wrap text-sm border-t border-violet-100 pt-2">
+                    <span>
+                      <b>{h.summary}</b> for {h.itemName} ({(h.stepNames || []).join(' › ')}) — {h.orderNo}
+                      <span className="block text-xs text-slate-500">Trip {h.tripNo} · {h.date ? new Date(h.date).toLocaleDateString('en-IN') : ''} · {h.vehicleNumber}{h.driverName ? ` · ${h.driverName}` : ''} → {h.vendorName}</span>
+                    </span>
+                    {canEdit && (
+                      <Button size="sm" className="bg-violet-600 hover:bg-violet-700 text-white" disabled={dispatchHandoverMut.isPending}
+                        onClick={() => dispatchHandoverMut.mutate({ tripId: h.tripId, jobId: h.jobId })}>Hand over</Button>
+                    )}
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
           {/* Material List — Child Part orders and Machine orders (2026-09-17),
               and Sub Child Part orders too (2026-09-19). Shown inline right
               after BOM & Design (not behind a button, no BOM PDF), same
@@ -1120,6 +1244,11 @@ export default function ProcessExecution() {
                   </h2>
                   <span className="text-xs text-slate-400">Order Quantity: {selectedOrder.orderQuantity || 1}</span>
                 </div>
+                {scpMaterialGoesToVendor && (
+                  <p className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-3 py-1.5">
+                    This material goes to the vendor with the first outsourced step — Store hands it to Dispatch, so it isn’t issued to Production.
+                  </p>
+                )}
                 {materialListLoading ? (
                   <p className="text-sm text-slate-400 text-center py-8">Loading materials…</p>
                 ) : materialListCategories.length === 0 ? (
@@ -1153,14 +1282,30 @@ export default function ProcessExecution() {
                               {cat.materials.map(m => {
                                 const row = { ...m, category: cat.name };
                                 const inTransit = (m.transferredQty || 0) - (m.issuedQty || 0);
-                                const onFloor = (m.issuedQty || 0) - (m.returnPendingQty || 0);
-                                const canRequestMore = (m.requestedQty || 0) < (m.issueTotal || 0);
+                                const room = returnRoom(m);
+                                const canReturn = room.excess > 0 || room.defect > 0;
+                                const gone = usageSummary(m);
+                                // issueLimit (outsource-v2 slice 5): the whole order's need less what goes
+                                // to a vendor straight from Store.
+                                const limit = m.issueLimit ?? m.issueTotal ?? 0;
+                                const canRequestMore = !scpMaterialGoesToVendor && (m.requestedQty || 0) < limit;
                                 const pct = m.issueTotal ? Math.min(100, Math.round((m.issuedQty / m.issueTotal) * 100)) : 0;
                                 return (
                                   <tr key={m.demandKey} className="border-b border-slate-50 last:border-0 align-top">
                                     <td className="px-3 py-2 max-w-[200px]">
                                       <span className="block text-slate-700 line-clamp-2" title={m.name}>{m.name}</span>
                                       <span className="block font-mono text-[11px] text-blue-600 truncate" title={m.code}>{m.code}</span>
+                                      {m.toVendor && (
+                                        <span className="block text-[11px] text-violet-700 mt-0.5" title="Store sends this part straight to the vendor (through Dispatch) — it isn't issued to Production.">
+                                          {Math.round(m.toVendor.store * 1000) / 1000} {m.issueUnit} goes to the vendor ({m.toVendor.orders.join(', ')})
+                                        </span>
+                                      )}
+                                      {m.cascade && (
+                                        <span className="block text-[11px] text-indigo-700 mt-0.5" title={m.cascade.viaStore ? 'Built for this order by its own build order. Its last step is outsourced, so it comes back through Store and QC: Store holds it for a vendor trip, or it reaches Production by itself when the step using it is in-house.' : 'Built for this order by its own build order — delivered straight here when finished, never through Store.'}>
+                                          Built for this order ({m.cascade.orders.join(', ') || 'build order'}): {m.cascade.delivered} of {m.cascade.covered} delivered{m.cascade.viaStore ? ' through Store' : ''}
+                                          {m.issueTotal - m.cascade.covered > 0 ? ` · from stock: ${Math.round((m.issueTotal - m.cascade.covered) * 1000) / 1000}` : ''}
+                                        </span>
+                                      )}
                                     </td>
                                     <td className="px-3 py-2 text-slate-600 max-w-[130px]">
                                       <span className="block line-clamp-2" title={m.processType || ''}>{m.processType || '—'}</span>
@@ -1187,14 +1332,21 @@ export default function ProcessExecution() {
                                             </div>
                                             <span className="text-xs text-slate-600">{m.issuedQty}/{m.issueTotal}</span>
                                           </div>
-                                          <span className="text-[11px] font-semibold text-slate-500">{m.demandStatus}{m.returnPendingQty > 0 ? ` · ${m.returnPendingQty} return pending` : ''}</span>
+                                          <span className="block text-[11px] font-semibold text-slate-500">{gone.whole ? gone.text : m.demandStatus}{!gone.whole && gone.text ? ` · ${gone.text}` : ''}{m.returnPendingQty > 0 ? ` · ${m.returnPendingQty} return pending` : ''}</span>
                                         </>
+                                      ) : gone.whole ? (
+                                        <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-blue-50 text-blue-700">
+                                          {gone.text}{gone.text === 'Used' ? ` ${gone.used}/${m.issueTotal}` : ''}
+                                        </span>
                                       ) : (
-                                        <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${
-                                          m.availability === 'Available' ? 'bg-emerald-100 text-emerald-700'
-                                            : m.availability === 'Sent to Purchase' ? 'bg-amber-100 text-amber-700'
-                                            : 'bg-slate-100 text-slate-500'
-                                        }`}>{m.availability}</span>
+                                        <>
+                                          <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${
+                                            m.availability === 'Available' ? 'bg-emerald-100 text-emerald-700'
+                                              : m.availability === 'Sent to Purchase' ? 'bg-amber-100 text-amber-700'
+                                              : 'bg-slate-100 text-slate-500'
+                                          }`}>{m.cascade?.viaStore && m.cascade.delivered > 0 && m.availability === 'In Production' ? `${m.cascade.delivered} at Store` : m.availability}</span>
+                                          {gone.text && <span className="block text-[11px] font-semibold text-slate-500 mt-0.5">{gone.text}</span>}
+                                        </>
                                       )}
                                     </td>
                                     <td className="px-3 py-2">
@@ -1211,13 +1363,13 @@ export default function ProcessExecution() {
                                             Issue
                                           </Button>
                                         )}
-                                        {onFloor > 0 && (
+                                        {canReturn && (
                                           <Button size="sm" variant="outline" className="h-7 text-xs border-amber-300 text-amber-700 hover:bg-amber-50"
                                             onClick={() => openReturn(row)}>
                                             Return
                                           </Button>
                                         )}
-                                        {!inTransit && !canRequestMore && !onFloor && (
+                                        {!inTransit && !canRequestMore && !canReturn && (
                                           <span className="text-xs text-slate-300">—</span>
                                         )}
                                       </div>
@@ -1279,6 +1431,29 @@ export default function ProcessExecution() {
               label (proc.category). Purely a display grouping: the category
               is just a heading, every action/state below is still wired to
               the individual internal-process step, unchanged. */}
+          {/* Slice 4 (2026-10-24): this unit's (batch's) build cost — what
+              Production typed, and the outsourced money once it's finished. */}
+          {(() => {
+            const uc = unitCostQ.data;
+            if (!uc || (!uc.production && !(uc.jobWorkSoFar > 0) && !uc.outsourcedStepsToCome?.length)) return null;
+            const rs = (n) => `₹${(Math.round((Number(n) || 0) * 100) / 100).toLocaleString('en-IN')}`;
+            const final = uc.finished && !uc.waitingFor?.length;
+            return (
+              <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 flex flex-wrap gap-x-4 gap-y-1">
+                <span className="font-semibold text-slate-700">Build cost{selectedOrder?.orderKind === 'SubChildPart' ? ' (batch)' : ` — Unit ${activeUnit}`}</span>
+                <span>{uc.production ? <>Production {rs(uc.production.cost)} + expense {rs(uc.production.expense)}{uc.production.by ? ` · by ${uc.production.by}` : ''}</> : <span className="text-slate-400">Production cost: asked at your last in-house step</span>}</span>
+                <span>
+                  Job work (outsource) {final ? '' : 'so far '}<b className="text-slate-800">{rs(uc.jobWorkSoFar)}</b>
+                  {final
+                    ? <span className="text-emerald-700"> · final{uc.pushedAt ? ` · on the BOM ${new Date(uc.pushedAt).toLocaleDateString('en-IN')}` : ''}</span>
+                    : uc.outsourcedStepsToCome?.length > 0
+                      ? <span className="text-amber-700"> · not final — {uc.outsourcedStepsToCome.join(', ')} still to come</span>
+                      : <span className="text-amber-700"> · not final</span>}
+                </span>
+                {uc.waitingFor?.length > 0 && <span className="text-violet-700">waiting for the time on {uc.waitingFor.join(', ')}</span>}
+              </div>
+            );
+          })()}
           <div className="space-y-5">
             {groupProcessesByCategory(activeProcesses).map((group, gIdx) => (
               <div key={`${group.category || 'ungrouped'}-${gIdx}`} className="space-y-3">
@@ -1352,8 +1527,13 @@ export default function ProcessExecution() {
 
                           {/* Notes & Reworks */}
                           {proc.reworks.length > 0 && (
-                            <div className="mt-2 p-2 bg-red-50 border border-red-100 rounded text-xs text-red-700">
-                              <strong>Reworks ({proc.reworks.length}):</strong> {proc.reworks.map(r => r.reason).join('; ')}
+                            <div className="mt-2 p-2 bg-red-50 border border-red-100 rounded text-xs text-red-700 space-y-1.5">
+                              <p><strong>Reworks ({proc.reworks.length}):</strong> {proc.reworks.map(r => r.reason).join('; ')}</p>
+                              {/* The latest rejection's failed checks + QC's photos (2026-10-30). */}
+                              {(() => {
+                                const last = proc.reworks[proc.reworks.length - 1];
+                                return <RejectionEvidence compact failedChecks={last?.failedChecks} photos={last?.photos} downloadName={`${proc.step}-rework-${proc.reworks.length}`} />;
+                              })()}
                             </div>
                           )}
                           {proc.notes && (
@@ -1439,7 +1619,9 @@ export default function ProcessExecution() {
                           <>
                             {!(isSubChildPartOrder && (proc.step === 'Painting' || proc.step === 'Assembly')) && proc.step !== 'Final Testing'
                               && !isBatchQcStep && !isBatchLastNonQc && !isUnitQcStep && !isUnitLastNonQc && (
-                              <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white text-xs" onClick={() => markProcessComplete(selectedOrderId, proc.step, activeUnit)}>
+                              <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white text-xs" onClick={() => (idx !== activeProcesses.length - 1 && isLastInHouse(activeProcesses, idx) && !costEntered
+                                ? setLastInHouseDialog({ step: proc.step })
+                                : markProcessComplete(selectedOrderId, proc.step, activeUnit))}>
                                 <CheckCircle className="h-3.5 w-3.5 mr-1" /> Mark Complete
                               </Button>
                             )}
@@ -1459,7 +1641,7 @@ export default function ProcessExecution() {
                                 array's true last index also needs cost. */}
                             {isBatchQcStep && (
                               <Button size="sm" className="bg-purple-600 hover:bg-purple-700 text-white text-xs" disabled={batchQcBusy}
-                                onClick={() => handleClickSubmitBatchQcStep(idx, proc.step, idx === activeProcesses.length - 1)}>
+                                onClick={() => handleClickSubmitBatchQcStep(idx, proc.step, asksCost(idx))}>
                                 <CheckCircle className="h-3.5 w-3.5 mr-1" /> Submit to QC
                               </Button>
                             )}
@@ -1481,7 +1663,7 @@ export default function ProcessExecution() {
                                 case above. */}
                             {isUnitQcStep && (
                               <Button size="sm" className="bg-purple-600 hover:bg-purple-700 text-white text-xs" disabled={unitQcBusy}
-                                onClick={() => handleClickSubmitUnitQcStep(idx, proc.step, idx === activeProcesses.length - 1)}>
+                                onClick={() => handleClickSubmitUnitQcStep(idx, proc.step, asksCost(idx))}>
                                 <CheckCircle className="h-3.5 w-3.5 mr-1" /> Submit to QC — Unit {activeUnit}
                               </Button>
                             )}
@@ -1772,7 +1954,7 @@ export default function ProcessExecution() {
                 <div className="font-semibold text-slate-900">{t.name}</div>
                 <div className="text-xs text-slate-500 mt-0.5">Supervisor: {t.supervisor} · {t.members.length} members</div>
                 <div className="text-xs text-slate-400 mt-0.5">Skills: {t.skills.join(', ')}</div>
-                <div className="text-xs text-blue-600 mt-0.5 font-semibold">Efficiency: {t.efficiency}%</div>
+                <div className="text-xs text-blue-600 mt-0.5 font-semibold">Efficiency: {typeof t.efficiency === 'number' ? `${t.efficiency}%` : 'not measured yet'}</div>
               </button>
               );
             })}
@@ -1870,6 +2052,37 @@ export default function ProcessExecution() {
         </DialogContent>
       </Dialog>
 
+      {/* Slice 4 (2026-10-24) — Mark Complete on the unit's last in-house
+          step (outsourced steps after it): Production's own cost, once. */}
+      <Dialog open={!!lastInHouseDialog} onOpenChange={(open) => { if (!open) closeLih(); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle className="text-amber-700">Complete {lastInHouseDialog?.step}{selectedOrder?.orderKind === 'SubChildPart' ? '' : ` — Unit ${activeUnit}`}</DialogTitle></DialogHeader>
+          <div className="space-y-3 py-2">
+            <p className="text-xs text-slate-500">This is your last in-house step for {selectedOrder?.orderKind === 'SubChildPart' ? 'this batch' : 'this unit'} — enter your production cost and expense{selectedOrder?.orderKind === 'SubChildPart' ? ' for the whole batch' : ''}. The outsourced steps after it are added to the BOM automatically.</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">Production Cost *</label>
+                <Input type="number" min="0" placeholder="0" value={lihCost} onChange={e => setLihCost(e.target.value)} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">Production Expense *</label>
+                <Input type="number" min="0" placeholder="0" value={lihExpense} onChange={e => setLihExpense(e.target.value)} />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={closeLih}>Cancel</Button>
+            <Button
+              onClick={() => { markProcessComplete(selectedOrderId, lastInHouseDialog.step, activeUnit, { productionCost: Number(lihCost), productionExpense: Number(lihExpense) }); closeLih(); }}
+              disabled={lihCost === '' || lihExpense === '' || Number(lihCost) < 0 || Number(lihExpense) < 0}
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+            >
+              Complete {lastInHouseDialog?.step}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* QC multi-checkpoint redesign (slice 2, 2026-09-26) — Sub Child
           Part's own QC-step submit, only asks for cost when this step is
           the array's true last index (see handleClickSubmitBatchQcStep). */}
@@ -1877,7 +2090,9 @@ export default function ProcessExecution() {
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle className="text-purple-700">Submit {batchQcSubmitDialog?.step} to QC</DialogTitle></DialogHeader>
           <div className="space-y-3 py-2">
-            <p className="text-xs text-slate-500">This is the last step — enter what it actually cost, so its BOM/pricing stays accurate.</p>
+            <p className="text-xs text-slate-500">{batchQcSubmitDialog?.stepIndex === activeProcesses.length - 1
+              ? 'This is the last step — enter what it actually cost, so its BOM / pricing stays accurate.'
+              : `This is your last in-house step for ${selectedOrder?.orderKind === 'SubChildPart' ? 'this batch' : 'this unit'} — enter your production cost and expense. The outsourced steps after it are added to the BOM automatically.`}</p>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-xs font-semibold text-slate-600 mb-1 block">Production Cost *</label>
@@ -1908,7 +2123,9 @@ export default function ProcessExecution() {
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle className="text-purple-700">Submit {unitQcSubmitDialog?.step} to QC — Unit {activeUnit}</DialogTitle></DialogHeader>
           <div className="space-y-3 py-2">
-            <p className="text-xs text-slate-500">This is the last step for this unit — enter what it actually cost, so its BOM/pricing stays accurate.</p>
+            <p className="text-xs text-slate-500">{unitQcSubmitDialog?.stepIndex === activeProcesses.length - 1
+              ? 'This is the last step — enter what it actually cost, so its BOM / pricing stays accurate.'
+              : `This is your last in-house step for ${selectedOrder?.orderKind === 'SubChildPart' ? 'this batch' : 'this unit'} — enter your production cost and expense. The outsourced steps after it are added to the BOM automatically.`}</p>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-xs font-semibold text-slate-600 mb-1 block">Production Cost *</label>
@@ -1977,7 +2194,15 @@ export default function ProcessExecution() {
                 ))}
               </div>
             )}
-            {unitCount > 1 && (
+            {outsourceSendPicker?.reworkQty != null ? (
+              <div className="rounded-md bg-amber-50 border border-amber-200 p-2 text-xs text-amber-800 space-y-1">
+                <p><b>Rework of {activeProcesses[outsourceSendPicker.run[0]]?.step}: {outsourceSendPicker.reworkQty} pcs</b> — only the pieces QC sent back go (Store hands them to Dispatch).</p>
+                <p>Only this step: the next steps go out later with the whole batch.</p>
+              </div>
+            ) : outsourceUnitCount === 1 && selectedOrder?.orderKind === 'SubChildPart' && (
+              <p className="text-xs text-slate-500">The whole batch goes: {selectedOrder.orderQuantity} pcs.</p>
+            )}
+            {outsourceUnitCount > 1 && (
               <>
                 <p className="text-xs text-slate-500">
                   Other units currently ready for this step can be included in the same hand-off.
@@ -2152,7 +2377,8 @@ export default function ProcessExecution() {
             )}
           </DialogHeader>
           {issueRow && (() => {
-            const remaining = (issueRow.issueTotal || 0) - (issueRow.requestedQty || 0);
+            const limit = issueRow.issueLimit ?? issueRow.issueTotal ?? 0;
+            const remaining = Math.max(0, Math.round((limit - (issueRow.requestedQty || 0)) * 1000) / 1000);
             const n = Number(issueQty);
             const derived = issueRow.category === 'Length Fabrication' && issueRow.amount && n > 0
               ? ` = ${n * issueRow.amount.value} ${issueRow.amount.unit}` : '';
@@ -2160,6 +2386,12 @@ export default function ProcessExecution() {
               <div className="space-y-3 py-1">
                 <div className="text-xs text-slate-500 space-y-0.5">
                   <div className="flex justify-between"><span>Whole order needs</span><span className="font-semibold text-slate-700">{issueRow.issueTotal} {issueRow.issueUnit}</span></div>
+                  {issueRow.toVendor && (
+                    <div className="flex justify-between text-violet-700"><span>Goes to the vendor from Store</span><span>{Math.round(issueRow.toVendor.store * 1000) / 1000} {issueRow.issueUnit}</span></div>
+                  )}
+                  {issueRow.cascade && (
+                    <div className="flex justify-between text-indigo-700"><span>Built for this order ({issueRow.cascade.orders.join(', ') || 'build order'}) — {issueRow.cascade.viaStore ? 'comes back through Store' : 'comes straight here'}</span><span>{issueRow.cascade.covered} {issueRow.issueUnit}</span></div>
+                  )}
                   <div className="flex justify-between"><span>Already requested</span><span>{issueRow.requestedQty || 0} {issueRow.issueUnit}</span></div>
                   <div className="flex justify-between border-t border-slate-200 pt-1"><span className="font-semibold">Can request now</span><span className="font-bold text-emerald-700">{remaining} {issueRow.issueUnit}</span></div>
                 </div>
@@ -2177,7 +2409,7 @@ export default function ProcessExecution() {
           })()}
           <DialogFooter>
             <Button variant="outline" onClick={() => setIssueRow(null)}>Cancel</Button>
-            <Button disabled={issueMut.isPending || !(Number(issueQty) > 0) || Number(issueQty) > ((issueRow?.issueTotal || 0) - (issueRow?.requestedQty || 0))}
+            <Button disabled={issueMut.isPending || !(Number(issueQty) > 0) || Number(issueQty) > ((issueRow?.issueLimit ?? issueRow?.issueTotal ?? 0) - (issueRow?.requestedQty || 0))}
               onClick={() => issueMut.mutate({ demandKey: issueRow.demandKey, requestQuantity: Number(issueQty) })}>
               Send Request
             </Button>
@@ -2185,6 +2417,7 @@ export default function ProcessExecution() {
         </DialogContent>
       </Dialog>
 
+      {warningDialog}
       {/* Return — Excess or Defect back to Store (existing returnMaterialToStore
           / confirmReturn; Defect → DefectiveInventory, Excess → stock, and
           issuedQuantity self-corrects). Sheet metal needs a measured leftover. */}
@@ -2192,12 +2425,13 @@ export default function ProcessExecution() {
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle>Return — {returnRow?.name}</DialogTitle></DialogHeader>
           {returnRow && (() => {
-            const maxRet = (returnRow.issuedQty || 0) - (returnRow.returnPendingQty || 0);
+            const room = returnRoom(returnRow);
+            const maxRet = returnForm.type === 'Excess' ? room.excess : room.defect;
             const isSheet = returnRow.category === 'Sheet Metal';
             return (
               <div className="space-y-3 py-1">
                 <div className="flex justify-between text-xs text-slate-500 border-b border-slate-200 pb-1">
-                  <span className="font-semibold">On the floor (returnable)</span>
+                  <span className="font-semibold">Can go back</span>
                   <span className="font-bold text-amber-700">{maxRet} {returnRow.issueUnit}</span>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
@@ -2209,9 +2443,13 @@ export default function ProcessExecution() {
                   <div>
                     <label className="text-xs text-slate-500">Type</label>
                     <select className="mt-1 w-full border border-slate-200 rounded-md px-2 py-2 text-sm"
-                      value={returnForm.type} onChange={(e) => setReturnForm(f => ({ ...f, type: e.target.value }))}>
-                      <option value="Excess">Excess</option>
-                      <option value="Defect">Defect</option>
+                      value={returnForm.type} onChange={(e) => {
+                        const type = e.target.value;
+                        const limit = type === 'Excess' ? room.excess : room.defect;
+                        setReturnForm(f => ({ ...f, type, qty: Number(f.qty) > limit ? '' : f.qty }));
+                      }}>
+                      {room.excess > 0 && <option value="Excess">Excess</option>}
+                      {room.defect > 0 && <option value="Defect">Defect</option>}
                     </select>
                   </div>
                 </div>
@@ -2234,14 +2472,26 @@ export default function ProcessExecution() {
                   <Input className="mt-1" value={returnForm.reason}
                     onChange={(e) => setReturnForm(f => ({ ...f, reason: e.target.value }))} placeholder="Optional" />
                 </div>
+                {!isFabRow(returnRow) && (
+                  <SerialPicker mode="issued" itemCode={returnRow.code} orderId={selectedOrderKey} onFloor={maxRet}
+                    qty={returnForm.qty} value={returnSerials} onChange={setReturnSerials} onValidity={(ok) => setReturnSerialsOk(ok)} />
+                )}
+                {!isFabRow(returnRow) && returnRow.cascade?.delivered > 0 && (
+                  <SerialPicker mode="inside" itemCode={returnRow.demandKey} orderId={selectedOrderKey} title="What's inside this part"
+                    qty={returnForm.qty} value={returnInside} onChange={setReturnInside} onValidity={(ok) => setReturnInsideOk(ok)}
+                    nothingInside={returnNothingInside} onNothingInside={setReturnNothingInside} />
+                )}
+                {returnForm.type === 'Defect' && (returnSerials.unitIds.length > 0) && (
+                  <p className="text-[11px] text-slate-500">Defective serial numbers aren't issued again; Complaints can raise a vendor warranty claim on them.</p>
+                )}
               </div>
             );
           })()}
           <DialogFooter>
             <Button variant="outline" onClick={() => setReturnRow(null)}>Cancel</Button>
             <Button className="bg-amber-600 hover:bg-amber-700 text-white"
-              disabled={returnMut.isPending || !(Number(returnForm.qty) > 0)
-                || Number(returnForm.qty) > ((returnRow?.issuedQty || 0) - (returnRow?.returnPendingQty || 0))
+              disabled={returnMut.isPending || !(Number(returnForm.qty) > 0) || (!isFabRow(returnRow) && (!returnSerialsOk || !returnInsideOk))
+                || Number(returnForm.qty) > (returnForm.type === 'Excess' ? returnRoom(returnRow).excess : returnRoom(returnRow).defect)
                 || (returnRow?.category === 'Sheet Metal' && !(Number(returnForm.lenValue) > 0 && Number(returnForm.widValue) > 0))}
               onClick={submitReturn}>
               Submit Return

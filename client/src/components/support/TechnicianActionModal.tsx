@@ -2,13 +2,16 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useStartVisit, useCompleteVisit } from '@/hooks/useComplaints';
 import { usePermissions } from '@/hooks/usePermissions';
+import SerialPicker, { emptyPick } from '@/components/serials/SerialPicker';
+import { useConfirmWarnings } from '@/components/serials/useConfirmWarnings';
 import { MapPin, Phone, Play, CheckCircle, Camera, Loader2, X, AlertCircle, CheckCircle2, Plus, Trash2 } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
 export default function TechnicianActionModal({ ticket, onClose }: { ticket: any, onClose: () => void }) {
   const { mutate: startVisit, isPending: isStarting } = useStartVisit();
-  const { mutate: completeVisit, isPending: isCompleting } = useCompleteVisit();
+  const { mutateAsync: completeVisit, isPending: isCompleting } = useCompleteVisit();
+  const { runChecked, warningDialog } = useConfirmWarnings();
   const { hasFeatureAccess } = usePermissions();
   const canWork = hasFeatureAccess('complaints', 'supportManagement', 'edit');
 
@@ -19,6 +22,9 @@ export default function TechnicianActionModal({ ticket, onClose }: { ticket: any
   // Inventory Parts Selection State
   const [inventorySpares, setInventorySpares] = useState<any[]>([]);
   const [selectedParts, setSelectedParts] = useState<{ item: string; name: string; code: string; quantity: number }[]>([]);
+  // Serial number work (2 Nov review): which serial / sticker each part is.
+  const [partSerials, setPartSerials] = useState<Record<string, any>>({});
+  const [partOk, setPartOk] = useState<Record<string, boolean>>({});
   const [currentPartId, setCurrentPartId] = useState('');
   const [partSearch, setPartSearch] = useState('');
   
@@ -86,6 +92,8 @@ export default function TechnicianActionModal({ ticket, onClose }: { ticket: any
 
   const handleRemovePart = (itemId: string) => {
     setSelectedParts(selectedParts.filter(p => p.item !== itemId));
+    setPartSerials(({ [itemId]: _s, ...rest }) => rest);
+    setPartOk(({ [itemId]: _o, ...rest }) => rest);
   };
 
   // Client-side filter over the already-fetched batch (search by code, also
@@ -132,19 +140,22 @@ export default function TechnicianActionModal({ ticket, onClose }: { ticket: any
       item: p.item,
       quantity: p.quantity
     }));
-    formData.append('partsUsed', JSON.stringify(formattedPartsPayload)); 
+    formData.append('partsUsed', JSON.stringify(formattedPartsPayload));
+    formData.append('partSerials', JSON.stringify(partSerials));
     
     files.forEach(file => {
       formData.append('media', file); 
     });
 
-    completeVisit({ id: ticket._id, formData }, {
-      onSuccess: () => onClose() 
-    });
+    runChecked((ack: boolean) => {
+      if (ack) formData.set('acknowledgeWarnings', 'true');
+      return completeVisit({ id: ticket._id, formData });
+    }).then((res: any) => { if (res) onClose(); }).catch(() => {});
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm sm:p-4">
+      {warningDialog}
       <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in slide-in-from-bottom-10 sm:zoom-in-95 duration-200">
         
         <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50">
@@ -254,7 +265,8 @@ export default function TechnicianActionModal({ ticket, onClose }: { ticket: any
                 {selectedParts.length > 0 && (
                   <ul className="space-y-2 mt-3">
                     {selectedParts.map((part, idx) => (
-                      <li key={idx} className="flex justify-between items-center bg-white border border-gray-200 p-2 rounded-lg text-sm">
+                      <li key={idx} className="bg-white border border-gray-200 p-2 rounded-lg text-sm space-y-2">
+                        <div className="flex justify-between items-center">
                         <div>
                           <p className="font-semibold text-gray-800">{part.name}</p>
                           <p className="text-[10px] text-gray-500">Code: {part.code} | Qty: {part.quantity}</p>
@@ -265,6 +277,11 @@ export default function TechnicianActionModal({ ticket, onClose }: { ticket: any
                         >
                           <Trash2 size={16} />
                         </button>
+                        </div>
+                        <SerialPicker mode="stock" itemId={part.item} qty={part.quantity} title="Which one did you fit?"
+                          value={partSerials[part.item] || emptyPick()}
+                          onChange={(v: any) => setPartSerials(s => ({ ...s, [part.item]: v }))}
+                          onValidity={(ok: boolean) => setPartOk(s => ({ ...s, [part.item]: ok }))} />
                       </li>
                     ))}
                   </ul>
@@ -306,7 +323,7 @@ export default function TechnicianActionModal({ ticket, onClose }: { ticket: any
               </div>
 
               <button
-                type="submit" disabled={isCompleting || !workDone || !canWork}
+                type="submit" disabled={isCompleting || !workDone || !canWork || Object.values(partOk).some(ok => !ok)}
                 className="w-full bg-amber-500 text-white font-bold text-lg py-4 rounded-xl hover:bg-amber-600 active:scale-95 transition shadow-lg shadow-amber-200 flex justify-center items-center gap-2 mt-4 disabled:opacity-70 disabled:cursor-not-allowed"
               >
                 {isCompleting ? <Loader2 className="animate-spin" /> : <><CheckCircle size={20}/> Complete & Submit</>}

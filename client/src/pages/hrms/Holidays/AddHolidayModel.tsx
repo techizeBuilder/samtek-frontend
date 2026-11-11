@@ -11,6 +11,15 @@ interface Holiday {
   _id?: string;
   title: string;
   date: string;
+  paid?: boolean;
+}
+
+// Adding takes a From – To range, saved one holiday per date (2026-11-11).
+interface Form {
+  title: string;
+  date: string;
+  toDate: string;
+  paid: boolean;
 }
 
 interface Props {
@@ -33,9 +42,11 @@ const AddHolidayModal = ({
   const { user: currentUser } = useAuth();
   const token = localStorage.getItem("token");
 
-  const [form, setForm] = useState<Holiday>({
+  const [form, setForm] = useState<Form>({
     title: "",
     date: "",
+    toDate: "",
+    paid: true,
   });
 
   const [errors, setErrors] = useState<any>({});
@@ -48,9 +59,11 @@ const AddHolidayModal = ({
       setForm({
         title: holiday.title,
         date: holiday.date.split("T")[0],
+        toDate: "",
+        paid: holiday.paid !== false,
       });
     } else {
-      setForm({ title: "", date: "" });
+      setForm({ title: "", date: "", toDate: "", paid: true });
     }
 
     setErrors({});
@@ -62,6 +75,7 @@ const AddHolidayModal = ({
     const e: any = {};
     if (!form.title.trim()) e.title = "Holiday title is required";
     if (!form.date) e.date = "Date is required";
+    if (mode === "add" && form.toDate && form.toDate < form.date) e.toDate = "To date is before From date";
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -75,10 +89,10 @@ const AddHolidayModal = ({
 
       const companyId = typeof currentUser?.companyId === 'string' ? currentUser.companyId : currentUser?.companyId?._id;
 
-      const payload = {
-        ...form,
-        companyId
-      };
+      const payload =
+        mode === "add"
+          ? { title: form.title, fromDate: form.date, toDate: form.toDate || undefined, paid: form.paid, companyId }
+          : { title: form.title, date: form.date, paid: form.paid, companyId };
 
       const res =
         mode === "add"
@@ -148,7 +162,7 @@ const AddHolidayModal = ({
 
           <div className="space-y-1">
             <Label className="text-sm font-semibold text-gray-700">
-              Date *
+              {mode === "add" ? "From date *" : "Date *"}
             </Label>
             <Input
               type="date"
@@ -160,6 +174,40 @@ const AddHolidayModal = ({
             {errors.date && (
               <p className="text-xs text-red-500">{errors.date}</p>
             )}
+          </div>
+
+          {mode === "add" && (
+            <div className="space-y-1">
+              <Label className="text-sm font-semibold text-gray-700">
+                To date <span className="font-normal text-gray-400">(only for more than one day)</span>
+              </Label>
+              <Input
+                type="date"
+                value={form.toDate}
+                min={form.date || undefined}
+                onChange={(e) => setForm({ ...form, toDate: e.target.value })}
+                className={`rounded-md border-gray-200 focus:border-orange-500 ${errors.toDate ? "border-red-500" : ""}`}
+              />
+              {errors.toDate && <p className="text-xs text-red-500">{errors.toDate}</p>}
+              <p className="text-xs text-gray-500">Each day is saved as its own holiday, so one day can be changed or deleted later.</p>
+            </div>
+          )}
+
+          <div className="space-y-1">
+            <Label className="text-sm font-semibold text-gray-700">Pay</Label>
+            <div className="flex gap-2">
+              {[true, false].map((p) => (
+                <button
+                  key={String(p)}
+                  type="button"
+                  onClick={() => setForm({ ...form, paid: p })}
+                  className={`flex-1 rounded-md border px-3 py-2 text-sm font-semibold ${form.paid === p ? "border-orange-500 bg-orange-50 text-orange-700" : "border-gray-200 text-gray-600"}`}
+                >
+                  {p ? "Paid" : "Unpaid"}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-gray-500">Payroll pays a Paid holiday. An Unpaid holiday isn't paid and isn't counted as absence.</p>
           </div>
 
           <div className="pt-4 flex gap-3">

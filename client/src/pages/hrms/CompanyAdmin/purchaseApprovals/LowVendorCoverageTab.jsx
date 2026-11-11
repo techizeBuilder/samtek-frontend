@@ -75,6 +75,11 @@ export default function LowVendorCoverageTab() {
                   <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full border ${it.eligibleCount === 0 ? 'bg-red-50 text-red-700 border-red-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
                     <AlertTriangle className="w-3 h-3" /> {it.eligibleCount} / {minVendors} approved
                   </span>
+                  {it.belowQuotations && (
+                    <span title="Fewer approved vendors than the minimum quotations — every PO for it will need a reason and your approval" className="ml-1.5 inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full border bg-rose-50 text-rose-700 border-rose-200">
+                      Below {data?.minQuotationsPerItem} quotations — PO needs an exception
+                    </span>
+                  )}
                 </div>
                 <div className="w-full flex flex-wrap gap-1.5">
                   {it.vendors.length === 0 ? (
@@ -85,7 +90,6 @@ export default function LowVendorCoverageTab() {
                       <span key={v._id} className="inline-flex items-center gap-1.5 text-xs border rounded-full pl-2 pr-1 py-0.5 bg-white">
                         {v.supplierName}
                         <span className={`px-1.5 rounded-full border text-[10px] ${meta.className}`}>{meta.label}</span>
-                        {v.status === 'inactive' && <span className="px-1.5 rounded-full border text-[10px] bg-slate-100 text-slate-500 border-slate-200">Inactive</span>}
                       </span>
                     );
                   })}

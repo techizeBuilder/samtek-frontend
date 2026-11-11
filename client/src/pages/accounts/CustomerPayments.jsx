@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import axios from 'axios';
@@ -22,7 +22,9 @@ import {
     FileText,
     TrendingUp,
     Printer,
-    Receipt
+    Receipt,
+    Paperclip,
+    ExternalLink
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -31,6 +33,35 @@ const CustomerPayments = () => {
     const [selectedCustomer, setSelectedCustomer] = useState('');
     const [selectedOrder, setSelectedOrder] = useState(''); // order-wise payment target ('' = general FIFO)
     const [isSubmitting, setIsSubmitting] = useState(false);
+    // Slip upload: track which row is currently uploading
+    const [slipUploading, setSlipUploading] = useState(null);
+    // The slip chosen on the entry form; slipKey clears the file input.
+    const [slipFile, setSlipFile] = useState(null);
+    const [slipKey, setSlipKey] = useState(0);
+    const slipInputRef = useRef({});
+
+    const getApiBase = () => import.meta.env.VITE_API_URL || '/api';
+    const uploadSlip = async (paymentId, file) => {
+        setSlipUploading(paymentId);
+        try {
+            const token = localStorage.getItem('token');
+            const fd = new FormData();
+            fd.append('slip', file);
+            const res = await fetch(`${getApiBase()}/accounts/sales/payments/${paymentId}/slip`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}` },
+                body: fd,
+            });
+            const data = await res.json();
+            if (!data.success) throw new Error(data.message || 'Upload failed');
+            queryClient.invalidateQueries({ queryKey: ['/api/accounts/sales/payments'] });
+            toast({ title: 'Slip uploaded', description: 'Payment slip attached successfully.' });
+        } catch (err) {
+            toast({ title: 'Upload failed', description: err.message, variant: 'destructive' });
+        } finally {
+            setSlipUploading(null);
+        }
+    };
 
     // Fetch logged-in user's company details
     const { data: companyResponse } = useQuery({
@@ -106,7 +137,11 @@ const CustomerPayments = () => {
 
     const createMutation = useMutation({
         mutationFn: (paymentData) => apiRequest('POST', '/api/accounts/sales/payments', paymentData),
-        onSuccess: () => {
+        onSuccess: async (res) => {
+            const slip = slipFile;
+            setSlipFile(null);
+            setSlipKey(k => k + 1);
+            if (slip && res?.data?._id) await uploadSlip(res.data._id, slip);
             queryClient.invalidateQueries({ queryKey: ['/api/accounts/sales/account/invoices'] });
             queryClient.invalidateQueries({ queryKey: ['/api/accounts/sales/receivables/ageing'] });
             queryClient.invalidateQueries({ queryKey: ['/api/accounts/sales/payment/stats'] });
@@ -329,6 +364,54 @@ const CustomerPayments = () => {
                                                     <div className="text-[10px] font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded-full inline-block">
                                                         RECEIVED
                                                     </div>
+                                                    {/* Slip: view link if exists, else attach button */}
+                                                    {payment.slipUrl ? (
+                                                        <div className="flex items-center gap-1">
+                                                            <a
+                                                                href={`${import.meta.env.VITE_API_URL?.replace('/api', '') || ''}${payment.slipUrl}`}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                className="inline-flex items-center gap-0.5 text-[10px] font-bold text-emerald-600 hover:text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-full"
+                                                            >
+                                                                <ExternalLink className="w-2.5 h-2.5" /> Slip
+                                                            </a>
+                                                            <button
+                                                                type="button"
+                                                                title="Replace slip"
+                                                                className="text-slate-400 hover:text-blue-600 transition-colors"
+                                                                onClick={() => slipInputRef.current[payment._id]?.click()}
+                                                                disabled={slipUploading === payment._id}
+                                                            >
+                                                                <Paperclip className="w-3.5 h-3.5" />
+                                                            </button>
+                                                        </div>
+                                                    ) : (
+                                                        <button
+                                                            type="button"
+                                                            title="Attach payment slip"
+                                                            className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full transition-colors ${
+                                                                slipUploading === payment._id
+                                                                    ? 'bg-blue-50 text-blue-400 cursor-not-allowed'
+                                                                    : 'bg-slate-100 text-slate-500 hover:bg-blue-50 hover:text-blue-600'
+                                                            }`}
+                                                            onClick={() => slipInputRef.current[payment._id]?.click()}
+                                                            disabled={slipUploading === payment._id}
+                                                        >
+                                                            <Paperclip className="w-2.5 h-2.5" />
+                                                            {slipUploading === payment._id ? 'Uploading…' : 'Slip'}
+                                                        </button>
+                                                    )}
+                                                    <input
+                                                        ref={el => slipInputRef.current[payment._id] = el}
+                                                        type="file"
+                                                        accept="image/*,application/pdf"
+                                                        className="hidden"
+                                                        onChange={e => {
+                                                            const file = e.target.files?.[0];
+                                                            if (file) uploadSlip(payment._id, file);
+                                                            e.target.value = '';
+                                                        }}
+                                                    />
                                                     <Button
                                                         variant="ghost"
                                                         size="icon"
@@ -565,6 +648,15 @@ const CustomerPayments = () => {
                             <div className="space-y-3">
                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-2">Transaction Ref / UTR / Remarks</label>
                                 <Input name="referenceNo" placeholder="Enter bank reference number or customer note..." className="h-14 rounded-[1.25rem] border-2 border-slate-100 bg-slate-50 font-semibold px-6 disabled:opacity-40 disabled:cursor-not-allowed" disabled={!selectedOrder} />
+                            </div>
+
+
+                            {/* Payment slip at entry time (2026-10-29, client): picked here and
+                                attached to the payment as soon as it's recorded. The history
+                                row's Attach stays for older payments without one. */}
+                            <div>
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-2">Payment Slip <span className="font-normal normal-case tracking-normal text-slate-400">(optional — bank screenshot, cheque photo or PDF, max 10 MB)</span></label>
+                                <Input key={slipKey} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={e => setSlipFile(e.target.files?.[0] || null)} disabled={!selectedOrder} className="h-14 rounded-[1.25rem] border-2 border-slate-100 bg-slate-50 font-semibold disabled:opacity-40 disabled:cursor-not-allowed" />
                             </div>
 
                             <Button

@@ -20,12 +20,6 @@ export const STAGE_META = {
 
 export const vendorStage = (vendor) => vendor?.standing?.stage || vendor?.approvalStatus || 'Draft';
 
-export const DOC_TYPES = [
-  'GST Certificate', 'PAN Card', 'MSME/Udyam Certificate', 'Company Registration',
-  'ISO/Quality Certificate', 'Authorization/Dealership Certificate', 'Product Certificate',
-  'Cancelled Cheque/Bank Proof', 'Other',
-];
-
 export const SENSITIVE_LABELS = {
   supplierName: 'Legal Name',
   gstNumber: 'GSTIN',

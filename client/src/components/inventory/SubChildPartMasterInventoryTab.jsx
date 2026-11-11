@@ -15,6 +15,7 @@ import {
 import { Search, Package2, Settings2, Ban, RefreshCw, Scissors } from 'lucide-react';
 import SubChildPartSheetPlanModal from '@/pages/ResearchDevelopment/BOMManagement/SubChildPartSheetPlanModal';
 import { summarizeProcessDefinition } from '@/components/inventory/ProcessDefinitionEditor';
+import MakeBuySwitch, { MakeBuyBadge } from '@/components/inventory/MakeBuySwitch';
 
 // Inventory-side view of the new Sub Child Part Master (see
 // SubChildPartMasterTab.jsx in BOM Management, where these are actually
@@ -138,7 +139,7 @@ export default function SubChildPartMasterInventoryTab({ readOnly = false }) {
                         )}
                         <div>
                           <p className="font-medium text-slate-900">{item.name}</p>
-                          <p className="text-xs font-mono text-slate-400">{item.code}</p>
+                          <p className="text-xs font-mono text-slate-400 flex items-center gap-1.5">{item.code} <MakeBuyBadge item={item} /></p>
                         </div>
                       </div>
                     </TableCell>
@@ -194,6 +195,10 @@ export default function SubChildPartMasterInventoryTab({ readOnly = false }) {
         <DialogContent className="max-w-md">
           <DialogHeader><DialogTitle>Manage Stock — {manageItem?.name}</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
+            {liveManageItem && (
+              <MakeBuySwitch item={liveManageItem} readOnly={readOnly}
+                onSwitched={(saved) => { qc.invalidateQueries({ queryKey: ['sub-child-part-master-inventory'] }); if (saved) setManageItem(m => ({ ...m, ...saved })); }} />
+            )}
             <div>
               <label className="text-xs text-slate-500">Material Flow</label>
               <Select value={manageForm.materialFlow} onValueChange={handleFlowChange}>

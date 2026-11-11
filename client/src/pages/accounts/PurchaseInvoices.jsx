@@ -39,7 +39,9 @@ const STAGE_TONE = {
     'Paid': 'bg-emerald-100 text-emerald-700 border-emerald-200',
     'Cancelled': 'bg-red-50 text-red-700 border-red-200',
 };
-const STAGES = ['All', 'Advance due', 'Awaiting material', 'Payable', 'Paid', 'Cancelled'];
+// A bill is overdue once its due DAY has ended (2026-10-24) — same rule as the server.
+const pastDueDay = (d) => { const t = new Date(); t.setHours(0, 0, 0, 0); return !!d && new Date(d) < t; };
+const STAGES = ['All','Advance due', 'Awaiting material', 'Payable', 'Paid', 'Cancelled'];
 
 const PurchaseInvoices = () => {
     const { hasFeatureAccess } = usePermissions();
@@ -68,12 +70,14 @@ const PurchaseInvoices = () => {
     };
     const [page, setPage] = useState(1);
     const [stage, setStage] = useState('All');
+    // Bill type (outsource-v2 slice 3): all / PO / Outsource / without a PO.
+    const [billType, setBillType] = useState('');
     const [itemSearchTerm, setItemSearchTerm] = useState('');
     const itemSearchText = useDebouncedValue(itemSearchTerm.trim(), 400);
 
     const { data: invoicesData } = useQuery({
-        queryKey: ['/api/accounts/purchases/invoices', page, stage],
-        queryFn: () => apiRequest('GET', `/api/accounts/purchases/invoices?page=${page}&limit=20${stage !== 'All' ? `&stage=${encodeURIComponent(stage)}` : ''}`),
+        queryKey: ['/api/accounts/purchases/invoices', page, stage, billType],
+        queryFn: () => apiRequest('GET', `/api/accounts/purchases/invoices?page=${page}&limit=20${stage !== 'All' ? `&stage=${encodeURIComponent(stage)}` : ''}${billType ? `&type=${billType}` : ''}`),
         keepPreviousData: true,
     });
 
@@ -180,6 +184,12 @@ const PurchaseInvoices = () => {
                 <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
                     <CardTitle>Bills</CardTitle>
                     <div className="flex flex-wrap gap-1.5">
+                        <select className="h-7 border rounded-full px-2 text-xs" value={billType} onChange={e => { setBillType(e.target.value); setPage(1); }}>
+                            <option value="">All bills</option>
+                            <option value="po">PO bills</option>
+                            <option value="outsource">Outsource bills</option>
+                            <option value="manual">Without a PO</option>
+                        </select>
                         {STAGES.map(st => (
                             <button key={st} type="button" onClick={() => { setStage(st); setPage(1); }}
                                 className={`px-3 py-1 rounded-full text-xs font-semibold border ${stage === st ? 'bg-slate-800 text-white border-slate-800' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-400'}`}>
@@ -209,6 +219,8 @@ const PurchaseInvoices = () => {
                                     <TableCell className="font-medium">
                                         {inv.purchaseOrder?.purchaseOrderNumber
                                             ? <><span>{inv.purchaseOrder.purchaseOrderNumber}</span><div className="text-[10px] text-slate-400 font-normal">PO bill</div></>
+                                            : inv.outsourceOrder?.orderNo
+                                            ? <><span>{inv.outsourceOrder.orderNo}</span><div className="text-[10px] text-violet-500 font-normal">Outsource bill</div></>
                                             : <><span>{inv.invoiceNo}</span><div className="text-[10px] text-slate-400 font-normal">No PO</div></>}
                                     </TableCell>
                                     <TableCell>{inv.vendor?.supplierName}</TableCell>
@@ -224,7 +236,7 @@ const PurchaseInvoices = () => {
                                             : <Badge variant={inv.status === 'Paid' ? 'success' : 'warning'}>{inv.status}</Badge>}
                                     </TableCell>
                                     <TableCell className="text-xs text-slate-600">
-                                        {inv.dueDate ? <span className={inv.stage === 'Payable' && new Date(inv.dueDate) < new Date() ? 'text-red-700 font-semibold' : ''}>{new Date(inv.dueDate).toLocaleDateString('en-IN')}{inv.stage === 'Payable' && new Date(inv.dueDate) < new Date() ? ' · overdue' : ''}</span> : inv.purchaseOrder ? <span className="text-slate-400">after QC</span> : '—'}
+                                        {inv.dueDate ? <span className={inv.stage === 'Payable' && pastDueDay(inv.dueDate) ? 'text-red-700 font-semibold' : ''}>{new Date(inv.dueDate).toLocaleDateString('en-IN')}{inv.stage === 'Payable' && pastDueDay(inv.dueDate) ? ' · overdue' : ''}</span> : (inv.purchaseOrder || inv.outsourceOrder) ? <span className="text-slate-400">after QC</span> : '—'}
                                     </TableCell>
                                     <TableCell>
                                         <Button variant="ghost" size="sm" onClick={() => setViewInvoice(inv)}>View</Button>
@@ -531,15 +543,15 @@ const PurchaseInvoices = () => {
                             </Card>
                         </div>
 
-                        {viewInvoice?.purchaseOrder && (
+                        {(viewInvoice?.purchaseOrder || viewInvoice?.outsourceOrder) && (
                             <div className="p-6 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-3">
                                 <div className="flex flex-wrap items-center justify-between gap-2">
-                                    <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">PO bill — {viewInvoice.purchaseOrder.purchaseOrderNumber}</h4>
+                                    <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{viewInvoice.outsourceOrder ? `Outsource bill — ${viewInvoice.outsourceOrder.orderNo}` : `PO bill — ${viewInvoice.purchaseOrder.purchaseOrderNumber}`}</h4>
                                     {viewInvoice.stage && <Badge variant="outline" className={STAGE_TONE[viewInvoice.stage] || ''}>{viewInvoice.stage}</Badge>}
                                 </div>
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                                     <div><div className="text-[10px] uppercase text-slate-400 font-bold">Advance</div>{viewInvoice.advanceAmount > 0 ? `${inrFmt(viewInvoice.advancePaid)} of ${inrFmt(viewInvoice.advanceAmount)} (${viewInvoice.advancePercent}%)` : 'None'}</div>
-                                    <div><div className="text-[10px] uppercase text-slate-400 font-bold">QC-passed so far</div>{inrFmt(viewInvoice.acceptedValue)}</div>
+                                    <div><div className="text-[10px] uppercase text-slate-400 font-bold">{viewInvoice.outsourceOrder ? 'Work accepted so far' : 'QC-passed so far'}</div>{inrFmt(viewInvoice.acceptedValue)}</div>
                                     <div><div className="text-[10px] uppercase text-slate-400 font-bold">Can pay now</div>{viewInvoice.payableNow ? [viewInvoice.payableNow.advance > 0 && `advance ${inrFmt(viewInvoice.payableNow.advance)}`, viewInvoice.payableNow.material > 0 && `material ${inrFmt(viewInvoice.payableNow.material)}`].filter(Boolean).join(' · ') || 'Nothing yet' : '—'}</div>
                                     <div><div className="text-[10px] uppercase text-slate-400 font-bold">Full payment</div>{viewInvoice.dueDate ? `due ${new Date(viewInvoice.dueDate).toLocaleDateString('en-IN')}` : `${viewInvoice.creditDays ? `${viewInvoice.creditDays} days after` : 'when'} everything passes QC`}</div>
                                 </div>
@@ -553,7 +565,7 @@ const PurchaseInvoices = () => {
                                 )}
                                 {(viewInvoice.adjustments || []).length > 0 && (
                                     <div className="text-xs text-slate-600 space-y-1 pt-2 border-t">
-                                        {viewInvoice.adjustments.map((a, i) => <div key={i}>−{inrFmt(a.amount)} · {a.kind}{a.reason ? ` — ${a.reason}` : ''}</div>)}
+                                        {viewInvoice.adjustments.map((a, i) => <div key={i}>−{inrFmt(a.amount)} · {a.kind === 'LostAtVendor' ? 'Lost at vendor' : a.kind}{a.reason ? ` — ${a.reason}` : ''}</div>)}
                                     </div>
                                 )}
                             </div>

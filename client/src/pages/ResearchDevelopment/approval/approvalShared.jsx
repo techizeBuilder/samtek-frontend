@@ -39,24 +39,26 @@ export function StageChip({ label, value, tone = 'idle', title }) {
 export const designTone = (s) => (s === 'Approved' ? 'good' : s === 'Rejected' ? 'bad' : s === 'Testing' ? 'warn' : 'idle');
 export const prototypeTone = (s) => (s === 'Passed' ? 'good' : s === 'Failed' ? 'bad' : s === 'In Progress' ? 'warn' : 'idle');
 
-// The full chip row for one item row/dialog header. A Purchase Machine skips
-// Design / BOM / Prototype entirely, so those chips are shown as "n/a".
+// The full chip row for one item row/dialog header. A Purchase Machine — and
+// a Child Part / Sub Child Part bought from a vendor (make or buy,
+// 2026-10-29) — skips Design / BOM / Prototype, so those chips show "n/a".
 export function StageChips({ item }) {
-  const purchase = item.purchaseMachine;
+  const purchase = item.qcOnly ?? item.purchaseMachine;
+  const why = item.boughtPart ? 'Bought from a vendor' : 'Purchase Machine';
   const na = <MinusCircle className="h-3 w-3" />;
   return (
     <div className="flex flex-wrap gap-1.5">
       {purchase ? (
-        <StageChip label="Design" value={na} tone="na" title="Purchase Machine — no Design stage" />
+        <StageChip label="Design" value={na} tone="na" title={`${why} — no Design stage`} />
       ) : (
         <StageChip label="Design" value={item.designStatus} tone={designTone(item.designStatus)} />
       )}
       {purchase ? (
-        <StageChip label="BOM" value={na} tone="na" title="Purchase Machine — no BOM stage" />
+        <StageChip label="BOM" value={na} tone="na" title={`${why} — no BOM stage`} />
       ) : (
         <StageChip label="BOM" value={item.bomApproved ? 'Approved' : 'Pending'} tone={item.bomApproved ? 'good' : 'idle'} />
       )}
-      <StageChip label="QC List" value={item.qcListApproved ? 'Approved' : 'Pending'} tone={item.qcListApproved ? 'good' : 'idle'} />
+      <StageChip label={item.boughtPart ? 'QC List (Incoming)' : 'QC List'} value={item.qcListApproved ? 'Approved' : 'Pending'} tone={item.qcListApproved ? 'good' : 'idle'} />
       {item.productKind === 'Machine' && (
         purchase ? (
           <StageChip label="Prototype" value={na} tone="na" title="Purchase Machine — no Prototype stage" />
@@ -65,6 +67,42 @@ export function StageChips({ item }) {
         )
       )}
       <StageChip label="Release" value={item.releaseStatus} tone={item.releaseStatus === 'Released' ? 'good' : 'idle'} />
+    </div>
+  );
+}
+
+// A part switched make ↔ buy: its QC List sign-off and Release were pulled
+// back — what R&D has to redo, until it's released again (2026-10-29).
+export function RedoBanner({ item, compact = false }) {
+  const r = item?.approvalRedo;
+  if (!r?.at) return null;
+  // A BOM edit, not a make / buy switch.
+  if (!r.to) {
+    return (
+      <div className="bg-amber-50 border border-amber-300 rounded-lg p-3 text-xs text-amber-900">
+        <p className="font-semibold">
+          Needs re-approval — BOM changed{r.what ? ` (${r.what})` : ''}{r.byName ? ` by ${r.byName}` : ''} on {new Date(r.at).toLocaleDateString('en-IN')}
+        </p>
+        {!compact && (
+          <p className="mt-1">Its BOM approval and Release were pulled back. Approve the <strong>BOM</strong> and <strong>Release</strong> it again. Until then it gets no automatic orders.</p>
+        )}
+      </div>
+    );
+  }
+  const toBuy = r.to === 'buy';
+  return (
+    <div className="bg-amber-50 border border-amber-300 rounded-lg p-3 text-xs text-amber-900">
+      <p className="font-semibold">
+        Needs re-approval — switched to {toBuy ? 'Bought' : 'Made'}{r.byName ? ` by ${r.byName}` : ''} on {new Date(r.at).toLocaleDateString('en-IN')}
+      </p>
+      {!compact && (
+        <p className="mt-1">
+          Its QC List sign-off and Release were pulled back. {toBuy
+            ? <>Set its <strong>Incoming (bought)</strong> checklist (R&amp;D → QC), approve the QC List, then <strong>Release</strong> it again.</>
+            : <>Approve its <strong>build checklists</strong> (Design and BOM too, if not already), then <strong>Release</strong> it again.</>}
+          {' '}Until then it gets no automatic orders.
+        </p>
+      )}
     </div>
   );
 }

@@ -15,6 +15,7 @@ import FabricationVariantAmountFields from '@/components/inventory/FabricationVa
 import UnitAmountField, { rowNeedsAmount as sharedRowNeedsAmount } from '@/components/inventory/UnitAmountField';
 import ProcessDefinitionEditor, { summarizeProcessDefinition } from '@/components/inventory/ProcessDefinitionEditor';
 import ProcessTemplateManagerDialog from '@/components/inventory/ProcessTemplateManagerDialog';
+import { isBoughtPart, MakeBuyBadge } from '@/components/inventory/MakeBuySwitch';
 
 const resolveMediaUrl = (url) => (!url ? '' : (url.startsWith('http') || url.startsWith('data:')) ? url : `${config.baseURL}${url}`);
 const isPdfUrl = (url) => !!url && /\.pdf(\?|$)/i.test(url);
@@ -111,6 +112,9 @@ function SourceMaterialPicker({ value, displayName, items, onSelect }) {
 
 const emptyForm = {
   name: '', code: '', specification: '', image: '',
+  // Make or buy (2026-10-28) — chosen at create; afterwards R&D switches it
+  // from Inventory → Sub Child Part → Manage (it re-prices and notifies).
+  makeOrBuy: 'make',
   sourceItemId: '', sourceItemCode: '', sourceItemName: '',
   // Auto-fetched + locked from the matched source item, exactly like the BOM
   // material picker (never manually retyped — a real Item's Used Unit is a
@@ -236,7 +240,8 @@ export default function SubChildPartMasterTab() {
       unitType: src.unitType || '', unit: d.sourceUnit || '', purchaseCostPerUnit: src.purchaseCost || 0,
       fabricationRef: src.fabricationRef || null, fabricationCategory: (src.dimensionVariants || [])[0]?.category || '',
       weightUnitPrice: src.weightUnitPrice || 0,
-      dimensionVariants: (src.dimensionVariants || []).filter(v => !v.isLeftover),
+      // Discontinued sizes: only the one this part already uses stays (2026-10-28).
+      dimensionVariants: (src.dimensionVariants || []).filter(v => !v.isLeftover && (!v.isDiscontinued || v._id === d.sourceDimensionVariantId)),
       dimensionVariantId: d.sourceDimensionVariantId || '',
       quantity: !needsAmount ? (d.sourceQty ?? '') : '',
       amountValue: needsAmount ? (d.sourceQty ?? '') : '', amountUnit: d.sourceUnit || '',
@@ -250,7 +255,7 @@ export default function SubChildPartMasterTab() {
   // there before (fixes the bug where reselecting mid-form, without closing
   // the dialog, left the previous item's unit/amount fields stuck).
   const applySourceMatch = (match) => {
-    const variants = (match.dimensionVariants || []).filter(v => !v.isLeftover);
+    const variants = (match.dimensionVariants || []).filter(v => !v.isLeftover && !v.isDiscontinued);
     setForm(f => ({
       ...f,
       sourceItemId: match._id, sourceItemCode: match.code, sourceItemName: match.name,
@@ -310,15 +315,22 @@ export default function SubChildPartMasterTab() {
   const handleSave = () => {
     const payload = {
       name: form.name.trim(), code: form.code.trim(), specification: form.specification.trim(), image: form.image,
-      sourceItemId: form.sourceItemId, sourceQty: Number(resolvedSourceQty), sourceUnit: form.unit,
-      sourceDimensionVariantId: form.dimensionVariantId || null,
+      // A bought part may have no source material — then none is sent.
+      ...(form.sourceItemId ? {
+        sourceItemId: form.sourceItemId, sourceQty: Number(resolvedSourceQty), sourceUnit: form.unit,
+        sourceDimensionVariantId: form.dimensionVariantId || null,
+      } : {}),
       processDefinition: form.processDefinition,
+      ...(!dialogItem?._id && buying ? { makeOrBuy: 'buy' } : {}),
     };
     if (dialogItem?._id) updateMutation.mutate({ id: dialogItem._id, data: payload });
     else createMutation.mutate(payload);
   };
 
   const saving = createMutation.isPending || updateMutation.isPending;
+  // Bought from a vendor: source material and processes are optional — they're
+  // needed only when it's switched to Made.
+  const buying = dialogItem?._id ? isBoughtPart(dialogItem) : form.makeOrBuy === 'buy';
   const needsVariantPick = form.fabricationRef && form.dimensionVariants.length > 1 && !form.dimensionVariantId;
   // The real on-screen heading for whichever amount/quantity field is
   // actually showing — mirrors FabricationVariantAmountFields'/
@@ -340,10 +352,10 @@ export default function SubChildPartMasterTab() {
   if (!form.name.trim()) missingReasons.push('Name');
   if (!form.code.trim()) missingReasons.push('Code');
   if (!form.image) missingReasons.push('Design File');
-  if (!form.sourceItemId) missingReasons.push('Source Raw Material');
+  if (!form.sourceItemId) { if (!buying) missingReasons.push('Source Raw Material'); }
   else if (needsVariantPick) missingReasons.push('Dimension Size');
   else if (!(Number(resolvedSourceQty) > 0)) missingReasons.push(amountFieldLabel());
-  if (!form.processDefinition.some(c => (c.internalProcesses || []).length > 0)) missingReasons.push('Process Definition');
+  if (!buying && !form.processDefinition.some(c => (c.internalProcesses || []).length > 0)) missingReasons.push('Process Definition');
   const canSave = missingReasons.length === 0;
 
   return (
@@ -394,7 +406,10 @@ export default function SubChildPartMasterTab() {
                 // resaved yet.
                 const rowIsSheetMetal = !!src.fabricationRef;
                 const rowScrapCost = d.scrapCost || 0;
-                const rowTotalCost = rowMaterialsCost + rowJobWorkCost + rowScrapCost;
+                // Slice 4 (2026-10-24): + Production's own cost / expense per
+                // piece (a hybrid / in-house build), same as the server's sum.
+                const rowProdCost = (d.productionCost || 0) + (d.productionExpense || 0);
+                const rowTotalCost = rowMaterialsCost + rowJobWorkCost + rowScrapCost + rowProdCost;
                 return (
                   <AccordionItem key={it._id} value={it._id} className={`border-b border-slate-100 last:border-0 px-4 ${it.isDiscontinued ? 'opacity-60' : ''}`}>
                     <AccordionTrigger className="hover:no-underline">
@@ -449,15 +464,20 @@ export default function SubChildPartMasterTab() {
                           <p className="text-sm font-semibold text-slate-700 flex items-center gap-1.5 mb-2">
                             <IndianRupee className="h-4 w-4 text-slate-500" /> Cost
                           </p>
-                          <div className={`grid gap-3 max-w-lg ${rowIsSheetMetal ? 'grid-cols-4' : 'grid-cols-3'}`}>
+                          <div className={`grid gap-3 max-w-2xl grid-cols-2 ${rowIsSheetMetal ? 'sm:grid-cols-5' : 'sm:grid-cols-4'}`}>
                             <div className="p-2.5 rounded-lg bg-slate-50">
                               <p className="text-[10px] text-slate-500">Materials Cost</p>
                               <p className="text-sm font-semibold text-slate-800">{fmtMoney(rowMaterialsCost)}</p>
                             </div>
                             <div className="p-2.5 rounded-lg bg-slate-50">
-                              <p className="text-[10px] text-slate-500">Job Work Cost</p>
+                              <p className="text-[10px] text-slate-500">Job Work (outsource)</p>
                               <p className="text-sm font-semibold text-slate-800">{fmtMoney(rowJobWorkCost)}</p>
-                              <p className="text-[9px] text-slate-400 mt-0.5">{d.jobWorkCostSource === 'Actual' ? 'From a completed run' : 'R&D Estimate'}</p>
+                              <p className="text-[9px] text-slate-400 mt-0.5">{d.jobWorkCostSource === 'Actual' ? 'From the Outsource Orders, per piece' : 'R&D Estimate'}</p>
+                            </div>
+                            <div className="p-2.5 rounded-lg bg-slate-50">
+                              <p className="text-[10px] text-slate-500">Production cost + expense</p>
+                              <p className="text-sm font-semibold text-slate-800">{fmtMoney(rowProdCost)}</p>
+                              <p className="text-[9px] text-slate-400 mt-0.5">{d.productionCostSource === 'Actual' ? `Per piece${d.costFrom?.orderId ? ` · ${d.costFrom.orderId}` : ''}` : 'None yet'}</p>
                             </div>
                             {rowIsSheetMetal && (
                               <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-100">
@@ -506,7 +526,8 @@ export default function SubChildPartMasterTab() {
             const vsrc = vd.sourceItem || {};
             const vIsSheetMetal = !!vsrc.fabricationRef;
             const vScrapCost = vd.scrapCost || 0;
-            const vTotal = (vd.materialsCost || 0) + (vd.jobWorkCost || 0) + vScrapCost;
+            const vProd = (vd.productionCost || 0) + (vd.productionExpense || 0);
+            const vTotal = (vd.materialsCost || 0) + (vd.jobWorkCost || 0) + vScrapCost + vProd;
             return (
               <div className="space-y-4 py-2">
                 <div className="grid grid-cols-2 gap-2">
@@ -518,7 +539,8 @@ export default function SubChildPartMasterTab() {
                   <div className="bg-slate-50 rounded-lg p-2.5"><p className="text-[11px] text-slate-400">Status</p><p className="text-sm text-slate-800">{viewItem.isDiscontinued ? 'Discontinued' : 'Active'}</p></div>
                   <div className="bg-teal-50 rounded-lg p-2.5 border border-teal-100"><p className="text-[11px] text-teal-600 flex items-center gap-1"><Weight className="h-3 w-3" /> Unit Weight</p><p className="text-sm font-semibold text-teal-800">{fmtWeightOrDash(vd.unitWeightKg)}</p></div>
                   <div className="bg-slate-50 rounded-lg p-2.5"><p className="text-[11px] text-slate-400">Materials Cost</p><p className="text-sm text-slate-800">{fmtMoney(vd.materialsCost)}</p></div>
-                  <div className="bg-slate-50 rounded-lg p-2.5"><p className="text-[11px] text-slate-400">Job Work Cost</p><p className="text-sm text-slate-800">{fmtMoney(vd.jobWorkCost)}</p></div>
+                  <div className="bg-slate-50 rounded-lg p-2.5"><p className="text-[11px] text-slate-400">Job Work (outsource)</p><p className="text-sm text-slate-800">{fmtMoney(vd.jobWorkCost)}</p></div>
+                  <div className="bg-slate-50 rounded-lg p-2.5"><p className="text-[11px] text-slate-400">Production cost + expense</p><p className="text-sm text-slate-800">{fmtMoney(vProd)}</p></div>
                   {vIsSheetMetal && (
                     <div className="bg-amber-50 rounded-lg p-2.5 border border-amber-100"><p className="text-[11px] text-amber-600">Scrap Cost <span className="opacity-70">(Sheet Metal)</span></p><p className="text-sm font-semibold text-amber-800">{fmtMoney(vScrapCost)}</p></div>
                   )}
@@ -550,6 +572,31 @@ export default function SubChildPartMasterTab() {
         <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{dialogItem?._id ? 'Edit' : 'New'} Sub Child Part</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
+            {dialogItem?.subChildPartDetails?.bomApproved && !buying && (
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">This part's BOM is approved. Changing its source material or steps pulls back its BOM approval and Release, and it needs approving and releasing again.</p>
+            )}
+            {dialogItem?._id ? (
+              buying && (
+                <p className="text-xs rounded-md border border-blue-200 bg-blue-50 text-blue-700 px-3 py-2 flex items-center gap-2">
+                  <MakeBuyBadge item={dialogItem} /> Bought from a vendor — source material and processes are optional until it's switched to Made (Inventory → Sub Child Part → Manage).
+                </p>
+              )
+            ) : (
+              <div className="rounded-lg border bg-slate-50 p-3">
+                <p className="text-xs font-semibold text-slate-600 mb-1.5">Make or buy</p>
+                <div className="flex flex-wrap gap-4 text-sm">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="radio" name="scp-make-or-buy" checked={form.makeOrBuy === 'buy'} onChange={() => setForm(f => ({ ...f, makeOrBuy: 'buy' }))} /> Purchasable (Vendor)
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="radio" name="scp-make-or-buy" checked={form.makeOrBuy === 'make'} onChange={() => setForm(f => ({ ...f, makeOrBuy: 'make' }))} /> Internal Manufacturing
+                  </label>
+                </div>
+                {form.makeOrBuy === 'buy' && (
+                  <p className="text-[11px] text-slate-500 mt-1.5">Bought finished from a vendor. Source material and processes are optional; Accounts is asked for an estimated vendor price.</p>
+                )}
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-xs text-slate-500">Name</label>
@@ -592,7 +639,7 @@ export default function SubChildPartMasterTab() {
             </div>
 
             <div className="border-t border-slate-100 pt-3">
-              <label className="text-xs font-semibold text-slate-600 mb-1 block">Source Raw Material — one material only</label>
+              <label className="text-xs font-semibold text-slate-600 mb-1 block">Source Raw Material — one material only{buying ? ' (optional while bought)' : ''}</label>
               <SourceMaterialPicker
                 value={form.sourceItemCode}
                 displayName={form.sourceItemName}

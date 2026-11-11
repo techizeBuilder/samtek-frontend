@@ -52,8 +52,10 @@ export default function DepartmentModal({
       .catch(() => setCompanies([]));
 
     axios
+      // Ask for Managers: a plain /users list held only the 15 newest people (2026-11-11).
       .get(`${API_BASE}/users`, {
         headers: { Authorization: `Bearer ${token}` },
+        params: { role: "Manager", limit: 200 },
       })
       .then((r) => {
         const users = Array.isArray(r.data?.users) ? r.data.users : [];

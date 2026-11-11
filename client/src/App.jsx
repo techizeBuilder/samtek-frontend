@@ -100,6 +100,7 @@ import LeadPayments from "@/pages/accounts/LeadPayments";
 import DeliveryChallan from "@/pages/dispatch/DeliveryChallan";
 import DispatchHistory from "@/pages/dispatch/DispatchHistory";
 import VendorPickups from "@/pages/dispatch/VendorPickups";
+import DispatchVehicles from "@/pages/dispatch/Vehicles";
 import SalesApproval from "@/pages/SalesApproval";
 import SalesOrderList from "@/pages/SalesOrderList";
 import RoleBasedLayout from "@/components/layout/RoleBasedLayout";
@@ -114,6 +115,7 @@ import HRMSDashboard from "@/pages/hrms/HRMSDashboard";
 import HRMSEmployees from "@/pages/hrms/Employee";
 import HRMSDocumentVerification from "@/pages/hrms/DocumentVerification";
 import HRMSAttendance from "@/pages/hrms/AttendanceReport";
+import HRMSAttendanceDevice from "@/pages/hrms/AttendanceDevice";
 import HRMSSalaryStructure from "@/pages/hrms/Payroll/SalaryStructure";
 import HRMSPayrollRun from "@/pages/hrms/Payroll/PayrollRun";
 import HRMSPayslips from "@/pages/hrms/Payroll/Payslips";
@@ -197,8 +199,10 @@ import RDDashboard from "@/pages/ResearchDevelopment/Dashboard";
 import StoreDashboard from "@/pages/store/StoreDashboard";
 import StoreOrders from "@/pages/store/StoreOrders";
 import StoreMaterialIssues from "@/pages/store/MaterialHandshake/index";
+import StoreOutsourceReceive from "@/pages/store/OutsourceReceive";
 import DefectiveInventory from "@/pages/store/DefectiveInventory";
 import StoreReservations from "@/pages/store/Reservations";
+import LabelCarriers from "@/pages/store/LabelCarriers";
 import { RDProvider } from "@/contexts/RDContext";
 import ProductMaster from "@/pages/ResearchDevelopment/ProductMaster";
 import MotorMaster from "@/pages/ResearchDevelopment/MotorMaster";
@@ -335,6 +339,11 @@ function Router() {
       <Route exact path="/hrms/SuperAdmin/attendance-record">
         <ProtectedRoute requiredRole="HR-Admin">
           <HRMSAttendance />
+        </ProtectedRoute>
+      </Route>
+      <Route exact path="/hrms/SuperAdmin/attendance-device">
+        <ProtectedRoute requiredRole="HR-Admin">
+          <HRMSAttendanceDevice />
         </ProtectedRoute>
       </Route>
       <Route exact path="/hrms/SuperAdmin/attendance-requests">
@@ -610,6 +619,7 @@ function Router() {
             <Route exact path="/hrms/CompanyAdmin/designations" component={HRMSDesignation} />
             <Route exact path="/hrms/CompanyAdmin/user-management" component={RolePermissionManagement} />
             <Route exact path="/hrms/CompanyAdmin/task-management" component={HRMSTaskManagement} />
+            <Route exact path="/hrms/CompanyAdmin/attendance-device" component={HRMSAttendanceDevice} />
             <Route exact path="/hrms/CompanyAdmin/lead-settings" component={LeadSettingRequests} />
             <Route exact path="/hrms/CompanyAdmin/purchase-approvals" component={PurchaseVendorApprovals} />
             <Route component={NotFound} />
@@ -1022,6 +1032,11 @@ function Router() {
           <VendorPickups />
         </ProtectedRoute>
       </Route>
+      <Route path="/dispatch/vehicles">
+        <ProtectedRoute requiredRole={["Dispatch", "Dispatch Head", "Dispatch Employee"]}>
+          <DispatchVehicles />
+        </ProtectedRoute>
+      </Route>
 
       {/* Packaging & Dispatch Module Routes */}
       <Route path="/packaging-dispatch/dashboard">
@@ -1301,6 +1316,11 @@ function Router() {
           <StoreMaterialIssues />
         </ProtectedRoute>
       </Route>
+      <Route path="/store/outsource-receive">
+        <ProtectedRoute requiredRole={["Store Head", "Store Employee"]}>
+          <StoreOutsourceReceive />
+        </ProtectedRoute>
+      </Route>
       <Route path="/store/purchases/requests">
         <ProtectedRoute requiredRole={["Store Head", "Store Employee"]}>
           <PurchaseRequest />
@@ -1314,6 +1334,12 @@ function Router() {
       <Route path="/store/reservations">
         <ProtectedRoute requiredRole={["Store Head", "Store Employee", "Company Admin"]}>
           <StoreReservations />
+        </ProtectedRoute>
+      </Route>
+      {/* Serial number work step 2 (2026-10-31): stickers on stock parts holding tracked serials */}
+      <Route path="/store/label-carriers">
+        <ProtectedRoute requiredRole={["Store Head", "Store Employee", "Company Admin"]}>
+          <LabelCarriers />
         </ProtectedRoute>
       </Route>
       {/* task management route for store department */}

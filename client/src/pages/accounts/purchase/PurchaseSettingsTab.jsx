@@ -28,6 +28,7 @@ export default function PurchaseSettingsTab() {
   const [terms, setTerms] = useState([]);
   const [validityDays, setValidityDays] = useState('30');
   const [warnPercent, setWarnPercent] = useState('10');
+  const [entityTypes, setEntityTypes] = useState([]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['purchase-settings'],
@@ -36,10 +37,11 @@ export default function PurchaseSettingsTab() {
   const settings = data?.settings;
   useEffect(() => {
     if (!settings) return;
-    setCharges((settings.chargeLabels || []).map(c => ({ name: c.name, defaultGstPercent: String(c.defaultGstPercent ?? 0) })));
+    setCharges((settings.chargeLabels || []).map(c => ({ name: c.name, defaultGstPercent: String(c.defaultGstPercent ?? 0), isTransport: !!c.isTransport })));
     setTerms((settings.termLabels || []).map(t => ({ name: t.name })));
     setValidityDays(String(settings.quoteValidityDays ?? 30));
     setWarnPercent(String(settings.priceJumpWarnPercent ?? 10));
+    setEntityTypes((settings.entityTypes || []).map(t => ({ name: t.name })));
   }, [settings?.updatedAt]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Quote rules (2026-10-09) — saved on their own, separate from the templates.
@@ -60,7 +62,7 @@ export default function PurchaseSettingsTab() {
 
   const saveM = useMutation({
     mutationFn: () => apiRequest('PUT', '/api/purchase-settings/templates', {
-      chargeLabels: charges.map(c => ({ name: c.name, defaultGstPercent: Number(c.defaultGstPercent) || 0 })),
+      chargeLabels: charges.map(c => ({ name: c.name, defaultGstPercent: Number(c.defaultGstPercent) || 0, isTransport: !!c.isTransport })),
       termLabels: terms,
     }),
     onSuccess: () => {
@@ -69,6 +71,17 @@ export default function PurchaseSettingsTab() {
     },
     onError: (e) => toast({ title: 'Could not save', description: e.message, variant: 'destructive' }),
   });
+
+  // Vendor Master's Entity Type choices (2026-10-28) — saved on their own.
+  const entityM = useMutation({
+    mutationFn: () => apiRequest('PUT', '/api/purchase-settings/entity-types', { entityTypes }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['purchase-settings'] });
+      toast({ title: 'Entity types saved', description: 'Vendor Master offers these from now on.' });
+    },
+    onError: (e) => toast({ title: 'Could not save', description: e.message, variant: 'destructive' }),
+  });
+  const entityOk = entityTypes.some(t => t.name.trim());
 
   const setRow = (list, setList, i, patch) => setList(list.map((r, j) => (j === i ? { ...r, ...patch } : r)));
 
@@ -124,7 +137,7 @@ export default function PurchaseSettingsTab() {
         <CardContent className="p-4 space-y-3">
           <div>
             <h3 className="font-semibold text-slate-800">Charges</h3>
-            <p className="text-xs text-slate-500">Added to the whole PO as a flat ₹ amount. The GST % here is the default for that charge; it can be changed on the PO.</p>
+            <p className="text-xs text-slate-500">Added to the whole PO as a flat ₹ amount. The GST % here is the default for that charge; it can be changed on the PO. Tick <b>Transport</b> for freight-type charges — they're never offered on an Outsource Order (outsource transport is ours, arranged by Dispatch).</p>
           </div>
           {charges.length === 0 && <p className="text-xs text-slate-400 italic">No charge names yet.</p>}
           {charges.map((c, i) => (
@@ -134,13 +147,16 @@ export default function PurchaseSettingsTab() {
                 <Input className="w-20" type="number" min="0" max="100" value={c.defaultGstPercent} disabled={!canEdit} onChange={e => setRow(charges, setCharges, i, { defaultGstPercent: e.target.value })} />
                 <span className="text-xs text-slate-500">% GST</span>
               </div>
+              <label className="flex items-center gap-1 text-xs text-slate-600 whitespace-nowrap">
+                <input type="checkbox" checked={!!c.isTransport} disabled={!canEdit} onChange={e => setRow(charges, setCharges, i, { isTransport: e.target.checked })} /> Transport
+              </label>
               {canEdit && (
                 <button type="button" onClick={() => setCharges(charges.filter((_, j) => j !== i))} className="text-slate-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
               )}
             </div>
           ))}
           {canEdit && (
-            <Button type="button" size="sm" variant="outline" onClick={() => setCharges([...charges, { name: '', defaultGstPercent: '0' }])}>
+            <Button type="button" size="sm" variant="outline" onClick={() => setCharges([...charges, { name: '', defaultGstPercent: '0', isTransport: false }])}>
               <Plus className="w-3.5 h-3.5 mr-1" /> Add charge name
             </Button>
           )}
@@ -182,6 +198,34 @@ export default function PurchaseSettingsTab() {
           <Save className="w-4 h-4 mr-1.5" />{saveM.isPending ? 'Saving...' : 'Save templates'}
         </Button>
       )}
+
+      <Card className="border-0 shadow-sm">
+        <CardContent className="p-4 space-y-3">
+          <div>
+            <h3 className="font-semibold text-slate-800">Vendor entity types</h3>
+            <p className="text-xs text-slate-500">The choices for <b>Entity Type</b> on Vendor Master. A vendor already saved with a type you remove here keeps it.</p>
+          </div>
+          {entityTypes.map((t, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <Input className="flex-1" placeholder="e.g. Company, Firm, LLP" value={t.name} disabled={!canEdit} onChange={e => setRow(entityTypes, setEntityTypes, i, { name: e.target.value })} />
+              {canEdit && (
+                <button type="button" onClick={() => setEntityTypes(entityTypes.filter((_, j) => j !== i))} className="text-slate-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
+              )}
+            </div>
+          ))}
+          {!entityOk && <p className="text-xs text-red-600">Keep at least one entity type.</p>}
+          {canEdit && (
+            <div className="flex items-center gap-2">
+              <Button type="button" size="sm" variant="outline" onClick={() => setEntityTypes([...entityTypes, { name: '' }])}>
+                <Plus className="w-3.5 h-3.5 mr-1" /> Add entity type
+              </Button>
+              <Button size="sm" onClick={() => entityM.mutate()} disabled={entityM.isPending || !entityOk}>
+                <Save className="w-4 h-4 mr-1.5" />{entityM.isPending ? 'Saving...' : 'Save entity types'}
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

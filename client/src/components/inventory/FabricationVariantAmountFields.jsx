@@ -21,7 +21,9 @@ const densityToKgM3 = (value, unit) => (unit === 'g/cm3' ? Number(value) * 1000 
 // (the row's own locked Used Unit — see below).
 // `categories` is the /api/fabrication-master/categories catalog (for calcType).
 export default function FabricationVariantAmountFields({ row, categories, onUpdate }) {
-  const variants = (row.dimensionVariants || []).filter(v => !v.isLeftover);
+  // A size R&D discontinued isn't offered for a new pick; a line already on
+  // it keeps it (2026-10-28, docs/fabrication-size-sync-2026-10.md §5).
+  const variants = (row.dimensionVariants || []).filter(v => !v.isLeftover && (!v.isDiscontinued || v._id === row.dimensionVariantId));
   const category = categories.find(c => c.key === row.fabricationCategory) || null;
   const isSheet = category?.calcType === 'sheet';
   const chosenVariant = variants.find(v => v._id === row.dimensionVariantId) || null;

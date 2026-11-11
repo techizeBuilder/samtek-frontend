@@ -5,11 +5,19 @@ import {
     History, Monitor, FileText, Download, CheckCircle2, XCircle, Loader2, Eye, X
 } from 'lucide-react';
 
+// Serial number work step 2 (2026-10-31): a vendor warranty claim from a part
+// traced into the customer's order.
+// @ts-ignore — plain JSX component
+import VendorWarrantyClaims from '@/components/support/VendorWarrantyClaims';
+
+const shortDate = (d: any) => (d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '');
+
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 const FILE_BASE = API_BASE.replace('/api', ''); // Helper for local files
 
 export default function CustomerHistoryDashboard() {
     const [searchInput, setSearchInput] = useState('');
+    const [claimFor, setClaimFor] = useState<any>(null);
     const [activeSearch, setActiveSearch] = useState('');
     const [viewingAmc, setViewingAmc] = useState<string | null>(null);
 
@@ -248,10 +256,69 @@ export default function CustomerHistoryDashboard() {
                                 </div>
                             )}
                         </div>
+
+                        {/* Serial number work step 2: every vendor serial traced into each order. */}
+                        {history.vendorParts?.length > 0 && (
+                            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                                <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2 mb-4">
+                                    <Shield className="text-indigo-600" /> Vendor parts in these orders
+                                </h3>
+                                <div className="space-y-4">
+                                    {history.vendorParts.map((o: any) => (
+                                        <div key={o.orderCode}>
+                                            <p className="text-xs font-bold text-gray-500 uppercase mb-2">Order {o.orderCode}</p>
+                                            <div className="border border-gray-100 rounded-xl divide-y divide-gray-100">
+                                                {o.parts.map((p: any) => (
+                                                    <div key={p._id} className="flex items-center justify-between gap-3 px-3 py-2">
+                                                        <div className="min-w-0">
+                                                            <p className="text-sm font-semibold text-gray-800">{p.itemName} <span className="font-mono text-xs text-indigo-700">{p.serialNumber}</span></p>
+                                                            <p className="text-[11px] text-gray-500">
+                                                                {p.vendorName || '—'}{p.vendorWarrantyMonths > 0 ? ` · ${p.vendorWarrantyMonths} months vendor warranty` : ' · no vendor warranty'}{p.receivedAt ? ` · received ${shortDate(p.receivedAt)}` : ''}{o.deliveredAt ? ` · delivered to customer ${shortDate(o.deliveredAt)}` : ' · not delivered yet'}{p.inPart ? ` · in ${p.inPart}` : ''}
+                                                            </p>
+                                                        </div>
+                                                        <button onClick={() => setClaimFor({ serial: p.serialNumber, customerName: history.customerName, orderCode: o.orderCode })}
+                                                            className="text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-md shrink-0">
+                                                            Claim
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Spare parts a technician fitted at this customer's. */}
+                        {history.serviceParts?.length > 0 && (
+                            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                                <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2 mb-4">
+                                    <Shield className="text-indigo-600" /> Fitted on service visits
+                                </h3>
+                                <div className="border border-gray-100 rounded-xl divide-y divide-gray-100">
+                                    {history.serviceParts.map((p: any) => (
+                                        <div key={p._id} className="flex items-center justify-between gap-3 px-3 py-2">
+                                            <div className="min-w-0">
+                                                <p className="text-sm font-semibold text-gray-800">{p.itemName} <span className="font-mono text-xs text-indigo-700">{p.serialNumber}</span></p>
+                                                <p className="text-[11px] text-gray-500">
+                                                    {p.vendorName || '—'}{p.vendorWarrantyMonths > 0 ? ` · ${p.vendorWarrantyMonths} months vendor warranty` : ' · no vendor warranty'}{p.receivedAt ? ` · received ${shortDate(p.receivedAt)}` : ''} · fitted {shortDate(p.fittedAt)} on {p.ticketNo}{p.inPart ? ` · in ${p.inPart}` : ''}
+                                                </p>
+                                            </div>
+                                            <button onClick={() => setClaimFor({ serial: p.serialNumber, customerName: history.customerName })}
+                                                className="text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-md shrink-0">
+                                                Claim
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                 </div>
             )}
+
+            <VendorWarrantyClaims open={!!claimFor} onClose={() => setClaimFor(null)} prefill={claimFor} />
 
             {/* 🔥 PDF LIGHTBOX OVERLAY */}
             {viewingAmc && (

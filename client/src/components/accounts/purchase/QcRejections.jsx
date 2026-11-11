@@ -7,6 +7,8 @@ import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { Search, RotateCw, PackageX, RefreshCcw, Ban, Undo2, Wallet } from 'lucide-react';
+import RejectionEvidence from '@/components/qc/RejectionEvidence';
+import QcCheckRow from '@/components/qc/QcCheckRow';
 
 // QC rejections of purchased material (procurement-v2, accounts Slice 3,
 // 2026-10-12 — client's cases). QC failing a purchase job makes one of these;
@@ -17,6 +19,10 @@ import { Search, RotateCw, PackageX, RefreshCcw, Ban, Undo2, Wallet } from 'luci
 const inr = (n) => `₹${(Math.round((Number(n) || 0) * 100) / 100).toLocaleString('en-IN')}`;
 const day = (d) => (d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '');
 const localDay = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+// A replacement must come within a week (client, 2026-10-29) — the date
+// starts at a week from today and nothing later can be picked.
+const REPLACEMENT_MAX_DAYS = 7;
+const inDays = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return localDay(d); };
 
 const STATUS_TONE = {
   'Awaiting vendor answer': 'bg-red-50 text-red-700 border-red-200',
@@ -43,7 +49,7 @@ export function RejectionAnswerDialog({ open, onOpenChange, rejection, onDone })
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
   const changing = rejection?.status === 'Replacement expected';
-  useEffect(() => { if (open) { setOutcome(''); setDate(''); setNote(''); } }, [open]);
+  useEffect(() => { if (open) { setOutcome(''); setDate(inDays(REPLACEMENT_MAX_DAYS)); setNote(''); } }, [open]);
   if (!rejection) return null;
   const choices = changing ? OUTCOMES.filter(o => o.value !== 'replace') : OUTCOMES;
 
@@ -53,8 +59,12 @@ export function RejectionAnswerDialog({ open, onOpenChange, rejection, onDone })
     if (outcome === 'refused' && !note.trim()) return toast({ title: 'Add a note on what the vendor said', variant: 'destructive' });
     setSaving(true);
     try {
-      const res = await apiRequest('PUT', `/api/accounts/purchases/rejections/${rejection._id}/answer`, { outcome, expectedDate: date || undefined, note });
-      toast({ title: res?.message || 'Answer recorded' });
+      // One answer for the whole rejection; "for all" on a PO line's decision
+      // records it on each request's REJ (2026-10-30).
+      const ids = rejection._groupIds || [rejection._id];
+      let res = null;
+      for (const rid of ids) res = await apiRequest('PUT', `/api/accounts/purchases/rejections/${rid}/answer`, { outcome, expectedDate: date || undefined, note });
+      toast({ title: ids.length > 1 ? `Answer recorded on ${ids.length} rejections` : (res?.message || 'Answer recorded') });
       onOpenChange(false);
       onDone?.();
     } catch (err) {
@@ -73,6 +83,12 @@ export function RejectionAnswerDialog({ open, onOpenChange, rejection, onDone })
             {rejection.number} · {rejection.poNumber} · {rejection.vendorName}: {rejection.rejectedQty} {rejection.qtyUnit} of <strong>{rejection.itemName}</strong> rejected by QC — {rejection.reason || 'no reason given'} ({inr(rejection.value)}).
           </DialogDescription>
         </DialogHeader>
+        {/* What to show the vendor while asking them (2026-10-30). */}
+        <div className="rounded-lg border border-slate-200 p-2.5 space-y-1.5">
+          <RejectLineText r={rejection} />
+          {!(rejection.lines || []).length && <RejectionEvidence showEmpty failedChecks={rejection.parameter ? [] : rejection.failedChecks} photos={rejection.photos} downloadName={rejection.number} />}
+          {snapshotMarked(rejection) && <ChecklistSnapshotButton rejection={rejection} />}
+        </div>
         <div className="space-y-2">
           {choices.map(o => (
             <label key={o.value} className={`flex gap-3 p-3 rounded-lg border cursor-pointer ${outcome === o.value ? 'border-blue-500 bg-blue-50/60' : 'border-slate-200 hover:border-slate-300'}`}>
@@ -85,8 +101,8 @@ export function RejectionAnswerDialog({ open, onOpenChange, rejection, onDone })
           ))}
           {outcome === 'replace' && (
             <label className="block text-xs text-slate-600 space-y-1">
-              <span>When will the vendor send it? <span className="text-red-500">*</span></span>
-              <Input type="date" className="h-9 text-sm w-48" min={localDay(new Date())} value={date} onChange={e => setDate(e.target.value)} />
+              <span>When will the vendor send it? <span className="text-red-500">*</span> <span className="text-slate-400">(within a week)</span></span>
+              <Input type="date" className="h-9 text-sm w-48" min={localDay(new Date())} max={inDays(REPLACEMENT_MAX_DAYS)} value={date} onChange={e => setDate(e.target.value)} />
             </label>
           )}
           <label className="block text-xs text-slate-600 space-y-1">
@@ -101,6 +117,77 @@ export function RejectionAnswerDialog({ open, onOpenChange, rejection, onDone })
       </DialogContent>
     </Dialog>
   );
+}
+
+// A reject breakdown line (2026-10-30): "2 × Rust — rust patches", the fault
+// highlighted. Older rejections show QC's reason.
+function RejectLineText({ r }) {
+  if ((r.lines || []).length) {
+    // One rejection, its reasons (2026-10-30): each line with its severity and photos.
+    return (
+      <div className="space-y-1.5">
+        {r.lines.map((l, i) => (
+          <div key={i}>
+            <p className="text-sm">
+              <span className="font-semibold text-red-700 bg-red-50 border border-red-200 rounded px-1.5 py-0.5">{l.qty} × {l.parameter}</span>
+              {l.severity && <span className="ml-1 text-[10px] text-slate-500">({l.severity})</span>}
+              <span className="text-slate-800"> — {l.remark}</span>
+            </p>
+            {(l.photos || []).length > 0 && <div className="mt-1"><RejectionEvidence compact photos={l.photos} downloadName={`${r.number}-${i + 1}`} /></div>}
+          </div>
+        ))}
+      </div>
+    );
+  }
+  if (!r.parameter) return <p className="text-xs text-slate-700">QC's reason: <span className="font-medium text-red-700">"{r.reason || 'no reason given'}"</span></p>;
+  return (
+    <p className="text-sm">
+      <span className="font-semibold text-red-700 bg-red-50 border border-red-200 rounded px-1.5 py-0.5">{r.rejectedQty} × {r.parameter}</span>
+      <span className="text-slate-800"> — {r.remark || r.reason}</span>
+    </p>
+  );
+}
+
+// The job's checklist as it stood at that QC decision — kept on the REJ.
+// Shown only when QC marked something then: a reject with breakdown lines
+// needs no checks (2026-10-31), and a list of untouched rows tells Purchase
+// nothing — the lines are the reason. A row QC left unmarked reads "Not
+// checked" (not "Pending": nothing is waiting on it any more).
+// And only when it describes THESE pieces (checklistApplies, 2026-10-31): no
+// breakdown lines (one piece), or the whole lot failed — not a partial reject
+// with lines, where the list is the lot's and the rest go on to pass. Older
+// REJs (null) keep the marked-rows rule.
+const snapshotMarked = (r) => r?.checklistApplies !== false && (r?.checklistSnapshot || []).some(c => c.status === 'Pass' || c.status === 'Fail');
+function ChecklistSnapshotButton({ rejection }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)} className="text-xs text-blue-600 hover:underline">View QC checklist</button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-[560px] max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>QC checklist — {rejection.qcJobRef || 'QC'}</DialogTitle>
+            <DialogDescription>{rejection.itemName} · as it stood when QC decided ({day(rejection.createdAt)}).</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            {(rejection.checklistSnapshot || []).map((row, i) => <QcCheckRow key={i} row={row.status === 'Pass' || row.status === 'Fail' ? row : { ...row, status: 'Not checked' }} readOnly />)}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+// Consecutive REJs of one QC decision (shared decisionId) → one group.
+function groupByDecision(rows) {
+  const groups = [];
+  for (const r of rows) {
+    const last = groups[groups.length - 1];
+    if (r.decisionId && last && last.decisionId === r.decisionId) last.rows.push(r);
+    else groups.push({ decisionId: r.decisionId || null, rows: [r] });
+  }
+  groups.forEach(g => g.rows.sort((x, y) => String(x.number).localeCompare(String(y.number))));
+  return groups;
 }
 
 const VIEWS = [
@@ -154,36 +241,69 @@ export default function QcRejections({ canAnswer = true, onCounts }) {
       <div className="bg-white border rounded-lg divide-y">
         {loading ? <p className="py-12 text-center text-slate-400 text-sm">Loading…</p>
           : rows.length === 0 ? <p className="py-12 text-center text-slate-400 text-sm">{view === 'open' ? 'No rejections waiting.' : 'Nothing here.'}</p>
-            : rows.map(r => {
-              const rep = r.replacement?.purchaseRequest;
-              const canChange = r.status === 'Replacement expected' && rep && rep.status !== 'Received';
+            : groupByDecision(rows).map(g => {
+              const first = g.rows[0];
+              const grouped = g.rows.length > 1 || !!first.parameter || (first.lines || []).length > 0;
+              const allAwaiting = g.rows.length > 1 && g.rows.every(x => x.status === 'Awaiting vendor answer');
               return (
-                <div key={r._id} className="p-3 flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0 space-y-0.5">
-                    <p className="text-sm font-medium text-slate-800 flex flex-wrap items-center gap-2">
-                      <span className="font-mono text-xs text-slate-500">{r.number}</span>
-                      {r.itemName}
-                      <span className="text-slate-500 font-normal">· {r.rejectedQty} {r.qtyUnit}</span>
-                      {r.severity && <span className={`ml-1 text-[10px] font-semibold border rounded-full px-1.5 py-0.5 ${r.severity === 'Critical' ? 'bg-red-50 text-red-700 border-red-200' : r.severity === 'Major' ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-slate-50 text-slate-600 border-slate-200'}`}>{r.severity}</span>}
-                      <Badge variant="outline" className={`text-[10px] ${STATUS_TONE[r.status] || ''}`}>{r.status}</Badge>
-                      {r.replacementOf && <Badge variant="outline" className="text-[10px]">replacement failed again</Badge>}
-                    </p>
-                    <p className="text-xs text-slate-600">{r.poNumber} · {r.vendorName} · {r.qcJobRef || 'QC'}: "{r.reason || 'no reason'}" · <strong>{inr(r.value)}</strong> · {day(r.createdAt)}</p>
-                    {r.outcome && (
-                      <p className="text-xs text-slate-600">
-                        {OUTCOMES.find(o => o.value === r.outcome)?.label}
-                        {r.outcome === 'replace' && r.replacement?.expectedDate ? ` — expected ${day(r.replacement.expectedDate)}${rep ? ` (${rep.requestId}: ${rep.status})` : ''}` : ''}
-                        {r.advanceShare > 0 ? ` · advance on it ${inr(r.advanceShare)}${r.moneyBack ? ` (${r.moneyBack.status})` : ''}` : ''}
-                        {r.note ? ` · "${r.note}"` : ''}
-                        {r.recordedByName ? ` — ${r.recordedByName}, ${day(r.recordedAt)}` : ''}
-                      </p>
-                    )}
-                  </div>
-                  {canAnswer && (r.status === 'Awaiting vendor answer' || canChange) && (
-                    <Button size="sm" variant={r.status === 'Awaiting vendor answer' ? 'default' : 'outline'} onClick={() => setAnswering(r)}>
-                      {r.status === 'Awaiting vendor answer' ? 'Record vendor\'s answer' : 'Change answer'}
-                    </Button>
+                <div key={g.decisionId || first._id} className="p-3 space-y-2">
+                  {grouped && (
+                    // One QC decision (2026-10-30): its lines below, each its own REJ.
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-600">
+                      <span className="font-semibold text-slate-800">{first.qcJobRef || 'QC'}</span>
+                      <span>· {day(first.createdAt)} · {Math.round(g.rows.reduce((t, x) => t + x.rejectedQty, 0) * 1000) / 1000} {first.qtyUnit} of <strong>{first.itemName}</strong> rejected</span>
+                      <span>· {first.poNumber} · {first.vendorName}</span>
+                      {snapshotMarked(first) && <ChecklistSnapshotButton rejection={first} />}
+                      {canAnswer && allAwaiting && (
+                        // A PO line's decision made one REJ per request — one answer for all of them.
+                        <Button size="sm" className="ml-auto h-7 text-xs" onClick={() => setAnswering({
+                          ...first, _groupIds: g.rows.map(x => x._id),
+                          rejectedQty: Math.round(g.rows.reduce((t, x) => t + x.rejectedQty, 0) * 1000) / 1000,
+                          value: g.rows.reduce((t, x) => t + (Number(x.value) || 0), 0),
+                          lines: g.rows.flatMap(x => x.lines || []),
+                          number: g.rows.map(x => x.number).join(', '),
+                        })}>
+                          Record answer for all ({g.rows.length})
+                        </Button>
+                      )}
+                    </div>
                   )}
+                  {g.rows.map(r => {
+                    const rep = r.replacement?.purchaseRequest;
+                    const canChange = r.status === 'Replacement expected' && rep && rep.status !== 'Received';
+                    return (
+                      <div key={r._id} className={`flex flex-wrap items-start justify-between gap-3 ${grouped ? 'border-l-2 border-red-200 pl-3' : ''}`}>
+                        <div className="min-w-0 space-y-1">
+                          <p className="text-sm font-medium text-slate-800 flex flex-wrap items-center gap-2">
+                            <span className="font-mono text-xs text-slate-500">{r.number}</span>
+                            {!grouped && <>{r.itemName}<span className="text-slate-500 font-normal">· {r.rejectedQty} {r.qtyUnit}</span></>}
+                            {r.severity && <span className={`text-[10px] font-semibold border rounded-full px-1.5 py-0.5 ${r.severity === 'Critical' ? 'bg-red-50 text-red-700 border-red-200' : r.severity === 'Major' ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-slate-50 text-slate-600 border-slate-200'}`}>{r.severity}</span>}
+                            <Badge variant="outline" className={`text-[10px] ${STATUS_TONE[r.status] || ''}`}>{r.status}</Badge>
+                            {r.replacementOf && <Badge variant="outline" className="text-[10px]">replacement failed again</Badge>}
+                            <span className="text-xs font-normal text-slate-500">{inr(r.value)}</span>
+                          </p>
+                          <RejectLineText r={r} />
+                          {!grouped && <p className="text-xs text-slate-500">{r.poNumber} · {r.vendorName} · {r.qcJobRef || 'QC'} · {day(r.createdAt)}</p>}
+                          {/* QC's photos (and, before the breakdown, its failed checks) — to share with the vendor. */}
+                          {!(r.lines || []).length && <RejectionEvidence compact showEmpty={!r.parameter} failedChecks={r.parameter ? [] : r.failedChecks} photos={r.photos} downloadName={r.number} />}
+                          {r.outcome && (
+                            <p className="text-xs text-slate-600">
+                              {OUTCOMES.find(o => o.value === r.outcome)?.label}
+                              {r.outcome === 'replace' && r.replacement?.expectedDate ? ` — expected ${day(r.replacement.expectedDate)}${rep ? ` (${rep.requestId}: ${rep.status})` : ''}` : ''}
+                              {r.advanceShare > 0 ? ` · advance on it ${inr(r.advanceShare)}${r.moneyBack ? ` (${r.moneyBack.status})` : ''}` : ''}
+                              {r.note ? ` · "${r.note}"` : ''}
+                              {r.recordedByName ? ` — ${r.recordedByName}, ${day(r.recordedAt)}` : ''}
+                            </p>
+                          )}
+                        </div>
+                        {canAnswer && (r.status === 'Awaiting vendor answer' || canChange) && (
+                          <Button size="sm" variant={r.status === 'Awaiting vendor answer' ? 'default' : 'outline'} onClick={() => setAnswering(r)}>
+                            {r.status === 'Awaiting vendor answer' ? 'Record vendor\'s answer' : 'Change answer'}
+                          </Button>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               );
             })}

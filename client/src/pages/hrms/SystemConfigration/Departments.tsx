@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import axios from "axios";
 import { MoreVertical, Search } from "lucide-react";
 import DepartmentModal from "./DepartmentModal";
+import DepartmentsFromRolesModal, { RoleDepartment } from "./DepartmentsFromRolesModal";
 import Loader from "../Loader";
 import { toast } from "../../Alert/Toast";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -69,6 +70,27 @@ export default function DepartmentPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, search]);
 
+  // Departments from roles this company doesn't have yet. On failure, or for a
+  // user with no company such as a Super Admin, there's simply no button.
+  const [missingFromRoles, setMissingFromRoles] = useState<RoleDepartment[]>([]);
+  const [fromRolesOpen, setFromRolesOpen] = useState(false);
+
+  const fetchMissingFromRoles = async () => {
+    try {
+      const res = await axios.get(`${API_BASE}/departments/from-roles`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setMissingFromRoles((res.data?.data || []).filter((d: RoleDepartment) => !d.exists));
+    } catch {
+      setMissingFromRoles([]);
+    }
+  };
+
+  useEffect(() => {
+    if (canAdd) fetchMissingFromRoles();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canAdd]);
+
   const deleteDepartment = async (id: string) => {
     if (!confirm("Delete this department?")) return;
     await axios.delete(`${API_BASE}/departments/${id}`, {
@@ -80,6 +102,7 @@ export default function DepartmentPage() {
       message: "The department has been deleted successfully.",
     });
     fetchDepartments();
+    if (canAdd) fetchMissingFromRoles();
   };
   if (loading && initialLoad) {
     return (
@@ -110,6 +133,15 @@ export default function DepartmentPage() {
               className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
             />
           </div>
+
+          {canAdd && missingFromRoles.length > 0 && (
+            <button
+              onClick={() => setFromRolesOpen(true)}
+              className="border border-[#49A7F5] text-[#49A7F5] px-4 py-2 rounded-md font-medium hover:bg-blue-50 transition-all active:scale-95"
+            >
+              Add from Roles
+            </button>
+          )}
 
           {canAdd && (
             <button
@@ -242,6 +274,18 @@ export default function DepartmentPage() {
         onClose={() => {
           setOpenModal(false);
           fetchDepartments();
+          if (canAdd) fetchMissingFromRoles();
+        }}
+      />
+
+      <DepartmentsFromRolesModal
+        isOpen={fromRolesOpen}
+        missing={missingFromRoles}
+        onClose={() => setFromRolesOpen(false)}
+        onAdded={() => {
+          setFromRolesOpen(false);
+          fetchDepartments();
+          fetchMissingFromRoles();
         }}
       />
     </div>

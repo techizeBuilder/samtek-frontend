@@ -46,12 +46,13 @@ import {
 import { showSuccessToast, showSmartToast } from '@/lib/toast-utils';
 import { useAuth } from '@/hooks/useAuth';
 import { usePermissions } from '@/hooks/usePermissions';
-import { MODULES, ROLE_MODULE_MAP, PERMISSION_ACTIONS, getDefaultModulesForRole } from '@/lib/roleModulesConfig';
+import { MODULES, ROLE_MODULE_MAP, PERMISSION_ACTIONS, getDefaultModulesForRole, modulesForRole } from '@/lib/roleModulesConfig';
 // Role and Module Configuration
 const ROLES = [
   { value: 'Superadmin', label: 'Superadmin' },
   { value: 'HR-Admin', label: 'HR Admin' },
   { value: 'Company Admin', label: 'Company Admin' },
+  { value: 'Manager', label: 'Manager' },
   { value: 'Production Head', label: 'Production Head' },
   { value: 'Dispatch Head', label: 'Packing and Dispatch Head' },
   { value: 'Sales Head', label: 'Sales Head' },
@@ -120,6 +121,8 @@ export default function RolePermissionManagement() {
       const params = new URLSearchParams({
         page: currentPage.toString(),
         limit: pageSize.toString(),
+        // Someone with no login has no permissions to set.
+        login: 'yes',
         ...(debouncedSearchTerm && { search: debouncedSearchTerm }),
         ...(roleFilter && roleFilter !== 'all' && { role: roleFilter }),
         ...(statusFilter && statusFilter !== 'all' && { status: statusFilter })
@@ -407,17 +410,20 @@ export default function RolePermissionManagement() {
   // Helper function to get features from actual permissions or fallback to MODULES
   const getModuleFeatures = (moduleName) => {
     const permissionModule = formData.permissions?.modules?.find(m => m.name === moduleName);
-    const moduleConfig = MODULES.find(m => m.name === moduleName);
+    const moduleConfig = modulesForRole(formData.role).find(m => m.name === moduleName) || MODULES.find(m => m.name === moduleName);
 
     if (permissionModule && permissionModule.features && permissionModule.features.length > 0) {
       // Enrich permission features with labels from MODULES configuration
-      return permissionModule.features.map(permFeature => {
+      const held = permissionModule.features.map(permFeature => {
         const configFeature = moduleConfig?.features?.find(f => f.key === permFeature.key);
         return {
           ...permFeature,
           label: configFeature?.label || permFeature.key
         };
       });
+      // Permissions this person doesn't hold yet still have to be listed, to be ticked.
+      const heldKeys = new Set(held.map(f => f.key));
+      return [...held, ...(moduleConfig?.features || []).filter(f => !heldKeys.has(f.key))];
     }
 
     // Fallback to MODULES if no permission data
@@ -427,7 +433,7 @@ export default function RolePermissionManagement() {
   const updateModulePermission = (moduleName, enabled) => {
     if (enabled) {
       // When enabling a module, add it with all features enabled
-      const moduleConfig = MODULES.find(m => m.name === moduleName);
+      const moduleConfig = modulesForRole(formData.role).find(m => m.name === moduleName) || MODULES.find(m => m.name === moduleName);
       const newModule = {
         name: moduleName,
         dashboard: true,
@@ -467,9 +473,13 @@ export default function RolePermissionManagement() {
   const updateFeaturePermission = (moduleName, featureKey, action, value) => {
     const updatedModules = formData.permissions.modules.map(module => {
       if (module.name === moduleName) {
+        // A permission not held yet is added when first ticked.
+        const features = module.features.some(feature => feature.key === featureKey)
+          ? module.features
+          : [...module.features, { key: featureKey, view: false, add: false, edit: false, delete: false }];
         return {
           ...module,
-          features: module.features.map(feature => {
+          features: features.map(feature => {
             if (feature.key === featureKey) {
               return { ...feature, [action]: value };
             }
@@ -537,9 +547,7 @@ export default function RolePermissionManagement() {
 
   const giveAllPermissions = () => {
     // Only enable the modules that are actually relevant to the selected role
-    const allowedModuleNames = ROLE_MODULE_MAP[formData.role] || [];
-    const allModulesWithFullPermissions = MODULES
-      .filter(module => allowedModuleNames.includes(module.name))
+    const allModulesWithFullPermissions = modulesForRole(formData.role)
       .map(module => ({
         name: module.name,
         dashboard: true,
@@ -723,8 +731,7 @@ export default function RolePermissionManagement() {
                       Select a role above to see the module permissions relevant to it.
                     </p>
                   )}
-                  {MODULES
-                    .filter(module => (ROLE_MODULE_MAP[formData.role] || []).includes(module.name))
+                  {modulesForRole(formData.role)
                     .map((module) => {
                       const moduleEnabled = isModuleEnabled(module.name);
                       return (
@@ -1431,8 +1438,7 @@ export default function RolePermissionManagement() {
                     Select a role above to see the module permissions relevant to it.
                   </p>
                 )}
-                {MODULES
-                  .filter(module => (ROLE_MODULE_MAP[formData.role] || []).includes(module.name))
+                {modulesForRole(formData.role)
                   .map((module) => {
                     const moduleEnabled = isModuleEnabled(module.name);
                     return (

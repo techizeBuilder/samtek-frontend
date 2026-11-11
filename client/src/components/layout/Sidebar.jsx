@@ -61,8 +61,9 @@ export default function Sidebar({ isOpen, onClose }) {
   // Any "...Employee" role (Sales Employee, Production Employee, etc.) is treated
   // as employee-tier here too — same convention RoleBasedLayout.jsx/ProtectedRoute.jsx
   // already use — so their merged-in HRMS self-service submenus expand correctly.
-  const isHrmsRole = user?.role === 'Manager' || user?.role === 'HR-Admin' || user?.role === 'Hr Admin' ||
-    (user?.role || '').toLowerCase().endsWith('employee');
+  // HR-Admin and Manager have real permissions for their submenus, so they don't
+  // skip the check: an unticked item leaves the menu (2026-11-11).
+  const isHrmsRole = (user?.role || '').toLowerCase().endsWith('employee');
   const isManagerRole = user?.role === 'Manager';
 
   const shouldBypassSubmoduleCheck = isHrmsRole ||
@@ -75,6 +76,12 @@ export default function Sidebar({ isOpen, onClose }) {
     normalizedRole === 'Store Head' ||
     normalizedRole === 'Store Employee' ||
     normalizedRole === 'Company Admin';
+
+  // Heads get the self-service block (2026-11-06). It's the only part of their menu
+  // that skips a permission check: their department menu keeps its real one.
+  const isHeadSelfService = (item) =>
+    (normalizedRole || '').endsWith(' Head') && (item.path || '').startsWith('/hrms/Employee/');
+  const skipsSubmoduleCheck = (item) => shouldBypassSubmoduleCheck || isHeadSelfService(item);
 
   const isHeadRole = normalizedRole?.includes('Head') || normalizedRole === 'Manager' || normalizedRole === 'Superadmin' || normalizedRole === 'Hr Admin' || normalizedRole === 'Company Admin';
 
@@ -168,7 +175,7 @@ export default function Sidebar({ isOpen, onClose }) {
     });
   } else if (normalizedRole === 'Research & Development Head') {
     filteredMenuItems = roleMenuItems.filter(item => {
-      if (!item.module) return true;
+      if (!item.module || isHeadSelfService(item)) return true;
       if (item.module === 'rnd') {
         if (item.feature) return hasFeatureAccess('rnd', item.feature, 'view');
         return true;
@@ -177,7 +184,7 @@ export default function Sidebar({ isOpen, onClose }) {
     });
   } else if (normalizedRole === 'Complaint Management Head') {
     filteredMenuItems = roleMenuItems.filter(item => {
-      if (!item.module) return true;
+      if (!item.module || isHeadSelfService(item)) return true;
       if (item.module === 'complaints') {
         if (item.feature) return hasFeatureAccess('complaints', item.feature, 'view');
         return true;
@@ -239,6 +246,7 @@ export default function Sidebar({ isOpen, onClose }) {
     filteredMenuItems = roleMenuItems;
   } else {
     filteredMenuItems = roleMenuItems.filter(item => {
+      if (isHeadSelfService(item)) return true;
       const hasAccess = hasModuleAccess(item.module);
       if (!hasAccess) return false;
       if (item.feature) return hasFeatureAccess(item.module, item.feature, 'view');
@@ -302,7 +310,7 @@ export default function Sidebar({ isOpen, onClose }) {
 
                 // 🔥 THE FIX: Always allow Training Management to reveal its submodules
                 const hasAccessibleSubmodules = hasSubmodules &&
-                  (item.label === 'Training Management' || shouldBypassSubmoduleCheck || item.submodules.some(sub => hasFeatureAccess(item.module, sub.feature, 'view')));
+                  (item.label === 'Training Management' || skipsSubmoduleCheck(item) || item.submodules.some(sub => hasFeatureAccess(item.module, sub.feature, 'view')));
 
                 return (
                   <div key={item.path} className="space-y-1">
@@ -363,7 +371,7 @@ export default function Sidebar({ isOpen, onClose }) {
                       <div className="ml-6 sm:ml-8 space-y-1">
                         {item.submodules
                           // 🔥 THE FIX: Bypass DB checks for LMS submodules so they render perfectly for Heads
-                          .filter(sub => item.label === 'Training Management' || shouldBypassSubmoduleCheck || hasFeatureAccess(item.module, sub.feature, 'view'))
+                          .filter(sub => item.label === 'Training Management' || skipsSubmoduleCheck(item) || hasFeatureAccess(item.module, sub.feature, 'view'))
                           .map((submodule) => {
                             const isSubActive = fullPath === submodule.path;
                             return (

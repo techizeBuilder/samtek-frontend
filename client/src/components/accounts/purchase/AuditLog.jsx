@@ -23,6 +23,8 @@ const ACTION_TONE = {
   rejected: 'bg-red-50 text-red-700 border-red-200',
   emailed: 'bg-blue-50 text-blue-700 border-blue-200',
   email_failed: 'bg-amber-50 text-amber-800 border-amber-200',
+  downloaded: 'bg-blue-50 text-blue-700 border-blue-200',
+  qc_results_emailed: 'bg-blue-50 text-blue-700 border-blue-200',
   cancel_requested: 'bg-red-50 text-red-700 border-red-200',
   cancelled: 'bg-red-100 text-red-800 border-red-300',
   short_closed: 'bg-slate-100 text-slate-700 border-slate-300',
@@ -40,7 +42,7 @@ const ACTION_TONE = {
 };
 const LABELS = {
   created: 'Created', sent_for_approval: 'Sent for approval', approved: 'Approved', rejected: 'Rejected',
-  emailed: 'Emailed to vendor', email_failed: 'Email failed', cancel_requested: 'Cancel asked', cancelled: 'Cancelled',
+  emailed: 'Emailed to vendor', email_failed: 'Email failed', downloaded: 'PO downloaded', qc_results_emailed: 'QC results emailed', cancel_requested: 'Cancel asked', cancelled: 'Cancelled',
   short_closed: 'Short closed', cancel_refused: 'Cancel refused', line_received: 'Line received', fully_received: 'Fully received',
   date_revised: 'Date changed', delivery_overdue: 'Delivery overdue',
   advance_paid: 'Advance paid', payment_made: 'Payment made', fully_accepted: 'Fully accepted',

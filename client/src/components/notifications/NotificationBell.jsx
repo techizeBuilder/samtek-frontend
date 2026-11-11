@@ -130,6 +130,34 @@ export const getNavigationUrl = (notification, userRole = '') => {
     return '/hrms/CompanyAdmin/purchase-approvals';
   }
 
+  // Outsource work (outsource-v2, 2026-10-23). An Outsource Order's notices
+  // (created / waiting for approval, time entered, approved / rejected, work
+  // short, ready for full payment) carry data.outsourceOrderId. The Company
+  // Admin can't open the Accounts pages — they go to Purchase Approvals →
+  // Outsource Orders, searched to that order; Purchase opens the order itself.
+  if (type === 'purchase' && data?.outsourceOrderId) {
+    if (userRole === 'Company Admin') {
+      const p = new URLSearchParams({ tab: 'OutsourceApprovals', status: data.outsourceApproval ? 'Pending' : 'Approved' });
+      if (data.orderNo) p.set('search', data.orderNo);
+      return `/hrms/CompanyAdmin/purchase-approvals?${p.toString()}`;
+    }
+    return `/accounts/purchases/purchase-outsource?work=orders&order=${data.outsourceOrderId}`;
+  }
+  // A new outsource request (job-work order, hand-off, automatic request) —
+  // Out Source Work → New requests. Older notices have no outsourceRequest
+  // flag; their jobWorkTypes / stepNames give them away (their orderId would
+  // otherwise send them to Sales Orders below).
+  if (type === 'purchase' && (data?.outsourceRequest || data?.jobWorkTypes || data?.stepNames || data?.orderId?.startsWith('SCJW-'))) {
+    return '/accounts/purchases/purchase-outsource?work=requests';
+  }
+
+  // Store counted fewer than Dispatch collected (2026-10-27) — an internal
+  // mismatch: Dispatch checks its trip, Store its Outsource Receive.
+  if (data?.outsourceCountMismatch) {
+    if (isStoreRole) return '/store/outsource-receive';
+    return '/dispatch/vendor-pickups';
+  }
+
   // Store users land in their own module, never in Sales/Accounts pages
   if (isStoreRole) {
     if (type === 'inventory' || data?.itemId) return '/store/inventory';
@@ -144,7 +172,6 @@ export const getNavigationUrl = (notification, userRole = '') => {
     return '/accounts/sales/order-forms';
   }
 
-  if (type === 'purchase' && data?.orderId?.startsWith('SCJW-')) return '/accounts/purchases/purchase-outsource';
   if (data?.orderId) return `/sales/orders?highlight=${data.orderId}`;
   if (type === 'lead' && data?.leadId) return `/sales/leads?highlight=${data.leadId}`;
   if (type === 'account' && data?.orderCode) return `/accounts/sales/packed-orders`;

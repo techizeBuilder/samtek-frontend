@@ -97,7 +97,7 @@ function ClaimList({ onOpen, onNew, canAdd }) {
       </div>
       <div className="relative">
         <Search className="w-4 h-4 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
-        <Input className="pl-8" placeholder="Claim no., serial, vendor, item, customer or ticket…" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <Input className="pl-8" placeholder="Claim no., serial, vendor, item, customer, order or ticket…" value={search} onChange={(e) => setSearch(e.target.value)} />
       </div>
       <div className="border rounded-lg divide-y bg-white max-h-[55vh] overflow-y-auto">
         {isLoading ? <p className="p-6 text-center text-sm text-slate-400">Loading…</p>
@@ -110,7 +110,7 @@ function ClaimList({ onOpen, onNew, canAdd }) {
                 </div>
                 <div className="flex-1 min-w-[180px]">
                   <p className="text-sm text-slate-700">{c.itemName}</p>
-                  <p className="text-[11px] text-slate-500">{c.vendorName}{c.customerName ? ` · ${c.customerName}` : ''}</p>
+                  <p className="text-[11px] text-slate-500">{c.vendorName}{c.customerName ? ` · ${c.customerName}` : ''}{c.orderCode ? ` · ${c.orderCode}` : ''}</p>
                 </div>
                 <div className="text-right space-y-0.5">
                   <StatusChip status={c.status} />
@@ -127,17 +127,97 @@ function ClaimList({ onOpen, onNew, canAdd }) {
   );
 }
 
-// ── New claim ───────────────────────────────────────────────────────────────
-function NewClaim({ onBack, onCreated }) {
+// ── By customer or order (2026-11-03) ───────────────────────────────────────
+// The vendor parts traced into a customer's orders — the same list Customer
+// Records shows — for a customer who knows their mobile or order, not a serial.
+function PartRow({ part, detail, onPick }) {
+  return (
+    <button type="button" onClick={onPick} className="w-full text-left px-3 py-2 hover:bg-slate-50">
+      <p className="text-sm font-semibold text-slate-800">{part.itemName} <span className="font-mono text-xs text-indigo-700">{part.serialNumber}</span></p>
+      <p className="text-[11px] text-slate-500">
+        {part.vendorName || '—'} · {part.vendorWarrantyMonths > 0 ? `${part.vendorWarrantyMonths} months vendor warranty` : 'no vendor warranty'}{part.receivedAt ? ` · received ${day(part.receivedAt)}` : ''} · {detail}{part.inPart ? ` · in ${part.inPart}` : ''}
+      </p>
+    </button>
+  );
+}
+
+function PartsFinder({ onPick }) {
   const { toast } = useToast();
-  const [serial, setSerial] = useState('');
+  const [q, setQ] = useState('');
+  const [result, setResult] = useState(null);
+  const [finding, setFinding] = useState(false);
+  const search = async () => {
+    if (!q.trim()) return;
+    setFinding(true);
+    try {
+      const r = await apiRequest('GET', `${KEY}/parts?q=${encodeURIComponent(q.trim())}`);
+      setResult(r?.data || null);
+    } catch (err) {
+      toast({ title: 'Search failed', description: err.message, variant: 'destructive' });
+    } finally {
+      setFinding(false);
+    }
+  };
+  const nothingListed = result?.found && !result.orders.length && !result.serviceParts.length;
+
+  return (
+    <div className="space-y-3">
+      <div className="space-y-2">
+        <Label className="text-xs font-semibold uppercase text-slate-700">Customer's mobile number or order number</Label>
+        <div className="flex gap-2">
+          <Input value={q} onChange={(e) => { setQ(e.target.value); setResult(null); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); search(); } }} placeholder="e.g. 9012761313 or ORD-0129" />
+          <Button type="button" variant="outline" onClick={search} disabled={finding || !q.trim()}>{finding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}<span className="ml-1">Find</span></Button>
+        </div>
+      </div>
+      {result && !result.found && <p className="text-sm text-slate-500 italic">Nothing found. Check it, or use By serial.</p>}
+      {nothingListed && <p className="text-sm text-slate-500 italic">{result.byMobile ? 'No vendor parts on this customer\'s orders.' : 'No vendor parts on this order.'} Use By serial.</p>}
+      {result?.found && !nothingListed && (
+        <div className="space-y-3">
+          {result.customerName && <p className="text-sm font-semibold text-slate-800">{result.customerName}</p>}
+          <p className="text-xs text-slate-500">Pick the part that failed.</p>
+          {result.orders.map(o => (
+            <div key={o.orderCode}>
+              <p className="text-xs font-bold text-slate-500 uppercase mb-1">Order {o.orderCode}</p>
+              <div className="border rounded-lg divide-y">
+                {o.parts.map(p => (
+                  <PartRow key={p._id} part={p} detail={o.deliveredAt ? `delivered to customer ${day(o.deliveredAt)}` : 'not delivered yet'}
+                    onPick={() => onPick({ serial: p.serialNumber, customerName: result.customerName, orderCode: o.orderCode })} />
+                ))}
+              </div>
+            </div>
+          ))}
+          {result.serviceParts.length > 0 && (
+            <div>
+              <p className="text-xs font-bold text-slate-500 uppercase mb-1">Fitted on service visits</p>
+              <div className="border rounded-lg divide-y">
+                {result.serviceParts.map(p => (
+                  <PartRow key={p._id} part={p} detail={`fitted ${day(p.fittedAt)} on ${p.ticketNo}`}
+                    onPick={() => onPick({ serial: p.serialNumber, customerName: result.customerName, ticketRef: p.ticketNo })} />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── New claim ───────────────────────────────────────────────────────────────
+// prefill (serial number work step 2, 2026-10-31): opened from a customer's
+// "Vendor parts in this order" — { serial, customerName, orderCode }.
+function NewClaim({ onBack, onCreated, prefill = null }) {
+  const { toast } = useToast();
+  // Two ways to start (2026-11-03): by customer or order, or by the serial.
+  const [way, setWay] = useState(prefill ? 'By serial' : 'By customer or order');
+  const [serial, setSerial] = useState(prefill?.serial || '');
   const [matches, setMatches] = useState(null);   // null = not searched yet
   const [unitId, setUnitId] = useState('');
   const [finding, setFinding] = useState(false);
   const [vendorId, setVendorId] = useState('');
   const [itemSearch, setItemSearch] = useState('');
   const [item, setItem] = useState(null);
-  const [form, setForm] = useState({ underWarranty: 'Unsure', customerName: '', ticketRef: '', problem: '', defectType: 'Other', severity: 'Major', reportedToVendorAt: today() });
+  const [form, setForm] = useState({ underWarranty: 'Unsure', customerName: prefill?.customerName || '', orderCode: prefill?.orderCode || '', ticketRef: '', problem: '', defectType: 'Other', severity: 'Major', reportedToVendorAt: today() });
   const [files, setFiles] = useState([]);
   const [saving, setSaving] = useState(false);
   const set = (k) => (v) => setForm(f => ({ ...f, [k]: v }));
@@ -148,11 +228,11 @@ function NewClaim({ onBack, onCreated }) {
   const iq = useDebouncedValue(itemSearch.trim(), 300);
   const { data: items } = useQuery({ queryKey: [KEY, 'items', iq], queryFn: () => apiRequest('GET', `${KEY}/items?search=${encodeURIComponent(iq)}`), enabled: !!byHand && !item });
 
-  const find = async () => {
-    if (!serial.trim()) return;
+  const find = async (value = serial) => {
+    if (!String(value).trim()) return;
     setFinding(true);
     try {
-      const r = await apiRequest('GET', `${KEY}/lookup?serial=${encodeURIComponent(serial.trim())}`);
+      const r = await apiRequest('GET', `${KEY}/lookup?serial=${encodeURIComponent(String(value).trim())}`);
       const list = r?.data || [];
       setMatches(list);
       setUnitId(list.length === 1 ? list[0]._id : '');
@@ -161,6 +241,26 @@ function NewClaim({ onBack, onCreated }) {
     } finally {
       setFinding(false);
     }
+  };
+
+  // A claim that starts with a serial looks it up by itself.
+  React.useEffect(() => { if (prefill?.serial) find(prefill.serial); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // The found unit's trail reaches a customer's order: carry both, unless typed.
+  React.useEffect(() => {
+    if (!unit) return;
+    setForm(f => ({ ...f, orderCode: f.orderCode || unit.trail?.customerOrderCode || '', customerName: f.customerName || unit.customerName || '' }));
+  }, [unit?._id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // A part picked from the customer's or order's list.
+  const pickPart = (p) => {
+    setSerial(p.serial); setMatches(null); setUnitId('');
+    setForm(f => ({ ...f, customerName: p.customerName || '', orderCode: p.orderCode || '', ticketRef: p.ticketRef || f.ticketRef }));
+    setWay('By serial');
+    find(p.serial);
+  };
+  // Another serial: the order found for the last one doesn't belong to it.
+  const changeSerial = (value) => {
+    setSerial(value); setMatches(null); setUnitId('');
+    setForm(f => ({ ...f, orderCode: '', customerName: f.customerName === unit?.customerName ? '' : f.customerName }));
   };
 
   const save = async () => {
@@ -197,12 +297,15 @@ function NewClaim({ onBack, onCreated }) {
     <div className="space-y-4">
       <button type="button" onClick={onBack} className="text-xs text-slate-500 hover:text-slate-800 flex items-center gap-1"><ArrowLeft className="w-3.5 h-3.5" /> All claims</button>
 
+      <Segmented value={way} onChange={setWay} options={['By customer or order', 'By serial']} />
+      {way === 'By customer or order' && <PartsFinder onPick={pickPart} />}
+
       {/* 1. The unit */}
-      <div className="space-y-2">
+      {way === 'By serial' && <div className="space-y-2">
         <Label className="text-xs font-semibold uppercase text-slate-700">Serial number the customer gave <span className="text-rose-500">*</span></Label>
         <div className="flex gap-2">
-          <Input value={serial} onChange={(e) => { setSerial(e.target.value); setMatches(null); setUnitId(''); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); find(); } }} placeholder="e.g. GEN-0104" className="font-mono" />
-          <Button type="button" variant="outline" onClick={find} disabled={finding || !serial.trim()}>{finding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}<span className="ml-1">Find</span></Button>
+          <Input value={serial} onChange={(e) => changeSerial(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); find(); } }} placeholder="e.g. GEN-0104" className="font-mono" />
+          <Button type="button" variant="outline" onClick={() => find()} disabled={finding || !serial.trim()}>{finding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}<span className="ml-1">Find</span></Button>
         </div>
 
         {matches && matches.length > 0 && (
@@ -220,6 +323,12 @@ function NewClaim({ onBack, onCreated }) {
                     </p>
                     {u.claims.length > 0 && (
                       <p className="text-[11px] text-red-700">Earlier claims on this serial: {u.claims.map(c => `${c.number} (${c.outcome || c.status})`).join(', ')}</p>
+                    )}
+                    {u.trail?.customerOrderCode && (
+                      <p className="text-slate-600">{u.deliveredAt ? <>Delivered to customer: <strong>{day(u.deliveredAt)}</strong></> : 'Not delivered to the customer yet'}</p>
+                    )}
+                    {u.trail?.steps?.length > 0 && (
+                      <p className="text-[11px] text-slate-600">Where it went: {u.trail.steps.map(st => `${st.what}${st.ref ? ` ${st.ref}` : ''}`).join(' → ')}</p>
                     )}
                   </div>
                 </div>
@@ -265,10 +374,10 @@ function NewClaim({ onBack, onCreated }) {
           </div>
         )}
         {months != null && <p className="text-xs text-slate-600">Warranty months on record: <strong>{months || 0}</strong> {unit ? '(from the vendor, at receive)' : '(the item\'s own warranty)'}</p>}
-      </div>
+      </div>}
 
       {/* 2. The claim */}
-      {matches && (
+      {way === 'By serial' && matches && (
         <div className="space-y-3">
           <div className="space-y-1">
             <Label className="text-xs font-semibold uppercase text-slate-700">Under the vendor's warranty?</Label>
@@ -276,6 +385,7 @@ function NewClaim({ onBack, onCreated }) {
           </div>
           <div className="grid sm:grid-cols-2 gap-3">
             <div className="space-y-1"><Label className="text-xs">Customer</Label><Input value={form.customerName} onChange={(e) => set('customerName')(e.target.value)} /></div>
+            {form.orderCode && <div className="space-y-1"><Label className="text-xs">Order</Label><p className="h-9 px-2 flex items-center text-sm font-mono border rounded-md bg-slate-50">{form.orderCode}</p></div>}
             <div className="space-y-1"><Label className="text-xs">Ticket no. (optional)</Label><Input value={form.ticketRef} onChange={(e) => set('ticketRef')(e.target.value)} placeholder="e.g. TKT-0042" /></div>
           </div>
           <div className="space-y-1">
@@ -349,6 +459,7 @@ function ClaimDetail({ id, onBack, canEdit }) {
           <p>Warranty: <strong>{c.vendorWarrantyMonths || 0} months</strong> ({c.monthsSource === 'serial' ? 'vendor, at receive' : 'item'})</p>
           <p>Under vendor warranty: <strong>{c.underWarranty}</strong></p>
           {c.customerName && <p>Customer: {c.customerName}</p>}
+          {c.orderCode && <p>Order: {c.orderCode}</p>}
           {c.ticketRef && <p>Ticket: {c.ticketRef}</p>}
         </div>
       </div>
@@ -426,8 +537,10 @@ function ClaimDetail({ id, onBack, canEdit }) {
   );
 }
 
-export default function VendorWarrantyClaims({ open, onClose, canAdd = true, canEdit = true }) {
-  const [view, setView] = useState('list'); // 'list' | 'new' | claim id
+export default function VendorWarrantyClaims({ open, onClose, canAdd = true, canEdit = true, prefill = null }) {
+  const [view, setView] = useState(prefill ? 'new' : 'list'); // 'list' | 'new' | claim id
+  // Opened again with a new part to claim → straight to a new claim.
+  React.useEffect(() => { if (open && prefill) setView('new'); }, [open, prefill?.serial]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) { setView('list'); onClose(); } }}>
       <DialogContent className="sm:max-w-3xl max-h-[92vh] overflow-y-auto">
@@ -436,7 +549,7 @@ export default function VendorWarrantyClaims({ open, onClose, canAdd = true, can
           <DialogDescription>A purchased unit failed at a customer — record what we told the vendor, how they answered and how it ended.</DialogDescription>
         </DialogHeader>
         {view === 'list' && <ClaimList canAdd={canAdd} onNew={() => setView('new')} onOpen={(id) => setView(id)} />}
-        {view === 'new' && <NewClaim onBack={() => setView('list')} onCreated={(id) => setView(id || 'list')} />}
+        {view === 'new' && <NewClaim key={prefill?.serial || 'new'} prefill={prefill} onBack={() => setView('list')} onCreated={(id) => setView(id || 'list')} />}
         {view !== 'list' && view !== 'new' && <ClaimDetail id={view} canEdit={canEdit} onBack={() => setView('list')} />}
       </DialogContent>
     </Dialog>

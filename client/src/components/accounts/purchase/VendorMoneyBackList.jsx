@@ -127,6 +127,8 @@ export default function VendorMoneyBackList({ vendorId = '', bankAccounts = [], 
               <p className="text-xs text-slate-500 mt-0.5 pl-5">
                 {i.source === 'Rejection'
                   ? `QC rejection ${i.rejection?.number || ''}${i.rejection ? ` — ${i.rejection.rejectedQty} ${i.rejection.qtyUnit} ${i.rejection.itemName}` : ''}`
+                  : i.source === 'Outsource'
+                  ? `Outsource order: ${i.note || 'paid above the bill'}`
                   : 'PO cancelled / short closed after the advance'}
                 {i.status === 'Credit available' && i.used > 0 ? ` · ${inr(i.amount - i.used)} left of the credit` : ''}
                 {i.status === 'Refunded' && i.refund?.receivedAt ? ` · received ${day(i.refund.receivedAt)}${i.refund.account?.accountName ? ` into ${i.refund.account.accountName}` : ''}${i.refund.reference ? ` (${i.refund.reference})` : ''}` : ''}

@@ -42,6 +42,9 @@ export default function UserModal({ isOpen, onClose, user = null }) {
   const { user: currentUser } = useAuthContext();
 
   const filteredRoles = Object.values(USER_ROLES).filter(role => {
+    // Someone with no login is added on Add Employee, not here.
+    if (role === 'Manpower') return false;
+
     // Super Admin / Super User can see all
     if (currentUser?.role === 'Super User' || currentUser?.role === 'Super Admin') {
       return true;

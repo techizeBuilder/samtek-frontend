@@ -23,7 +23,7 @@ import { CHANNEL_META, ManualQuotationDialog, QuotationRequestDialog, requestWai
 //     every item, plus charges / payment terms, on one page), or
 //   - ordered: rows with a submitted, up-to-date quote go into ONE PO
 //     (batching, as before) through the review dialog.
-const gstLabel = (q) => (q.gstInclusive ? ' incl. GST' : q.gstPercent != null ? ` + ${q.gstPercent}% GST` : ' + GST');
+const gstLabel = (q) => (q.gstInclusive ? (q.gstPercent != null ? ` incl. ${q.gstPercent}% GST` : ' incl. GST') :q.gstPercent != null ? ` + ${q.gstPercent}% GST` : ' + GST');
 export const SORTS = [
   { key: 'price', label: 'Lowest quoted total' },
   { key: 'rating', label: 'Best vendor score' },
@@ -214,6 +214,13 @@ function VendorCard({ entry, considered, settings, company, quoteRules, onChange
 
   const toggle = (key) => setPicked(s => { const n = new Set(s); n.has(key) ? n.delete(key) : n.add(key); return n; });
   const requestRows = tickable.filter(r => picked.has(r.card.key));
+  // Select all (client, 2026-10-29): every row that can be ticked — for a
+  // quotation request or the PO review — in one click; again to untick all.
+  const allTicked = tickable.length > 0 && requestRows.length === tickable.length;
+  const someTicked = requestRows.length > 0 && !allTicked;
+  const selectAllRef = useRef(null);
+  useEffect(() => { if (selectAllRef.current) selectAllRef.current.indeterminate = someTicked; }, [someTicked]);
+  const toggleAll = () => setPicked(allTicked ? new Set() : new Set(tickable.map(r => r.card.key)));
   const historyGroups = (requestRows.length ? requestRows : rows).map(r => r.card.group?._id).filter(Boolean);
   const lines = batchable.filter(r => picked.has(r.card.key)).map(r => ({
     key: r.card.group._id,
@@ -277,9 +284,10 @@ function VendorCard({ entry, considered, settings, company, quoteRules, onChange
       </div>
       {tickable.length > 0 && (
         <div className="px-3 py-2 border-t bg-slate-50 rounded-b-lg flex flex-wrap items-center justify-between gap-2">
-          <span className="text-xs text-slate-500">
-            {requestRows.length} ticked{lines.length ? <> · {lines.length} quoted · goods {inr(goods)}</> : ''}
-          </span>
+          <label className="flex items-center gap-2 text-xs text-slate-600 cursor-pointer select-none">
+            <input ref={selectAllRef} type="checkbox" checked={allTicked} onChange={toggleAll} title={allTicked ? 'Untick every item' : 'Tick every item that can be ticked'} />
+            <span><b className="font-semibold text-slate-700">Select all</b> · {requestRows.length} of {tickable.length} ticked{lines.length ? <> · {lines.length} quoted · goods {inr(goods)}</> : ''}</span>
+          </label>
           <div className="flex flex-wrap items-center gap-1.5">
             <Button
               size="sm" variant="outline" className="border-blue-200 text-blue-700 hover:bg-blue-50"

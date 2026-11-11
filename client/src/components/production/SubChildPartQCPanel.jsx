@@ -9,6 +9,7 @@ import { CheckCircle, XCircle, Clock, AlertTriangle, ClipboardCheck } from 'luci
 import { showSuccessToast, showSmartToast } from '@/lib/toast-utils';
 import ChecklistStepper from './ChecklistStepper';
 import PartReferencePanel from '@/components/qc/PartReferencePanel';
+import RejectionEvidence from '@/components/qc/RejectionEvidence';
 
 const API = (orderId) => `/api/production-mfg/orders/${orderId}`;
 
@@ -78,8 +79,10 @@ export default function SubChildPartQCPanel({ orderId, canEdit, teams = [] }) {
                 <Badge className={`text-xs ${badge.cls}`}>{badge.label}</Badge>
               </div>
               {part.status === 'Rejected' && part.rejectReason && (
-                <div className="mt-2 flex items-start gap-1.5 bg-red-50 border border-red-100 rounded px-2 py-1.5 text-xs text-red-700">
-                  <AlertTriangle className="h-3 w-3 flex-shrink-0 mt-0.5" /> {part.rejectReason}
+                <div className="mt-2 bg-red-50 border border-red-100 rounded px-2 py-1.5 text-xs text-red-700 space-y-1.5">
+                  <p className="flex items-start gap-1.5"><AlertTriangle className="h-3 w-3 flex-shrink-0 mt-0.5" /> {part.rejectReason}</p>
+                  {/* QC's failed checks + photos (2026-10-30). */}
+                  <RejectionEvidence compact failedChecks={part.failedChecks} photos={part.photos} downloadName={`${part.subChildPartName}-rejected`} />
                 </div>
               )}
 

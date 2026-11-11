@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { usePermissions } from '@/hooks/usePermissions';
-import { Send, Banknote, FileText, History, Undo2 } from 'lucide-react';
+import { Send, Banknote, FileText, History, Undo2, Paperclip, ExternalLink } from 'lucide-react';
 import VendorMoneyBackList from '@/components/accounts/purchase/VendorMoneyBackList';
 
 // Vendor Payments (rebuilt 2026-10-12 — client's answers, see
@@ -22,6 +22,10 @@ import VendorMoneyBackList from '@/components/accounts/purchase/VendorMoneyBackL
 // fully, several only in full, or oldest first.
 const inr = (n) => `₹${(Math.round((Number(n) || 0) * 100) / 100).toLocaleString('en-IN')}`;
 const day = (d) => (d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—');
+// A bill is overdue once its due DAY has ended (2026-10-24 — it read "overdue"
+// the moment a no-credit-days bill fell due). Same rule as the server.
+const startOfToday = () => { const t = new Date(); t.setHours(0, 0, 0, 0); return t; };
+const dueState = (d) => (!d ? 'due' : new Date(d) < startOfToday() ? 'overdue' : new Date(d) < new Date(startOfToday().getTime() + 864e5) ? 'today' : 'due');
 const STAGE_TONE = {
     'Advance due': 'bg-violet-100 text-violet-700 border-violet-200',
     'Awaiting material': 'bg-sky-100 text-sky-700 border-sky-200',
@@ -40,6 +44,35 @@ const VendorPayments = () => {
     const [amount, setAmount] = useState('');
     // Pay out of credit the vendor holds of ours (2026-10-12, Slice 3).
     const [useCredit, setUseCredit] = useState(false);
+    // Slip upload: track which row is uploading
+    const [slipUploading, setSlipUploading] = useState(null);
+    // The slip chosen on the entry form; slipKey clears the file input.
+    const [slipFile, setSlipFile] = useState(null);
+    const [slipKey, setSlipKey] = useState(0);
+    const slipInputRef = useRef({});
+
+    const getApiBase = () => import.meta.env.VITE_API_URL || '/api';
+    const uploadSlip = async (paymentId, file) => {
+        setSlipUploading(paymentId);
+        try {
+            const token = localStorage.getItem('token');
+            const fd = new FormData();
+            fd.append('slip', file);
+            const res = await fetch(`${getApiBase()}/accounts/purchases/payments/${paymentId}/slip`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}` },
+                body: fd,
+            });
+            const data = await res.json();
+            if (!data.success) throw new Error(data.message || 'Upload failed');
+            queryClient.invalidateQueries({ queryKey: ['/api/accounts/purchases/payments'] });
+            toast({ title: 'Slip uploaded', description: 'Payment slip attached successfully.' });
+        } catch (err) {
+            toast({ title: 'Upload failed', description: err.message, variant: 'destructive' });
+        } finally {
+            setSlipUploading(null);
+        }
+    };
 
     const { data: vendorsData } = useQuery({
         queryKey: ['/api/suppliers'],
@@ -52,8 +85,10 @@ const VendorPayments = () => {
         enabled: !!selectedVendor
     });
     const vendorOutstanding = outstandingResponse?.data?.[0];
-    const poBills = (vendorOutstanding?.invoices || []).filter(inv => inv.purchaseOrder);
-    const manualBills = (vendorOutstanding?.invoices || []).filter(inv => !inv.purchaseOrder);
+    // Staged bills: a PO's, or an Outsource Order's (outsource-v2 slice 3) — same advance / accepted / full payment.
+    const isStaged = (inv) => !!(inv.purchaseOrder || inv.outsourceOrder);
+    const poBills = (vendorOutstanding?.invoices || []).filter(isStaged);
+    const manualBills = (vendorOutstanding?.invoices || []).filter(inv => !isStaged(inv));
 
     const { data: statsResponse } = useQuery({
         queryKey: ['/api/accounts/purchases/payments/stats'],
@@ -109,7 +144,11 @@ const VendorPayments = () => {
 
     const mutation = useMutation({
         mutationFn: (paymentData) => apiRequest('POST', '/api/accounts/purchases/payments', paymentData),
-        onSuccess: (res) => {
+        onSuccess: async (res) => {
+            const slip = slipFile;
+            setSlipFile(null);
+            setSlipKey(k => k + 1);
+            if (slip && res?.data?._id) await uploadSlip(res.data._id, slip);
             ['/api/accounts/purchases/invoices', '/api/accounts/purchases/outstanding', '/api/accounts/purchases/payments/stats',
              '/api/accounts/purchases/payments', '/api/accounts/bank-cash/summary', '/api/accounts/purchases/money-back'].forEach(k => queryClient.invalidateQueries({ queryKey: [k] }));
             reset();
@@ -192,7 +231,7 @@ const VendorPayments = () => {
 
                                     {poBills.length > 0 && (
                                         <div className="space-y-2">
-                                            <p className="text-xs font-bold text-blue-400 uppercase">Purchase orders — pick one</p>
+                                            <p className="text-xs font-bold text-blue-400 uppercase">Purchase orders &amp; outsource orders — pick one</p>
                                             {poBills.map(b => {
                                                 const on = String(b._id) === String(billId);
                                                 const now = b.payableNow || {};
@@ -203,15 +242,16 @@ const VendorPayments = () => {
                                                             <span className="flex items-center gap-2">
                                                                 <input type="radio" readOnly checked={on} className="pointer-events-none" />
                                                                 <span className="font-bold text-slate-800">{b.poNumber || b.invoiceNo}</span>
+                                                                {b.outsourceOrder && <Badge variant="outline" className="bg-violet-50 text-violet-700 border-violet-200">Outsource</Badge>}
                                                                 {b.stage && <Badge variant="outline" className={STAGE_TONE[b.stage] || ''}>{b.stage}</Badge>}
                                                             </span>
-                                                            <span className="text-slate-500">PO total <strong className="text-slate-800">{inr(b.totalAmount)}</strong> · paid {inr(b.paidAmount)}</span>
+                                                            <span className="text-slate-500">{b.outsourceOrder ? 'Order' : 'PO'} total <strong className="text-slate-800">{inr(b.totalAmount)}</strong> · paid {inr(b.paidAmount)}</span>
                                                         </div>
                                                         <div className="mt-1.5 pl-6 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-slate-600">
                                                             {b.advanceAmount > 0 && <span>Advance {b.advancePercent}%: {inr(b.advancePaid)} of {inr(b.advanceAmount)} paid</span>}
-                                                            <span>QC-passed so far: {inr(b.acceptedValue)}</span>
+                                                            <span>{b.outsourceOrder ? 'Work accepted' : 'QC-passed'} so far: {inr(b.acceptedValue)}</span>
                                                             {b.fullyAcceptedAt
-                                                                ? <span className={b.dueDate && new Date(b.dueDate) < new Date() ? "text-red-700 font-semibold" : "text-amber-800"}>Everything accepted · full payment {b.dueDate && new Date(b.dueDate) < new Date() ? "overdue since" : "due"} {day(b.dueDate)}</span>
+                                                                ? <span className={dueState(b.dueDate) === 'overdue' ? "text-red-700 font-semibold" : "text-amber-800"}>Everything accepted · full payment {dueState(b.dueDate) === 'overdue' ? `overdue since ${day(b.dueDate)}` : dueState(b.dueDate) === 'today' ? `due today (${day(b.dueDate)})` : `due ${day(b.dueDate)}`}</span>
                                                                 : <span>Full payment: {b.creditDays ? `${b.creditDays} days after` : 'when'} everything passes QC</span>}
                                                             <span className="font-semibold text-blue-700">
                                                                 Can pay now: {now.advance > 0 ? `advance ${inr(now.advance)}` : ''}{now.advance > 0 && now.material > 0 ? ' · ' : ''}{now.material > 0 ? `material ${inr(now.material)}` : ''}{!(now.advance > 0) && !(now.material > 0) ? 'nothing yet' : ''}
@@ -322,6 +362,15 @@ const VendorPayments = () => {
                                 </div>
                             </div>
 
+
+                            {/* Payment slip at entry time (2026-10-29, client): picked here and
+                                attached to the payment as soon as it's recorded. The history
+                                row's Attach stays for older payments without one. */}
+                            <div>
+                                <label className="text-sm font-bold text-slate-600 mb-2 block">Payment Slip <span className="font-normal normal-case tracking-normal text-slate-400">(optional — bank screenshot, cheque photo or PDF, max 10 MB)</span></label>
+                                <Input key={slipKey} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={e => setSlipFile(e.target.files?.[0] || null)} className="rounded-xl border-2" />
+                            </div>
+
                             {canAdd && (
                                 <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 py-6 text-lg font-bold" disabled={mutation.isPending || !selectedVendor || nothingChosen || (bill && !kind)}>
                                     {mutation.isPending ? 'Recording Payment...' : bill ? (kind === 'Advance' ? 'Record Advance Payment' : 'Record Payment') : 'Record Payment'}
@@ -400,6 +449,7 @@ const VendorPayments = () => {
                                         <th className="px-4 py-2 font-semibold">Mode / Ref</th>
                                         <th className="px-4 py-2 font-semibold">From</th>
                                         <th className="px-4 py-2 font-semibold text-right">Amount</th>
+                                        <th className="px-4 py-2 font-semibold text-center">Slip</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y">
@@ -408,13 +458,62 @@ const VendorPayments = () => {
                                             <td className="px-4 py-2 text-slate-500 whitespace-nowrap">{day(p.paymentDate)}</td>
                                             <td className="px-4 py-2">{p.vendor?.supplierName || '—'}</td>
                                             <td className="px-4 py-2">
-                                                {p.purchaseOrder
-                                                    ? <span className="inline-flex items-center gap-1.5"><FileText className="w-3.5 h-3.5 text-slate-400" />{p.purchaseOrder.purchaseOrderNumber}<Badge variant="outline" className={p.kind === 'Advance' ? 'bg-violet-50 text-violet-700 border-violet-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}>{p.kind === 'Advance' ? 'Advance' : 'Material'}</Badge>{p.fromCredit && <Badge variant="outline" className="bg-violet-50 text-violet-700 border-violet-200">from credit</Badge>}</span>
+                                                {(p.purchaseOrder || p.outsourceOrder)
+                                                    ? <span className="inline-flex items-center gap-1.5"><FileText className="w-3.5 h-3.5 text-slate-400" />{p.purchaseOrder?.purchaseOrderNumber || p.outsourceOrder?.orderNo}{p.outsourceOrder && <Badge variant="outline" className="bg-violet-50 text-violet-700 border-violet-200">Outsource</Badge>}<Badge variant="outline" className={p.kind === 'Advance' ? 'bg-violet-50 text-violet-700 border-violet-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}>{p.kind === 'Advance' ? 'Advance' : p.outsourceOrder ? 'Work' : 'Material'}</Badge>{p.fromCredit && <Badge variant="outline" className="bg-violet-50 text-violet-700 border-violet-200">from credit</Badge>}</span>
                                                     : <span className="text-slate-500">{(p.allocations || []).map(a => a.invoice?.invoiceNo).filter(Boolean).join(', ') || 'Bills without a PO'}</span>}
                                             </td>
                                             <td className="px-4 py-2 text-slate-500">{p.paymentMode}{p.referenceNo ? ` · ${p.referenceNo}` : ''}</td>
                                             <td className="px-4 py-2 text-slate-500">{p.fromCredit ? 'Vendor credit' : (p.bankAccount?.accountName || '—')}</td>
                                             <td className="px-4 py-2 text-right font-semibold">{inr(p.amount)}</td>
+                                            <td className="px-4 py-2 text-center">
+                                                {p.slipUrl ? (
+                                                    <div className="flex items-center justify-center gap-1.5">
+                                                        <a
+                                                            href={`${import.meta.env.VITE_API_URL?.replace('/api', '') || ''}${p.slipUrl}`}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="inline-flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-800 font-semibold"
+                                                        >
+                                                            <ExternalLink className="w-3 h-3" /> View
+                                                        </a>
+                                                        <button
+                                                            type="button"
+                                                            title="Replace slip"
+                                                            className="text-slate-400 hover:text-blue-600 transition-colors"
+                                                            onClick={() => slipInputRef.current[p._id]?.click()}
+                                                            disabled={slipUploading === p._id}
+                                                        >
+                                                            <Paperclip className="w-3.5 h-3.5" />
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    <button
+                                                        type="button"
+                                                        title="Attach payment slip"
+                                                        className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-md border transition-colors ${
+                                                            slipUploading === p._id
+                                                                ? 'border-blue-200 bg-blue-50 text-blue-400 cursor-not-allowed'
+                                                                : 'border-slate-200 hover:border-blue-400 hover:bg-blue-50 hover:text-blue-600 text-slate-400'
+                                                        }`}
+                                                        onClick={() => slipInputRef.current[p._id]?.click()}
+                                                        disabled={slipUploading === p._id}
+                                                    >
+                                                        <Paperclip className="w-3 h-3" />
+                                                        {slipUploading === p._id ? 'Uploading…' : 'Attach'}
+                                                    </button>
+                                                )}
+                                                <input
+                                                    ref={el => slipInputRef.current[p._id] = el}
+                                                    type="file"
+                                                    accept="image/*,application/pdf"
+                                                    className="hidden"
+                                                    onChange={e => {
+                                                        const file = e.target.files?.[0];
+                                                        if (file) uploadSlip(p._id, file);
+                                                        e.target.value = '';
+                                                    }}
+                                                />
+                                            </td>
                                         </tr>
                                     ))}
                                 </tbody>

@@ -133,8 +133,13 @@ export function ManualQuotationDialog({ open, onOpenChange, vendor, rows, validi
       const name = r.card.item.name;
       if (!(Number(p.unitPrice) > 0)) return setError(`Enter the rate for "${name}".`);
       if (!(Number(p.deliveryDays) >= 1)) return setError(`Enter the delivery time (days) for "${name}".`);
-      // GST is required (2026-10-14): the PO takes it from the quote.
-      if (!p.gstInclusive && String(p.gstPercent ?? '').trim() === '') return setError(`Enter the GST % for "${name}" (0 if none), or tick "Rate already includes GST".`);
+      // GST is required (2026-10-14): the PO takes it from the quote. Also
+      // when the rate includes GST — the % inside it (2026-10-26).
+      if (String(p.gstPercent ?? '').trim() === '') {
+        return setError(p.gstInclusive
+          ? `Enter the GST % included in the rate for "${name}" (0 if none).`
+          : `Enter the GST % for "${name}" (0 if none), or tick "Rate already includes GST".`);
+      }
       if (currentOf(r) && !String(p.revisionReason || '').trim()) return setError(`"${name}" already has a quote from ${vendor.supplierName} — give the reason for the new price.`);
     }
     for (const c of charges) {
@@ -165,7 +170,7 @@ export function ManualQuotationDialog({ open, onOpenChange, vendor, rows, validi
       return {
         group: r.card.group._id,
         unitPrice: p.unitPrice,
-        gstPercent: p.gstInclusive ? '' : p.gstPercent,
+        gstPercent: p.gstPercent,
         gstInclusive: p.gstInclusive,
         deliveryDays: p.deliveryDays,
         warrantyMonths: p.warrantyMonths,
@@ -279,7 +284,7 @@ export function ManualQuotationDialog({ open, onOpenChange, vendor, rows, validi
                 </p>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   <Input className="h-8 text-sm" type="number" min="0" value={p.unitPrice} onChange={e => setPrice(gid, { unitPrice: e.target.value })} placeholder={`Rate ₹${r.card.group.purchaseUnit ? `/${r.card.group.purchaseUnit}` : ''} *`} />
-                  <Input className="h-8 text-sm" type="number" min="0" max="100" value={p.gstInclusive ? '' : p.gstPercent} disabled={p.gstInclusive} onChange={e => setPrice(gid, { gstPercent: e.target.value })} placeholder={p.gstInclusive ? 'GST included' : 'GST % *'} />
+                  <Input className="h-8 text-sm" type="number" min="0" max="100" value={p.gstPercent} onChange={e => setPrice(gid, { gstPercent: e.target.value })} placeholder={p.gstInclusive ? 'GST % included *' : 'GST % *'} />
                   <Input className="h-8 text-sm" type="number" min="1" value={p.deliveryDays} onChange={e => setPrice(gid, { deliveryDays: e.target.value })} placeholder="Delivery days *" />
                   {!fab && <Input className="h-8 text-sm" type="number" min="0" value={p.warrantyMonths} onChange={e => setPrice(gid, { warrantyMonths: e.target.value })} placeholder="Warranty (months)" />}
                 </div>

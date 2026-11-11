@@ -174,8 +174,10 @@ function AdminView({ data, openTab }) {
   return (
     <div className="space-y-5">
       <Section title="Waiting for you">
-        <Tile icon={ShieldCheck} title="PO approvals" value={a.poPending} tone={a.poPending ? 'amber' : 'plain'}
-          sub={`${a.overLimit} over the ₹ limit · ${a.selection} vendor selection exception${a.charges ? ` · ${a.charges} charges above quotation` : ''}`} onClick={tab('orders', 'POApprovals')} />
+        {/* Outsource orders waiting (outsource-v2 slice 2) count here too. */}
+        <Tile icon={ShieldCheck} title="PO approvals" value={a.poPending + (a.outsourcePending || 0)} tone={a.poPending || a.outsourcePending ? 'amber' : 'plain'}
+          sub={`${a.overLimit} over the ₹ limit · ${a.selection} vendor selection exception${a.charges ? ` · ${a.charges} charges above quotation` : ''}${a.outsourcePending ? ` · ${a.outsourcePending} outsource order${a.outsourcePending === 1 ? '' : 's'}` : ''}`}
+          onClick={tab('orders', a.outsourcePending && !a.poPending ? 'OutsourceApprovals' : 'POApprovals')} />
         <Tile icon={FileWarning} title="Cancellation requests" value={a.cancelRequests} tone={a.cancelRequests ? 'amber' : 'plain'} onClick={tab('orders', 'POApprovals')} />
         <Tile icon={Users} title="Vendor requests" value={a.vendorRequestsTotal} tone={a.vendorRequestsTotal ? 'amber' : 'plain'} sub={vr || 'Nothing waiting'} onClick={tab('vendors', 'NewVendor')} />
         <Tile icon={Wallet} title="Payables" value={inr(data.money.owedNow)} tone={data.money.overdue ? 'red' : 'plain'}

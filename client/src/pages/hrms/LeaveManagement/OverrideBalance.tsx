@@ -26,6 +26,7 @@ import { toast } from "../../Alert/Toast";
 import Loader from "../../Loader";
 import { Badge } from "@/components/ui/badge";
 import { History, Save, UserCog } from "lucide-react";
+import PersonPicker, { PickedPerson } from "../PersonPicker";
 
 const API_BASE = import.meta.env.VITE_API_URL;
 
@@ -49,7 +50,8 @@ interface IAdjustment {
 }
 
 const OverrideBalance = () => {
-    const [employees, setEmployees] = useState<UserRef[]>([]);
+    // Found by typing: the old dropdown held only the 15 newest people (2026-11-11).
+    const [picked, setPicked] = useState<PickedPerson | null>(null);
     const [leaveTypes, setLeaveTypes] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [actionLoading, setActionLoading] = useState(false);
@@ -65,10 +67,7 @@ const OverrideBalance = () => {
 
     const fetchInitialData = async () => {
         try {
-            const [empRes, typeRes, histRes] = await Promise.all([
-                axios.get(`${API_BASE}/users`, {
-                    headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-                }),
+            const [typeRes, histRes] = await Promise.all([
                 axios.get(`${API_BASE}/leave-types`, {
                     headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
                 }),
@@ -76,7 +75,6 @@ const OverrideBalance = () => {
                     headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
                 }),
             ]);
-            setEmployees(empRes.data.users || empRes.data);
             setLeaveTypes(typeRes.data);
             setHistory(histRes.data);
         } catch (err) {
@@ -179,21 +177,10 @@ const OverrideBalance = () => {
                         <form onSubmit={handleSubmit} className="space-y-6">
                             <div className="space-y-2">
                                 <Label>Select Employee *</Label>
-                                <Select
-                                    value={form.employeeId}
-                                    onValueChange={(v) => setForm({ ...form, employeeId: v })}
-                                >
-                                    <SelectTrigger className="w-full">
-                                        <SelectValue placeholder="Choose employee" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {employees.map((emp) => (
-                                            <SelectItem key={emp._id} value={emp._id}>
-                                                {emp.name} ({emp.employeeId})
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
+                                <PersonPicker
+                                    value={picked}
+                                    onChange={(p) => { setPicked(p); setForm({ ...form, employeeId: p?._id || "", currentBalance: 0 }); }}
+                                />
                             </div>
 
                             <div className="space-y-2">

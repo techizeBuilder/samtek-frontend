@@ -3,7 +3,8 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
-import { Truck, History, Mail, Ban, ScrollText, CalendarClock, PackageX } from 'lucide-react';
+import { Truck, History, Mail, Ban, ScrollText, CalendarClock, PackageX, Download } from 'lucide-react';
+import { config } from '@/config/environment';
 import PurchaseOrderList, { PURCHASE_ACTIVE_STATUSES, PURCHASE_DONE_STATUSES, awaitingAdvance } from '@/components/accounts/purchase/PurchaseOrderList';
 import QuoteHistoryDialog from '@/components/accounts/purchase/QuoteHistoryDialog';
 import CancelPoDialog, { canAskToCancel, linesToCancel } from '@/components/accounts/purchase/CancelPoDialog';
@@ -24,10 +25,36 @@ import { usePermissions } from '@/hooks/usePermissions';
 // "Cancel PO" / "Cancel the rest" (gap 13, 2026-10-09) asks the Company Admin
 // to cancel a real order (or short close what isn't received yet).
 const EMAILABLE = ['Draft', 'Sent', 'Acknowledged', 'Partially Received'];
+// "Download PO" (2026-10-29) — the PO PDF (logo, watermark) to send by
+// WhatsApp etc.; the email attaches the same file. Any real order — not one
+// still waiting for the Company Admin, rejected or cancelled.
+const NOT_DOWNLOADABLE = ['Pending Approval', 'Rejected', 'Cancelled'];
+
+async function downloadPoPdf(po) {
+  const token = localStorage.getItem('token');
+  const res = await fetch(`${config.baseURL}/api/accounts/purchases/orders/${po._id}/pdf`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    credentials: 'include',
+  });
+  if (!res.ok) {
+    let message = res.statusText;
+    try { message = (await res.json())?.message || message; } catch { /* not JSON */ }
+    throw new Error(message);
+  }
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${po.purchaseOrderNumber}.pdf`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
 
 function PoActions({ po, reload, onHistory }) {
   const { toast } = useToast();
   const [sending, setSending] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const canSeeAudit = useCanSeeAudit();
@@ -45,6 +72,16 @@ function PoActions({ po, reload, onHistory }) {
       setSending(false);
     }
   };
+  const download = async () => {
+    setDownloading(true);
+    try {
+      await downloadPoPdf(po);
+    } catch (err) {
+      toast({ title: 'Could not download the PO', description: err.message, variant: 'destructive' });
+    } finally {
+      setDownloading(false);
+    }
+  };
   return (
     <>
       <Button size="sm" variant="outline" onClick={() => onHistory(po)}><History className="w-3.5 h-3.5 mr-1" /> All quotes</Button>
@@ -54,6 +91,11 @@ function PoActions({ po, reload, onHistory }) {
       {EMAILABLE.includes(po.status) && (
         <Button size="sm" variant="outline" className="border-blue-200 text-blue-700 hover:bg-blue-50" onClick={send} disabled={sending}>
           <Mail className="w-3.5 h-3.5 mr-1" /> {sending ? 'Sending…' : po.status === 'Draft' ? 'Send PO email' : 'Resend PO email'}
+        </Button>
+      )}
+      {!NOT_DOWNLOADABLE.includes(po.status) && (
+        <Button size="sm" variant="outline" onClick={download} disabled={downloading} title="The PO as a PDF — to send by WhatsApp or any other way (the email attaches the same file)">
+          <Download className="w-3.5 h-3.5 mr-1" /> {downloading ? 'Preparing…' : 'Download PO'}
         </Button>
       )}
       {po.status === 'Draft' && <span className="text-[11px] text-amber-700">Not emailed to the vendor yet.</span>}

@@ -11,6 +11,8 @@ import { GstSplitNote } from '@/components/accounts/purchase/GstSplit';
 import QuoteHistoryDialog from '@/components/accounts/purchase/QuoteHistoryDialog';
 import { BoughtBeforeTag } from '@/components/accounts/purchase/PriceCheck';
 import { ApprovalReasonBadges, SelectionCheckDetails, SelectionCheckLine, QuoteTermsChangeDetails } from '@/components/accounts/purchase/SelectionCheck';
+import { VendorContextLine } from '@/components/accounts/purchase/VendorContext';
+import { formatDims } from '@/lib/fabricationDims';
 
 // Company Admin → Purchase & Vendor Approval → PO Approvals (procurement-v2,
 // 2026-10-08). The Company Admin sees EVERY PO:
@@ -44,7 +46,7 @@ const MODE_BADGE = {
   'no-limit': { label: 'Created directly — no limit set', cls: 'bg-slate-50 text-slate-600 border-slate-200' },
 };
 
-function POCard({ po, onReview, busy, onHistory, warnAt }) {
+function POCard({ po, onReview, busy, onHistory, warnAt, vendorContext }) {
   const [poHistoryOpen, setPoHistoryOpen] = useState(false);
   const [open, setOpen] = useState(po.status === 'Pending Approval' || po.pendingKind === 'cancellation');
   const [showReject, setShowReject] = useState(false);
@@ -64,6 +66,8 @@ function POCard({ po, onReview, busy, onHistory, warnAt }) {
   // for the item (delivered purchases before this PO) — "Bought before".
   const overLimit = (po.approvalReasons || []).includes('threshold');
   const risen = (po.items || []).filter(l => l.priceCheck?.changePercent != null && l.priceCheck.changePercent > 0 && l.priceCheck.changePercent >= warnAt);
+  // Lines the vendor quoted a warranty on (carried from the quote, 2026-10-29).
+  const withWarranty = (po.items || []).filter(l => Number(l.warrantyMonths) > 0);
 
   return (
     <Card>
@@ -79,8 +83,12 @@ function POCard({ po, onReview, busy, onHistory, warnAt }) {
               {shortClosed && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-slate-50 text-slate-600 border-slate-200">Short closed</span>}
               {!isPending && po.status !== 'Rejected' && <span className="text-[10px] text-gray-500 border rounded-full px-2 py-0.5">{po.status}</span>}
               {risen.length > 0 && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-amber-50 text-amber-800 border-amber-300">Price up vs last bought on {risen.length} line{risen.length === 1 ? '' : 's'}</span>}
+              {withWarranty.length > 0 && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-emerald-50 text-emerald-700 border-emerald-200" title="The vendor's quoted warranty — see each line">Warranty on {withWarranty.length} of {(po.items || []).length} line{(po.items || []).length === 1 ? '' : 's'}</span>}
               {open ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
             </div>
+            {/* The vendor as Purchase saw it on RFQ/PO (2026-10-29): score,
+                on-time, QC accepted, standing, risk — not just the price. */}
+            {vendorContext !== undefined && <div className="mt-0.5"><VendorContextLine ctx={vendorContext} /></div>}
             <p className="text-lg font-bold text-gray-900 mt-0.5">
               {inr(po.grandTotal)}
               {po.approval?.threshold != null && (
@@ -194,9 +202,23 @@ function POCard({ po, onReview, busy, onHistory, warnAt }) {
                 <tbody>
                   {(po.items || []).map((l, i) => (
                     <tr key={l._id || i} className="border-t">
-                      <td className="py-1">{l.itemName}{l.item?.code ? <span className="font-mono text-[11px] text-blue-600 ml-1">{l.item.code}</span> : null}</td>
+                      <td className="py-1">
+                        {l.itemName}{l.item?.code ? <span className="font-mono text-[11px] text-blue-600 ml-1">{l.item.code}</span> : null}
+                        {/* The vendor's quoted warranty on this item (2026-10-29). */}
+                        {Number(l.warrantyMonths) > 0 && (
+                          <span className="ml-1.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full border bg-emerald-50 text-emerald-700 border-emerald-200 whitespace-nowrap" title="Warranty the vendor quoted for this item">
+                            {l.warrantyMonths} month{Number(l.warrantyMonths) === 1 ? '' : 's'} warranty
+                          </span>
+                        )}
+                        {/* A fabrication size — lines of one item told apart (2026-10-29). */}
+                        {l.fabricationDimensionLines?.[0]?.values && (
+                          <span className="block text-[11px] text-gray-500">
+                            {formatDims(l.fabricationDimensionLines[0].values)}{l.fabricationDimensionLines[0].quantity ? ` · ${l.fabricationDimensionLines[0].quantity} pcs` : ''}
+                          </span>
+                        )}
+                      </td>
                       <td className="py-1 text-right">{l.quantity} {l.purchaseUnit || ''} × {inr(l.unitPrice)}</td>
-                      <td className="py-1 text-right">{l.gstInclusive ? 'incl. in rate' : `${l.gstRate || 0}% = ${inr(l.gstAmount)}`}</td>
+                      <td className="py-1 text-right">{l.gstInclusive ? (l.gstRate > 0 ? `${l.gstRate}% incl. in rate` : 'incl. in rate') :`${l.gstRate || 0}% = ${inr(l.gstAmount)}`}</td>
                       <td className="py-1 text-right">{inr((l.totalPrice || 0) + (l.gstAmount || 0))}</td>
                       <td className="py-1 text-right pl-3">
                         {l.priceCheck
@@ -235,6 +257,10 @@ function POCard({ po, onReview, busy, onHistory, warnAt }) {
                 Advance {terms.advancePercent != null ? `${terms.advancePercent}%` : '—'} · Credit {terms.creditDays != null ? `${terms.creditDays} days` : '—'}
                 {(terms.others || []).map(o => ` · ${o.label}: ${o.value}`).join('')}
               </p>
+              {/* §64: Purchase ticked "vendor sends only after the advance is paid" — the dates wait for the payment. */}
+              {po.deliveryClock?.startsOn === 'advance' && (
+                <p className="text-xs text-violet-700 mt-0.5">Delivery after advance — the vendor sends only once the advance is paid; delivery dates start from that payment</p>
+              )}
               <p className="text-xs text-gray-400 mt-0.5">Transport: {po.transportBy === 'Company' ? 'we pick up' : 'vendor delivers'}</p>
             </div>
           </div>
@@ -259,6 +285,14 @@ export default function PoApprovalsTab() {
   });
   const purchases = data?.purchases || [];
   const pagination = data?.pagination || { page: 1, pages: 1, total: purchases.length };
+  // Every vendor's score / standing, the list RFQ/PO's vendor cards use
+  // (cached on the server a minute) — once for the whole page.
+  const { data: ratingsRes } = useQuery({
+    queryKey: ['vendor-ratings-all'],
+    queryFn: () => apiRequest('GET', '/api/suppliers/vendor-ratings'),
+    staleTime: 60 * 1000,
+  });
+  const ratingByVendor = new Map((ratingsRes?.data || []).map(r => [String(r._id), r]));
 
   const reviewM = useMutation({
     mutationFn: ({ id, decision, remarks, kind }) => apiRequest('PUT', `/api/po-approvals/${id}/${kind === 'cancellation' ? 'cancel-review' : 'review'}`, { decision, remarks }),
@@ -304,7 +338,7 @@ export default function PoApprovalsTab() {
         <div className="text-center py-16 text-gray-400"><Clock className="h-8 w-8 mx-auto mb-2" /><p className="text-sm">No {status.toLowerCase()} POs.</p></div>
       ) : (
         purchases.map(po => (
-          <POCard key={po._id} po={po} busy={reviewM.isPending} warnAt={data?.priceJumpWarnPercent ?? 10} onHistory={setHistoryPo} onReview={(id, decision, remarks, kind) => reviewM.mutate({ id, decision, remarks, kind })} />
+          <POCard key={po._id} po={po} vendorContext={ratingsRes ? (ratingByVendor.get(String(po.supplier?._id)) || null) : undefined} busy={reviewM.isPending} warnAt={data?.priceJumpWarnPercent ?? 10} onHistory={setHistoryPo} onReview={(id, decision, remarks, kind) => reviewM.mutate({ id, decision, remarks, kind })} />
         ))
       )}
       {pagination.pages > 1 && (

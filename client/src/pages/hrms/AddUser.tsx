@@ -10,7 +10,8 @@ import { useToast } from "@/hooks/use-toast";
 import { toast } from "../Alert/Toast";
 import { Eye, EyeOff, Upload, Download, X, FileText, AlertCircle, CheckCircle2, Camera, User, Shield, Wrench } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { MODULES, ROLE_MODULE_MAP, PERMISSION_ACTIONS, getDefaultModulesForRole } from "@/lib/roleModulesConfig";
+import { modulesForRole, PERMISSION_ACTIONS, getDefaultModulesForRole } from "@/lib/roleModulesConfig";
+import { HRMS_ROLES, DEPARTMENT_HEAD_ROLES, roleValue, roleLabel, usesModulePermissionsGrid } from "./loginRoles";
 
 const API_BASE = import.meta.env.VITE_API_URL;
 
@@ -19,67 +20,29 @@ export default function AddUser() {
   const { toast } = useToast();
   const token = localStorage.getItem("token");
 
-  // A role option is either a plain string (value === label) or an object
-  // when the dropdown needs to show different text than the stored value —
-  // e.g. Dispatch has absorbed Packing into one combined role/menu, so the
-  // dropdown reads "Packing and Dispatch Head/Employee" but the value saved
-  // to the database (and used everywhere else in the app) stays the
-  // existing 'Dispatch Head'/'Dispatch Employee'.
-  type RoleOption = string | { value: string; label: string };
-  const roleValue = (role: RoleOption) => typeof role === 'string' ? role : role.value;
-  const roleLabel = (role: RoleOption) => typeof role === 'string' ? role : role.label;
-
-  // HRMS-specific roles - static list
-  const HRMS_ROLES: RoleOption[] = [
-    'Manager',
-    'Employee',
-    'Sales Employee',
-    'Production Employee',
-    { value: 'Dispatch Employee', label: 'Packing and Dispatch Employee' },
-    'Account Employee',
-    // 'Auditor',
-    'Research Development Employee',
-    'Complaint Management Employee',
-    'Store Employee',
-    'QC Employee',
-    'MIS Admin',
-    'Marketing Employee',
-  ];
-
-  // Roles below use the real, shared MODULES/ROLE_MODULE_MAP-driven
-  // Module Permissions grid (imported above) — the same system Company
-  // Admin's "Roles & Permissions" page uses — instead of a separate,
-  // ad-hoc checkbox list, so their permissions always match what the
-  // Sidebar actually checks.
-  const DEPARTMENT_HEAD_ROLES: RoleOption[] = [
-    'Sales Head',
-    'Production Head',
-    { value: 'Dispatch Head', label: 'Packing and Dispatch Head' },
-    'Accounts Head',
-    'Research & Development Head',
-    'Complaint Management Head',
-    'Store Head',
-    'QC Head',
-    'Marketing Head',
-  ];
-  const DEPARTMENT_HEAD_ROLE_VALUES = DEPARTMENT_HEAD_ROLES.map(roleValue);
-  const EMPLOYEE_MODULE_ROLES = [
-    'Sales Employee',
-    'Production Employee',
-    'Dispatch Employee',
-    'Account Employee',
-    'Research Development Employee',
-    'Complaint Management Employee',
-    'Store Employee',
-    'QC Employee',
-    'Marketing Employee',
-    'MIS Admin',
-  ];
-  const isHeadRole = (role: string) => DEPARTMENT_HEAD_ROLE_VALUES.includes(role);
-  const usesModulePermissionsGrid = (role: string) => isHeadRole(role) || EMPLOYEE_MODULE_ROLES.includes(role);
 
   const [headPermissionModules, setHeadPermissionModules] = useState<any[]>([]);
   const [showPassword, setShowPassword] = useState(false);
+
+  // No login (2026-11-06): the same details, no password or role, email optional,
+  // and Aadhaar required, because they can't upload it themselves. Nothing is picked
+  // at first: a login is real access, so it must be chosen, never fallen into.
+  const [hasLogin, setHasLogin] = useState<boolean | null>(null);
+  const [docFiles, setDocFiles] = useState<Record<string, File>>({});
+  const [docTypes, setDocTypes] = useState<{ key: string; label: string }[]>([{ key: "AADHAAR", label: "Aadhaar Card" }]);
+  useEffect(() => {
+    // The same list as Document Verification, with Aadhaar first because it's required.
+    axios
+      .get(`${API_BASE}/admin-settings/hrms-document-types`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => {
+        const types = Array.isArray(res.data?.data) ? res.data.data : [];
+        const others = types.filter((t: any) => t.key !== "AADHAAR");
+        setDocTypes([types.find((t: any) => t.key === "AADHAAR") || { key: "AADHAAR", label: "Aadhaar Card" }, ...others]);
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const [loginChoiceMissing, setLoginChoiceMissing] = useState(false);
 
   /* ================= PROFILE PICTURE ================= */
   const [profilePicFile, setProfilePicFile] = useState<File | null>(null);
@@ -91,6 +54,7 @@ export default function AddUser() {
 
   /* ================= BASIC INFORMATION ================= */
   const [formData, setFormData] = useState({
+    deviceCode: "",
     name: "",
     email: "",
     mobile: "",
@@ -261,8 +225,10 @@ export default function AddUser() {
     // Required text fields
     if (!formData.name.trim()) e.name = "Required";
     if (!formData.gender) e.gender = "Required";
-    if (!formData.password) e.password = "Required";
-    if (!formData.role) e.role = "Required";
+    if (hasLogin && !formData.password) e.password = "Required";
+    if (hasLogin && !formData.role) e.role = "Required";
+    if (hasLogin === false && !docFiles.AADHAAR) e.aadhaar = "Aadhaar is required for someone with no login";
+    if (hasLogin === false && !formData.deviceCode.trim()) e.deviceCode = "Device code is required for someone with no login";
     if (!formData.companyId) e.companyId = "Required";
     if (!formData.branchId) e.branchId = "Required";
     if (!formData.departmentId) e.departmentId = "Required";
@@ -270,7 +236,7 @@ export default function AddUser() {
 
     // Email — must be valid format
     if (!formData.email.trim()) {
-      e.email = "Required";
+      if (hasLogin) e.email = "Required";
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) {
       e.email = "Enter a valid email address (e.g. name@domain.com)";
     }
@@ -311,6 +277,17 @@ export default function AddUser() {
   /* ================= SUBMIT ================= */
   const handleSubmit = async (e: any) => {
     e.preventDefault();
+    if (hasLogin === null) {
+      // The choice is at the top of the form and the button at the bottom.
+      setLoginChoiceMissing(true);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      toast({
+        variant: "destructive",
+        title: "Choose Yes or No",
+        description: "Does this person get a login? Choose at the top of the form.",
+      });
+      return;
+    }
     if (!validate()) return;
 
     try {
@@ -320,16 +297,23 @@ export default function AddUser() {
 
       // BASIC
       data.append("fullName", formData.name);
-      data.append("email", formData.email);
+      if (hasLogin || formData.email.trim()) data.append("email", formData.email);
+      if (formData.deviceCode.trim()) data.append("deviceCode", formData.deviceCode.trim());
       data.append("mobile", formData.mobile);
       if (formData.ivrNumber) data.append("ivrNumber", formData.ivrNumber);
       if (formData.address) data.append("address", formData.address);
       data.append("gender", formData.gender);
       data.append("dob", formData.dob);
       data.append("joiningDate", formData.joiningDate);
-      data.append("password", formData.password);
-      data.append("role", formData.role);
-      data.append("isTrainee", String(formData.isTrainee));
+      if (hasLogin) {
+        data.append("password", formData.password);
+        data.append("role", formData.role);
+        data.append("isTrainee", String(formData.isTrainee));
+      } else {
+        Object.entries(docFiles).forEach(([key, file]) => {
+          data.append(key === "AADHAAR" ? "aadhaar" : `doc_${key}`, file);
+        });
+      }
 
       // HIERARCHY
       if (formData.companyId) data.append("companyId", formData.companyId);
@@ -363,7 +347,7 @@ export default function AddUser() {
       }
 
       const res = await axios.post(
-        `${API_BASE}/users`,
+        `${API_BASE}/users${hasLogin ? "" : "/manpower"}`,
         data,
         {
           headers: {
@@ -379,7 +363,10 @@ export default function AddUser() {
       });
 
       // ✅ RESET FORM
+      setHasLogin(null);
+      setDocFiles({});
       setFormData({
+        deviceCode: "",
         name: "",
         email: "",
         mobile: "",
@@ -444,6 +431,49 @@ export default function AddUser() {
           <CardTitle className="text-lg font-medium">Basic Information</CardTitle>
         </CardHeader>
         <CardContent className="space-y-5">
+          <div className="pb-4 border-b">
+            <Label>Gets a login <span className="text-red-500">*</span></Label>
+            <div className="flex gap-3 mt-2">
+              {[
+                { value: true, label: "Yes" },
+                { value: false, label: "No" },
+              ].map((opt) => (
+                <button
+                  key={opt.label}
+                  type="button"
+                  onClick={() => {
+                    setHasLogin(opt.value);
+                    setLoginChoiceMissing(false);
+                    setErrors({});
+                    if (!opt.value) {
+                      // Nothing that only applies to a login may go along with it.
+                      setFormData((f) => ({ ...f, role: "", password: "", ivrNumber: "", isTrainee: false }));
+                    } else {
+                      setDocFiles({});
+                    }
+                  }}
+                  className={`px-5 py-2 rounded-md border text-sm font-semibold transition-colors ${hasLogin === opt.value
+                    ? "bg-[#49A7F5] text-white border-[#49A7F5]"
+                    : "bg-white text-gray-600 border-gray-300 hover:border-[#49A7F5]"
+                    }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            {loginChoiceMissing && <p className="text-sm text-red-500 mt-2">Choose Yes or No</p>}
+            {hasLogin === null && !loginChoiceMissing && (
+              <p className="text-xs text-gray-500 mt-2">
+                Choose one. The password and role, or the Aadhaar, appear once you do.
+              </p>
+            )}
+            {hasLogin === false && (
+              <p className="text-xs text-gray-500 mt-2">
+                For labour and staff who only do the work. They can't sign in, and their role is Manpower. Department says where they work, and HR uploads their documents. They can be given a login later from their profile.
+              </p>
+            )}
+          </div>
+
           <div className="flex flex-col items-center gap-3 pb-4 border-b">
             <div
               className="relative w-28 h-28 rounded-full border-4 border-[#49A7F5]/30 cursor-pointer group overflow-hidden bg-gray-100 flex items-center justify-center shadow-inner"
@@ -492,7 +522,10 @@ export default function AddUser() {
             </div>
 
             <div>
-              <Label>Email <span className="text-red-500">*</span></Label>
+              <Label>
+                Email {hasLogin === true && <span className="text-red-500">*</span>}
+                {hasLogin === false && <span className="text-[10px] text-gray-400 font-normal">(optional)</span>}
+              </Label>
               <Input
                 type="email"
                 value={formData.email}
@@ -521,6 +554,22 @@ export default function AddUser() {
 
             <div>
               <Label className="flex items-center gap-1">
+                Device Code {hasLogin === false
+                  ? <span className="text-red-500">*</span>
+                  : <span className="text-[10px] text-gray-400 font-normal">(optional)</span>}
+              </Label>
+              <Input
+                placeholder="e.g. 0005"
+                value={formData.deviceCode}
+                onChange={(e) => setFormData({ ...formData, deviceCode: e.target.value })}
+                className={errors.deviceCode ? "border-red-500" : ""}
+              />
+              {errors.deviceCode && <p className="text-sm text-red-500">{errors.deviceCode}</p>}
+              <p className="text-xs text-gray-400 mt-0.5">This person's code on the attendance device.</p>
+            </div>
+
+            {hasLogin && <div>
+              <Label className="flex items-center gap-1">
                 Acefone IVR Extension
                 {formData.role === "Sales Employee"
                   ? <span className="text-red-500"> *</span>
@@ -540,7 +589,7 @@ export default function AddUser() {
               />
               {errors.ivrNumber && <p className="text-sm text-red-500">{errors.ivrNumber}</p>}
               <p className="text-xs text-gray-400 mt-0.5">PHP system ka ivr_number field — Acefone agent extension.</p>
-            </div>
+            </div>}
             <div>
               <Label>Gender <span className="text-red-500">*</span></Label>
               <select
@@ -577,7 +626,7 @@ export default function AddUser() {
               {errors.joiningDate && <p className="text-sm text-red-500">{errors.joiningDate}</p>}
             </div>
 
-            <div>
+            {hasLogin && <div>
               <Label>Password <span className="text-red-500">*</span></Label>
               <div className="relative">
                 <Input
@@ -595,7 +644,7 @@ export default function AddUser() {
                 </button>
               </div>
               {errors.password && <p className="text-sm text-red-500">{errors.password}</p>}
-            </div>
+            </div>}
 
             <div className="col-span-2">
               <Label>Address</Label>
@@ -610,6 +659,49 @@ export default function AddUser() {
           </div>
         </CardContent>
       </Card>
+
+      {/* ================= DOCUMENTS (NO LOGIN ONLY) ================= */}
+      {hasLogin === false && (
+        <Card className="max-w-4xl">
+          <CardHeader>
+            <CardTitle className="text-lg font-medium">Documents</CardTitle>
+            <p className="text-xs text-gray-500 mt-1">
+              They can't upload these themselves. Aadhaar is required. The rest are optional, and can be added later on Document Verification. PDF, JPG or PNG, up to 10 MB each.
+            </p>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {docTypes.map((dt) => {
+              const isAadhaar = dt.key === "AADHAAR";
+              const file = docFiles[dt.key];
+              return (
+                <div key={dt.key}>
+                  <Label className="flex items-center gap-1">
+                    {dt.label} {isAadhaar
+                      ? <span className="text-red-500">*</span>
+                      : <span className="text-[10px] text-gray-400 font-normal">(optional)</span>}
+                  </Label>
+                  <Input
+                    type="file"
+                    accept=".pdf,.jpg,.jpeg,.png"
+                    onChange={(e) => {
+                      const picked = e.target.files?.[0];
+                      setDocFiles((prev) => {
+                        const next = { ...prev };
+                        if (picked) next[dt.key] = picked;
+                        else delete next[dt.key];
+                        return next;
+                      });
+                    }}
+                    className={isAadhaar && errors.aadhaar ? "border-red-500" : ""}
+                  />
+                  {file && <p className="text-xs text-gray-500 mt-0.5">{file.name}</p>}
+                  {isAadhaar && errors.aadhaar && <p className="text-sm text-red-500">{errors.aadhaar}</p>}
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      )}
 
       {/* ================= COMPANY & JOB ================= */}
       <Card className="max-w-4xl">
@@ -686,7 +778,7 @@ export default function AddUser() {
             </select>
           </div>
 
-          <div>
+          {hasLogin && <div>
             <Label>Role <span className="text-red-500">*</span></Label>
             <select
               value={formData.role}
@@ -713,7 +805,7 @@ export default function AddUser() {
               )}
             </select>
             {errors.role && <p className="text-sm text-red-500">{errors.role}</p>}
-          </div>
+          </div>}
 
           <div>
             <Label>
@@ -751,7 +843,7 @@ export default function AddUser() {
             </select>
           </div>
 
-          <div className="flex items-center space-x-2 pt-8">
+          {hasLogin && <div className="flex items-center space-x-2 pt-8">
             <input
               type="checkbox"
               id="isTrainee"
@@ -760,7 +852,7 @@ export default function AddUser() {
               className="w-4 h-4 text-[#49A7F5] border-gray-300 rounded focus:ring-[#49A7F5] cursor-pointer"
             />
             <Label htmlFor="isTrainee" className="cursor-pointer">Is Trainee</Label>
-          </div>
+          </div>}
         </CardContent>
       </Card>
 
@@ -886,7 +978,7 @@ export default function AddUser() {
           </CardHeader>
           <CardContent className="p-6 space-y-6">
             {(() => {
-              const activeModulesForRole = MODULES.filter((m) => (ROLE_MODULE_MAP[formData.role] || []).includes(m.name));
+              const activeModulesForRole = modulesForRole(formData.role);
               if (activeModulesForRole.length === 0) {
                 return <p className="text-sm text-gray-400 italic">No module permissions configured for this role.</p>;
               }

@@ -20,7 +20,8 @@ type AttendanceStatus =
   | "HALF_DAY"
   | "LEAVE"
   | "HOLIDAY"
-  | "WEEKEND";
+  | "WEEKEND"
+  | "WEEKLY_OFF";
 
 interface AttendanceRecord {
   date: string; // YYYY-MM-DD
@@ -132,6 +133,7 @@ const getDayStatus = (date: string): AttendanceStatus | null => {
     LEAVE: "bg-blue-100 text-blue-700",
     HOLIDAY: "bg-purple-100 text-purple-700",
     WEEKEND: "bg-gray-100 text-gray-500",
+    WEEKLY_OFF: "bg-gray-100 text-gray-500",
   };
 
   /* ================= MONTH CHANGE ================= */

@@ -51,8 +51,9 @@ export function ProtectedRoute({ children, requiredRole = null }) {
   // what to show, now also enforced on the route itself so a direct URL hit
   // can't reach a page the user's permissions don't grant.
   const required = getRoutePermission(location);
+  // anyOf: the same page can sit in more than one department's menu.
   const hasPermission = !required ||
-    (required.feature ? hasFeatureAccess(required.module, required.feature, 'view') : hasModuleAccess(required.module));
+    (required.anyOf || [required]).some(r => (r.feature ? hasFeatureAccess(r.module, r.feature, 'view') : hasModuleAccess(r.module)));
 
   if (!hasPermission) {
     return <AccessDenied reason="permission" />;

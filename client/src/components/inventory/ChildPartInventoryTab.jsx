@@ -13,6 +13,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
 import { Search, Package2, Settings2, Layers, Ban, RefreshCw, IndianRupee } from 'lucide-react';
+import MakeBuySwitch, { MakeBuyBadge } from '@/components/inventory/MakeBuySwitch';
 
 // Rebuilt from scratch (2026-09) — the old file (SubChildPartInventoryTab.jsx)
 // carried a stale name from before the BOM hierarchy rename and was never
@@ -157,7 +158,7 @@ export default function ChildPartInventoryTab({ readOnly = false }) {
                         )}
                         <div>
                           <p className="font-medium text-slate-900">{item.name}</p>
-                          <p className="text-xs font-mono text-slate-400">{item.code}</p>
+                          <p className="text-xs font-mono text-slate-400 flex items-center gap-1.5">{item.code} <MakeBuyBadge item={item} /></p>
                         </div>
                       </div>
                     </TableCell>
@@ -214,6 +215,10 @@ export default function ChildPartInventoryTab({ readOnly = false }) {
         <DialogContent className="max-w-md">
           <DialogHeader><DialogTitle>Manage Stock — {manageItem?.name}</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
+            {manageItem && masterIds.has(manageItem._id) && (
+              <MakeBuySwitch item={manageItem} readOnly={readOnly}
+                onSwitched={(saved) => { qc.invalidateQueries({ queryKey: ['child-part-inventory'] }); if (saved) setManageItem(m => ({ ...m, ...saved })); }} />
+            )}
             <div>
               <label className="text-xs text-slate-500">Material Flow</label>
               <Select value={manageForm.materialFlow} onValueChange={handleFlowChange}>

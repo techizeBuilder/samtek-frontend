@@ -17,6 +17,8 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { formatDims, LENGTH_UNITS, toMm, toMm2 } from '@/lib/fabricationDims';
+import SerialPicker, { emptyPick } from '@/components/serials/SerialPicker';
+import { useConfirmWarnings } from '@/components/serials/useConfirmWarnings';
 
 const variantCapacityMm = (variant, isSheet) => variant
   ? (isSheet ? (Number(variant.values?.width) || 0) * (Number(variant.values?.length) || 0) : (Number(variant.values?.length) || 0))
@@ -286,7 +288,8 @@ function FabricationPurchaseDialog({ request, onClose }) {
     queryFn: () => apiRequest('GET', `/api/items/by-code?code=${encodeURIComponent(sourceItemCode)}`),
     enabled: !!request,
   });
-  const catalogVariants = (itemRes?.data?.dimensionVariants || []).filter(v => !v.isLeftover);
+  // A discontinued size is never bought anew (2026-10-28).
+  const catalogVariants = (itemRes?.data?.dimensionVariants || []).filter(v => !v.isLeftover && !v.isDiscontinued);
 
   const toggleVariant = (variantId) => {
     setSelectedVariants(prev => {
@@ -431,6 +434,10 @@ export default function PendingRequestsTab() {
   const { toast } = useToast();
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [transferQty, setTransferQty] = useState('');
+  // Serial number work step 2: the serials / stickers handed over, and whether the pick fits.
+  const { runChecked, warningDialog } = useConfirmWarnings();
+  const [transferSerials, setTransferSerials] = useState(emptyPick());
+  const [serialsOk, setSerialsOk] = useState(true);
   const [transferIssuedTo, setTransferIssuedTo] = useState('');
   const [purchaseRequest, setPurchaseRequest] = useState(null); // { order, material }
   const [purchaseQty, setPurchaseQty] = useState('');
@@ -508,7 +515,7 @@ export default function PendingRequestsTab() {
   // different endpoints since the stock they deduct lives in different
   // places on the Item (flat qty vs dimensionVariants[].subStock).
   const transferMutation = useMutation({
-    mutationFn: async ({ orderId, materialCode, quantityToTransfer, fabricationCategory, issuedTo }) => {
+    mutationFn: async ({ orderId, materialCode, quantityToTransfer, fabricationCategory, issuedTo, serials }) => {
       // Any flat (no-specific-cut) fabrication demand — Sheet Metal
       // plan-driven OR a length-fabrication group from Production's "Issue
       // Material" — goes through the same flat-pieces endpoint (broadened
@@ -519,17 +526,21 @@ export default function PendingRequestsTab() {
       const endpoint = fabricationCategory
         ? `/api/inventory/transfer-sheet-metal/${orderId}`
         : `/api/inventory/transfer-material/${orderId}`;
-      return await apiRequest('POST', endpoint, {
+      return runChecked((acknowledgeWarnings) => apiRequest('POST', endpoint, {
         materialCode,
         quantityToTransfer: Number(quantityToTransfer),
         issuedTo: issuedTo || undefined,
-      });
+        acknowledgeWarnings,
+        ...(serials ? { unitIds: serials.unitIds, labelIds: serials.labelIds } : {}),
+      }));
     },
     onSuccess: (res) => {
+      if (!res) return; // Store went back to pick
       transferredToast(toast, res);
       setSelectedRequest(null);
       setTransferQty('');
       setTransferIssuedTo('');
+      setTransferSerials(emptyPick());
       queryClient.invalidateQueries({ queryKey: ['/api/inventory/pending-requests'] });
     },
     onError: (error) => {
@@ -566,6 +577,13 @@ export default function PendingRequestsTab() {
         toast({
           title: "Fabrication Materials Need Manual Transfer",
           description: `${response.skippedFabricationCount} fabrication material(s) need Store to pick a stock size — use the Transfer button on those rows individually.`,
+        });
+      }
+      // Serial number work step 2: lines with tracked serial numbers in stock need the pick.
+      if (response.skippedSerialLines?.length > 0) {
+        toast({
+          title: "Serial Numbers Needed",
+          description: `${response.skippedSerialLines.join(', ')} — pick the serial numbers: use the Transfer button on ${response.skippedSerialLines.length === 1 ? 'that row' : 'those rows'}.`,
         });
       }
     },
@@ -699,6 +717,7 @@ export default function PendingRequestsTab() {
       quantityToTransfer: transferQty,
       fabricationCategory: selectedRequest.material.fabricationCategory,
       issuedTo: transferIssuedTo,
+      serials: selectedRequest.material.fabricationCategory ? null : transferSerials,
     });
   };
 
@@ -1001,7 +1020,8 @@ export default function PendingRequestsTab() {
       </Dialog>
 
       {/* Standalone Transfer Modal View */}
-      <Dialog open={!!selectedRequest} onOpenChange={(open) => { if (!open) { setSelectedRequest(null); setTransferIssuedTo(''); } }}>
+      {warningDialog}
+      <Dialog open={!!selectedRequest} onOpenChange={(open) => { if (!open) { setSelectedRequest(null); setTransferIssuedTo(''); setTransferSerials(emptyPick()); setSerialsOk(true); } }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Transfer Material to Production</DialogTitle>
@@ -1028,6 +1048,16 @@ export default function PendingRequestsTab() {
               )}
               <StockCheckNote check={selectedRequest?.material.stockCheck} qty={transferQty} />
             </div>
+            {selectedRequest && !selectedRequest.material.fabricationCategory && (
+              <SerialPicker
+                mode="stock"
+                itemCode={selectedRequest.material.sourceItemCode || selectedRequest.material.materialCode}
+                qty={transferQty}
+                value={transferSerials}
+                onChange={setTransferSerials}
+                onValidity={(ok) => setSerialsOk(ok)}
+              />
+            )}
             <div>
               <label className="text-sm font-medium text-slate-700 mb-1 block">Issued To <span className="text-red-500">*</span> <span className="text-[10px] text-slate-400 font-normal">(who you're physically handing this to)</span></label>
               <Input placeholder="e.g. Ramesh Kumar" value={transferIssuedTo} onChange={(e) => setTransferIssuedTo(e.target.value)} />
@@ -1043,6 +1073,7 @@ export default function PendingRequestsTab() {
                 !transferQty ||
                 Number(transferQty) <= 0 ||
                 !transferIssuedTo.trim() ||
+                (!selectedRequest?.material.fabricationCategory && !serialsOk) ||
                 (selectedRequest && Number(transferQty) > ((selectedRequest.material.quantity || 0) - (selectedRequest.material.transferredQuantity || 0)))
               }
             >

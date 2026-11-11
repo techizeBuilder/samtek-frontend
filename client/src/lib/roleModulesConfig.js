@@ -55,6 +55,7 @@ export const MODULES = [
       { key: 'dispatchPlanning', label: 'Dispatch Planning' },
       { key: 'activeDispatches', label: 'Active Dispatches' },
       { key: 'dispatchHistory', label: 'History' },
+      { key: 'vendorPickups', label: 'Vendor Pickups' },
       { key: 'expenses', label: 'Expenses' },
       { key: 'lms', label: 'LMS' }
     ]
@@ -188,6 +189,7 @@ export const MODULES = [
       { key: 'inventory', label: 'Inventory' },
       { key: 'purchaseOrders', label: 'Purchase Orders' },
       { key: 'materialTransfers', label: 'Material Transfers' },
+      { key: 'outsourceReceive', label: 'Outsource Receive' },
       { key: 'defectiveInventory', label: 'Defective Inventory' },
       { key: 'lms', label: 'LMS' }
     ]
@@ -243,6 +245,7 @@ export const ROLE_MODULE_MAP = {
   'Superadmin': ['superAdmin', 'settings'],
   'HR-Admin': ['hrms'],
   'Company Admin': ['hrms'],
+  'Manager': ['hrms'],
   'Production Head': ['production'],
   'Packing Head': ['packing'],
   'Dispatch Head': ['dispatches'],
@@ -273,6 +276,53 @@ export const ROLE_MODULE_MAP = {
 };
 
 export const PERMISSION_ACTIONS = ['view', 'add', 'edit', 'delete'];
+
+// HR permissions each role's menu requires beyond the shared 'hrms' list above
+// (2026-11-11). Listed per role, so a role only sees what its menu has. Keep the
+// same as the server's services/hrPermissionBackfill.js; suite hrperms checks it.
+export const HRMS_ROLE_FEATURES = {
+  'HR-Admin': [
+    { key: 'companies', label: 'Companies' },
+    { key: 'branches', label: 'Branches' },
+    { key: 'leaveRequests', label: 'Leave Requests' },
+    { key: 'leaveTypes', label: 'Leave Types & Rules' },
+    { key: 'attendanceRecord', label: 'Attendance Record & Device' },
+    { key: 'attendanceRequests', label: 'Attendance Requests' },
+    { key: 'salaryStructure', label: 'Salary Structure' },
+    { key: 'payrollRun', label: 'Payroll Run' },
+    { key: 'payslips', label: 'Payslips' },
+    { key: 'statutoryReport', label: 'Statutory Reports' },
+    { key: 'jobOpenings', label: 'Job Openings' },
+    { key: 'candidates', label: 'Candidates' },
+    { key: 'interviewPipeline', label: 'Interview Pipeline' },
+    { key: 'trainees', label: 'Trainees' },
+    { key: 'trainingModules', label: 'Training Modules' },
+    { key: 'questionBank', label: 'Question Bank' },
+  ],
+  Manager: [
+    { key: 'teamMembers', label: 'Team Members' },
+    { key: 'teamAttendance', label: 'Team Attendance' },
+    { key: 'leaveRequests', label: 'Leave Requests' },
+    { key: 'attendanceCorrections', label: 'Attendance Corrections' },
+    { key: 'overtimeRequests', label: 'Overtime Requests' },
+    { key: 'expenseRequests', label: 'Expense / Reimbursement' },
+    { key: 'travelRequests', label: 'Travel Requests' },
+    { key: 'profileRequests', label: 'Profile Update Requests' },
+    { key: 'interviewFeedback', label: 'Interview Feedback' },
+  ],
+};
+
+// A Manager runs a team, not the company, so they don't get the shared HR list.
+const ROLES_WITHOUT_SHARED_HRMS = ['Manager'];
+
+// The modules, and each module's features, that can be granted to this role.
+export const modulesForRole = (role) => MODULES
+  .filter((m) => (ROLE_MODULE_MAP[role] || []).includes(m.name))
+  .map((m) => {
+    if (m.name !== 'hrms' || !HRMS_ROLE_FEATURES[role]) return m;
+    const shared = ROLES_WITHOUT_SHARED_HRMS.includes(role) ? [] : m.features;
+    return { ...m, features: [...shared, ...HRMS_ROLE_FEATURES[role]] };
+  });
 
 /**
  * Sensible default (view/add/edit/delete) permission set for a role, seeded
@@ -470,11 +520,12 @@ export const getDefaultModulesForRole = (role) => {
       ];
     case 'HR-Admin':
     case 'Company Admin':
+    case 'Manager':
       return [
         {
           name: 'hrms',
           dashboard: true,
-          features: (MODULES.find(m => m.name === 'hrms')?.features || []).map(f => ({
+          features: (modulesForRole(role).find(m => m.name === 'hrms')?.features || []).map(f => ({
             key: f.key,
             label: f.label,
             view: true,
@@ -525,6 +576,7 @@ export const getDefaultModulesForRole = (role) => {
             { key: 'inventory', view: true, add: true, edit: true, delete: true },
             { key: 'purchaseOrders', view: true, add: true, edit: true, delete: true },
             { key: 'materialTransfers', view: true, add: true, edit: true, delete: true },
+            { key: 'outsourceReceive', view: true, add: true, edit: true, delete: true },
             { key: 'defectiveInventory', view: true, add: true, edit: true, delete: true },
             { key: 'lms', label: 'LMS', view: true, add: false, edit: false, delete: false }
           ]

@@ -71,11 +71,6 @@ export function ProductionProvider({ children }) {
   const invalidateTeams = () => qc.invalidateQueries({ queryKey: ['production-mfg-teams'] });
 
   // ── Order mutations ────────────────────────────────────────────────────────
-  const addOrderMutation = useMutation({
-    mutationFn: (data) => apiRequest('POST', `${BASE}/orders`, data),
-    onSuccess: invalidateOrders,
-  });
-
   const verifyBOMMutation = useMutation({
     mutationFn: (id) => apiRequest('PUT', `${BASE}/orders/${id}/verify-bom`),
     onSuccess: invalidateOrders,
@@ -143,8 +138,10 @@ export function ProductionProvider({ children }) {
   });
 
   const markProcessCompleteMutation = useMutation({
-    mutationFn: ({ orderId, stepIndex, unitNumber = 1 }) =>
-      apiRequest('PUT', `${BASE}/orders/${orderId}/processes/${stepIndex}/complete?unit=${unitNumber}`),
+    // cost (slice 4, 2026-10-24): { productionCost, productionExpense } at the
+    // unit's last in-house step.
+    mutationFn: ({ orderId, stepIndex, unitNumber = 1, cost = null }) =>
+      apiRequest('PUT', `${BASE}/orders/${orderId}/processes/${stepIndex}/complete?unit=${unitNumber}`, cost || {}),
     onSuccess: invalidateOrders,
     // Final Testing can now genuinely reject this too (checklist not filled
     // yet — confirmed 2026-09-02), same reasoning as assignTeam/startProcess above.
@@ -195,7 +192,6 @@ export function ProductionProvider({ children }) {
   });
 
   // ── Stable callback wrappers (keep same API as before) ────────────────────
-  const addOrder = useCallback((data) => addOrderMutation.mutate(data), []);
   const verifyBOM = useCallback((id) => verifyBOMMutation.mutateAsync(id), []);
   const verifyDesign = useCallback((id) => verifyDesignMutation.mutateAsync(id), []);
   const markMaterialIssued = useCallback((id) => markMaterialIssuedMutation.mutateAsync(id), []);
@@ -249,8 +245,8 @@ export function ProductionProvider({ children }) {
   const startProcess = useCallback((orderId, stepName, unitNumber = 1) =>
     startProcessMutation.mutate({ orderId, stepIndex: stepIndex(orderId, stepName), unitNumber }), [orders]);
 
-  const markProcessComplete = useCallback((orderId, stepName, unitNumber = 1) =>
-    markProcessCompleteMutation.mutate({ orderId, stepIndex: stepIndex(orderId, stepName), unitNumber }), [orders]);
+  const markProcessComplete = useCallback((orderId, stepName, unitNumber = 1, cost = null) =>
+    markProcessCompleteMutation.mutate({ orderId, stepIndex: stepIndex(orderId, stepName), unitNumber, cost }), [orders]);
 
   const approveQC = useCallback((orderId, stepName, qcBy, unitNumber = 1, productionCost, productionExpense) =>
     approveQCMutation.mutate({ orderId, stepIndex: stepIndex(orderId, stepName), qcBy, unitNumber, productionCost, productionExpense }), [orders]);
@@ -346,7 +342,6 @@ export function ProductionProvider({ children }) {
       teams,
       ordersLoading,
       teamsLoading,
-      addOrder,
       verifyBOM,
       verifyDesign,
       decideRework,

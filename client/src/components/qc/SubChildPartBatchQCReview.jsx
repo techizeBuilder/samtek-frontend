@@ -6,8 +6,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { ClipboardCheck, CheckCircle, XCircle, History } from 'lucide-react';
+import { ClipboardCheck, History } from 'lucide-react';
 import { showSuccessToast, showSmartToast } from '@/lib/toast-utils';
+import QcCheckRow, { checksState } from './QcCheckRow';
+import RejectionPhotoPicker, { decisionBody } from './RejectionPhotoPicker';
+import RejectionEvidence from './RejectionEvidence';
+import SerialPicker, { emptyPick } from '@/components/serials/SerialPicker';
+import { useConfirmWarnings } from '@/components/serials/useConfirmWarnings';
 
 // QC's review of a Sub Child Part order's own whole-batch QC steps (QC
 // multi-checkpoint redesign, slice 2, 2026-09-26) — direct sibling of
@@ -21,7 +26,7 @@ import { showSuccessToast, showSmartToast } from '@/lib/toast-utils';
 // separately-recorded value and only lets QC add a second qcStatus verdict
 // on top; there's no such first layer here, QC fills status/actualValue/
 // remarks directly, one single fill — see QCFilledRowSchema).
-export default function SubChildPartBatchQCReview({ jobId, batchSteps, canEdit, onRefetch }) {
+export default function SubChildPartBatchQCReview({ jobId, batchSteps, canEdit, onRefetch, inspector = '' }) {
   const [reviewStep, setReviewStep] = useState(null);
   const [historyStep, setHistoryStep] = useState(null);
   if (!batchSteps?.length) return null;
@@ -39,9 +44,13 @@ export default function SubChildPartBatchQCReview({ jobId, batchSteps, canEdit, 
         </p>
       </CardHeader>
       <CardContent className="p-4 space-y-2">
-        {batchSteps.map(step => {
+        {batchSteps.map((step, si) => {
           const attempt = step.attempts?.[step.attempts.length - 1];
           const pending = !!attempt && !attempt.decidedAt;
+          // 2026-10-25: in order. (2026-10-30: no "start inspection first" — the
+          // first QC person to save or decide becomes the inspector.)
+          const earlier = batchSteps.slice(0, si).find(s => { const a = s.attempts?.[s.attempts.length - 1]; return a && !a.decidedAt; });
+          const why = earlier ? `after ${earlier.stepName}` : '';
           const resolved = step.reworkPendingQty === 0 && (step.passedQty + step.scrapQty) === step.qtyEnteringStep;
           return (
             <div key={step._id} className="flex items-center justify-between gap-3 border border-slate-100 rounded-lg p-3">
@@ -56,11 +65,13 @@ export default function SubChildPartBatchQCReview({ jobId, batchSteps, canEdit, 
                 {resolved ? (
                   <Badge className="text-xs bg-emerald-100 text-emerald-700">Resolved</Badge>
                 ) : pending ? (
-                  canEdit && (
+                  canEdit && (why
+                    ? <span className="text-xs text-slate-500">{why}</span>
+                    : (
                     <Button size="sm" className="h-7 text-xs bg-gradient-to-r from-blue-600 to-purple-600 text-white" onClick={() => setReviewStep(step)}>
                       Review ({attempt.qtySubmitted})
                     </Button>
-                  )
+                  ))
                 ) : (
                   <Badge className="text-xs bg-slate-100 text-slate-500">Awaiting Production</Badge>
                 )}
@@ -114,7 +125,7 @@ function BatchStepHistoryDialog({ stepEntry, onOpenChange }) {
                 <p className="text-xs text-slate-400">No checks configured for this step.</p>
               ) : (
                 <div className="space-y-2">
-                  {attempt.rows.map((row, i) => <ReadOnlyChecklistRow key={row._id || i} row={row} />)}
+                  {attempt.rows.map((row, i) => <QcCheckRow key={row._id || i} row={row} readOnly />)}
                 </div>
               )}
               {attempt.decidedAt ? (
@@ -124,6 +135,7 @@ function BatchStepHistoryDialog({ stepEntry, onOpenChange }) {
                     Passed: {attempt.passedQty ?? 0} · Rework: {attempt.reworkQty ?? 0} · Scrap: {attempt.scrapQty ?? 0}
                   </p>
                   {attempt.reason && <p className="mt-0.5 italic text-slate-500">Reason: {attempt.reason}</p>}
+                  <div className="mt-1.5"><RejectionEvidence failedChecks={attempt.failedChecks} photos={attempt.photos} downloadName={`${stepEntry.stepName}-${attempt.attemptNumber}`} /></div>
                 </div>
               ) : (
                 <p className="text-xs text-amber-600 border-t border-slate-100 pt-2">Awaiting QC decision.</p>
@@ -136,40 +148,28 @@ function BatchStepHistoryDialog({ stepEntry, onOpenChange }) {
   );
 }
 
-// Same visual shape as BatchChecklistRow below, but read-only — no inputs,
-// no Pass/Fail buttons, just what was recorded.
-function ReadOnlyChecklistRow({ row }) {
-  return (
-    <div className="bg-slate-50 border border-slate-100 rounded-lg p-3">
-      <p className="text-sm font-medium text-slate-800">{row.parameter}</p>
-      {row.type === 'value' && row.standardValue && (
-        <p className="text-xs text-slate-400 mt-0.5">Standard: {row.standardValue}</p>
-      )}
-      {row.type === 'value' && row.actualValue && (
-        <p className="text-xs text-slate-600 mt-1">Actual: {row.actualValue}</p>
-      )}
-      <div className="flex items-center gap-2 mt-2">
-        <span className={`h-6 px-2.5 text-xs rounded-md flex items-center gap-1 ${row.status === 'Pass' ? 'bg-emerald-100 text-emerald-700' : row.status === 'Fail' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-500'}`}>
-          {row.status === 'Pass' && <CheckCircle className="h-3.5 w-3.5" />}
-          {row.status === 'Fail' && <XCircle className="h-3.5 w-3.5" />}
-          {row.status || 'Pending'}
-        </span>
-      </div>
-      {row.remarks && <p className="text-xs text-slate-500 italic mt-1.5">{row.remarks}</p>}
-    </div>
-  );
-}
-
 function ReviewDialog({ jobId, stepEntry, onOpenChange, onDecided }) {
   const attempt = stepEntry.attempts[stepEntry.attempts.length - 1];
   const [rows, setRows] = useState(attempt.rows.map(r => ({ ...r })));
   const [split, setSplit] = useState({ passedQty: String(attempt.qtySubmitted), reworkQty: '0', scrapQty: '0' });
   const [reason, setReason] = useState('');
+  const [photos, setPhotos] = useState([]); // of what goes to rework / scrap (2026-10-30)
+  const { runChecked, warningDialog } = useConfirmWarnings();
+  const [scrapPick, setScrapPick] = useState(emptyPick()); // serials in the scrapped pieces (2 Nov review)
+  const [scrapPickOk, setScrapPickOk] = useState(true);
 
   const decideMutation = useMutation({
-    mutationFn: (body) => apiRequest('PUT', `/api/qc/jobs/${jobId}/batch-steps/decision`, body),
-    onSuccess: () => { showSuccessToast('Saved', 'Step decision recorded.'); onDecided(); },
+    mutationFn: (bodyFor) => runChecked((ack) => apiRequest('PUT', `/api/qc/jobs/${jobId}/batch-steps/decision`, bodyFor(ack))),
+    onSuccess: (res) => { if (!res) return; showSuccessToast('Saved', 'Step decision recorded.'); onDecided(); },
     onError: (e) => showSmartToast(e, 'Failed to record decision'),
+  });
+  // "Save checks" (2026-10-30): the rows this person checked, no decision —
+  // someone else can carry on.
+  const results = () => rows.map(r => ({ parameter: r.parameter, actualValue: r.actualValue, status: r.status, remarks: r.remarks }));
+  const checksMutation = useMutation({
+    mutationFn: () => apiRequest('PUT', `/api/qc/jobs/${jobId}/batch-steps/checks`, { category: stepEntry.category, step: stepEntry.stepName, results: results() }),
+    onSuccess: () => { showSuccessToast('Saved', 'Checks saved — the decision can be made later.'); onDecided(); },
+    onError: (e) => showSmartToast(e, 'Failed to save the checks'),
   });
 
   const passedQty = Number(split.passedQty) || 0;
@@ -178,23 +178,27 @@ function ReviewDialog({ jobId, stepEntry, onOpenChange, onDecided }) {
   const sumValid = passedQty + reworkQty + scrapQty === attempt.qtySubmitted;
   const reasonNeeded = reworkQty > 0 || scrapQty > 0;
   const reasonValid = !reasonNeeded || !!reason.trim();
-  const rowsDecided = rows.every(r => r.status !== 'Pending');
-  const failMissingRemarks = rows.some(r => r.status === 'Fail' && !r.remarks?.trim());
-  const canSave = sumValid && reasonValid && rowsDecided && !failMissingRemarks && !decideMutation.isPending;
+  const { pending, failMissingRemarks } = checksState(rows);
+  const rowsDecided = pending === 0;
+  const busy = decideMutation.isPending || checksMutation.isPending;
+  const canSave = sumValid && reasonValid && rowsDecided && !failMissingRemarks && !busy && (scrapQty === 0 || scrapPickOk);
 
   const handleSave = () => {
-    decideMutation.mutate({
+    decideMutation.mutate((acknowledgeWarnings) => decisionBody({
       category: stepEntry.category,
       step: stepEntry.stepName,
-      results: rows.map(r => ({ parameter: r.parameter, actualValue: r.actualValue, status: r.status, remarks: r.remarks })),
+      results: results(),
       passedQty, reworkQty, scrapQty,
       reason: reason.trim(),
-    });
+      acknowledgeWarnings,
+      ...(scrapQty > 0 ? { scrapSerials: scrapPick } : {}),
+    }, reasonNeeded ? photos : []));
   };
 
   return (
     <Dialog open onOpenChange={onOpenChange}>
       <DialogContent className="max-w-xl max-h-[85vh] overflow-y-auto">
+        {warningDialog}
         <DialogHeader>
           <DialogTitle>Review — {stepEntry.category} › {stepEntry.stepName} ({attempt.qtySubmitted} submitted)</DialogTitle>
         </DialogHeader>
@@ -205,7 +209,7 @@ function ReviewDialog({ jobId, stepEntry, onOpenChange, onDecided }) {
               No checks configured for this step by R&amp;D — decide the quantity split below directly.
             </p>
           ) : rows.map((row, i) => (
-            <BatchChecklistRow
+            <QcCheckRow
               key={row._id || i}
               row={row}
               onChange={patch => setRows(rs => rs.map((r, idx) => idx === i ? { ...r, ...patch } : r))}
@@ -232,64 +236,31 @@ function ReviewDialog({ jobId, stepEntry, onOpenChange, onDecided }) {
           {!sumValid && (
             <p className="text-xs text-red-600">Passed + Rework + Scrap must equal {attempt.qtySubmitted} (currently {passedQty + reworkQty + scrapQty}).</p>
           )}
+          {scrapQty > 0 && (
+            <SerialPicker mode="scpPieces" jobId={jobId} qty={scrapQty} onFloor={attempt.qtySubmitted} title="Serial numbers in the scrapped pieces"
+              value={scrapPick} onChange={setScrapPick} onValidity={(ok) => setScrapPickOk(ok)} />
+          )}
           {reasonNeeded && (
             <div>
               <label className="text-xs font-semibold text-slate-600 mb-1 block">Reason *</label>
               <Input value={reason} onChange={e => setReason(e.target.value)} placeholder="Why rework or scrap?" />
+              <div className="mt-2"><RejectionPhotoPicker files={photos} onChange={setPhotos} onError={(m) => showSmartToast(new Error(m), 'Photo not added')} /></div>
             </div>
           )}
         </div>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          {rows.length > 0 && (
+            <Button variant="outline" disabled={busy || failMissingRemarks} onClick={() => checksMutation.mutate()} title={failMissingRemarks ? 'Add a remark for each failed check' : 'Save the checks you did; the decision can be made later (by you or someone else)'}>
+              Save checks
+            </Button>
+          )}
           <Button className="bg-emerald-600 hover:bg-emerald-700 text-white" disabled={!canSave} onClick={handleSave}>
             Save Decision
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  );
-}
-
-// One QCFilledRowSchema row — QC fills status/actualValue/remarks directly,
-// all visible at once (not a step-through wizard — this is one shared
-// checklist for the whole submitted quantity, not a per-piece walk).
-function BatchChecklistRow({ row, onChange }) {
-  return (
-    <div className="bg-slate-50 border border-slate-100 rounded-lg p-3">
-      <p className="text-sm font-medium text-slate-800">{row.parameter}</p>
-      {row.type === 'value' && row.standardValue && (
-        <p className="text-xs text-slate-400 mt-0.5">Standard: {row.standardValue}</p>
-      )}
-      {row.type === 'value' && (
-        <Input
-          className="h-8 text-xs mt-2" placeholder="Actual value"
-          value={row.actualValue || ''} onChange={e => onChange({ actualValue: e.target.value })}
-        />
-      )}
-      <div className="flex items-center gap-2 mt-2">
-        <button
-          type="button" onClick={() => onChange({ status: 'Pass' })}
-          className={`h-7 px-3 text-xs rounded-md flex items-center gap-1 ${row.status === 'Pass' ? 'bg-emerald-600 text-white' : 'bg-white text-slate-600 border border-slate-200'}`}
-        >
-          <CheckCircle className="h-3.5 w-3.5" /> Pass
-        </button>
-        <button
-          type="button" onClick={() => onChange({ status: 'Fail' })}
-          className={`h-7 px-3 text-xs rounded-md flex items-center gap-1 ${row.status === 'Fail' ? 'bg-red-600 text-white' : 'bg-white text-slate-600 border border-slate-200'}`}
-        >
-          <XCircle className="h-3.5 w-3.5" /> Fail
-        </button>
-      </div>
-      {row.status === 'Fail' && (
-        <div className="mt-2">
-          <label className="text-xs font-semibold text-red-600 mb-1 block">Remarks *</label>
-          <Input
-            className="h-8 text-xs" placeholder="Why did this fail?"
-            value={row.remarks || ''} onChange={e => onChange({ remarks: e.target.value })}
-          />
-        </div>
-      )}
-    </div>
   );
 }

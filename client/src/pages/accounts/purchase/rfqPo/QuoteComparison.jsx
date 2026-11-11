@@ -56,7 +56,7 @@ export default function QuoteComparison({ quotes = [], unit = '' }) {
                       {diff != null && diff > 0 && <span className="ml-1 text-[10px] text-slate-500">+{diff}%</span>}
                     </td>
                     <td className="px-2 py-1 text-right tabular-nums">{inr(q.unitPrice)}</td>
-                    <td className="px-2 py-1">{q.gstInclusive ? 'incl.' : q.gstPercent != null ? `${q.gstPercent}%` : '—'}</td>
+                    <td className="px-2 py-1">{q.gstInclusive ? (q.gstPercent != null ? `${q.gstPercent}% incl.` : 'incl.') : q.gstPercent != null ? `${q.gstPercent}%` : '—'}</td>
                     <td className="px-2 py-1 text-right tabular-nums">{inr(landed)}</td>
                     <td className="px-2 py-1 text-right tabular-nums">{inr(landed * (Number(q.quantity) || 0))}</td>
                     <td className="px-2 py-1 whitespace-nowrap">{q.deliveryDays ? `${q.deliveryDays} d` : '—'}{q.warrantyMonths ? ` · ${q.warrantyMonths}m wty` : ''}</td>

@@ -1,5 +1,6 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 import { config } from '../config/environment';
+import { showEmailWarning } from './emailWarning';
 
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
@@ -90,7 +91,9 @@ export async function apiRequest(
   }
 
   await throwIfResNotOk(res);
-  return res.json();
+  const responseBody = await res.json();
+  showEmailWarning(responseBody);
+  return responseBody;
 }
 
 type UnauthorizedBehavior = "returnNull" | "throw";

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { provisionalNote } from '@/utils/priceProvisional';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import { useAuth } from '@/hooks/useAuth';
@@ -873,7 +874,10 @@ function QtyCell({ value, onChange, disabled }) {
 // input — nothing renders when the item has no BOM (bomInfo is
 // null/undefined/'loading').
 function BomCostHint({ bomInfo, billAmount, qty }) {
-  if (!bomInfo || bomInfo === 'loading' || !bomInfo.found) return null;
+  if (!bomInfo || bomInfo === 'loading') return null;
+  // Make or buy (2026-10-28): a provisional price warns, never blocks.
+  const note = provisionalNote(bomInfo);
+  if (!bomInfo.found) return note ? <p className="text-[10px] mt-1 leading-tight text-amber-700 font-semibold">{note}</p> : null;
   const units = num(qty) || 1;
   const bomCostForQty = bomInfo.totalCost * units;
   const pct = bomInfo.billAmountPercent ?? 10;
@@ -883,6 +887,7 @@ function BomCostHint({ bomInfo, billAmount, qty }) {
     <p className={`text-[10px] mt-1 leading-tight ${isBelowMin ? 'text-red-500 font-semibold' : 'text-gray-400'}`}>
       Billing Amount must be above ₹{minRequired.toLocaleString('en-IN')}
       {units > 1 && <span> (₹{bomInfo.totalCost.toLocaleString('en-IN')}/unit × {units})</span>}
+      {note && <span className="block text-amber-700 font-semibold">{note}</span>}
     </p>
   );
 }

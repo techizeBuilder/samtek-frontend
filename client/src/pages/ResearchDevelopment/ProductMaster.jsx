@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { provisionalNote } from '@/utils/priceProvisional';
 import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useRD } from '@/contexts/RDContext';
@@ -1557,6 +1558,9 @@ export default function ProductMaster() {
                   <p className="text-xs text-slate-500 mb-1">MRP</p>
                   <p className="text-sm font-medium text-slate-800">₹{Number(selected.mrp || 0).toLocaleString()}</p>
                 </div>
+                {provisionalNote(selected) && (
+                  <div className="col-span-full rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-medium text-amber-800">{provisionalNote(selected)}</div>
+                )}
                 <div className="bg-slate-50 rounded-lg p-3">
                   <p className="text-xs text-slate-500 mb-1">Std / Purchase Cost</p>
                   <p className="text-sm font-medium text-slate-800">₹{Number(selected.stdCost || 0).toLocaleString()} / ₹{Number(selected.purchaseCost || 0).toLocaleString()}</p>

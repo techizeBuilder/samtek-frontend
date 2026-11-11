@@ -50,6 +50,10 @@ export default function PoReviewDialog({ open, onOpenChange, vendor, lines, sett
   const [tcReasons, setTcReasons] = useState([]);  // why charges / terms differ from it
   const [tcNote, setTcNote] = useState('');
   const [advancePercent, setAdvancePercent] = useState('');
+  // 2026-10-29 (client): an advance alone doesn't mean the vendor waits for
+  // it (credit terms) — Purchase ticks it when the vendor ships only after
+  // the advance is paid. Unticked = delivery days count from the order.
+  const [waitForAdvance, setWaitForAdvance] = useState(false);
   const [creditDays, setCreditDays] = useState('');
   const [terms, setTerms] = useState([]);          // [{label, value, custom}]
   const [prefill, setPrefill] = useState(null);    // { from: request, others: [numbers] }
@@ -84,6 +88,7 @@ export default function PoReviewDialog({ open, onOpenChange, vendor, lines, sett
     const vendorOthers = vt.others || [];
     setCharges((from?.charges || []).map(c => ({ label: c.label, amount: String(c.amount ?? ''), gstPercent: String(c.gstPercent ?? 0) })));
     setAdvancePercent(vt.advancePercent != null ? String(vt.advancePercent) : '');
+    setWaitForAdvance(false);
     setCreditDays(vt.creditDays != null ? String(vt.creditDays) : '');
     // Only the vendor's own terms; our template terms are added by choice
     // (2026-10-14) — never listed blank.
@@ -204,6 +209,7 @@ export default function PoReviewDialog({ open, onOpenChange, vendor, lines, sett
           creditDays: creditDays === '' ? null : Number(creditDays),
           others: terms.map(t => ({ label: String(t.label).trim(), value: String(t.value).trim() })).filter(t => t.label && t.value),
         },
+        waitForAdvance: Number(advancePercent) > 0 && waitForAdvance,
         ...(selectionFailed ? { selectionException: { reasons: exReasons, note: exNote.trim() } } : {}),
         ...(termsChanged ? { termsChange: { reasons: tcReasons, note: tcNote.trim() } } : {}),
       });
@@ -250,6 +256,12 @@ export default function PoReviewDialog({ open, onOpenChange, vendor, lines, sett
               <div key={l.key} className="px-3 py-2 text-sm flex flex-wrap items-center gap-2">
                 <span className="flex-1 min-w-[180px] font-medium text-slate-800">
                   {l.itemName}
+                  {/* The vendor's quoted warranty (2026-10-29). */}
+                  {Number(l.warrantyMonths) > 0 && (
+                    <span className="ml-1.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full border bg-emerald-50 text-emerald-700 border-emerald-200 whitespace-nowrap" title="Warranty the vendor quoted for this item">
+                      {l.warrantyMonths} month{Number(l.warrantyMonths) === 1 ? '' : 's'} warranty
+                    </span>
+                  )}
                   {l.sizeLabel && <span className="block text-[11px] font-mono font-normal text-slate-500">{l.sizeLabel}{l.pieces ? ` × ${l.pieces} pcs` : ''}</span>}
                   <span className="flex flex-wrap items-center gap-1.5 text-[11px] font-normal text-slate-500 mt-0.5">
                     <BoughtBeforeTag history={l.priceHistory} vendorId={vendor._id} vendorName={vendor.supplierName} itemName={l.itemName} unit={l.purchaseUnit} quotePrice={l.comparable} warnAt={warnAt} />
@@ -257,7 +269,7 @@ export default function PoReviewDialog({ open, onOpenChange, vendor, lines, sett
                 </span>
                 <span className="text-slate-500 text-xs">{l.sizeLabel ? '≈ ' : ''}{l.quantity} {l.purchaseUnit || ''} × {inr(l.unitPrice)} = {inr(l.amount)}</span>
                 {l.gstInclusive ? (
-                  <span className="text-[11px] text-slate-500 border rounded-full px-2 py-0.5">GST included in rate</span>
+                  <span className="text-[11px] text-slate-500 border rounded-full px-2 py-0.5">{l.gstPercent != null && l.gstPercent !== '' ? `GST ${l.gstPercent}% included in rate` : 'GST included in rate'}</span>
                 ) : (
                   <span className="text-[11px] text-slate-600 border rounded-full px-2 py-0.5" title="The GST % the vendor quoted">
                     {l.gstPercent != null ? `GST ${l.rate}% (quoted) = ${inr(l.gst)}` : 'No GST quoted (0%)'}
@@ -303,16 +315,29 @@ export default function PoReviewDialog({ open, onOpenChange, vendor, lines, sett
         <div>
           <p className="text-xs font-semibold text-slate-500 uppercase mb-1.5">Payment terms</p>
           <div className="grid grid-cols-2 gap-3">
-            {/* 2026-10-12 (client): the advance is paid when the PO is placed and
-                the vendor's delivery days count from that payment; the full
-                payment is due Credit Days after everything is received and
-                QC-passed. */}
-            <label className="text-xs text-slate-600">Advance % <span className="text-slate-400">(delivery days start when it's paid)</span>
+            {/* 2026-10-12 (client): the advance is paid when the PO is placed; the
+                full payment is due Credit Days after everything is received
+                and QC-passed. Whether the vendor waits for the advance before
+                sending is the tick below (2026-10-29). */}
+            <label className="text-xs text-slate-600">Advance %
               <Input className="h-8 text-sm mt-0.5" type="number" min="0" max="100" value={advancePercent} onChange={e => setAdvancePercent(e.target.value)} placeholder="e.g. 30" />
             </label>
             <label className="text-xs text-slate-600">Credit days <span className="text-slate-400">(after everything is received + QC-passed; blank = pay straight away)</span>
               <Input className="h-8 text-sm mt-0.5" type="number" min="0" value={creditDays} onChange={e => setCreditDays(e.target.value)} placeholder="e.g. 45" />
             </label>
+            {Number(advancePercent) > 0 && (
+              <label className="col-span-2 flex items-start gap-2 text-xs text-slate-700 bg-slate-50 border rounded-md px-2.5 py-2 cursor-pointer">
+                <input type="checkbox" className="mt-0.5" checked={waitForAdvance} onChange={e => setWaitForAdvance(e.target.checked)} />
+                <span>
+                  <span className="font-medium">Vendor sends only after the advance is paid</span>
+                  <span className="block text-slate-500">
+                    {waitForAdvance
+                      ? 'Delivery days start the day the advance is paid — Store sees the dates then.'
+                      : 'Unticked: the vendor sends straight away — delivery days count from the order.'}
+                  </span>
+                </span>
+              </label>
+            )}
             {terms.map((t, i) => (
               <div key={i} className="col-span-2 flex items-center gap-2">
                 {t.custom
@@ -411,7 +436,7 @@ export default function PoReviewDialog({ open, onOpenChange, vendor, lines, sett
         )}
         {/* Vendor selection check (gap 12) */}
         {groupIds.length > 0 && (
-          <div className={`rounded-md border px-3 py-2 space-y-2 ${selectionFailed ? 'border-rose-200 bg-rose-50/60' : check ? 'border-emerald-200 bg-emerald-50/60' : 'border-slate-200 bg-slate-50'}`}>
+          <div className={`rounded-md border px-3 py-2 space-y-2 ${selectionFailed || check?.blocked ? 'border-rose-200 bg-rose-50/60' : check ? 'border-emerald-200 bg-emerald-50/60' : 'border-slate-200 bg-slate-50'}`}>
             <p className="text-xs font-semibold text-slate-600 uppercase">Vendor selection check</p>
             {checkState === 'loading' && <p className="text-xs text-slate-500">Comparing with the other vendors' quotes…</p>}
             {checkState === 'error' && (
@@ -457,7 +482,7 @@ export default function PoReviewDialog({ open, onOpenChange, vendor, lines, sett
 
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={saving}>Cancel</Button>
-          <Button className="bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700" onClick={submit} disabled={saving || lines.length === 0 || checkState === 'loading'}>
+          <Button className="bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700" onClick={submit} disabled={saving || lines.length === 0 || checkState === 'loading' || !!check?.blocked} title={check?.blocked ? 'Not enough quotations yet — see the Vendor selection check' : undefined}>
             {saving ? 'Saving...' : needsApproval ? `Send for approval (${inr(computed.grand)})` : `Create PO (${inr(computed.grand)})`}
           </Button>
         </DialogFooter>

@@ -50,6 +50,7 @@ interface Employee {
   employmentType?: string;
   employmentStatus?: string;
   documents?: { status: string }[];
+  canLogin?: boolean;
 }
 
 export default function Employee() {
@@ -94,6 +95,7 @@ export default function Employee() {
     contact: "",
     gender: "",
     status: "",
+    login: "",
   });
   const [debouncedFilters, setDebouncedFilters] = useState(filters);
 
@@ -154,6 +156,7 @@ export default function Employee() {
         employmentType: debouncedFilters.empType,
         contact: debouncedFilters.contact,
         gender: debouncedFilters.gender,
+        login: debouncedFilters.login,
         employmentStatus: debouncedFilters.status,
       });
 
@@ -285,6 +288,7 @@ export default function Employee() {
       contact: "",
       gender: "",
       status: "",
+      login: "",
     });
   };
 
@@ -409,6 +413,18 @@ export default function Employee() {
                 placeholder="Name or ID"
                 className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
               />
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-gray-700 mb-1">Login</p>
+              <select
+                value={filters.login}
+                onChange={(e) => setFilters(prev => ({ ...prev, login: e.target.value }))}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white"
+              >
+                <option value="">All</option>
+                <option value="yes">Has login</option>
+                <option value="no">No login</option>
+              </select>
             </div>
             <div>
               <p className="text-xs font-semibold text-gray-700 mb-1">Designation</p>
@@ -662,6 +678,11 @@ export default function Employee() {
 
               <h3 className="text-center text-blue-500 font-semibold text-lg">{emp.name}</h3>
               <p className="text-center text-gray-500 text-sm mt-1">{emp.role}</p>
+              {emp.canLogin === false && (
+                <p className="text-center mt-1">
+                  <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-600">No login</span>
+                </p>
+              )}
             </div>
           ))}
         </div>
@@ -739,7 +760,12 @@ export default function Employee() {
                             </div>
                           )}
                           <div>
-                            <div className="font-bold text-gray-900">{emp.name}</div>
+                            <div className="font-bold text-gray-900 flex items-center gap-1.5">
+                              {emp.name}
+                              {emp.canLogin === false && (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-600">No login</span>
+                              )}
+                            </div>
                             <div className="text-xs text-gray-400">{emp.employeeId || "—"}</div>
                           </div>
                         </div>

@@ -1,4 +1,6 @@
 ﻿import React, { useState, useEffect } from 'react';
+import SerialPicker, { emptyPick } from '@/components/serials/SerialPicker';
+import { useConfirmWarnings } from '@/components/serials/useConfirmWarnings';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -40,6 +42,11 @@ export default function DefectiveInventory() {
   const [page, setPage] = useState(1);
   const [modal, setModal] = useState(null);
   const [actionQty, setActionQty] = useState('');
+  // Serial number work (2 Nov review): which serial / sticker this is.
+  const { runChecked, warningDialog } = useConfirmWarnings();
+  const [pick, setPick] = useState(emptyPick());
+  const [pickOk, setPickOk] = useState(true);
+  const [nothingInside, setNothingInside] = useState(false);
 
   // ── DEBOUNCE EFFECT FOR SEARCH FILTER ──
   useEffect(() => {
@@ -66,8 +73,9 @@ export default function DefectiveInventory() {
 
   const repairMutation = useMutation({
     mutationFn: ({ id, quantityToRepair }) =>
-      apiRequest('POST', `/api/inventory/defective/repair/${id}`, { quantityToRepair }),
+      runChecked((acknowledgeWarnings) => apiRequest('POST', `/api/inventory/defective/repair/${id}`, { quantityToRepair, ...pick, nothingInside, acknowledgeWarnings })),
     onSuccess: (res) => {
+      if (!res) return; // Store went back to pick
       toast({ title: 'Repaired', description: res?.message || 'Items returned to main stock.' });
       queryClient.invalidateQueries({ queryKey: ['/api/inventory/defective'] });
       closeModal();
@@ -79,8 +87,9 @@ export default function DefectiveInventory() {
 
   const scrapMutation = useMutation({
     mutationFn: ({ id, quantityToScrap }) =>
-      apiRequest('POST', `/api/inventory/defective/scrap/${id}`, { quantityToScrap }),
+      runChecked((acknowledgeWarnings) => apiRequest('POST', `/api/inventory/defective/scrap/${id}`, { quantityToScrap, ...pick, nothingInside, acknowledgeWarnings })),
     onSuccess: (res) => {
+      if (!res) return; // Store went back to pick
       toast({ title: 'Scrapped', description: res?.message || 'Items written off successfully.' });
       queryClient.invalidateQueries({ queryKey: ['/api/inventory/defective'] });
       closeModal();
@@ -93,6 +102,7 @@ export default function DefectiveInventory() {
   const openModal = (type, item) => {
     setModal({ type, item });
     setActionQty('');
+    setPick(emptyPick()); setPickOk(true); setNothingInside(false);
   };
 
   const closeModal = () => {
@@ -151,6 +161,7 @@ export default function DefectiveInventory() {
             View and manage defective materials. Repair back to stock or scrap off.
           </p>
         </div>
+        {warningDialog}
         <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching} className="flex items-center gap-2">
           <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
           Refresh
@@ -282,8 +293,8 @@ export default function DefectiveInventory() {
             </DialogTitle>
             <DialogDescription>
               {modal?.type === 'repair'
-                ? 'Repaired items will be moved back to the main inventory stock.'
-                : 'Scrapped items will be permanently written off.'}
+                ? 'Repair is internal work. Confirm only when the item is repaired and, for a made part, its remaining process steps are done. The quantity you enter goes back to the main inventory stock.'
+                : 'Scrapped items will be permanently written off, with everything inside them.'}
             </DialogDescription>
           </DialogHeader>
 
@@ -319,13 +330,18 @@ export default function DefectiveInventory() {
                 autoFocus
               />
             </div>
+
+            {modal?.item && (
+              <SerialPicker mode="defective" itemCode={modal.item.materialCode} onFloor={modal.item.quantity} qty={actionQty}
+                value={pick} onChange={setPick} onValidity={(ok) => setPickOk(ok)} nothingInside={nothingInside} onNothingInside={setNothingInside} />
+            )}
           </div>
 
           <DialogFooter className="gap-2">
             <Button variant="ghost" onClick={closeModal} disabled={isActionLoading}>Cancel</Button>
             <Button
               onClick={handleSubmitAction}
-              disabled={isActionLoading || !actionQty}
+              disabled={isActionLoading || !actionQty || !pickOk}
               className={modal?.type === 'repair' ? 'bg-green-600 hover:bg-green-700 text-white' : 'bg-red-600 hover:bg-red-700 text-white'}
             >
               {isActionLoading ? (

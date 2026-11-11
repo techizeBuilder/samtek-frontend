@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { CheckCircle2, ArrowRight, Search, Settings2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
-import { APPROVAL_TABS, KIND_LABEL, StageChips, BlockersPanel } from './approval/approvalShared';
+import { APPROVAL_TABS, KIND_LABEL, StageChips, BlockersPanel, RedoBanner } from './approval/approvalShared';
 import ApprovalManageDialog from './approval/ApprovalManageDialog';
 
 // The one consolidated R&D Approval page (docs/product-approval-gate-
@@ -33,14 +33,18 @@ export default function DesignApproval() {
   const search = useDebouncedValue(searchInput.trim(), 400);
   const [page, setPage] = useState(1);
   const [managingId, setManagingId] = useState(null);
+  // '' = all, 'notApproved' = not Released yet, 'redo' = changed after approval
+  // (BOM edit, or make ↔ buy switch) and needs re-approving.
+  const [status, setStatus] = useState('');
 
-  useEffect(() => { setPage(1); }, [kind, search]);
+  useEffect(() => { setPage(1); }, [kind, search, status]);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['approval-items', kind, search, page],
+    queryKey: ['approval-items', kind, search, page, status],
     queryFn: () => {
       const params = new URLSearchParams({ kind, page: String(page), limit: String(PAGE_SIZE) });
       if (search) params.set('search', search);
+      if (status) params.set('status', status);
       return apiRequest('GET', `/api/rd/approval/items?${params.toString()}`);
     },
     placeholderData: keepPreviousData,
@@ -48,6 +52,10 @@ export default function DesignApproval() {
   const rows = data?.rows || [];
   const pages = data?.pages || 1;
   const total = data?.total || 0;
+  const redoCounts = data?.redoCounts || {};
+  const redoTotal = Object.values(redoCounts).reduce((s, n) => s + n, 0);
+  const counts = data?.counts || {};
+  const redoOnly = status === 'redo';
 
   return (
     <div className="p-6 space-y-6 bg-slate-50 min-h-screen">
@@ -68,7 +76,7 @@ export default function DesignApproval() {
           ))}
         </div>
         <p className="text-xs text-slate-500">
-          A parent can't be approved until the parts underneath it are. Machines marked <strong>Purchase Machine</strong> in Product Master only need their QC List approved.
+          A parent can't be approved until the parts underneath it are. Machines marked <strong>Purchase Machine</strong> in Product Master, and Child Parts / Sub Child Parts <strong>bought from a vendor</strong>, only need their QC List approved.
           An unreleased part's automatic orders don't run, and an unreleased Machine isn't sellable.
         </p>
       </div>
@@ -77,19 +85,40 @@ export default function DesignApproval() {
         {APPROVAL_TABS.map(t => (
           <button key={t.kind} onClick={() => setKind(t.kind)} className={`px-4 py-2 rounded-lg text-sm font-semibold border transition-colors ${kind === t.kind ? 'bg-blue-600 text-white border-blue-600 shadow' : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300'}`}>
             {t.label}
+            {redoCounts[t.kind] > 0 && <span className="ml-1.5 inline-flex items-center justify-center min-w-5 h-5 px-1 rounded-full bg-amber-500 text-white text-[10px] font-bold" title="Need re-approval">{redoCounts[t.kind]}</span>}
           </button>
         ))}
       </div>
 
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-        <Input placeholder={`Search ${KIND_LABEL[kind]}s...`} className="pl-9" value={searchInput} onChange={e => setSearchInput(e.target.value)} />
+      {(redoTotal > 0 || redoOnly) && (
+        <div className="flex items-center gap-3 flex-wrap bg-amber-50 border border-amber-200 rounded-lg px-4 py-2.5">
+          <span className="text-sm text-amber-900">
+            <strong>{redoTotal}</strong> item{redoTotal === 1 ? '' : 's'} changed after approval (BOM edit, or make ↔ buy switch) need{redoTotal === 1 ? 's' : ''} re-approval and a new Release.
+          </span>
+          <button onClick={() => setStatus(redoOnly ? '' : 'redo')} className={`text-xs font-semibold rounded-full border px-3 py-1 ${redoOnly ? 'bg-amber-600 text-white border-amber-600' : 'bg-white text-amber-800 border-amber-300 hover:border-amber-500'}`}>
+            {redoOnly ? 'Show all' : 'Show only these'}
+          </button>
+        </div>
+      )}
+
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="relative w-full max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+          <Input placeholder={`Search ${KIND_LABEL[kind]}s...`} className="pl-9" value={searchInput} onChange={e => setSearchInput(e.target.value)} />
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          {[['', 'All', counts.all], ['notApproved', 'Not approved yet', counts.notApproved], ['redo', 'Needs re-approval', counts.redo]].map(([value, label, n]) => (
+            <button key={label} onClick={() => setStatus(value)} className={`text-xs font-semibold rounded-full border px-3 py-1.5 transition-colors ${status === value ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300'}`}>
+              {label}{n != null ? ` (${n})` : ''}
+            </button>
+          ))}
+        </div>
       </div>
 
       {isLoading ? (
         <Card className="border-none shadow-sm"><CardContent className="py-16 text-center text-slate-400">Loading...</CardContent></Card>
       ) : rows.length === 0 ? (
-        <Card className="border-none shadow-sm"><CardContent className="py-16 text-center text-slate-400">No {KIND_LABEL[kind]}s found.</CardContent></Card>
+        <Card className="border-none shadow-sm"><CardContent className="py-16 text-center text-slate-400">{status === 'notApproved' ? `Every ${KIND_LABEL[kind]} is approved.` : status === 'redo' ? `No ${KIND_LABEL[kind]} needs re-approval.` : `No ${KIND_LABEL[kind]}s found.`}</CardContent></Card>
       ) : (
         <div className="space-y-3">
           {rows.map(r => {
@@ -101,13 +130,14 @@ export default function DesignApproval() {
                     <div>
                       <p className="font-mono text-xs text-blue-600 font-semibold">{r.code}</p>
                       <h3 className="font-semibold text-slate-900 leading-tight">{r.name}</h3>
-                      <p className="text-xs text-slate-500 mt-0.5">{r.category}{r.purchaseMachine ? ' · Purchase Machine' : ''}</p>
+                      <p className="text-xs text-slate-500 mt-0.5">{r.category}{r.boughtPart ? ' · Bought from a vendor' : r.purchaseMachine ? ' · Purchase Machine' : ''}</p>
                     </div>
                     <Button size="sm" variant="outline" className="text-xs" onClick={() => setManagingId(r._id)}>
                       <Settings2 className="h-3.5 w-3.5 mr-1.5" /> Manage
                     </Button>
                   </div>
                   <StageChips item={r} />
+                  <RedoBanner item={r} compact />
                   {blocked && blocked.length > 0 && <BlockersPanel title="Waiting on parts underneath" blockers={blocked.slice(0, 5)} />}
                 </CardContent>
               </Card>

@@ -14,8 +14,8 @@ import { X, Package, Wrench } from 'lucide-react';
 // server leaves every other field alone when they're absent).
 //
 // Products = Items marked Purchasable (Inventory / Product Master / Motor
-// Master — never a Child Part or Sub Child Part, whose vendor need is job
-// work). Services = Process Template step names, matched by name to every BOM
+// Master, and a Child Part or Sub Child Part R&D marked as bought; a made one's
+// vendor need is job work). Services = Process Template step names, matched by name to every BOM
 // step marked Out Source (see supplierController.js getSupplierCatalog).
 export default function VendorCoverageDialog({ vendor, open, onOpenChange, catalogItems = [], catalogServices = [], afterCreate = false, onSaved }) {
   const { toast } = useToast();
@@ -24,14 +24,13 @@ export default function VendorCoverageDialog({ vendor, open, onOpenChange, catal
   const [tab, setTab] = useState('products');
   const [search, setSearch] = useState('');
   // Products filter (2026-09-28) — by where the item comes from (Inventory /
-  // Product Master / Motor Master); only sources that actually have items
-  // get a chip.
+  // Product Master / Motor Master / Child Part / Sub Child Part); only sources
+  // that actually have items get a chip.
   const [sourceFilter, setSourceFilter] = useState('all');
   // Second-level filter for one selected source with its own classification:
-  // Inventory's itemCategories (multi-select "Item Category" — NOT itemType,
-  // ~70% one value in real data), Product Master's category ("P-Type").
-  // Motor Master saves neither, so it has none. 'all', a normalized
-  // (trimmed, lowercased) value, or '(blank)'.
+  // Inventory's itemType (the same split as the Inventory page's tabs, 2 Nov),
+  // Product Master's category ("P-Type"). Motor Master saves neither, so it
+  // has none. 'all', a normalized (trimmed, lowercased) value, or '(blank)'.
   const [subFilter, setSubFilter] = useState('all');
   const [saving, setSaving] = useState(false);
 
@@ -68,19 +67,17 @@ export default function VendorCoverageDialog({ vendor, open, onOpenChange, catal
 
   const renderProducts = () => {
     const q = search.trim().toLowerCase();
-    const sourceOrder = ['Inventory', 'Product Master', 'Motor Master'];
+    const sourceOrder = ['Inventory', 'Product Master', 'Motor Master', 'Child Part', 'Sub Child Part'];
     const availableSources = sourceOrder.filter(src => catalogItems.some(it => it.source === src));
-    const subFieldFor = { 'Inventory': 'itemCategories', 'Product Master': 'category' };
+    const subFieldFor = { 'Inventory': 'itemType', 'Product Master': 'category' };
     const subField = subFieldFor[sourceFilter];
-    const isArraySubField = subField === 'itemCategories';
     const normalize = (s) => (s || '').trim();
     const titleCase = (s) => s.replace(/\w\S*/g, w => w[0].toUpperCase() + w.slice(1).toLowerCase());
     // Every value this item carries for the current sub-field — '(blank)' is
     // its own bucket rather than hidden.
     const subValuesOf = (it) => {
-      const raw = isArraySubField ? (it[subField] || []) : [it[subField]];
-      const vals = raw.map(normalize).filter(Boolean);
-      return vals.length > 0 ? vals : ['(blank)'];
+      const val = normalize(it[subField]);
+      return val ? [val] : ['(blank)'];
     };
     let subOptions = [];
     if (subField) {
@@ -102,7 +99,7 @@ export default function VendorCoverageDialog({ vendor, open, onOpenChange, catal
 
     return (
       <div>
-        <p className="text-xs text-slate-500 mb-2">Items this vendor sells us — every item marked <b>Purchasable</b> in Inventory, Product Master or Motor Master. Child Parts / Sub Child Parts are made in-house from their BOM; their outsourced work goes under <b>Services</b>.</p>
+        <p className="text-xs text-slate-500 mb-2">Items this vendor sells us — every item marked <b>Purchasable</b> in Inventory, Product Master or Motor Master, and Child Parts / Sub Child Parts R&D marked as bought. A part made in-house isn't listed; its outsourced work goes under <b>Services</b>.</p>
         <div className="flex gap-1.5 mb-2 flex-wrap">
           {['all', ...availableSources].map(src => {
             const count = src === 'all' ? catalogItems.length : catalogItems.filter(it => it.source === src).length;
@@ -119,7 +116,7 @@ export default function VendorCoverageDialog({ vendor, open, onOpenChange, catal
         </div>
         {subField && (
           <div className="flex items-center gap-1.5 mb-2 flex-wrap">
-            <span className="text-[11px] text-slate-400">{sourceFilter === 'Inventory' ? 'Item Category:' : 'Category:'}</span>
+            <span className="text-[11px] text-slate-400">{sourceFilter === 'Inventory' ? 'Item Type:' : 'Category:'}</span>
             {[{ key: 'all', label: 'All', count: catalogItems.filter(it => it.source === sourceFilter).length }, ...subOptions].map(opt => (
               <button
                 key={opt.key} type="button"
@@ -184,7 +181,7 @@ export default function VendorCoverageDialog({ vendor, open, onOpenChange, catal
       <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
-            {afterCreate ? 'Step 2 — ' : ''}Products &amp; Services — {vendor.supplierName}
+            {afterCreate ? 'Step 3 — ' : ''}Products &amp; Services — {vendor.supplierName}
           </DialogTitle>
           <DialogDescription>
             {afterCreate

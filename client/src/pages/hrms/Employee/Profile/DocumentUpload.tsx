@@ -16,9 +16,9 @@ import {
 } from "lucide-react";
 import Loader from "../../Loader";
 import { toast } from "@/pages/Alert/Toast";
+import { openUserDocument } from "../../openUserDocument";
 
 const API = import.meta.env.VITE_API_URL;
-const ViewAPI = API.replace("/api", "");
 
 /* ================= TYPES ================= */
 
@@ -432,15 +432,14 @@ export default function DocumentUpload() {
                   <div className="flex items-center gap-2 shrink-0">
                     {/* VIEW */}
                     {isUploaded && (
-                      <a
-                        href={`${ViewAPI}/${uploadedDoc.fileUrl}`}
-                        target="_blank"
-                        rel="noreferrer"
+                      <button
+                        type="button"
+                        onClick={() => openUserDocument(uploadedDoc._id)}
                         className="inline-flex items-center gap-1.5 px-3 py-2 text-sm border rounded-lg hover:bg-gray-50 text-gray-700 transition-colors font-medium"
                       >
                         <Eye size={14} />
                         View
-                      </a>
+                      </button>
                     )}
 
                     {/* UPLOAD / RE-UPLOAD / LOCKED */}

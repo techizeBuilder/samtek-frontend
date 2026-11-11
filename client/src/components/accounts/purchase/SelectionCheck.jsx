@@ -65,8 +65,17 @@ export function SelectionCheckDetails({ check, showReason = true }) {
   if (!check) return null;
   const mine = check.thisVendor;
   const anyGstUnknown = (check.basket || []).some(b => b.gstUnknown);
+  const quotationRows = (check.quotations || []).filter(() => (check.minQuotationsPerItem || 1) > 1);
   return (
     <div className="space-y-2 text-xs">
+      {check.blocked && (
+        <div className="rounded-md border border-rose-300 bg-rose-50 px-2 py-1.5 text-rose-800">
+          <p className="font-semibold">Can't create this PO yet — not enough quotations</p>
+          <ul className="mt-0.5 space-y-0.5">
+            {(check.blockedReasons || []).map((r, i) => <li key={i}>• {r}</li>)}
+          </ul>
+        </div>
+      )}
       {check.passed ? (
         <p className="flex items-start gap-1.5 text-emerald-800">
           <CheckCircle2 className="w-3.5 h-3.5 shrink-0 mt-0.5" />
@@ -106,6 +115,18 @@ export function SelectionCheckDetails({ check, showReason = true }) {
           </table>
           {anyGstUnknown && <p className="px-2 py-1 text-[10px] text-slate-400 border-t">* GST not given on a quote — counted as 0%.</p>}
         </div>
+      )}
+
+      {quotationRows.length > 0 && (
+        <p className="text-[11px] text-slate-500">
+          Quotations received:{' '}
+          {quotationRows.map((q, i) => (
+            <span key={q.groupId || i} className={q.status === 'ok' ? 'text-emerald-700' : q.status === 'blocked' ? 'text-rose-700 font-semibold' : 'text-amber-700 font-semibold'}>
+              {i > 0 ? ' · ' : ''}{q.itemName} {q.received}/{q.required}{q.status === 'short' ? ' (can\'t reach it — exception)' : q.status === 'blocked' ? ' (more can still come)' : ''}
+            </span>
+          ))}
+          <span className="text-slate-400"> (company minimum {check.minQuotationsPerItem} different vendors)</span>
+        </p>
       )}
 
       {(check.competition || []).some(c => !c.passed) && (

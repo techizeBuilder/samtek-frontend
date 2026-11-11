@@ -602,9 +602,12 @@ export default function AdminSettings() {
                       value={smtpForm.department}
                       onChange={e => setSmtpForm(f => ({ ...f, department: e.target.value }))}
                     >
-                      {SMTP_DEPARTMENTS.map(d => (
-                        <option key={d.value} value={d.value}>{d.label}</option>
-                      ))}
+                      {/* One mailbox per department (2026-10-29): one already set
+                          can't be added again — delete it below to replace it. */}
+                      {SMTP_DEPARTMENTS.map(d => {
+                        const taken = smtpList.some(s => s.department === d.value);
+                        return <option key={d.value} value={d.value} disabled={taken}>{d.label}{taken ? ' (already set — delete it below to replace)' : ''}</option>;
+                      })}
                     </select>
                   </div>
                   <div className="space-y-2">

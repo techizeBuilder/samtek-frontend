@@ -48,7 +48,11 @@ export default function PurchaseRequest() {
     // already works on the not-yet-received requests only.
     const prRefs = allPrRefs.filter(pr => pr?.status !== 'Received');
     const isFab = prRefs.some(pr => pr.fabricationDimensionLines?.length > 0);
-    setReceiveTarget({ purchaseId: po._id, line, prs: prRefs, isFab });
+    // Something on this line was received before (e.g. this is a QC
+    // replacement): the fabrication form pre-fills from these requests' own
+    // pieces, not the line's original order (a 3-piece replacement showed 10).
+    const laterDelivery = prRefs.length < allPrRefs.length;
+    setReceiveTarget({ purchaseId: po._id, line, prs: prRefs, isFab, laterDelivery });
   };
 
   const handleReceived = () => {
@@ -80,10 +84,19 @@ export default function PurchaseRequest() {
             emptyMessage="Nothing waiting to be received right now."
             expandPONumber={null}
             apiBase="/api/purchase-requests/orders"
+            hideMoney
             showDueFilter
             renderLineAction={(it, po, { isReceived, prRefs }) => {
               if (isReceived || !prRefs.length) return null;
+              // "We pick up" (2026-10-26): only a line on a Dispatch pickup trip.
+              if (po.transportBy === 'Company' && !it.pickup) {
+                return <span className="text-[10px] text-amber-700 font-medium" title="Dispatch plans the pickup on Vendor Pickups → Purchase">Waiting for Dispatch to plan the pickup</span>;
+              }
               return (
+                <span className="inline-flex items-center gap-1.5">
+                {po.transportBy === 'Company' && (
+                  <span className="text-[10px] text-slate-500">{it.pickup.tripNo} · {it.pickup.state === 'picked' ? 'picked up' : 'planned'}</span>
+                )}
                 <Button
                   size="sm"
                   className="h-6 text-[10px] px-2 bg-emerald-600 hover:bg-emerald-700 text-white"
@@ -91,6 +104,7 @@ export default function PurchaseRequest() {
                 >
                   <PackageCheck className="w-3 h-3 mr-1" /> Receive
                 </Button>
+                </span>
               );
             }}
           />
@@ -102,6 +116,7 @@ export default function PurchaseRequest() {
             emptyMessage="No received purchase orders yet."
             expandPONumber={null}
             apiBase="/api/purchase-requests/orders"
+            hideMoney
           />
         </TabsContent>
 
@@ -126,6 +141,7 @@ export default function PurchaseRequest() {
           purchaseId={receiveTarget.purchaseId}
           line={receiveTarget.line}
           prs={receiveTarget.prs}
+          laterDelivery={receiveTarget.laterDelivery}
           onClose={() => setReceiveTarget(null)}
           onReceived={handleReceived}
         />

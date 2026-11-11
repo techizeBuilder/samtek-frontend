@@ -1,5 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation } from 'wouter';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
+import { useToast } from '@/hooks/use-toast';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useProduction, useProductionOrdersList, computeOrderProgress } from '@/contexts/ProductionContext';
 import { usePermissions } from '@/hooks/usePermissions';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -9,7 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { HoverCard, HoverCardTrigger, HoverCardContent } from '@/components/ui/hover-card';
 import {
   ClipboardList, Plus, CheckCircle, AlertTriangle, Clock,
-  ChevronRight, Search, Layers, ShieldAlert
+  ChevronRight, ChevronDown, Check, Search, Layers, ShieldAlert
 } from 'lucide-react';
 import { useProduction as useProd } from '@/contexts/ProductionContext';
 
@@ -35,10 +40,123 @@ const statusIcon = {
   'Completed': <CheckCircle className="h-3.5 w-3.5" />,
 };
 
-const emptyOrder = { machineCode: '', machineName: '', priority: 'Normal', deliveryDate: '', source: 'Stock' };
+const emptyStockOrder = { machineCode: '', orderQuantity: '1', priority: 'Normal', deliveryDate: '' };
+
+// What the server did about material, for the toast after creating.
+function stockOrderSummary(summary) {
+  if (summary?.emptyBom) return 'Its BOM lists no materials, so nothing was reserved.';
+  if (!summary?.checked) return "The material check didn't run. Look at this order's Material List.";
+  const lines = [];
+  if (summary.partOrders?.length) lines.push(`Part orders: ${summary.partOrders.join(', ')}.`);
+  if (summary.purchases?.length) lines.push(`Purchase requests: ${summary.purchases.join(', ')}.`);
+  if (summary.noOrder?.length) lines.push(`No order raised for: ${summary.noOrder.join(', ')}.`);
+  return lines.join(' ') || 'Everything it needs is reserved from stock.';
+}
+
+const STOCK_ORDER_KINDS = [['Machine', 'Machine'], ['ChildPart', 'Child Part'], ['SubChildPart', 'Sub Child Part']];
+
+// New Stock Order (2026-11-05): a released Machine, Child Part or Sub Child Part,
+// built for stock. A customer's machine comes through the Order Form, never here.
+function NewStockOrderDialog({ open, onOpenChange, startKind }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [form, setForm] = useState(emptyStockOrder);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [problem, setProblem] = useState('');
+  const [orderKind, setOrderKind] = useState(startKind);
+  useEffect(() => { if (open) setOrderKind(startKind); }, [open, startKind]);
+  const noun = orderKind === 'Machine' ? 'Machine' : 'Part';
+  const machines = useQuery({
+    queryKey: ['stock-order-items', orderKind],
+    queryFn: () => apiRequest('GET', `/api/production-mfg/stock-order-items?kind=${orderKind}`).then(r => r.data),
+    enabled: open,
+  });
+  const list = machines.data || [];
+  const picked = list.find(m => m.code === form.machineCode);
+  const qty = Number(form.orderQuantity);
+  const valid = !!picked && Number.isInteger(qty) && qty >= 1 && !!form.deliveryDate;
+  const close = () => { setForm(emptyStockOrder); setProblem(''); onOpenChange(false); };
+  const create = useMutation({
+    mutationFn: () => apiRequest('POST', '/api/production-mfg/orders', { ...form, orderKind, orderQuantity: qty }),
+    onSuccess: (r) => {
+      const where = r.jobWork ? 'Every step is outsourced, so this is a job-work order: it goes to Purchase, not this page. ' : '';
+      toast({ title: `${r.data?.orderId} created`, description: where + stockOrderSummary(r.summary) });
+      qc.invalidateQueries({ queryKey: ['production-mfg-orders'] });
+      qc.invalidateQueries({ queryKey: ['stock-order-items'] });
+      close();
+    },
+    onError: (e) => setProblem(e.message),
+  });
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) close(); }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader><DialogTitle>New Stock Order</DialogTitle></DialogHeader>
+        <div className="space-y-3 py-2">
+          <div>
+            <label className="text-xs font-semibold text-slate-600 mb-1 block">Type *</label>
+            <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={orderKind} onChange={e => { setOrderKind(e.target.value); setForm(f => ({ ...f, machineCode: '' })); setProblem(''); }}>
+              {STOCK_ORDER_KINDS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-slate-600 mb-1 block">{noun} *</label>
+            <Popover modal open={pickerOpen} onOpenChange={setPickerOpen}>
+              <PopoverTrigger asChild>
+                <Button type="button" variant="outline" role="combobox" aria-expanded={pickerOpen} className="w-full justify-between font-normal">
+                  {picked ? <span className="truncate"><span className="font-mono text-xs text-slate-500 mr-2">{picked.code}</span>{picked.name}</span> : <span className="text-slate-400">{machines.isLoading ? 'Loading…' : 'Search code or name…'}</span>}
+                  <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[400px] p-0" align="start">
+                <Command>
+                  <CommandInput placeholder="Search code or name…" />
+                  <CommandList>
+                    <CommandEmpty>Nothing released and ready to build matches.</CommandEmpty>
+                    <CommandGroup>
+                      {list.map(m => (
+                        <CommandItem key={m.code} value={`${m.code} ${m.name}`} onSelect={() => { setForm(f => ({ ...f, machineCode: m.code })); setProblem(''); setPickerOpen(false); }}>
+                          <Check className={`mr-2 h-4 w-4 ${form.machineCode === m.code ? 'opacity-100' : 'opacity-0'}`} />
+                          <span className="font-mono text-xs text-slate-500 mr-2">{m.code}</span>{m.name}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+            {picked && !picked.bomLocked && <p className="text-xs text-amber-700 mt-1">This machine's BOM isn't locked yet. Production can't start until R&D locks it.</p>}
+            {picked?.openOrders?.length > 0 && <p className="text-xs text-amber-700 mt-1">Already open for stock: {picked.openOrders.map(o => `${o.orderId} (${o.qty})`).join(', ')}. This order is on top of that.</p>}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-semibold text-slate-600 mb-1 block">Quantity *</label>
+              <Input type="number" min="1" step="1" value={form.orderQuantity} onChange={e => setForm(f => ({ ...f, orderQuantity: e.target.value }))} />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-600 mb-1 block">Priority</label>
+              <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.priority} onChange={e => setForm(f => ({ ...f, priority: e.target.value }))}>
+                <option value="Normal">Normal</option>
+                <option value="Urgent">Urgent</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-slate-600 mb-1 block">Delivery Date *</label>
+            <Input type="date" value={form.deliveryDate} onChange={e => setForm(f => ({ ...f, deliveryDate: e.target.value }))} />
+          </div>
+          <p className="text-xs text-slate-500">This builds for stock. Once finished it goes into stock, and anything holding tracked serials waits on Label carriers. A customer's machine comes through the Order Form.</p>
+          {problem && <p className="rounded-md border border-rose-300 bg-rose-50 p-2 text-xs text-rose-700">{problem}</p>}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={close}>Cancel</Button>
+          <Button onClick={() => create.mutate()} disabled={!valid || create.isPending} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">{create.isPending ? 'Creating…' : 'Create Stock Order'}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 export default function OrderManagement() {
-  const { addOrder } = useProduction();
   const { hasFeatureAccess } = usePermissions();
   const canAdd = hasFeatureAccess('production', 'orders', 'add');
   // Production routes are mirrored 3 ways (/production/..., /super-admin/
@@ -88,7 +206,6 @@ export default function OrderManagement() {
   const summary = ordersListData?.data?.summary || {};
 
   const [addOpen, setAddOpen] = useState(false);
-  const [form, setForm] = useState(emptyOrder);
 
   const statuses = ['All', 'Pending', 'BOM Pending', 'In Progress', 'On Hold', 'Completed'];
   const sources = ['All', 'Store Orders', 'Rejected Items'];
@@ -140,13 +257,6 @@ export default function OrderManagement() {
   const filtered = orders;
   const stats = summary;
 
-  const handleAddOrder = () => {
-    if (!form.machineCode || !form.machineName || !form.deliveryDate) return;
-    addOrder(form);
-    setForm(emptyOrder);
-    setAddOpen(false);
-  };
-
   const [planGroup, setPlanGroup] = useState(null);
   // Kept in sync with live `orders` data (refetches on an interval), so the
   // modal reflects updates while it's open.
@@ -163,7 +273,7 @@ export default function OrderManagement() {
         </div>
         {canAdd && (
           <Button onClick={() => setAddOpen(true)} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">
-            <Plus className="h-4 w-4 mr-1" /> New Order
+            <Plus className="h-4 w-4 mr-1" /> New Stock Order
           </Button>
         )}
       </div>
@@ -304,7 +414,7 @@ export default function OrderManagement() {
                           ) : (
                             <>
                               <span className="font-bold text-blue-700">{primary.orderId || primary.id}</span>
-                              <span className="block text-[10px] text-slate-400 mt-0.5">Stock Production</span>
+                              <span className="block text-[10px] text-slate-400 mt-0.5">{primary.deliverToParent && primary.parentOrderNo ? 'Built for an order' : 'Stock Production'}</span>
                             </>
                           );
                         })()}
@@ -327,8 +437,11 @@ export default function OrderManagement() {
                             ? 'bg-violet-100 text-violet-700 border-violet-200'
                             : 'bg-amber-100 text-amber-700 border-amber-200'
                           }`}>
-                          {primary.source === 'Stock' ? '🏭 Stock' : '📦 Order'}
+                          {primary.deliverToParent && primary.parentOrderNo ? `🔗 For ${primary.parentOrderNo}` : primary.source === 'Stock' ? '🏭 Stock' : '📦 Order'}
                         </span>
+                        {primary.deliverToParent && primary.parentOrderNo && (
+                          <span className="block text-[11px] text-indigo-700 mt-1">built for {primary.parentOrderNo} — delivers straight to it{primary.deliveredToParentQty > 0 ? ` (${primary.deliveredToParentQty} delivered)` : ''}</span>
+                        )}
                       </td>
                       <td className="px-5 py-3.5">
                         {/* Hover reveals every machine's own name+code in this
@@ -508,7 +621,15 @@ export default function OrderManagement() {
                             : <span className="text-slate-300">—</span>}
                         </div>
                       </td>
-                      <td className="px-5 py-3 text-slate-700">{o.orderQuantity}</td>
+                      <td className="px-5 py-3 text-slate-700">
+                        {o.orderQuantity}
+                        {o.closedAllLost
+                          ? <span className="block text-[11px] font-semibold text-red-700">All lost at the vendor: 0 made</span>
+                          : (o.lostAtVendor || []).length > 0 && <span className="block text-[11px] text-amber-700">{o.lostAtVendor.reduce((s, l) => s + l.qty, 0)} lost at vendor</span>}
+                        {o.deliverToParent && o.parentOrderNo && <span className="block text-[11px] text-indigo-700">built for {o.parentOrderNo} — delivers straight to it</span>}
+                        {o.replacesLostOf?.orderCode && <span className="block text-[11px] text-slate-500">replaces {o.replacesLostOf.why?.startsWith('Scrap') || o.replacesLostOf.why?.startsWith('Reject') ? 'scrap' : 'lost'} on {o.replacesLostOf.orderCode}</span>}
+                        {(o.replacements || []).length > 0 && <span className="block text-[11px] text-amber-700">{o.replacements.reduce((s, x) => s + x.qty, 0)} scrapped → {o.replacements.map(x => x.orderCode).join(', ')}</span>}
+                      </td>
                       <td className="px-5 py-3">
                         <span className={`px-2 py-0.5 rounded-full text-xs font-semibold border ${priorityColor[o.priority]}`}>{o.priority}</span>
                       </td>
@@ -525,9 +646,9 @@ export default function OrderManagement() {
                             Execution (see ProcessExecution.jsx's
                             orderKind:'SubChildPart' support) — this button
                             used to open a standalone modal instead. */}
-                        <Button size="sm" variant="outline" onClick={() => goToProcessExecution(o._id || o.id)}>
+                        {!o.closedAllLost && <Button size="sm" variant="outline" onClick={() => goToProcessExecution(o._id || o.id)}>
                           Plan
-                        </Button>
+                        </Button>}
                       </td>
                     </tr>
                   );
@@ -640,55 +761,7 @@ export default function OrderManagement() {
         </DialogContent>
       </Dialog>
 
-      {/* Add Order Dialog */}
-      <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>New Production Order</DialogTitle></DialogHeader>
-          <div className="space-y-3 py-2">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Machine Code *</label>
-                <Input placeholder="e.g. MCH-006" value={form.machineCode} onChange={e => setForm(f => ({ ...f, machineCode: e.target.value }))} />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Priority</label>
-                <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.priority} onChange={e => setForm(f => ({ ...f, priority: e.target.value }))}>
-                  <option value="Normal">Normal</option>
-                  <option value="Urgent">Urgent</option>
-                </select>
-              </div>
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-slate-600 mb-1 block">Production Type *</label>
-              <select
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                value={form.source}
-                onChange={e => setForm(f => ({ ...f, source: e.target.value }))}
-              >
-                <option value="Stock">Stock — Company ka apna stock badhana</option>
-                <option value="Store">Store Order — Customer order ke liye</option>
-              </select>
-              <p className="text-xs text-slate-400 mt-1">
-                {form.source === 'Stock'
-                  ? '🏭 QC pass hone ke baad item inventory mein add ho jaayega'
-                  : '📦 QC pass hone ke baad item dispatch/packing queue mein jaayega'}
-              </p>
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-slate-600 mb-1 block">Machine Name *</label>
-              <Input placeholder="e.g. SPM Drilling Machine" value={form.machineName} onChange={e => setForm(f => ({ ...f, machineName: e.target.value }))} />
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-slate-600 mb-1 block">Delivery Date *</label>
-              <Input type="date" value={form.deliveryDate} onChange={e => setForm(f => ({ ...f, deliveryDate: e.target.value }))} />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
-            <Button onClick={handleAddOrder} disabled={!form.machineCode || !form.machineName || !form.deliveryDate} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">Create Order</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <NewStockOrderDialog open={addOpen} onOpenChange={setAddOpen} startKind={orderTab} />
 
     </div>
   );

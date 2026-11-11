@@ -23,8 +23,25 @@ interface Holiday {
 interface AttendanceRecord {
   user: User;
   date: string;
-  punchIn?: string;
+  punchIn?: string | null;
+  punchOut?: string | null;
+  status?: string;
+  totalWorkSeconds?: number;
+  deviceStatus?: string;
 }
+
+const clockTime = (value?: string | null) =>
+  value
+    ? new Date(value).toLocaleTimeString("en-GB", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit" })
+    : "--:--";
+
+// The hover text on a day: what the tick or letter stands for.
+const dayDetail = (record?: AttendanceRecord) => {
+  if (!record) return undefined;
+  const hours = Math.floor((record.totalWorkSeconds || 0) / 3600);
+  const minutes = Math.floor(((record.totalWorkSeconds || 0) % 3600) / 60);
+  return `In ${clockTime(record.punchIn)} · Out ${clockTime(record.punchOut)} · Worked ${hours}h ${String(minutes).padStart(2, "0")}m${record.deviceStatus ? ` · Device: ${record.deviceStatus}` : ""}`;
+};
 
 const AttendanceReport = () => {
   const today = new Date();
@@ -151,12 +168,12 @@ const AttendanceReport = () => {
     return map;
   }, [attendance]);
 
-  const isPresent = (userId: string, day: number) => {
+  const recordFor = (userId: string, day: number) => {
     const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(
       day,
     ).padStart(2, "0")}`;
 
-    return !!attendanceMap.get(`${userId}_${dateStr}`)?.punchIn;
+    return attendanceMap.get(`${userId}_${dateStr}`);
   };
 
   /* ================= MONTH CHANGE ================= */
@@ -219,6 +236,11 @@ const AttendanceReport = () => {
             placeholder="Search employee..."
             className="w-full md:w-72 h-10 px-3 border rounded-md focus:ring-2 focus:ring-orange-400"
           />
+          <p className="text-xs text-gray-500 mt-2">
+            <span className="font-semibold text-amber-700">H</span> half day ·{" "}
+            <span className="font-semibold text-slate-600">WO</span> weekly off,{" "}
+            <span className="font-semibold text-green-700">WO</span> if they worked it · hover over a day for its times
+          </p>
         </div>
 
         {/* ================= TABLE ================= */}
@@ -262,7 +284,19 @@ const AttendanceReport = () => {
                   </td>
 
                   {datesArray.map((day) => {
-                    if (isFutureDate(day) || isSunday(day) || getHoliday(day)) {
+                    const record = recordFor(user._id, day);
+                    const punched = !!record?.punchIn;
+
+                    if (!isFutureDate(day) && record?.status === "WEEKLY_OFF") {
+                      return (
+                        <td key={day} title={dayDetail(record)} className={`border text-center text-xs font-semibold ${punched ? "text-green-700" : "text-slate-500"}`}>
+                          WO
+                        </td>
+                      );
+                    }
+
+                    // A Sunday or holiday someone actually worked still shows.
+                    if (isFutureDate(day) || ((isSunday(day) || getHoliday(day)) && !punched)) {
                       return (
                         <td
                           key={day}
@@ -273,9 +307,17 @@ const AttendanceReport = () => {
                       );
                     }
 
+                    if (record?.status === "HALF_DAY") {
+                      return (
+                        <td key={day} title={dayDetail(record)} className="border text-center text-xs font-semibold text-amber-700 bg-amber-50">
+                          H
+                        </td>
+                      );
+                    }
+
                     return (
-                      <td key={day} className="border text-center">
-                        {isPresent(user._id, day) ? (
+                      <td key={day} title={dayDetail(record)} className="border text-center">
+                        {punched ? (
                           <CheckCircle
                             className="text-green-600 mx-auto"
                             size={18}

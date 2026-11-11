@@ -204,6 +204,7 @@ export default function RfqPoTab({ focusItemId = null, onPOCreated }) {
 
   // ── Right: vendors ranked against the considered items ────────────────
   const minVendors = settings?.minVendorsPerItem || 3;
+  const minQuotations = settings?.minQuotationsPerItem || 1;
   const eligibleCountOf = (itemId) => vendors.filter(v => (v.suppliedItems || []).some(id => String(id) === String(itemId))).length;
   const quoteByGroupVendor = useMemo(() => {
     const m = new Map();
@@ -312,6 +313,7 @@ export default function RfqPoTab({ focusItemId = null, onPOCreated }) {
             isMatch={isMatch}
             anyFilter={anyFilter}
             minVendors={minVendors}
+            minQuotations={minQuotations}
             eligibleCountOf={eligibleCountOf}
             groupHasQuotes={groupHasQuotes}
             quotesOf={quotesOf}

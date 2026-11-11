@@ -22,6 +22,9 @@ import {
   XCircle,
 } from "lucide-react";
 import ChangePasswordModal from "@/pages/ChangePasswordModal";
+import { usePermissions } from "@/hooks/usePermissions";
+import GiveLoginModal from "./GiveLoginModal";
+import { openUserDocument } from "./openUserDocument";
 import Loader from "@/pages/hrms/Loader";
 import { Camera } from "lucide-react";
 
@@ -30,6 +33,8 @@ const BASE_URL = API?.replace("/api", "") || "";
 
 interface UserType {
   _id: string;
+  canLogin?: boolean;
+  deviceCode?: string;
   employeeId: string;
   name: string;
   fullName?: string;
@@ -85,7 +90,8 @@ const ROLE_MODULES_CONFIG: Record<string, { moduleName: string; features: { key:
       { key: "packagingJobs", label: "Packaging Jobs" },
       { key: "dispatchPlanning", label: "Dispatch Planning" },
       { key: "activeDispatches", label: "Active Dispatches" },
-      { key: "dispatchHistory", label: "History" }
+      { key: "dispatchHistory", label: "History" },
+      { key: "vendorPickups", label: "Vendor Pickups" }
     ]
   },
   "Production Employee": {
@@ -156,6 +162,12 @@ export default function Profile() {
   const [openJobInfo, setOpenJobInfo] = useState(false);
   const [openPermissions, setOpenPermissions] = useState(false);
   const [openChangePassword, setOpenChangePassword] = useState(false);
+  const [openGiveLogin, setOpenGiveLogin] = useState(false);
+  const [openDeviceCode, setOpenDeviceCode] = useState(false);
+  const [deviceCodeInput, setDeviceCodeInput] = useState("");
+  const [deviceCodeError, setDeviceCodeError] = useState("");
+  const { hasFeatureAccess } = usePermissions();
+  const canEditEmployee = hasFeatureAccess("hrms", "employeeManagement", "edit");
   const [managers, setManagers] = useState<any[]>([]);
   const [selectedFeatures, setSelectedFeatures] = useState<Record<string, boolean>>({});
 
@@ -280,10 +292,25 @@ export default function Profile() {
     }
   };
 
+  // Not through updateUser above: a code already given to someone has to say so.
+  const saveDeviceCode = async () => {
+    try {
+      await axios.patch(`${API}/users/${userId}`, { deviceCode: deviceCodeInput }, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setOpenDeviceCode(false);
+      fetchUser();
+    } catch (err: any) {
+      setDeviceCodeError(err?.response?.data?.message || "Could not save the device code.");
+    }
+  };
+
   const fetchManagers = async () => {
     try {
+      // Ask for Managers: a plain /users list held only the 15 newest people (2026-11-11).
       const res = await axios.get(`${API}/users`, {
         headers: { Authorization: `Bearer ${token}` },
+        params: { role: "Manager", limit: 200 },
       });
       const allUsers = res.data.users || res.data.data?.users || res.data || [];
       const managerUsers = allUsers.filter((u: any) => u.role?.toLowerCase() === "manager");
@@ -439,6 +466,9 @@ export default function Profile() {
 
             <div className="mt-3 text-sm text-gray-500">
               <p className="font-medium text-gray-700">{user.role}</p>
+              {user.canLogin === false && (
+                <span className="inline-block mt-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-600">No login</span>
+              )}
             </div>
 
             <span
@@ -457,13 +487,25 @@ export default function Profile() {
               </span>
             </div>
 
-            <button
-              onClick={() => setOpenChangePassword(true)}
-              className="mt-6 w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-900 text-white rounded-xl text-sm font-bold hover:bg-black transition-all shadow-lg active:scale-95"
-            >
-              <Key size={16} />
-              Change Password
-            </button>
+            {user.canLogin === false ? (
+              canEditEmployee && (
+                <button
+                  onClick={() => setOpenGiveLogin(true)}
+                  className="mt-6 w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-900 text-white rounded-xl text-sm font-bold hover:bg-black transition-all shadow-lg active:scale-95"
+                >
+                  <Key size={16} />
+                  Give Login
+                </button>
+              )
+            ) : (
+              <button
+                onClick={() => setOpenChangePassword(true)}
+                className="mt-6 w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-900 text-white rounded-xl text-sm font-bold hover:bg-black transition-all shadow-lg active:scale-95"
+              >
+                <Key size={16} />
+                Change Password
+              </button>
+            )}
           </div>
 
           {/* ================= DOCUMENTS SECTION (SEPARATE CARD) ================= */}
@@ -490,15 +532,14 @@ export default function Profile() {
                         <span className="text-lg">{meta.icon}</span>
                         <p className="text-xs font-semibold text-gray-800 truncate">{meta.label}</p>
                       </div>
-                      <a
-                        href={`${BASE_URL}/${doc.fileUrl}`}
-                        target="_blank"
-                        rel="noreferrer"
+                      <button
+                        type="button"
+                        onClick={() => openUserDocument(doc._id)}
                         className="flex items-center gap-1 p-1.5 bg-white border shadow-sm text-indigo-600 rounded-lg hover:bg-indigo-50 transition-colors"
                         title="View"
                       >
                         <Eye size={14} />
-                      </a>
+                      </button>
                     </div>
                   );
                 })}
@@ -557,6 +598,17 @@ export default function Profile() {
               label="Probation Ends"
               value={user.probationEndDate ? new Date(user.probationEndDate).toDateString() : "—"}
             />
+          </Section>
+
+          <Section
+            title="Attendance Device"
+            onEdit={canEditEmployee ? () => {
+              setDeviceCodeInput(user.deviceCode || "");
+              setDeviceCodeError("");
+              setOpenDeviceCode(true);
+            } : undefined}
+          >
+            <Info label="Device Code" value={user.deviceCode} />
           </Section>
 
           {/* ================= MODULE PERMISSIONS ================= */}
@@ -910,6 +962,32 @@ export default function Profile() {
           />
         </Modal>
       )}
+      {openDeviceCode && (
+        <Modal title="Edit Device Code" onClose={() => setOpenDeviceCode(false)}>
+          <Input
+            label="Device Code"
+            value={deviceCodeInput}
+            placeholder="e.g. 0005"
+            onChange={(e: any) => setDeviceCodeInput(e.target.value)}
+          />
+          <p className="text-xs text-gray-400">This person's code on the attendance device. Leave blank if they have none.</p>
+          {deviceCodeError && <p className="text-sm text-red-500">{deviceCodeError}</p>}
+          <ModalActions onSave={saveDeviceCode} onCancel={() => setOpenDeviceCode(false)} />
+        </Modal>
+      )}
+
+      <GiveLoginModal
+        isOpen={openGiveLogin}
+        userId={userId || ""}
+        name={nameToUse}
+        currentEmail={user.email}
+        onClose={() => setOpenGiveLogin(false)}
+        onDone={() => {
+          setOpenGiveLogin(false);
+          fetchUser();
+        }}
+      />
+
       {/* ================= CHANGE PASSWORD MODAL ================= */}
       <ChangePasswordModal
         isOpen={openChangePassword}

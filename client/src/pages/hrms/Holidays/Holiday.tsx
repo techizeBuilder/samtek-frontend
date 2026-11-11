@@ -12,6 +12,7 @@ interface Holiday {
     title: string;
     date: string;
     day: string;
+    paid?: boolean;
 }
 
 const API_BASE = import.meta.env.VITE_API_URL;
@@ -170,6 +171,9 @@ const Holiday = () => {
 
                                     <td className="px-4 py-3 font-medium text-orange-500">
                                         {holiday.title}
+                                        <span className={`ml-2 px-2 py-0.5 rounded-full text-[11px] font-semibold ${holiday.paid === false ? "bg-gray-100 text-gray-600" : "bg-green-50 text-green-700"}`}>
+                                            {holiday.paid === false ? "Unpaid" : "Paid"}
+                                        </span>
                                     </td>
 
                                     <td className="px-4 py-3">

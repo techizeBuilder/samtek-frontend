@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Check, X, Clock, Calendar, User, FileText, AlertCircle, RefreshCw, Search } from 'lucide-react';
+import { Check, X, Clock, Calendar, User, FileText, AlertCircle, RefreshCw, Search, Plus } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import api from '@/services/api';
 import { format } from 'date-fns';
@@ -28,6 +28,58 @@ export default function HRAdminLeaveRequest() {
     const t = setTimeout(() => setSearch(searchInput), 400);
     return () => clearTimeout(t);
   }, [searchInput]);
+
+  // ---- Add leave for someone (2026-11-11): anyone in the company, with or
+  // without a login. Saved approved, because HR decides as they enter it.
+  const EMPTY_ADD = { personId: '', personName: '', leaveType: '', fromDate: '', toDate: '', reason: '' };
+  const [addOpen, setAddOpen] = useState(false);
+  const [addForm, setAddForm] = useState(EMPTY_ADD);
+  const [addError, setAddError] = useState('');
+  const [adding, setAdding] = useState(false);
+  const [leaveTypes, setLeaveTypes] = useState<any[]>([]);
+  const [personQuery, setPersonQuery] = useState('');
+  const [personResults, setPersonResults] = useState<any[]>([]);
+
+  const openAdd = async () => {
+    setAddForm(EMPTY_ADD);
+    setAddError('');
+    setPersonQuery('');
+    setPersonResults([]);
+    setAddOpen(true);
+    try {
+      const types = await api.get('/leave-types');
+      setLeaveTypes(Array.isArray(types) ? types.filter((t: any) => t.isActive !== false) : []);
+    } catch { setLeaveTypes([]); }
+  };
+
+  useEffect(() => {
+    if (!addOpen || addForm.personId || personQuery.trim().length < 2) { setPersonResults([]); return; }
+    const t = setTimeout(async () => {
+      try {
+        const res: any = await api.get(`/users?search=${encodeURIComponent(personQuery.trim())}&limit=8`);
+        setPersonResults(res?.users || res?.data?.users || []);
+      } catch { setPersonResults([]); }
+    }, 350);
+    return () => clearTimeout(t);
+  }, [personQuery, addOpen, addForm.personId]);
+
+  const submitAdd = async () => {
+    const f = addForm;
+    if (!f.personId || !f.leaveType || !f.fromDate || !f.toDate || !f.reason.trim()) { setAddError('Fill in every field.'); return; }
+    if (f.toDate < f.fromDate) { setAddError('The To date is before the From date.'); return; }
+    try {
+      setAdding(true);
+      setAddError('');
+      await api.post('/leaves/for-someone', { employeeId: f.personId, leaveType: f.leaveType, fromDate: f.fromDate, toDate: f.toDate, reason: f.reason.trim() });
+      toast({ title: 'Leave added', description: `${f.personName}'s leave is saved as approved.` });
+      setAddOpen(false);
+      fetchRequests();
+    } catch (e: any) {
+      setAddError(e?.message || 'Could not add the leave');
+    } finally {
+      setAdding(false);
+    }
+  };
 
   useEffect(() => { setPage(1); }, [search]);
 
@@ -103,6 +155,9 @@ export default function HRAdminLeaveRequest() {
           </div>
           <Button onClick={fetchRequests} variant="outline" className="gap-2 border-[#49A7F5] text-black hover:bg-[#49A7F5]/10">
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> Refresh
+          </Button>
+          <Button onClick={openAdd} className="gap-2 bg-[#49A7F5] text-white hover:bg-[#3D96E1]">
+            <Plus className="h-4 w-4" /> Add leave for someone
           </Button>
         </div>
       </div>
@@ -202,6 +257,79 @@ export default function HRAdminLeaveRequest() {
           </Table>
         </CardContent>
       </Card>
+
+      {addOpen && (
+        <div className="fixed inset-0 z-[100] bg-black/40 flex items-center justify-center p-4" onClick={() => setAddOpen(false)}>
+          <div className="bg-white rounded-xl w-full max-w-md p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-center">
+              <h2 className="text-lg font-bold">Add leave for someone</h2>
+              <button onClick={() => setAddOpen(false)} className="text-gray-400 hover:text-gray-600"><X className="h-5 w-5" /></button>
+            </div>
+            <p className="text-xs text-slate-500">For anyone in the company, including workers with no login. It's saved as approved, and the leave balance is checked.</p>
+
+            <div className="space-y-1">
+              <label className="text-sm font-semibold">Person</label>
+              {addForm.personId ? (
+                <div className="flex items-center justify-between border rounded-md px-3 py-2 text-sm">
+                  <span>{addForm.personName}</span>
+                  <button className="text-xs text-blue-600" onClick={() => setAddForm({ ...addForm, personId: '', personName: '' })}>Change</button>
+                </div>
+              ) : (
+                <>
+                  <Input placeholder="Type a name, Employee ID or device code..." value={personQuery} onChange={(e) => setPersonQuery(e.target.value)} />
+                  {personResults.length > 0 && (
+                    <div className="border rounded-md divide-y max-h-48 overflow-y-auto">
+                      {personResults.map((p) => (
+                        <button
+                          key={p._id}
+                          type="button"
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50"
+                          onClick={() => { setAddForm({ ...addForm, personId: p._id, personName: p.fullName || p.username }); setPersonResults([]); }}
+                        >
+                          <span className="font-medium">{p.fullName || p.username}</span>
+                          <span className="text-xs text-slate-500 ml-2">{p.employeeId}{p.canLogin === false ? ' · no login' : ''}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-sm font-semibold">Leave type</label>
+              <select className="w-full border rounded-md px-3 py-2 text-sm bg-white" value={addForm.leaveType} onChange={(e) => setAddForm({ ...addForm, leaveType: e.target.value })}>
+                <option value="">Choose...</option>
+                {leaveTypes.map((t) => <option key={t._id} value={t.name}>{t.name}{t.paid ? ' (paid)' : ' (unpaid)'}</option>)}
+              </select>
+              {leaveTypes.length === 0 && <p className="text-xs text-red-500">No leave types yet. Add them under Leave Types &amp; Rules.</p>}
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-sm font-semibold">From</label>
+                <Input type="date" value={addForm.fromDate} onChange={(e) => setAddForm({ ...addForm, fromDate: e.target.value, toDate: addForm.toDate || e.target.value })} />
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-semibold">To</label>
+                <Input type="date" value={addForm.toDate} min={addForm.fromDate || undefined} onChange={(e) => setAddForm({ ...addForm, toDate: e.target.value })} />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-sm font-semibold">Reason</label>
+              <Input value={addForm.reason} onChange={(e) => setAddForm({ ...addForm, reason: e.target.value })} placeholder="e.g. Told the supervisor on Monday" />
+            </div>
+
+            {addError && <p className="text-sm text-red-600">{addError}</p>}
+
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
+              <Button onClick={submitAdd} disabled={adding} className="bg-[#49A7F5] text-white hover:bg-[#3D96E1]">{adding ? 'Saving...' : 'Save as approved'}</Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {pagination.total > 1 && (
         <div className="flex items-center justify-between text-sm text-slate-600">

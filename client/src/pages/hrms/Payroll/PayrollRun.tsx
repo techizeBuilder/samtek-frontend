@@ -1,511 +1,367 @@
 /** @format */
-
+// Payroll Run (rewritten 2026-11-11). The server works out everyone's pay from
+// attendance, leave and holidays (GET /payroll/month); this page only shows it and
+// asks for a run. Paged and searched on the server.
 import { useEffect, useState } from "react";
-import axios from "axios";
-import { MoreVertical } from "lucide-react";
+import { MoreVertical, Search, X } from "lucide-react";
+import api from "@/services/api";
 import ViewPayrollModal from "./ViewPayrollModal";
+import PayExplainer, { DAY_LABELS } from "./PayExplainer";
 import Loader from "@/pages/hrms/Loader";
 import { toast } from "../../../hooks/use-toast";
-import { useAuth } from "@/hooks/useAuth";
-const API_BASE = import.meta.env.VITE_API_URL;
 
-type PayrollStatus = "Draft" | "Processed" | "Paid" | "Rejected";
+type Status = "Not run" | "Draft" | "Processed" | "Paid" | "Rejected";
 
-interface PayrollRow {
+interface Row {
   payrollId?: string;
   userId: string;
   name: string;
+  employeeId?: string;
+  onDevice?: boolean;
+  workingDays?: number;
+  payDays: number;
+  lopDays: number;
   gross: number;
   deduction: number;
   net: number;
-  payDays: number;
-  lopDays: number;
-  unearnedSalary?: number;
-  status: PayrollStatus;
+  earned?: number;
+  workedOnOff?: number;
+  days?: Record<string, number>;
+  status: Status;
   rejectReason?: string;
   rejectedAt?: string;
 }
 
+interface MonthData {
+  month: string;
+  finished: boolean;
+  rows: Row[];
+  pagination: { page: number; pages: number; total: number };
+  totals: { gross: number; deduction: number; net: number };
+  notRun: number;
+  people: number;
+  noSalary: { userId: string; name: string; employeeId?: string }[];
+  noSalaryCount: number;
+}
+
+const API_BASE = import.meta.env.VITE_API_URL;
+const rupees = (n?: number) => `₹${Math.round(n || 0).toLocaleString("en-IN")}`;
+const daysText = (n?: number) => (n === undefined || n === null ? "–" : String(n));
+const lastMonth = () => {
+  const d = new Date();
+  d.setDate(1);
+  d.setMonth(d.getMonth() - 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+};
+const monthName = (m: string) => {
+  const [y, mo] = m.split("-").map(Number);
+  return new Date(y, mo - 1, 1).toLocaleString("en-IN", { month: "long", year: "numeric" });
+};
+
+const statusClass: Record<string, string> = {
+  "Not run": "text-gray-500",
+  Paid: "text-green-600",
+  Rejected: "text-red-600",
+};
 
 const PayrollRun = () => {
-  const { user: authUser } = useAuth();
-  const companyId = authUser?.companyId;
-  const [payroll, setPayroll] = useState<PayrollRow[]>([]);
-  const [openMenu, setOpenMenu] = useState<string | null>(null);
-  const [isPayrollRun, setIsPayrollRun] = useState(false);
-  const [openPayslip, setOpenPayslip] = useState(false);
-  const [selectedPayslip, setSelectedPayslip] = useState<any>(null);
-  const token = localStorage.getItem("token");
-  const currentMonth = new Date().toISOString().slice(0, 7);
-  const [month, setMonth] = useState(currentMonth);
-  const [rejectViewModal, setRejectViewModal] = useState(false);
+  const [month, setMonth] = useState(lastMonth());
+  const [data, setData] = useState<MonthData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [rejectDetails, setRejectDetails] = useState<{
-    reason: string;
-    rejectedAt: string;
-  } | null>(null);
-
-
-
-
-  /* ================= FETCH & CALCULATE PAYROLL ================= */
-  const generatePayroll = async () => {
-    try {
-      const headers = { Authorization: `Bearer ${token}` };
-      const [year, monthStr] = month.split("-");
-      const monthNumber = Number(monthStr);
-
-      // Build company filter query param
-      const companyParam = companyId ? `?companyId=${companyId}` : "";
-
-      const [
-        usersRes,
-        salaryRes,
-        leaveTypeRes,
-        leaveRes,
-        attendanceRes,
-      ] = await Promise.all([
-        axios.get(`${API_BASE}/users${companyParam}`, { headers }),
-        axios.get(`${API_BASE}/salary-structures${companyParam}`, { headers }),
-        axios.get(`${API_BASE}/leave-types`, { headers }),
-        axios.get(`${API_BASE}/leaves/all`, { headers }),
-        axios.get(
-          `${API_BASE}/attendance/all?month=${monthNumber - 1}&year=${year}`,
-          { headers }
-        ),
-      ]);
-
-      const users = Array.isArray(usersRes.data) ? usersRes.data : (usersRes.data.users || []);
-      const salaries = Array.isArray(salaryRes.data) ? salaryRes.data : (salaryRes.data.salaryList || []);
-      const leaveTypes = Array.isArray(leaveTypeRes.data) ? leaveTypeRes.data : [];
-      const leaves = Array.isArray(leaveRes.data) ? leaveRes.data : [];
-      const attendance = attendanceRes.data?.attendance || [];
-
-
-      /* ================= CALCULATION ================= */
-      const numYear = Number(year);
-      const numMonth = Number(monthStr);
-      const daysInMonth = new Date(numYear, numMonth, 0).getDate();
-      const now = new Date();
-      const isCurrentMonth = now.getFullYear() === numYear && (now.getMonth() + 1) === numMonth;
-      const currentDay = now.getDate();
-
-      const rows: PayrollRow[] = users.map((user: any) => {
-        const salary = salaries.find((s: any) => s.employee._id === user._id);
-        if (!salary) return null;
-
-        // Robust ID helper
-        const getUserId = (obj: any) => (typeof obj === "object" ? obj?._id || obj : obj);
-
-        const userLeaves = leaves.filter((l: any) => getUserId(l.employee) === user._id && l.status === "APPROVED");
-        const userAttendance = attendance.filter((a: any) => getUserId(a.user) === user._id);
-
-        /* ===== ATTENDANCE & PAYABLE DAYS ===== */
-        let presentDays = 0;
-        let paidLeaveDays = 0;
-        let lopDays = 0;
-        let isPresentToday = false;
-
-        for (let d = 1; d <= daysInMonth; d++) {
-          const dateStr = `${year}-${monthStr}-${String(d).padStart(2, '0')}`;
-
-          const att = userAttendance.find((a: any) => a.date === dateStr);
-          const isPresent = att && (att.punchIn || att.punchOut || att.totalWorkSeconds > 0);
-
-          const leave = userLeaves.find((l: any) => dateStr >= l.fromDate && dateStr <= l.toDate);
-
-          if (isPresent) {
-            presentDays++;
-            if (isCurrentMonth && d === currentDay) isPresentToday = true;
-          } else if (leave) {
-            const lt = leaveTypes.find((t: any) => t.name === leave.leaveType);
-            if (lt?.paid) {
-              paidLeaveDays++;
-            } else {
-              lopDays++;
-            }
-          } else {
-            // No attendance and no leave
-            // If it's a past day, it's LOP
-            if (!isCurrentMonth || d < currentDay) {
-              lopDays++;
-            }
-          }
-        }
-
-        const payDays = presentDays + paidLeaveDays;
-        const fullMonthlyGross = (salary.basic || 0) + (salary.hra || 0) + (salary.otherAllowance || 0);
-        const perDaySalary = fullMonthlyGross / daysInMonth;
-
-        // Future days: days strictly after today
-        const futureDaysCount = isCurrentMonth ? Math.max(0, daysInMonth - currentDay) : 0;
-        const unearnedSalary = Math.round(perDaySalary * futureDaysCount);
-
-        // Today's status: if not present and no leave, it's pending/not-earned yet
-        const todayPendingDeduction = (isCurrentMonth && !isPresentToday && !userLeaves.find((l: any) => {
-          const todayStr = `${year}-${monthStr}-${String(currentDay).padStart(2, '0')}`;
-          return todayStr >= l.fromDate && todayStr <= l.toDate;
-        })) ? Math.round(perDaySalary) : 0;
-
-        const lopDeduction = Math.round(perDaySalary * lopDays);
-
-        /* ===== LEAVE ENCASHMENT BONUS REMOVED ===== */
-        const encashmentBonus = 0;
-
-        const totalGross = fullMonthlyGross + encashmentBonus;
-        const fixedDeduction = (salary.pf || 0) + (salary.professionalTax || 0) + (salary.tds || 0) + (salary.advance || 0) + (salary.others || 0);
-
-        // Total Deduction = Fixed + LOP + Future + Today (if not present)
-        const totalDeduction = fixedDeduction + lopDeduction + unearnedSalary + todayPendingDeduction;
-
-        // Net Salary calculation (Gross - Deduction, capped at 0)
-        const netSalry = Math.max(0, totalGross - totalDeduction);
-
-        return {
-          userId: user._id,
-          name: user.fullName,
-          gross: totalGross,
-          deduction: totalDeduction,
-          net: netSalry,
-          payDays: payDays,
-          lopDays: lopDays,
-          unearnedSalary: unearnedSalary + todayPendingDeduction,
-          status: "Draft",
-        };
-      });
-
-      setPayroll(rows.filter(Boolean));
-      toast({
-
-        title: "Payroll Generated",
-        description: "Payroll has been generated successfully.",
-      });
-      setLoading(false);
-      setIsPayrollRun(false);
-    } catch (error) {
-      console.error("Payroll generation failed", error);
-      setLoading(false);
-      setIsPayrollRun(false);
-      toast({
-        variant: "destructive",
-        title: "Payroll Failed",
-        description:
-          "Failed to generate payroll. Please try again.",
-      });
-    }
-  };
-
-  const fetchPayrollFromServer = async () => {
-    try {
-      const res = await axios.get(`${API_BASE}/payroll?month=${month}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (res.data.length > 0) {
-        const mapped = res.data.map((p: any) => ({
-          payrollId: p._id,
-          userId: p.employee._id,
-          name: p.employee.name,
-          gross: p.gross,
-          deduction: p.deduction,
-          net: p.net,
-          payDays: p.payDays,
-          lopDays: p.lopDays,
-          status: p.status,
-          rejectReason: p.rejectReason,
-          rejectedAt: p.rejectedAt,
-        }));
-
-
-        setPayroll(mapped);
-        setLoading(false);
-        setIsPayrollRun(true);
-        return true;
-      }
-      return false;
-    } catch (err) {
-      console.error(err);
-      return false;
-    }
-  };
+  const [running, setRunning] = useState(false);
+  const [page, setPage] = useState(1);
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
+  const [openMenu, setOpenMenu] = useState<string | null>(null);
+  const [payslip, setPayslip] = useState<any>(null);
+  const [daysOf, setDaysOf] = useState<{ row: Row; detail: any | null } | null>(null);
+  const [rejectView, setRejectView] = useState<Row | null>(null);
 
   useEffect(() => {
-    (async () => {
-      const exists = await fetchPayrollFromServer();
-      if (!exists) {
-        generatePayroll(); // only calculate if payroll not run
-      }
-    })();
-  }, [month]);
+    const t = setTimeout(() => setSearch(searchInput.trim()), 400);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+  useEffect(() => { setPage(1); }, [search, month]);
 
-
-
-  /* ================= RUN PAYROLL ================= */
-  const runPayroll = async () => {
-    console.log("isParyrollRun", isPayrollRun);
-    if (isPayrollRun) return;
-
+  const load = async () => {
     try {
-      await axios.post(
-        `${API_BASE}/payroll/run`,
-        {
-          month,
-          payroll: payroll.map((p) => ({
-            userId: p.userId,
-            gross: p.gross,
-            deduction: p.deduction,
-            net: p.net,
-            payDays: p.payDays,
-            lopDays: p.lopDays,
-          })),
-        },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-
-      alert(`Payroll processed for ${month}`);
-      fetchPayrollFromServer();
-    } catch (error) {
-      console.error(error);
-      alert("Payroll run failed");
+      setLoading(true);
+      const params = new URLSearchParams({ month, page: String(page), limit: "15" });
+      if (search) params.set("search", search);
+      setData(await api.get(`/payroll/month?${params.toString()}`));
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "Couldn't load payroll", description: e?.message });
+    } finally {
+      setLoading(false);
     }
   };
+  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [month, page, search]);
 
-  const recalculatePayroll = async (row: PayrollRow) => {
+  const runPayroll = async () => {
+    if (!window.confirm(`Run payroll for ${monthName(month)}? Everyone not run yet is paid as shown.`)) return;
     try {
-      await axios.post(
-        `${API_BASE}/payroll/recalculate`,
-        {
-          payrollId: row.payrollId,
-          gross: row.gross,
-          deduction: row.deduction,
-          net: row.net,
-          payDays: row.payDays,
-          lopDays: row.lopDays,
-        },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-
-      alert("Payroll recalculated successfully");
-      fetchPayrollFromServer(); // refresh list
-    } catch (err) {
-      console.error(err);
-      alert("Recalculation failed");
+      setRunning(true);
+      const res: any = await api.post("/payroll/run", { month });
+      toast({ title: "Payroll run", description: res?.message });
+      load();
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "Payroll run failed", description: e?.message });
+    } finally {
+      setRunning(false);
     }
   };
 
   const resetPayroll = async () => {
-    if (!window.confirm(`Are you sure you want to reset payroll for ${month}? This will delete processed data.`)) return;
-
+    if (!window.confirm(`Reset payroll for ${monthName(month)}? This deletes what was run.`)) return;
     try {
-      await axios.delete(`${API_BASE}/payroll/reset?month=${month}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      toast({
-
-        title: "Payroll Reset",
-        description: "Payroll has been reset. You can now re-run it.",
-      });
-      setIsPayrollRun(false);
-      generatePayroll();
-    } catch (error: any) {
-      toast({
-        variant: "destructive",
-        title: "Reset Failed",
-        description: error.response?.data?.message || "Failed to reset payroll",
-      });
+      await api.delete(`/payroll/reset?month=${month}`);
+      toast({ title: "Payroll reset" });
+      load();
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "Reset failed", description: e?.message });
     }
   };
 
-  const downloadPayslip = async (id: string, monthStr: string) => {
+  const recalculate = async (row: Row) => {
     try {
-      const res = await axios.get(`${API_BASE}/payslips/${id}/download`, {
-        headers: { Authorization: `Bearer ${token}` },
-        responseType: "blob",
-      });
+      await api.post("/payroll/recalculate", { payrollId: row.payrollId });
+      toast({ title: "Recalculated", description: `${row.name}'s pay was worked out again.` });
+      load();
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "Recalculation failed", description: e?.message });
+    }
+  };
 
-      const url = window.URL.createObjectURL(new Blob([res.data]));
+  const openDays = async (row: Row) => {
+    setOpenMenu(null);
+    setDaysOf({ row, detail: null });
+    try {
+      const detail = await api.get(`/payroll/days?month=${month}&userId=${row.userId}`);
+      setDaysOf({ row, detail });
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "Couldn't load the days", description: e?.message });
+      setDaysOf(null);
+    }
+  };
+
+  const downloadPayslip = async (payrollId: string, m: string) => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API_BASE}/payslips/${payrollId}/download`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) throw new Error();
+      const url = window.URL.createObjectURL(await res.blob());
       const link = document.createElement("a");
       link.href = url;
-      link.setAttribute("download", `Payslip-${monthStr}.pdf`);
+      link.setAttribute("download", `Payslip-${m}.pdf`);
       document.body.appendChild(link);
       link.click();
       link.remove();
-    } catch (err) {
-      console.error(err);
-      alert("Failed to download payslip. Ensure it is processed/paid.");
+    } catch {
+      alert("Failed to download payslip. Generate payslips for this month first.");
     }
   };
 
-  if (loading) {
-    return (
-      <div className="relative min-h-[300px]">
-        <Loader />
-      </div>
-    );
-  }
+  const finished = !!data?.finished;
+  const anySaved = !!data?.rows.some((r) => r.payrollId) || (data ? data.notRun < data.people : false);
+  const canRun = finished && (data?.notRun || 0) > 0;
 
-  /* ================= UI ================= */
   return (
     <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex justify-between items-start mb-4 gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-semibold">Payroll Run</h1>
           <p className="text-sm text-gray-500">Dashboard / Payroll / Run</p>
         </div>
 
-        <div className="flex gap-3">
-          <input
-            type="month"
-            value={month}
-            onChange={(e) => setMonth(e.target.value)}
-            className="border px-3 py-2 rounded-md"
-          />
-
+        <div className="flex gap-3 items-center flex-wrap">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <input
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder="Search employee..."
+              className="border pl-9 pr-3 py-2 rounded-md w-56"
+            />
+          </div>
+          <input type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} className="border px-3 py-2 rounded-md" />
           <button
             onClick={runPayroll}
-            disabled={isPayrollRun}
-            className={`px-4 py-2 rounded-md text-white ${isPayrollRun ? "bg-gray-400" : "bg-orange-500 hover:bg-orange-600"
-              }`}
+            disabled={!canRun || running}
+            title={!finished ? "Can be run after the month ends" : canRun ? "" : "Everyone has been run"}
+            className={`px-4 py-2 rounded-md text-white ${canRun && !running ? "bg-orange-500 hover:bg-orange-600" : "bg-gray-400 cursor-not-allowed"}`}
           >
-            {isPayrollRun ? "Processed" : "Run Payroll"}
+            {running ? "Running..." : !finished ? "Run after month ends" : canRun ? `Run Payroll (${data?.notRun})` : "Processed"}
           </button>
-
-          {isPayrollRun && (
-            <button
-              onClick={resetPayroll}
-              className="px-4 py-2 rounded-md bg-red-500 text-white hover:bg-red-600 transition-colors"
-            >
+          {anySaved && (
+            <button onClick={resetPayroll} className="px-4 py-2 rounded-md bg-red-500 text-white hover:bg-red-600">
               Reset
             </button>
           )}
         </div>
       </div>
 
-      <div className="bg-white rounded-lg shadow min-h-[calc(100vh-180px)] overflow-x-auto">
-        <table className="w-full text-center">
-          <thead className="bg-gray-100">
-            <tr>
-              <th className="p-3">Sr.No</th>
-              <th className="p-3">Employee</th>
-              <th className="p-3">Gross</th>
-              <th className="p-3">Deduction</th>
-              <th className="p-3">Net</th>
-              <th className="p-3">Status</th>
-              <th className="p-3">Action</th>
-            </tr>
-          </thead>
+      {data && !finished && (
+        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          {monthName(month)} isn't over yet, so this is pay <b>so far</b>. Days still to come aren't counted. Run Payroll opens after the month ends.
+        </div>
+      )}
 
-          <tbody>
-            {payroll.map((row, i) => (
-              <tr key={row.userId} className="border-t">
-                <td className="p-3">{i + 1}</td>
-                <td className="p-3">{row.name}</td>
-                <td className="p-3">₹{row.gross}</td>
-                <td className="p-3 text-red-500">₹{row.deduction}</td>
-                <td className="p-3 font-semibold text-green-600">₹{row.net}</td>
-                <td className="p-3 font-semibold">{row.status}</td>
+      <PayExplainer />
 
-                <td className="p-3 text-center relative overflow-visible">
-                  <span
-                    className="inline-block cursor-pointer"
-                    onClick={() =>
-                      setOpenMenu(openMenu === row.userId ? null : row.userId)
-                    }
-                  >
-                    <MoreVertical size={18} />
-                  </span>
+      {data && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+          <div className="rounded-lg border bg-white p-3"><p className="text-xs text-gray-500">People paid</p><p className="text-lg font-semibold">{data.people}</p></div>
+          <div className="rounded-lg border bg-white p-3"><p className="text-xs text-gray-500">Not run yet</p><p className="text-lg font-semibold">{data.notRun}</p></div>
+          <div className="rounded-lg border bg-white p-3"><p className="text-xs text-gray-500">Total gross</p><p className="text-lg font-semibold">{rupees(data.totals.gross)}</p></div>
+          <div className="rounded-lg border bg-white p-3"><p className="text-xs text-gray-500">Total net</p><p className="text-lg font-semibold text-green-700">{rupees(data.totals.net)}</p></div>
+        </div>
+      )}
 
-                  {openMenu === row.userId && (
-                    <div className="absolute right-6 mt-2 w-44 bg-white border rounded-md shadow-lg z-50">
-                      <button
-                        className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100"
-                        onClick={() => {
-                          setOpenMenu(null);
-                          setSelectedPayslip({
-                            payrollId: row.payrollId,
-                            name: row.name,
-                            month,
-                            gross: row.gross,
-                            deduction: row.deduction,
-                            net: row.net,
-                            payDays: row.payDays,
-                            lopDays: row.lopDays,
-                            unearnedSalary: row.unearnedSalary,
-                          });
-                          setOpenPayslip(true);
-                        }}
-                      >
-                        View Payslip
-                      </button>
-
-                      {row.status === "Rejected" && (
-                        <button
-                          className="w-full text-left px-4 py-2 text-sm text-orange-600 hover:bg-gray-100"
-                          onClick={() => recalculatePayroll(row)}
-                        >
-                          Recalculate Payroll
-                        </button>
-                      )}
-
-                      {/* 👇 ONLY IF REJECTED */}
-                      {row.status === "Rejected" && (
-                        <button
-                          className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100"
-                          onClick={() => {
-                            setOpenMenu(null);
-                            setRejectDetails({
-                              reason: row.rejectReason!,
-                              rejectedAt: row.rejectedAt!,
-                            });
-                            setRejectViewModal(true);
-                          }}
-                        >
-                          View Reject Reason
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </td>
+      <div className="bg-white rounded-lg shadow overflow-x-auto">
+        {loading ? (
+          <div className="relative min-h-[300px]"><Loader /></div>
+        ) : (
+          <table className="w-full text-center text-sm">
+            <thead className="bg-gray-100">
+              <tr>
+                <th className="p-3 text-left">Employee</th>
+                <th className="p-3" title="Days in the month minus weekly offs">Working days</th>
+                <th className="p-3">Pay days</th>
+                <th className="p-3">Loss of pay</th>
+                <th className="p-3">Gross</th>
+                <th className="p-3">Deduction</th>
+                <th className="p-3">Net</th>
+                <th className="p-3">Status</th>
+                <th className="p-3">Action</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {data?.rows.length === 0 && (
+                <tr><td colSpan={9} className="p-10 text-gray-500">No one with a salary for this month{search ? " matches the search" : ""}.</td></tr>
+              )}
+              {data?.rows.map((row) => (
+                <tr key={row.userId} className="border-t hover:bg-gray-50 cursor-pointer" onClick={() => openDays(row)}>
+                  <td className="p-3 text-left">
+                    <div className="font-medium">{row.name}</div>
+                    <div className="text-xs text-gray-500">{row.employeeId}{row.onDevice ? " · device" : ""}{row.workedOnOff ? ` · worked ${row.workedOnOff} off day(s)` : ""}</div>
+                  </td>
+                  <td className="p-3">{daysText(row.workingDays)}</td>
+                  <td className="p-3">{daysText(row.payDays)}</td>
+                  <td className="p-3 text-red-500">{daysText(row.lopDays)}</td>
+                  <td className="p-3">{rupees(row.gross)}</td>
+                  <td className="p-3 text-red-500">{rupees(row.deduction)}</td>
+                  <td className="p-3 font-semibold text-green-600">{rupees(row.net)}</td>
+                  <td className={`p-3 font-semibold ${statusClass[row.status] || ""}`}>{row.status}</td>
+                  <td className="p-3 relative" onClick={(e) => e.stopPropagation()}>
+                    <span className="inline-block cursor-pointer" onClick={() => setOpenMenu(openMenu === row.userId ? null : row.userId)}>
+                      <MoreVertical size={18} />
+                    </span>
+                    {openMenu === row.userId && (
+                      <div className="absolute right-6 mt-2 w-48 bg-white border rounded-md shadow-lg z-50 text-left">
+                        <button className="w-full px-4 py-2 text-sm hover:bg-gray-100 text-left" onClick={() => openDays(row)}>View days</button>
+                        <button
+                          className="w-full px-4 py-2 text-sm hover:bg-gray-100 text-left"
+                          onClick={() => { setOpenMenu(null); setPayslip({ ...row, month }); }}
+                        >
+                          View payslip
+                        </button>
+                        {row.status === "Rejected" && (
+                          <>
+                            <button className="w-full px-4 py-2 text-sm text-orange-600 hover:bg-gray-100 text-left" onClick={() => { setOpenMenu(null); recalculate(row); }}>
+                              Recalculate Payroll
+                            </button>
+                            <button className="w-full px-4 py-2 text-sm text-red-600 hover:bg-gray-100 text-left" onClick={() => { setOpenMenu(null); setRejectView(row); }}>
+                              View Reject Reason
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
-      <ViewPayrollModal
-        isOpen={openPayslip}
-        onClose={() => setOpenPayslip(false)}
-        data={selectedPayslip}
-        onDownload={downloadPayslip}
-      />
-      {rejectViewModal && rejectDetails && (
+
+      {data && data.pagination.pages > 1 && (
+        <div className="flex items-center justify-between text-sm text-gray-600 mt-3">
+          <span>Page {data.pagination.page} of {data.pagination.pages} ({data.pagination.total} people)</span>
+          <div className="flex gap-2">
+            <button className="px-3 py-1 border rounded disabled:opacity-40" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Previous</button>
+            <button className="px-3 py-1 border rounded disabled:opacity-40" disabled={page >= data.pagination.pages} onClick={() => setPage((p) => p + 1)}>Next</button>
+          </div>
+        </div>
+      )}
+
+      {data && data.noSalaryCount > 0 && (
+        <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm">
+          <p className="font-semibold text-gray-700">Not paid: no salary entered ({data.noSalaryCount})</p>
+          <p className="text-gray-600 mt-1">
+            {data.noSalary.map((p) => p.name + (p.employeeId ? ` (${p.employeeId})` : "")).join(", ")}
+            {data.noSalaryCount > data.noSalary.length ? ` and ${data.noSalaryCount - data.noSalary.length} more` : ""}
+          </p>
+          <p className="text-xs text-gray-500 mt-1">Add a Salary Structure for them to be paid.</p>
+        </div>
+      )}
+
+      <ViewPayrollModal isOpen={!!payslip} onClose={() => setPayslip(null)} data={payslip} onDownload={downloadPayslip} />
+
+      {daysOf && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setDaysOf(null)}>
+          <div className="bg-white rounded-xl w-full max-w-2xl max-h-[85vh] overflow-y-auto p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-start mb-4">
+              <div>
+                <h2 className="text-lg font-semibold">{daysOf.row.name}: {monthName(month)}</h2>
+                <p className="text-xs text-gray-500">
+                  {daysOf.row.payrollId ? "Saved when payroll was run. The days below are worked out from today's attendance." : "Worked out from today's attendance, leave and holidays."}
+                </p>
+              </div>
+              <button onClick={() => setDaysOf(null)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+            </div>
+            {!daysOf.detail ? (
+              <div className="relative min-h-[120px]"><Loader /></div>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4 text-sm">
+                  <div className="border rounded p-2"><p className="text-xs text-gray-500">Working days</p><p className="font-semibold">{daysOf.detail.pay.workingDays}</p></div>
+                  <div className="border rounded p-2"><p className="text-xs text-gray-500">Pay days</p><p className="font-semibold">{daysOf.detail.pay.payDays}</p></div>
+                  <div className="border rounded p-2"><p className="text-xs text-gray-500">Loss of pay</p><p className="font-semibold text-red-500">{daysOf.detail.pay.lopDays}</p></div>
+                  <div className="border rounded p-2"><p className="text-xs text-gray-500">Net</p><p className="font-semibold text-green-600">{rupees(daysOf.detail.pay.net)}</p></div>
+                </div>
+                <table className="w-full text-sm">
+                  <tbody>
+                    {Object.keys(DAY_LABELS).filter((k) => daysOf.detail.pay.days[k] > 0).map((k) => (
+                      <tr key={k} className="border-t align-top">
+                        <td className="py-2 pr-3 font-medium whitespace-nowrap">{DAY_LABELS[k]}</td>
+                        <td className="py-2 pr-3 text-right">{daysOf.detail.pay.days[k]}</td>
+                        <td className="py-2 text-xs text-gray-500">
+                          {daysOf.detail.days.filter((d: any) => d.kind === k).map((d: any) => Number(d.date.slice(8)) + (d.worked && (k === "weeklyOff" || k.endsWith("Holiday")) ? "*" : "")).join(", ")}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {daysOf.detail.pay.workedOnOff > 0 && (
+                  <p className="text-xs text-gray-500 mt-2">* Worked on a weekly off or holiday. No extra pay for now.</p>
+                )}
+                {!daysOf.detail.hasSalary && <p className="text-sm text-red-600 mt-3">No salary structure: not paid.</p>}
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {rejectView && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white p-6 rounded-lg w-96">
-            <h2 className="text-lg font-semibold mb-3 text-red-600">
-              Payroll Rejected
-            </h2>
-
-            <div className="mb-3">
-              <p className="text-sm text-gray-500">Rejection Reason</p>
-              <p className="border rounded-md p-2 mt-1 bg-gray-50">
-                {rejectDetails.reason}
-              </p>
-            </div>
-
-            <div className="mb-4">
-              <p className="text-sm text-gray-500">Rejected On</p>
-              <p className="mt-1 font-medium">
-                {new Date(rejectDetails.rejectedAt).toLocaleString()}
-              </p>
-            </div>
-
-            <div className="text-right">
-              <button
-                className="px-4 py-2 border rounded-md"
-                onClick={() => setRejectViewModal(false)}
-              >
-                Close
-              </button>
-            </div>
+            <h2 className="text-lg font-semibold mb-3 text-red-600">Payroll Rejected</h2>
+            <p className="text-sm text-gray-500">Rejection Reason</p>
+            <p className="border rounded-md p-2 mt-1 bg-gray-50 mb-3">{rejectView.rejectReason}</p>
+            <p className="text-sm text-gray-500">Rejected On</p>
+            <p className="mt-1 font-medium mb-4">{rejectView.rejectedAt ? new Date(rejectView.rejectedAt).toLocaleString() : "–"}</p>
+            <div className="text-right"><button className="px-4 py-2 border rounded-md" onClick={() => setRejectView(null)}>Close</button></div>
           </div>
         </div>
       )}
@@ -514,6 +370,3 @@ const PayrollRun = () => {
 };
 
 export default PayrollRun;
-
-
-

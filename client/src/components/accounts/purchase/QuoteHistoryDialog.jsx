@@ -4,6 +4,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { apiRequest } from '@/lib/queryClient';
 import { History, Mail, Award, FileCheck, Paperclip, ShieldCheck, ShieldAlert } from 'lucide-react';
 import { fileHref } from '@/components/accounts/vendor/vendorUi';
+import { formatDims } from '@/lib/fabricationDims';
 
 // "All quotes" (procurement-v2, 2026-10-08; was "Quote history", renamed
 // 2026-10-09 so it isn't confused with "Bought before" — PriceCheck.jsx —
@@ -37,12 +38,15 @@ export default function QuoteHistoryDialog({ open, onOpenChange, endpoint, title
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [onlyVendor, setOnlyVendor] = useState(false);
+  // The quote whose attachments list is open (a manual quotation with several files).
+  const [filesFor, setFilesFor] = useState(null);
 
   useEffect(() => {
     if (!open || !endpoint) return;
     setLoading(true);
     setError('');
     setOnlyVendor(false);
+    setFilesFor(null);
     apiRequest('GET', endpoint)
       .then(res => setData(res?.data || null))
       .catch(err => { setData(null); setError(err.message); })
@@ -70,7 +74,7 @@ export default function QuoteHistoryDialog({ open, onOpenChange, endpoint, title
     for (const s of sections) for (const q of s.quotes) {
       const mq = q.manualQuotation;
       if (mq?._id && !m.has(String(mq._id))) m.set(String(mq._id), { ...mq, vendorName: q.vendorName, items: [] });
-      if (mq?._id) m.get(String(mq._id)).items.push(s.itemName);
+      if (mq?._id) m.get(String(mq._id)).items.push(s.sizeValues ? `${s.itemName} (${formatDims(s.sizeValues)})` : s.itemName);
     }
     return [...m.values()];
   }, [sections]);
@@ -108,8 +112,12 @@ export default function QuoteHistoryDialog({ open, onOpenChange, endpoint, title
                   {sections.map(s => (
                     <div key={s.key} className="border rounded-lg">
                       <div className="px-3 py-2 bg-slate-50 border-b rounded-t-lg flex flex-wrap items-center justify-between gap-2">
-                        <p className="text-sm font-semibold text-slate-800">{s.itemName} {s.itemCode && <span className="font-normal text-xs text-slate-400">({s.itemCode})</span>}</p>
-                        <span className="text-xs text-slate-500">{s.quantity} {s.purchaseUnit || ''}</span>
+                        <p className="text-sm font-semibold text-slate-800">
+                          {s.itemName} {s.itemCode && <span className="font-normal text-xs text-slate-400">({s.itemCode})</span>}
+                          {/* The size, so cards of one item can be told apart (2026-10-29). */}
+                          {s.sizeValues && <span className="ml-1.5 font-normal text-xs text-slate-600 bg-white border border-slate-200 rounded px-1.5 py-0.5">{formatDims(s.sizeValues)}</span>}
+                        </p>
+                        <span className="text-xs text-slate-500">{s.pieces != null && s.sizeValues ? `${s.pieces} pcs → ` : ''}{s.quantity} {s.purchaseUnit || ''}</span>
                       </div>
                       {s.quotes.length === 0 ? <p className="text-xs text-slate-400 px-3 py-3">No quotations{onlyVendor ? ' from this vendor' : ''}.</p> : (
                         <div className="overflow-x-auto">
@@ -143,11 +151,40 @@ export default function QuoteHistoryDialog({ open, onOpenChange, endpoint, title
                                     <td className="px-3 py-1.5 whitespace-nowrap">
                                       {q.source === 'Email' ? <Mail className="w-3 h-3 inline mr-1" /> : <FileCheck className="w-3 h-3 inline mr-1" />}
                                       {q.quotationRequest?.number || q.manualQuotation?.number || q.source}
-                                      {q.manualQuotation && <Paperclip className="w-3 h-3 inline ml-1 text-violet-600" title="Evidence attached — see below" />}
+                                      {/* The attachments open from the quote itself (2026-10-29): one file
+                                          opens straight away; several show a list here. */}
+                                      {q.manualQuotation && (() => {
+                                        const files = q.manualQuotation.files || [];
+                                        if (!files.length) return <Paperclip className="w-3 h-3 inline ml-1 text-slate-300" title="No file attached" />;
+                                        if (files.length === 1) {
+                                          return (
+                                            <a href={fileHref(files[0].fileUrl)} target="_blank" rel="noreferrer" title={`Open ${files[0].fileName || 'the attachment'}`} className="inline-flex align-middle ml-1 text-violet-600 hover:text-violet-800">
+                                              <Paperclip className="w-3.5 h-3.5" />
+                                            </a>
+                                          );
+                                        }
+                                        const isOpen = filesFor === String(q._id);
+                                        return (
+                                          <>
+                                            <button type="button" onClick={() => setFilesFor(isOpen ? null : String(q._id))} title={`${files.length} files — show them`} className="inline-flex items-center align-middle ml-1 text-violet-600 hover:text-violet-800">
+                                              <Paperclip className="w-3.5 h-3.5" /><span className="text-[10px] font-semibold">{files.length}</span>
+                                            </button>
+                                            {isOpen && (
+                                              <span className="flex flex-col gap-0.5 mt-1">
+                                                {files.map((f, i) => (
+                                                  <a key={i} href={fileHref(f.fileUrl)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[11px] text-violet-800 hover:bg-violet-100 max-w-[220px]">
+                                                    <Paperclip className="w-3 h-3 shrink-0" /><span className="truncate">{f.fileName || `File ${i + 1}`}</span>
+                                                  </a>
+                                                ))}
+                                              </span>
+                                            )}
+                                          </>
+                                        );
+                                      })()}
                                       {q.source === 'Manual' && !q.manualQuotation && <span className="block text-[10px] text-amber-700">no evidence (old)</span>}
                                     </td>
                                     <td className="px-3 py-1.5 text-right whitespace-nowrap">{answered ? <>{inr(q.unitPrice)}{q.purchaseUnit ? `/${q.purchaseUnit}` : ''}</> : '—'}</td>
-                                    <td className="px-3 py-1.5 whitespace-nowrap">{!answered ? '—' : q.gstInclusive ? 'incl.' : q.gstPercent != null ? `${q.gstPercent}%` : '—'}</td>
+                                    <td className="px-3 py-1.5 whitespace-nowrap">{!answered ? '—' : q.gstInclusive ? (q.gstPercent != null ? `${q.gstPercent}% incl.` : 'incl.') : q.gstPercent != null ? `${q.gstPercent}%` : '—'}</td>
                                     <td className="px-3 py-1.5 text-right">{q.quantity}</td>
                                     <td className="px-3 py-1.5 whitespace-nowrap">{answered ? `${q.deliveryDays}d${q.warrantyMonths ? ` · ${q.warrantyMonths}m wty` : ''}` : '—'}</td>
                                     <td className="px-3 py-1.5">

@@ -4,7 +4,7 @@ import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import { usePermissions } from '@/hooks/usePermissions';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Wrench, Package, Cog, Search, Save, IndianRupee, Boxes } from 'lucide-react';
+import { Wrench, Package, Cog, Search, Save, IndianRupee, Boxes, Layers, Puzzle } from 'lucide-react';
 
 // Purchase > Inventory — three read views over the same Item collection R&D
 // uses (Inventory / Product Master / Motor Master), bucketed by productKind,
@@ -49,6 +49,35 @@ const TABS = [
       button: 'bg-amber-600 hover:bg-amber-700',
     },
     emptyHint: 'Purchasable motors from Motor Master will appear here.',
+  },
+  // Make or buy (2026-10-28): Child Parts / Sub Child Parts R&D switched to
+  // bought — Accounts enters an estimated vendor price here before the first
+  // purchase ("price pending" until then).
+  {
+    key: 'child-part',
+    label: 'Child Part',
+    productKind: 'ChildPart',
+    icon: Layers,
+    accent: {
+      trigger: 'data-[state=active]:bg-teal-50 data-[state=active]:text-teal-700 data-[state=active]:shadow-sm',
+      chip: 'bg-teal-100 text-teal-700',
+      ring: 'focus:ring-teal-400',
+      button: 'bg-teal-600 hover:bg-teal-700',
+    },
+    emptyHint: 'Child Parts R&D marks as bought from a vendor appear here.',
+  },
+  {
+    key: 'sub-child-part',
+    label: 'Sub Child Part',
+    productKind: 'SubChildPart',
+    icon: Puzzle,
+    accent: {
+      trigger: 'data-[state=active]:bg-rose-50 data-[state=active]:text-rose-700 data-[state=active]:shadow-sm',
+      chip: 'bg-rose-100 text-rose-700',
+      ring: 'focus:ring-rose-400',
+      button: 'bg-rose-600 hover:bg-rose-700',
+    },
+    emptyHint: 'Sub Child Parts R&D marks as bought from a vendor appear here.',
   },
 ];
 
@@ -215,6 +244,13 @@ function InventoryCostPanel({ tab }) {
                   <td className="px-4 py-3">
                     <div className="font-medium text-slate-900">{item.name}</div>
                     {item.subCategory && <div className="text-[11px] text-slate-400">{item.subCategory}</div>}
+                    {item.pricePending ? (
+                      <div className="text-[11px] font-semibold text-amber-700">Price pending — enter an estimated vendor price</div>
+                    ) : item.purchaseCostKind && (
+                      <div className="text-[11px] text-slate-400">
+                        {item.purchaseCostKind === 'estimate' ? 'Estimate' : 'Last purchase'}{item.purchaseCostAt ? ` · ${new Date(item.purchaseCostAt).toLocaleDateString('en-IN')}` : ''}
+                      </div>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-slate-600 text-xs">{item.itemType || '—'}</td>
                   <td className="px-4 py-3 text-right text-slate-600 text-xs">

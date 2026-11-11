@@ -352,7 +352,7 @@ export default function JobCards() {
                 {printCard.reworks.length > 0 && (
                   <div className="mt-3 p-2 bg-red-50 border border-red-100 rounded text-xs text-red-700">
                     <strong>Rework History:</strong>
-                    {printCard.reworks.map((r, i) => <div key={i}>{r.date}: {r.reason} (by {r.rejectedBy})</div>)}
+                    {printCard.reworks.map((r, i) => <div key={i}>{r.date}: {r.reason}{r.failedChecks?.length ? ` — failed: ${r.failedChecks.join("; ")}` : ""}{r.photos?.length ? ` (${r.photos.length} QC photo${r.photos.length === 1 ? "" : "s"})` : ""} (by {r.rejectedBy})</div>)}
                   </div>
                 )}
               </div>

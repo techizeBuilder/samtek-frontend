@@ -11,12 +11,13 @@ import {
   ShieldCheck,
   Clock,
   X,
+  Upload,
 } from "lucide-react";
 import Loader from "./Loader";
 import { toast } from "@/pages/Alert/Toast";
+import { openUserDocument } from "./openUserDocument";
 
 const API = import.meta.env.VITE_API_URL;
-const BASE_URL = API?.replace("/api", "") || "";
 
 /* ================= TYPES ================= */
 
@@ -64,6 +65,7 @@ export default function DocumentVerification() {
   const limit = 15;
   const [selectedEmp, setSelectedEmp] = useState<EmployeeRow | null>(null);
   const [actingDocId, setActingDocId] = useState<string | null>(null);
+  const [uploadingType, setUploadingType] = useState<string | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setSearch(searchInput), 400);
@@ -162,6 +164,34 @@ export default function DocumentVerification() {
       });
     } finally {
       setActingDocId(null);
+    }
+  };
+
+  // HR uploading for someone (2026-11-06): for anyone, optional, and Verified at
+  // once because HR has seen the original. Replaces an existing one, Verified or not.
+  const handleUpload = async (employeeId: string, type: string, existing: DocRecord | undefined, file: File) => {
+    if (file.size > 10 * 1024 * 1024) {
+      toast({ type: "error", title: "File Too Large", message: "Documents can be up to 10 MB." });
+      return;
+    }
+    const data = new FormData();
+    data.append("type", type);
+    data.append("document", file);
+    const headers = { Authorization: `Bearer ${token}` };
+    try {
+      setUploadingType(type);
+      if (existing) await axios.put(`${API}/documents/update/${existing._id}`, data, { headers });
+      else await axios.post(`${API}/documents/upload/${employeeId}`, data, { headers });
+      toast({ type: "success", title: "Document Uploaded", message: "The document has been saved." });
+      await fetchAll();
+    } catch (error: any) {
+      toast({
+        type: "error",
+        title: "Upload Failed",
+        message: error?.response?.data?.message || "Could not upload the document",
+      });
+    } finally {
+      setUploadingType(null);
     }
   };
 
@@ -287,6 +317,8 @@ export default function DocumentVerification() {
           actingDocId={actingDocId}
           onClose={() => setSelectedEmp(null)}
           onSetStatus={handleSetStatus}
+          uploadingType={uploadingType}
+          onUpload={(type, existing, file) => handleUpload(selectedEmp._id, type, existing, file)}
         />
       )}
     </div>
@@ -302,6 +334,8 @@ function DocumentReviewModal({
   actingDocId,
   onClose,
   onSetStatus,
+  uploadingType,
+  onUpload,
 }: {
   employee: EmployeeRow;
   docs: DocRecord[];
@@ -309,6 +343,8 @@ function DocumentReviewModal({
   actingDocId: string | null;
   onClose: () => void;
   onSetStatus: (docId: string, status: "VERIFIED" | "REJECTED", remarks?: string) => void;
+  uploadingType: string | null;
+  onUpload: (type: string, existing: DocRecord | undefined, file: File) => void;
 }) {
   const getDoc = (key: string) => docs.find((d) => d.type === key);
   const [rejectingDocId, setRejectingDocId] = useState<string | null>(null);
@@ -371,6 +407,7 @@ function DocumentReviewModal({
                       <p className="text-sm font-semibold text-gray-800">{dt.label}</p>
                       <p className="text-xs text-gray-400">{dt.description}</p>
                     </div>
+                    <div className="flex items-center gap-2">
                     {doc ? (
                       <span
                         className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${
@@ -395,6 +432,22 @@ function DocumentReviewModal({
                         Not Uploaded
                       </span>
                     )}
+                    <label className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold border rounded-lg hover:bg-gray-50 text-gray-700 cursor-pointer">
+                      <Upload size={12} />
+                      {uploadingType === dt.key ? "Uploading..." : doc ? "Replace" : "Upload"}
+                      <input
+                        type="file"
+                        accept=".pdf,.jpg,.jpeg,.png"
+                        className="hidden"
+                        disabled={uploadingType !== null}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          e.target.value = "";
+                          if (file) onUpload(dt.key, doc, file);
+                        }}
+                      />
+                    </label>
+                    </div>
                   </div>
 
                   {doc?.status === "REJECTED" && doc.remarks && (
@@ -405,18 +458,13 @@ function DocumentReviewModal({
 
                   {doc && (
                     <div className="flex items-center justify-between gap-2 pt-1 flex-wrap">
-                      <a
-                        href={
-                          doc.fileUrl.startsWith("http")
-                            ? doc.fileUrl
-                            : `${BASE_URL}/${doc.fileUrl.replace(/\\/g, "/")}`
-                        }
-                        target="_blank"
-                        rel="noreferrer"
+                      <button
+                        type="button"
+                        onClick={() => openUserDocument(doc._id)}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold border rounded-lg hover:bg-gray-50 text-gray-700"
                       >
                         <Eye size={13} /> View Document
-                      </a>
+                      </button>
 
                       {doc.status === "VERIFIED" ? (
                         <span className="text-xs text-emerald-600 font-semibold flex items-center gap-1">

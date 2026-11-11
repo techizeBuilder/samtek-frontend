@@ -402,6 +402,9 @@ export default function ChildPartMasterTab() {
   const [stagedTools, setStagedTools] = useState([]);
   const [stagedProcessDefinition, setStagedProcessDefinition] = useState([]);
   const [creating, setCreating] = useState(false);
+  // Make or buy (2026-10-28) — chosen at create; afterwards R&D switches it
+  // from Inventory → Child Part → Manage (it re-prices and notifies).
+  const [makeOrBuy, setMakeOrBuy] = useState('make');
 
   // Shared pickers — `pickerTarget` says where a confirmed pick goes:
   // 'stage' (still inside the New Child Part dialog) or 'live' (drill-down,
@@ -497,6 +500,7 @@ export default function ChildPartMasterTab() {
   const openCreate = async () => {
     setForm(emptyCreateForm);
     setStagedSubChildParts([]); setStagedMaterials([]); setStagedTools([]); setStagedProcessDefinition([]);
+    setMakeOrBuy('make');
     setCreateOpen(true);
     try {
       const res = await apiRequest('GET', '/api/rd/child-part-master/generate-code');
@@ -516,6 +520,7 @@ export default function ChildPartMasterTab() {
     try {
       const res = await apiRequest('POST', '/api/rd/child-part-master', {
         name: form.name.trim(), code: form.code.trim(), image: form.image, specification: form.specification.trim(),
+        ...(makeOrBuy === 'buy' ? { makeOrBuy: 'buy' } : {}),
       });
       const newItemId = res.data.item._id;
 
@@ -754,10 +759,13 @@ export default function ChildPartMasterTab() {
               <p className="font-semibold text-slate-900">
                 {selectedItem?.name} <span className="font-mono text-xs text-blue-600 font-normal">{selectedItem?.code}</span>
               </p>
+              {selectedItem?.childPartDetails?.bomApproved && (
+                <p className="text-xs text-amber-700 mt-1">This BOM is approved. Changing it pulls back its BOM approval and Release, and it needs approving and releasing again.</p>
+              )}
             </CardContent>
           </Card>
 
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="p-4 rounded-lg bg-blue-50 border border-blue-100">
               <p className="text-xs text-blue-600 flex items-center gap-1"><IndianRupee className="h-3.5 w-3.5" /> Total Cost</p>
               <p className="text-lg font-bold text-blue-800 mt-0.5">{fmtMoney(selectedCost?.totalCost)}</p>
@@ -769,6 +777,20 @@ export default function ChildPartMasterTab() {
             <div className="p-4 rounded-lg bg-slate-50 border border-slate-200">
               <p className="text-xs text-slate-500 flex items-center gap-1"><Factory className="h-3.5 w-3.5" /> Production Cost</p>
               <p className="text-lg font-bold text-slate-800 mt-0.5">{fmtMoney((selectedBom?.productionCost || 0) + (selectedBom?.productionExpense || 0))}</p>
+            </div>
+            {/* Slice 4 (2026-10-24): the outsourced (job work) cost of the
+                last finished build — read from its Outsource Orders. */}
+            <div className="p-4 rounded-lg bg-violet-50 border border-violet-100">
+              <p className="text-xs text-violet-600 flex items-center gap-1"><IndianRupee className="h-3.5 w-3.5" /> Job Work (outsource)</p>
+              <p className="text-lg font-bold text-violet-800 mt-0.5">{fmtMoney(selectedBom?.jobWorkCost || 0)}</p>
+              <p className="text-[10px] text-violet-500 mt-0.5">
+                {selectedBom?.costFrom?.orderId
+                  ? `From ${selectedBom.costFrom.orderId}${selectedBom.costFrom.unitIndex != null ? ` unit ${selectedBom.costFrom.unitIndex + 1}` : ''}${selectedBom.costFrom.finishedAt ? ` · ${new Date(selectedBom.costFrom.finishedAt).toLocaleDateString('en-IN')}` : ''}`
+                  : 'From the Outsource Orders — never typed'}
+              </p>
+              {selectedBom?.jobWorkWaitingFor?.length > 0 && (
+                <p className="text-[10px] text-violet-700 font-medium mt-0.5">Waiting for the time on {selectedBom.jobWorkWaitingFor.join(', ')}</p>
+              )}
             </div>
           </div>
 
@@ -977,6 +999,20 @@ export default function ChildPartMasterTab() {
         <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader><DialogTitle>New Child Part</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
+            <div className="rounded-lg border bg-slate-50 p-3">
+              <p className="text-xs font-semibold text-slate-600 mb-1.5">Make or buy</p>
+              <div className="flex flex-wrap gap-4 text-sm">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="radio" name="cp-make-or-buy" checked={makeOrBuy === 'buy'} onChange={() => setMakeOrBuy('buy')} /> Purchasable (Vendor)
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="radio" name="cp-make-or-buy" checked={makeOrBuy === 'make'} onChange={() => setMakeOrBuy('make')} /> Internal Manufacturing
+                </label>
+              </div>
+              {makeOrBuy === 'buy' && (
+                <p className="text-[11px] text-slate-500 mt-1.5">Bought finished from a vendor. Its BOM is optional (needed only if it's switched to Made); Accounts is asked for an estimated vendor price.</p>
+              )}
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-xs text-slate-500">Name</label>

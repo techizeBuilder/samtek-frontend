@@ -6,6 +6,7 @@ import { useToast } from '@/hooks/use-toast';
 import { sendWhatsApp } from '@/lib/whatsapp';
 import { usePermissions } from '@/hooks/usePermissions';
 import { leadApi } from '@/api/leadService';
+import { provisionalNote } from '@/utils/priceProvisional';
 import { apiRequest } from '@/lib/queryClient';
 import { orderApi } from '@/api/orderService';
 import { Country, State, City } from 'country-state-city';
@@ -152,6 +153,13 @@ function SearchableSelect({ value, onSelect, options, placeholder, searchPlaceho
 // caller into the Lead's own productRequired string field — no schema
 // change. Self-contained (own queries) so it drops into both the Add Lead
 // form and the Edit Lead Title modal unchanged.
+// A warning only, as on the quotation (2026-11-05): never blocks, nothing saved.
+function PriceProvisionalTag({ item }) {
+  const note = provisionalNote(item);
+  if (!note) return null;
+  return <span title={note} className="text-[10px] font-semibold rounded-full border px-1.5 py-0.5 bg-amber-50 text-amber-700 border-amber-200 whitespace-nowrap">Price provisional</span>;
+}
+
 function ProductPlantPicker({ selected, onChange }) {
   const [pickerType, setPickerType] = useState('Machine');
   const [filterCategory, setFilterCategory] = useState('');
@@ -221,6 +229,7 @@ function ProductPlantPicker({ selected, onChange }) {
           {selected.map((p, i) => (
             <span key={`${p}-${i}`} className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 border border-blue-200 rounded-full pl-2.5 pr-1 py-0.5 text-xs font-medium">
               {p}
+              <PriceProvisionalTag item={allItems.find(it => it.name === p)} />
               <button type="button" onClick={() => removePick(i)} className="rounded-full hover:bg-blue-200 p-0.5">
                 <X className="h-3 w-3" />
               </button>
@@ -315,6 +324,7 @@ function ProductPlantPicker({ selected, onChange }) {
                   <span className="text-sm font-medium text-gray-800">{item.name}</span>
                   <div className="flex items-center gap-2 mt-1">
                     <Badge variant="outline" className="text-[10px] h-4 bg-gray-50">{item.code}</Badge>
+                    <PriceProvisionalTag item={item} />
                     <span className="text-[10px] text-gray-500">{[item.category, item.subCategory].filter(Boolean).join(' / ')}</span>
                     {item.mrp > 0 && <span className="text-[10px] text-blue-600 font-bold ml-auto">₹{item.mrp}</span>}
                   </div>

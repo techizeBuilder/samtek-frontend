@@ -416,6 +416,8 @@ export default function ModernInventoryUI() {
   const [selectedItemSourceType, setSelectedItemSourceType] = useState('all');
   const [selectedStore, setSelectedStore] = useState('all');
   const [showDiscontinued, setShowDiscontinued] = useState(false);
+  // Serial number work step 2: piece items R&D hasn't said how they're used in production.
+  const [needsUsage, setNeedsUsage] = useState(false);
   const [sortBy, setSortBy] = useState('newest');
   const [sortOrder, setSortOrder] = useState('asc'); // Added sortOrder state
   const [currentPage, setCurrentPage] = useState(1);
@@ -447,7 +449,7 @@ export default function ModernInventoryUI() {
 
   // Data fetching with React Query - let API handle ALL filtering AND pagination
   const { data: itemsData, isLoading: itemsLoading } = useQuery({
-    queryKey: [`${apiBasePath}/items`, debouncedSearchTerm, selectedItemType, selectedSourceType, selectedItemSourceType, selectedStore, showDiscontinued, sortBy, sortOrder, currentPage, itemsPerPage],
+    queryKey: [`${apiBasePath}/items`, debouncedSearchTerm, selectedItemType, selectedSourceType, selectedItemSourceType, selectedStore, showDiscontinued, needsUsage, sortBy, sortOrder, currentPage, itemsPerPage],
     queryFn: () => {
       const params = new URLSearchParams({
         page: currentPage,
@@ -456,6 +458,7 @@ export default function ModernInventoryUI() {
         // is plain Inventory only, items created through this form.
         productKind: 'none',
         discontinued: showDiscontinued ? 'true' : 'false',
+        ...(needsUsage && { needsUsage: 'true' }),
         ...(debouncedSearchTerm && { search: debouncedSearchTerm }),
         ...(selectedItemType && selectedItemType !== 'all' && { itemType: selectedItemType }),
         ...(selectedSourceType && selectedSourceType !== 'all' && { sourceType: selectedSourceType }),
@@ -937,6 +940,16 @@ export default function ModernInventoryUI() {
                 >
                   {showDiscontinued ? 'Show Active' : 'Show Discontinued'}
                 </Button>
+                {(itemsData?.needsUsageCount > 0 || needsUsage) && (
+                  <Button
+                    variant="outline"
+                    onClick={() => { setNeedsUsage(v => !v); setCurrentPage(1); }}
+                    title="Items counted in pieces where R&D hasn't said how they're used in production (Built into the product / Used to make the product)"
+                    className={`h-9 text-xs px-3 ${needsUsage ? 'bg-amber-100 text-amber-800 border-amber-300 hover:bg-amber-200' : 'border-amber-300 text-amber-700'}`}
+                  >
+                    {needsUsage ? 'Show all' : `Needs usage type (${itemsData?.needsUsageCount || 0})`}
+                  </Button>
+                )}
 
                 <Select value={sortBy} onValueChange={setSortBy}>
                   <SelectTrigger className="w-[100px] sm:w-[120px] h-9 border-gray-300 focus:border-blue-500 text-xs px-2">

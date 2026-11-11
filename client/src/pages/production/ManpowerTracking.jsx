@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import React, { useEffect, useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useProduction, PROCESS_STEPS } from '@/contexts/ProductionContext';
 import { usePermissions } from '@/hooks/usePermissions';
 import { apiRequest } from '@/lib/queryClient';
@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { Users, TrendingUp, Wrench, CheckCircle, Clock, Plus, Star, X } from 'lucide-react';
+import { Users, TrendingUp, Wrench, CheckCircle, Clock, Plus, Star, X, Pencil, Archive, Search } from 'lucide-react';
 
 // Shared by the live "Active" board (over context's active-orders) and the
 // on-demand "View Full History" query below (over a team's full history) —
@@ -22,7 +22,11 @@ const assignmentsForTeam = (ordersArr, teamId) =>
       .map(p => ({ orderId: o.orderId || o._id || o.id, machineName: o.machineName, priority: o.priority, ...p }))
   );
 
-const emptyTeam = { name: '', supervisor: '', membersInput: '', skills: [], efficiency: '85' };
+// A team is built from people HR entered (2026-11-11): Production department only,
+// never the Production Head, one person in one team; the supervisor is one of them.
+// Efficiency isn't typed: the system works it out later (null = not measured yet).
+const emptyTeam = { name: '', people: [], supervisorPerson: '', skills: [] };
+const measured = (e) => typeof e === 'number';
 
 const efficiencyColor = (e) => {
   if (e >= 90) return 'text-emerald-600';
@@ -46,20 +50,91 @@ const skillColor = {
 };
 
 export default function ManpowerTracking() {
-  const { orders, teams, addTeam, getTeamById } = useProduction();
+  const { orders, teams } = useProduction();
   const { hasFeatureAccess } = usePermissions();
   const canAdd = hasFeatureAccess('production', 'manpower', 'add');
+  const canEdit = hasFeatureAccess('production', 'manpower', 'edit');
+  const canRetire = hasFeatureAccess('production', 'manpower', 'delete');
+  const qc = useQueryClient();
   const [selectedTeamId, setSelectedTeamId] = useState(null);
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
   const [addTeamOpen, setAddTeamOpen] = useState(false);
+  const [editingTeamId, setEditingTeamId] = useState(null);
   const [teamForm, setTeamForm] = useState(emptyTeam);
+  const [formError, setFormError] = useState('');
+  const [peopleQuery, setPeopleQuery] = useState('');
+  const [peopleResults, setPeopleResults] = useState([]);
+  const [searching, setSearching] = useState(false);
 
-  const handleAddTeam = () => {
-    if (!teamForm.name || !teamForm.supervisor) return;
-    const members = teamForm.membersInput.split(',').map(m => m.trim()).filter(Boolean);
-    addTeam({ ...teamForm, members });
+  const openAdd = () => {
+    setEditingTeamId(null);
     setTeamForm(emptyTeam);
-    setAddTeamOpen(false);
+    setFormError('');
+    setPeopleQuery('');
+    setAddTeamOpen(true);
+  };
+  const openEdit = (team) => {
+    setEditingTeamId(String(team._id));
+    setTeamForm({
+      name: team.name,
+      people: (team.peopleInfo || []).map(p => ({ _id: String(p._id), name: p.name, employeeId: p.employeeId, canLogin: p.canLogin })),
+      supervisorPerson: String((team.peopleInfo || []).find(p => p.supervisor)?._id || ''),
+      skills: team.skills || [],
+    });
+    setFormError('');
+    setPeopleQuery('');
+    setAddTeamOpen(true);
+  };
+
+  // The picker asks the server each time: Production people only.
+  useEffect(() => {
+    if (!addTeamOpen || peopleQuery.trim().length < 1) { setPeopleResults([]); return; }
+    const t = setTimeout(async () => {
+      try {
+        setSearching(true);
+        const res = await apiRequest('GET', `/api/production-mfg/teams/people?search=${encodeURIComponent(peopleQuery.trim())}&limit=20`);
+        setPeopleResults(res?.people || []);
+      } catch { setPeopleResults([]); } finally { setSearching(false); }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [peopleQuery, addTeamOpen]);
+
+  const addPerson = (p) => {
+    setTeamForm(f => f.people.some(x => x._id === String(p._id)) ? f : {
+      ...f,
+      people: [...f.people, { _id: String(p._id), name: p.name, employeeId: p.employeeId, canLogin: p.canLogin }],
+      supervisorPerson: f.supervisorPerson || String(p._id),
+    });
+  };
+  const removePerson = (id) => setTeamForm(f => {
+    const people = f.people.filter(p => p._id !== id);
+    return { ...f, people, supervisorPerson: f.supervisorPerson === id ? (people[0]?._id || '') : f.supervisorPerson };
+  });
+
+  const saveTeam = useMutation({
+    mutationFn: (body) => editingTeamId
+      ? apiRequest('PUT', `/api/production-mfg/teams/${editingTeamId}`, body)
+      : apiRequest('POST', '/api/production-mfg/teams', body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['production-mfg-teams'] });
+      setAddTeamOpen(false);
+    },
+    onError: (e) => setFormError(e?.message || 'Could not save the team'),
+  });
+  const retireTeam = useMutation({
+    mutationFn: (id) => apiRequest('DELETE', `/api/production-mfg/teams/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['production-mfg-teams'] }),
+    onError: (e) => window.alert(e?.message || 'Could not retire the team'),
+  });
+
+  const handleSaveTeam = () => {
+    setFormError('');
+    saveTeam.mutate({
+      name: teamForm.name.trim(),
+      people: teamForm.people.map(p => p._id),
+      supervisorPerson: teamForm.supervisorPerson,
+      skills: teamForm.skills,
+    });
   };
 
   const toggleSkill = (skill) => {
@@ -78,7 +153,8 @@ export default function ManpowerTracking() {
 
   const totalTeamMembers = teams.reduce((s, t) => s + t.members.length, 0);
   const totalActiveAssignments = teams.reduce((s, t) => s + getActiveAssignments(t._id || t.id).length, 0);
-  const avgEfficiency = Math.round(teams.reduce((s, t) => s + t.efficiency, 0) / (teams.length || 1));
+  const measuredTeams = teams.filter(t => measured(t.efficiency));
+  const avgEfficiency = measuredTeams.length ? Math.round(measuredTeams.reduce((s, t) => s + t.efficiency, 0) / measuredTeams.length) : null;
 
   const selectedTeam = selectedTeamId ? teams.find(t => String(t._id || t.id) === selectedTeamId) : null;
 
@@ -104,7 +180,7 @@ export default function ManpowerTracking() {
           <p className="text-slate-500 text-sm mt-0.5">Team performance, skill mapping, and process assignments</p>
         </div>
         {canAdd && (
-          <Button onClick={() => setAddTeamOpen(true)} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">
+          <Button onClick={openAdd} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">
             <Plus className="h-4 w-4 mr-1" /> Add Team
           </Button>
         )}
@@ -132,7 +208,7 @@ export default function ManpowerTracking() {
         </Card>
         <Card className="border-none shadow-sm bg-emerald-50">
           <CardContent className="p-4">
-            <p className="text-2xl font-bold text-emerald-700">{avgEfficiency}%</p>
+            <p className={`font-bold text-emerald-700 ${avgEfficiency === null ? 'text-base pt-1.5' : 'text-2xl'}`}>{avgEfficiency === null ? 'Not measured yet' : `${avgEfficiency}%`}</p>
             <p className="text-xs text-emerald-500 mt-0.5">Avg Efficiency</p>
           </CardContent>
         </Card>
@@ -162,26 +238,39 @@ export default function ManpowerTracking() {
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className={`text-xl font-bold ${efficiencyColor(team.efficiency)}`}>{team.efficiency}%</p>
+                    {measured(team.efficiency) ? (
+                      <p className={`text-xl font-bold ${efficiencyColor(team.efficiency)}`}>{team.efficiency}%</p>
+                    ) : (
+                      <p className="text-xs font-semibold text-slate-500 pt-1">Not measured yet</p>
+                    )}
                     <p className="text-xs text-slate-400">Efficiency</p>
                   </div>
                 </div>
 
-                {/* Efficiency Bar */}
-                <div className="mb-4">
-                  <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
-                    <div className={`h-full rounded-full ${efficiencyBg(team.efficiency)}`} style={{ width: `${team.efficiency}%` }} />
+                {/* Efficiency Bar: only once the system has measured it */}
+                {measured(team.efficiency) && (
+                  <div className="mb-4">
+                    <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
+                      <div className={`h-full rounded-full ${efficiencyBg(team.efficiency)}`} style={{ width: `${team.efficiency}%` }} />
+                    </div>
                   </div>
-                </div>
+                )}
 
-                {/* Members */}
+                {/* Members: real people from HR, flagged if they left Production or were deactivated */}
                 <div className="mb-3">
                   <p className="text-xs text-slate-400 mb-1.5">Team Members ({team.members.length})</p>
                   <div className="flex flex-wrap gap-1">
-                    {team.members.map(m => (
-                      <span key={m} className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded text-xs font-medium">{m}</span>
+                    {(team.peopleInfo?.length ? team.peopleInfo : team.members.map(m => ({ name: m }))).map((m, i) => (
+                      <span key={String(m._id || m.name) + i} className={`px-2 py-0.5 rounded text-xs font-medium ${m.inactive || m.notInProduction ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-slate-100 text-slate-700'}`}>
+                        {m.name}{m.employeeId ? ` · ${m.employeeId}` : ''}{m.supervisor ? ' (supervisor)' : ''}
+                        {m.canLogin === false ? ' · no login' : ''}
+                        {m.inactive ? ' · Inactive' : m.notInProduction ? ' · No longer in Production' : ''}
+                      </span>
                     ))}
                   </div>
+                  {!team.peopleInfo?.length && (
+                    <p className="text-[11px] text-amber-600 mt-1">Old team with typed names. Edit it to pick people from HR.</p>
+                  )}
                 </div>
 
                 {/* Skills */}
@@ -224,9 +313,24 @@ export default function ManpowerTracking() {
                   </div>
                 )}
 
-                <Button size="sm" variant="outline" className="w-full text-xs" onClick={() => { setSelectedTeamId(String(team._id || team.id)); setViewDialogOpen(true); }}>
-                  View Full History
-                </Button>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" className="flex-1 text-xs" onClick={() => { setSelectedTeamId(String(team._id || team.id)); setViewDialogOpen(true); }}>
+                    View Full History
+                  </Button>
+                  {canEdit && (
+                    <Button size="sm" variant="outline" className="text-xs" onClick={() => openEdit(team)} title="Edit team">
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                  {canRetire && (
+                    <Button
+                      size="sm" variant="outline" className="text-xs text-red-600" title="Retire team"
+                      onClick={() => { if (window.confirm(`Retire ${team.name}? It leaves Manpower and the team pickers. Orders it worked on keep its name.`)) retireTeam.mutate(String(team._id)); }}
+                    >
+                      <Archive className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                </div>
               </CardContent>
             </Card>
           );
@@ -275,28 +379,61 @@ export default function ManpowerTracking() {
         </CardContent>
       </Card>
 
-      {/* Add Team Dialog */}
+      {/* Add / Edit Team Dialog: people are picked from HR's records */}
       <Dialog open={addTeamOpen} onOpenChange={setAddTeamOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle className="flex items-center gap-2"><Users className="h-5 w-5 text-blue-600" /> Add New Team</DialogTitle></DialogHeader>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle className="flex items-center gap-2"><Users className="h-5 w-5 text-blue-600" /> {editingTeamId ? 'Edit Team' : 'Add New Team'}</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Team Name *</label>
-                <Input placeholder="e.g. Team D" value={teamForm.name} onChange={e => setTeamForm(f => ({ ...f, name: e.target.value }))} />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Efficiency (%)</label>
-                <Input type="number" min="0" max="100" placeholder="85" value={teamForm.efficiency} onChange={e => setTeamForm(f => ({ ...f, efficiency: e.target.value }))} />
-              </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-600 mb-1 block">Team Name *</label>
+              <Input placeholder="e.g. Team D" value={teamForm.name} onChange={e => setTeamForm(f => ({ ...f, name: e.target.value }))} />
             </div>
             <div>
-              <label className="text-xs font-semibold text-slate-600 mb-1 block">Supervisor Name *</label>
-              <Input placeholder="e.g. Ravi Kumar" value={teamForm.supervisor} onChange={e => setTeamForm(f => ({ ...f, supervisor: e.target.value }))} />
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-slate-600 mb-1 block">Members <span className="font-normal text-slate-400">(comma separated)</span></label>
-              <Input placeholder="e.g. Raju, Arjun, Naveen" value={teamForm.membersInput} onChange={e => setTeamForm(f => ({ ...f, membersInput: e.target.value }))} />
+              <label className="text-xs font-semibold text-slate-600 mb-1 block">People * <span className="font-normal text-slate-400">(Production department; tick the supervisor)</span></label>
+              {teamForm.people.length > 0 && (
+                <div className="space-y-1 mb-2">
+                  {teamForm.people.map(p => (
+                    <div key={p._id} className="flex items-center justify-between border rounded-lg px-3 py-1.5 text-sm">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input type="radio" name="supervisor" checked={teamForm.supervisorPerson === p._id} onChange={() => setTeamForm(f => ({ ...f, supervisorPerson: p._id }))} />
+                        <span className="font-medium">{p.name}</span>
+                        <span className="text-xs text-slate-400">{p.employeeId}{p.canLogin === false ? ' · no login' : ''}</span>
+                        {teamForm.supervisorPerson === p._id && <span className="text-[10px] font-semibold text-blue-600 uppercase">Supervisor</span>}
+                      </label>
+                      <button type="button" className="text-slate-400 hover:text-red-600" onClick={() => removePerson(p._id)} title="Take out"><X className="h-4 w-4" /></button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <Input className="pl-9" placeholder="Type a name, Employee ID or device code..." value={peopleQuery} onChange={e => setPeopleQuery(e.target.value)} />
+              </div>
+              {peopleQuery.trim() && (
+                <div className="border rounded-lg mt-1 divide-y max-h-48 overflow-y-auto">
+                  {searching && peopleResults.length === 0 && <p className="px-3 py-2 text-xs text-slate-400">Searching...</p>}
+                  {!searching && peopleResults.length === 0 && <p className="px-3 py-2 text-xs text-slate-400">No one in Production matches.</p>}
+                  {peopleResults.map(p => {
+                    const picked = teamForm.people.some(x => x._id === String(p._id));
+                    const inOther = p.team && String(p.team._id) !== editingTeamId;
+                    return (
+                      <button
+                        key={p._id} type="button" disabled={picked || inOther}
+                        onClick={() => addPerson(p)}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <span className="font-medium">{p.name}</span>
+                        <span className="text-xs text-slate-400 ml-2">
+                          {[p.employeeId, p.designation, p.canLogin === false ? 'no login' : ''].filter(Boolean).join(' · ')}
+                        </span>
+                        {inOther && <span className="text-xs text-amber-600 ml-2">In {p.team.name}</span>}
+                        {picked && <span className="text-xs text-blue-600 ml-2">Picked</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              <p className="text-[11px] text-slate-400 mt-1">Someone missing? HR sets their Department to Production. The Production Head isn't listed.</p>
             </div>
             <div>
               <label className="text-xs font-semibold text-slate-600 mb-2 block">Process Skills <span className="font-normal text-slate-400">(select all that apply)</span></label>
@@ -314,9 +451,16 @@ export default function ManpowerTracking() {
               </div>
             </div>
           </div>
+          {formError && <p className="text-sm text-red-600">{formError}</p>}
           <DialogFooter>
             <Button variant="outline" onClick={() => setAddTeamOpen(false)}>Cancel</Button>
-            <Button onClick={handleAddTeam} disabled={!teamForm.name || !teamForm.supervisor} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">Add Team</Button>
+            <Button
+              onClick={handleSaveTeam}
+              disabled={!teamForm.name.trim() || !teamForm.people.length || !teamForm.supervisorPerson || saveTeam.isPending}
+              className="bg-gradient-to-r from-blue-600 to-purple-600 text-white"
+            >
+              {saveTeam.isPending ? 'Saving...' : editingTeamId ? 'Save Team' : 'Add Team'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -336,7 +480,11 @@ export default function ManpowerTracking() {
                 {/* Team Info */}
                 <div className="grid grid-cols-3 gap-3">
                   <div className="bg-slate-50 rounded-lg p-3 text-center">
-                    <p className={`text-xl font-bold ${efficiencyColor(selectedTeam.efficiency)}`}>{selectedTeam.efficiency}%</p>
+                    {measured(selectedTeam.efficiency) ? (
+                      <p className={`text-xl font-bold ${efficiencyColor(selectedTeam.efficiency)}`}>{selectedTeam.efficiency}%</p>
+                    ) : (
+                      <p className="text-sm font-semibold text-slate-500 pt-1.5">Not measured yet</p>
+                    )}
                     <p className="text-xs text-slate-400">Efficiency</p>
                   </div>
                   <div className="bg-slate-50 rounded-lg p-3 text-center">

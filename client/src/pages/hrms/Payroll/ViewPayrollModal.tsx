@@ -8,6 +8,7 @@ interface PayslipData {
   net: number;
   payDays: number;
   lopDays: number;
+  workingDays?: number;
   unearnedSalary?: number;
 }
 
@@ -49,7 +50,11 @@ const ViewPayrollModal = ({ isOpen, onClose, data, onDownload }: Props) => {
         {/* Body */}
         <div className="p-6 space-y-6">
           {/* Attendance Section */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-3 gap-4">
+            <div className="border rounded-lg p-3 bg-gray-50">
+              <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Working Days</p>
+              <p className="text-lg font-bold text-gray-700">{data.workingDays ?? "–"}</p>
+            </div>
             <div className="border rounded-lg p-3 bg-gray-50">
               <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Payable Days</p>
               <p className="text-lg font-bold text-gray-700">{data.payDays} Days</p>

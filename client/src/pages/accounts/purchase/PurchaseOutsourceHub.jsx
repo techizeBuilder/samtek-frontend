@@ -12,8 +12,19 @@ import PurchaseTab from './PurchaseTab';
 // old /accounts/purchases/sub-child-job-work (a leftover from when this
 // page was just "Outsource Work") to /accounts/purchases/purchase-outsource
 // — sidebar relabeled "Purchase & Outsource" (see config/moduleRoutes.js).
+// A link with ?work=requests|progress|orders (&order=<id>) opens Out Source
+// Work there — the outsource notifications use it (2026-10-23).
+const readWorkLink = () => {
+  try {
+    const p = new URLSearchParams(window.location.search);
+    const view = ['requests', 'progress', 'orders'].includes(p.get('work')) ? p.get('work') : null;
+    return view ? { view, orderId: p.get('order') || null } : null;
+  } catch { return null; }
+};
+
 export default function PurchaseOutsourceHub() {
-  const [tab, setTab] = useState('purchase');
+  const [workLink] = useState(readWorkLink);
+  const [tab, setTab] = useState(workLink ? 'outsource' : 'purchase');
 
   return (
     <div className="p-4 md:p-6 bg-gradient-to-br from-slate-50 to-slate-100 min-h-screen">
@@ -32,7 +43,7 @@ export default function PurchaseOutsourceHub() {
           <PurchaseTab />
         </TabsContent>
         <TabsContent value="outsource">
-          <SubChildJobWork />
+          <SubChildJobWork initialView={workLink?.view} initialOrderId={workLink?.orderId} />
         </TabsContent>
       </Tabs>
     </div>

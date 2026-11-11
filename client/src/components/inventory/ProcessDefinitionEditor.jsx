@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
 import { X, ChevronUp, ChevronDown, ShieldCheck, BadgeCheck } from 'lucide-react';
 
 // Shared Category -> Internal Process picker for all three BOM Management
@@ -123,7 +124,24 @@ export default function ProcessDefinitionEditor({ bomLevel, value, onChange, mat
   const setProcessType = (categoryLabel, name, type) => {
     const cat = categories.find(c => c.label === categoryLabel);
     if (!cat) return;
-    updateCategory(categoryLabel, { internalProcesses: cat.internalProcesses.map(p => (p.name === name ? { ...p, type } : p)) });
+    // Operations per piece are Out Source only for now — switching to
+    // In-House drops them (the server refuses them there).
+    updateCategory(categoryLabel, { internalProcesses: cat.internalProcesses.map(p => (p.name === name ? { ...p, type, operation: type === 'OutSource' ? p.operation : null } : p)) });
+  };
+  // Operations per piece (2026-10-22, outsource "per job work" pricing —
+  // docs/outsource-v2/pricing-types-logic-2026-10.md R3): e.g. drilling: 4
+  // holes. Both empty clears it.
+  const setOperation = (categoryLabel, name, patch) => {
+    const cat = categories.find(c => c.label === categoryLabel);
+    if (!cat) return;
+    updateCategory(categoryLabel, {
+      internalProcesses: cat.internalProcesses.map(p => {
+        if (p.name !== name) return p;
+        const next = { name: '', perPiece: '', ...(p.operation || {}), ...patch };
+        const empty = !String(next.name || '').trim() && (next.perPiece === '' || next.perPiece == null);
+        return { ...p, operation: empty ? null : next };
+      }),
+    });
   };
   // No longer clears materialRefs on switching to 'AssembledPart' (corrected
   // 2026-09-23 — the two aren't mutually exclusive anymore, see this file's
@@ -320,6 +338,15 @@ export default function ProcessDefinitionEditor({ bomLevel, value, onChange, mat
                       )}
                     </div>
                   </div>
+                  {proc.type === 'OutSource' && (
+                    <div className="mt-1.5 flex items-center gap-1.5 flex-wrap text-xs text-slate-600">
+                      <span>Operations per piece <span className="text-slate-400">(optional — lets Purchase price it per operation)</span>:</span>
+                      <Input type="number" min="1" step="1" disabled={disabled} className="h-7 w-20 placeholder:text-slate-300" placeholder="count"
+                        value={proc.operation?.perPiece ?? ''} onChange={e => setOperation(cat.label, proc.name, { perPiece: e.target.value === '' ? '' : Number(e.target.value) })} />
+                      <Input disabled={disabled} className="h-7 w-40 placeholder:text-slate-300" placeholder="what — e.g. holes, threads"
+                        value={proc.operation?.name ?? ''} onChange={e => setOperation(cat.label, proc.name, { name: e.target.value })} />
+                    </div>
+                  )}
                   {bomLevel === 'SubChildPart' && (
                     <p className="text-[10px] text-slate-400 mt-1.5">Ships/consumes this Sub Child Part's own source material — implicit, not per-step.</p>
                   )}

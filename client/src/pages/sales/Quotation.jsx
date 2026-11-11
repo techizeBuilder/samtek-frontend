@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { provisionalNote } from '@/utils/priceProvisional';
 import { useLocation } from 'wouter';
 import {
   ArrowLeft,
@@ -840,6 +841,7 @@ const Quotation = () => {
         customerName: leadData.contactPerson || leadData.companyName,
         leadCode: leadData.leadCode,
         attachmentBase64: pdfBase64,
+        provisionalItems: selectedItems.filter(i => provisionalNote(i)).map(i => `${i.code || i.name} (${provisionalNote(i)})`),
         // Compute net amount (items + GST + additional charges incl. their GST) — same formula as renderPreview
         quotationFinalAmount: (() => {
           const itemsSubTotal = selectedItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
@@ -1392,6 +1394,9 @@ const Quotation = () => {
                           ) : (
                             <div className="flex items-center gap-1 group">
                               <span className="font-bold text-gray-900">{item.name}</span>
+                              {provisionalNote(item) && (
+                                <span title={provisionalNote(item)} className="text-[10px] font-semibold rounded-full border px-1.5 py-0.5 bg-amber-50 text-amber-700 border-amber-200 whitespace-nowrap">Price provisional</span>
+                              )}
                               <button onClick={() => setEditingItemField({id: item.id, field: 'name'})}
                                 className="opacity-0 group-hover:opacity-100 text-orange-400 hover:text-orange-600 transition-opacity" title="Edit name">
                                 <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-current"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>

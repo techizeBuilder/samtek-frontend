@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { provisionalNote } from '@/utils/priceProvisional';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { childOptions } from '@/lib/classificationTree';
@@ -47,6 +48,7 @@ export default function ProductMasterTab() {
   const [filterPType, setFilterPType] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
   const [filterPSourceType, setFilterPSourceType] = useState('');
+  const [lowOnly, setLowOnly] = useState(false);
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState(null);
   const [viewOpen, setViewOpen] = useState(false);
@@ -55,7 +57,7 @@ export default function ProductMasterTab() {
   const [historyItem, setHistoryItem] = useState(null);
   const [historyOpen, setHistoryOpen] = useState(false);
 
-  useEffect(() => { setPage(1); }, [search, filterStatus, filterRelease, showDiscontinued, filterPType, filterCategory, filterPSourceType]);
+  useEffect(() => { setPage(1); }, [search, filterStatus, filterRelease, showDiscontinued, filterPType, filterCategory, filterPSourceType, lowOnly]);
 
   const { data: optionsResponse } = useQuery({
     queryKey: ['rd-master-options'],
@@ -64,7 +66,7 @@ export default function ProductMasterTab() {
   const masterOptions = optionsResponse?.data || {};
 
   const { data: machinesListResponse, isLoading } = useQuery({
-    queryKey: ['store-rd-machines', 'list', { page, search, filterStatus, filterRelease, showDiscontinued, filterPType, filterCategory, filterPSourceType }],
+    queryKey: ['store-rd-machines', 'list', { page, search, filterStatus, filterRelease, showDiscontinued, filterPType, filterCategory, filterPSourceType, lowOnly }],
     queryFn: () => {
       const params = new URLSearchParams({
         page: String(page),
@@ -72,7 +74,9 @@ export default function ProductMasterTab() {
         designStatus: filterStatus,
         releaseStatus: filterRelease,
         discontinued: showDiscontinued ? 'true' : 'false',
+        stockInfo: 'true',
       });
+      if (lowOnly) params.set('lowStock', 'true');
       if (search) params.set('search', search);
       if (filterPType) params.set('pType', filterPType);
       if (filterCategory) params.set('category', filterCategory);
@@ -106,6 +110,9 @@ export default function ProductMasterTab() {
             </div>
             <button onClick={() => setShowDiscontinued(v => !v)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${showDiscontinued ? 'bg-red-100 text-red-700 border-red-300' : 'bg-white text-slate-600 border-slate-200 hover:border-red-300'}`}>
               {showDiscontinued ? 'Show Active' : 'Show Discontinued'}
+            </button>
+            <button onClick={() => setLowOnly(v => !v)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${lowOnly ? 'bg-red-100 text-red-700 border-red-300' : 'bg-white text-slate-600 border-slate-200 hover:border-red-300'}`}>
+              Low stock only
             </button>
           </div>
 
@@ -162,14 +169,16 @@ export default function ProductMasterTab() {
                   <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Design Status</th>
                   <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Release</th>
                   <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Stock</th>
+                  <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Min / Order</th>
+                  <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Build open</th>
                   <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {isLoading ? (
-                  <tr><td colSpan={7} className="text-center py-12 text-slate-400">Loading...</td></tr>
+                  <tr><td colSpan={9} className="text-center py-12 text-slate-400">Loading...</td></tr>
                 ) : machines.length === 0 ? (
-                  <tr><td colSpan={7} className="text-center py-12 text-slate-400">No machines found matching the filters.</td></tr>
+                  <tr><td colSpan={9} className="text-center py-12 text-slate-400">No machines found matching the filters.</td></tr>
                 ) : machines.map(m => (
                   <tr key={m._id} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
                     <td className="px-5 py-3.5 font-mono text-xs font-semibold text-blue-700 bg-blue-50/30">{m.code}</td>
@@ -184,7 +193,22 @@ export default function ProductMasterTab() {
                     <td className="px-5 py-3.5">
                       <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border ${releaseStatusBadge(m.releaseStatus)}`}>{m.releaseStatus}</span>
                     </td>
-                    <td className="px-5 py-3.5 text-slate-600 text-xs">{m.qty ?? 0} {m.unit || ''}</td>
+                    <td className="px-5 py-3.5 text-slate-600 text-xs">
+                      <div className="flex items-center gap-1.5 whitespace-nowrap">
+                        <span>{m.qty ?? 0} {m.unit || ''}</span>
+                        {m.stockInfo?.low && <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border bg-red-50 text-red-600 border-red-200">Low stock</span>}
+                      </div>
+                      {m.stockInfo?.waitingForSticker > 0 && <div className="text-[11px] text-amber-700 mt-0.5">{m.stockInfo.waitingForSticker} waiting for sticker</div>}
+                    </td>
+                    {/* Without a Material Flow the sweep ignores this machine, so an old Min Stock mustn't look live. */}
+                    <td className="px-5 py-3.5 text-slate-600 text-xs whitespace-nowrap">
+                      {m.materialFlow ? `${m.minStock ?? 0} / ${m.reorderQty || 1}` : <span className="text-slate-400">Not set</span>}
+                    </td>
+                    <td className="px-5 py-3.5 text-slate-600 text-xs whitespace-nowrap">
+                      {(m.stockInfo?.openBuilds || []).length
+                        ? m.stockInfo.openBuilds.map(o => <div key={o.orderId}>{o.orderId} ({o.qty})</div>)
+                        : <span className="text-slate-300">—</span>}
+                    </td>
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-1">
                         <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-blue-600" onClick={() => { setSelected(m); setViewOpen(true); }}><Eye className="h-3.5 w-3.5" /></Button>
@@ -262,6 +286,9 @@ export default function ProductMasterTab() {
                   <p className="text-xs text-slate-500 mb-1">Sale Price</p>
                   <p className="text-sm font-medium text-slate-800">₹{selected.salePrice || 0}</p>
                 </div>
+                {provisionalNote(selected) && (
+                  <div className="col-span-full rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-medium text-amber-800">{provisionalNote(selected)}</div>
+                )}
                 <div className="bg-slate-50 rounded-lg p-3">
                   <p className="text-xs text-slate-500 mb-1">Available Stock</p>
                   <p className="text-sm font-medium text-slate-800">{selected.qty ?? 0} {selected.unit || ''}</p>

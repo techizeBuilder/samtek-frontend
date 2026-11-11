@@ -67,6 +67,8 @@ export default function MarkAttendance() {
   const [activeWorkTimer, setActiveWorkTimer] = useState("00:00:00");
   const [activeBreakTimer, setActiveBreakTimer] = useState("00:00:00");
   const [workProgress, setWorkProgress] = useState(0);
+  // With a Device Code, the device is the only source of attendance.
+  const [onDevice, setOnDevice] = useState(false);
 
   const api = axios.create({
     baseURL: API,
@@ -82,10 +84,12 @@ export default function MarkAttendance() {
   const fetchData = useCallback(async (pageNum: number) => {
     try {
       setLoading(true);
-      const [todayRes, historyRes] = await Promise.all([
+      const [todayRes, historyRes, selfMarkRes] = await Promise.all([
         api.get("/attendance/me?page=1&limit=1"),
         api.get(`/attendance/me?page=${pageNum}&limit=15`),
+        api.get("/attendance/self-mark"),
       ]);
+      setOnDevice(!!selfMarkRes.data?.onDevice);
 
       const today = new Date().toISOString().split("T")[0];
       const todayData = todayRes.data?.data || [];
@@ -274,7 +278,11 @@ export default function MarkAttendance() {
 
                 {/* Actions */}
                 <div className="w-full space-y-3">
-                   {!isPunchedIn ? (
+                   {onDevice ? (
+                     <p className="text-center text-sm font-semibold text-slate-500 bg-slate-50 border border-slate-100 rounded-2xl p-4">
+                       Your attendance comes from the device. Punch there, and use Attendance Requests for a correction.
+                     </p>
+                   ) : !isPunchedIn ? (
                      <Button 
                        onClick={() => handleAction("punch-in")}
                        disabled={actionLoading}

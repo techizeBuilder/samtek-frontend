@@ -24,7 +24,7 @@ export function parseSerials(text) {
 }
 
 // "GEN-" + 0101 … 0110 → GEN-0101 … GEN-0110 (the padding follows "from").
-function rangeOf(prefix, from, to) {
+export function rangeOf(prefix, from, to) {
   const a = Number(from);
   const b = Number(to);
   if (!Number.isInteger(a) || !Number.isInteger(b) || a < 0 || b < a || b - a >= 1000) return null;

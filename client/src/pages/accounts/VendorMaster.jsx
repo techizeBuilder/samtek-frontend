@@ -19,6 +19,7 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import VendorDocumentsSection from '@/components/accounts/vendor/VendorDocumentsSection';
+import VendorDocumentsDialog from '@/components/accounts/vendor/VendorDocumentsDialog';
 import VendorStatusActions from '@/components/accounts/vendor/VendorStatusActions';
 import VendorCoverageDialog from '@/components/accounts/vendor/VendorCoverageDialog';
 import VendorSuppliesDialog from '@/components/accounts/vendor/VendorSuppliesDialog';
@@ -72,6 +73,22 @@ const VendorMaster = () => {
         setCoverageAfterCreate(afterCreate);
         setCoverageVendor(vendor);
     };
+    // Documents — its own dialog too (2026-10-28, client): offered right
+    // after a vendor is created (Step 2, then Products & Services is Step 3),
+    // and from the card's Documents button any time.
+    const [docsVendor, setDocsVendor] = useState(null);
+    const [docsAfterCreate, setDocsAfterCreate] = useState(false);
+    const openDocs = (vendor, afterCreate = false) => {
+        setDocsAfterCreate(afterCreate);
+        setDocsVendor(vendor);
+    };
+    const closeDocs = () => {
+        const vendor = docsVendor;
+        const wasAfterCreate = docsAfterCreate;
+        setDocsVendor(null);
+        setDocsAfterCreate(false);
+        if (wasAfterCreate && vendor) openCoverage(vendor, true);
+    };
     // Read-only "everything this vendor supplies", from a card's "+N more".
     const [suppliesVendor, setSuppliesVendor] = useState(null);
 
@@ -98,6 +115,14 @@ const VendorMaster = () => {
         keepPreviousData: true,
     });
     const refreshVendors = () => queryClient.invalidateQueries({ queryKey: ['/api/suppliers'] });
+    // Entity Type choices — Purchase Settings' list (2026-10-28, client: not
+    // a fixed list). A vendor saved with a type since taken off the list
+    // still shows it.
+    const { data: purchaseSettingsData } = useQuery({
+        queryKey: ['purchase-settings'],
+        queryFn: () => apiRequest('GET', '/api/purchase-settings'),
+    });
+    const entityTypeNames = (purchaseSettingsData?.settings?.entityTypes || []).map(t => t.name);
 
     const vendors = data?.suppliers || [];
     const pagination = data?.pagination || {};
@@ -119,10 +144,10 @@ const VendorMaster = () => {
                 // Products & Services in their own dialog — straight away;
                 // "Later" closes it, and the card's "Products & Services"
                 // button reopens it any time.
-                toast({ title: "Vendor Created", description: "Step 2: pick what it supplies — now or later." });
+                toast({ title: "Vendor Created", description: "Step 2: upload its documents — now or later." });
                 setIsAddModalOpen(false);
                 setEditingVendor(null);
-                openCoverage(data.supplier, true);
+                openDocs(data.supplier, true);
             } else {
                 // On an approved vendor, legal name / GSTIN / PAN / bank
                 // changes go to the Company Admin — the server says so.
@@ -303,9 +328,6 @@ const VendorMaster = () => {
                                         const meta = STAGE_META[stage] || STAGE_META.Draft;
                                         return <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold border ${meta.className}`}>{meta.label}</span>;
                                     })()}
-                                    {vendor.status === 'inactive' && (
-                                        <Badge variant="secondary" className="text-[10px]">Inactive</Badge>
-                                    )}
                                 </div>
                             </CardHeader>
                             <CardContent className="space-y-3">
@@ -431,6 +453,16 @@ const VendorMaster = () => {
                                     {canEdit && (
                                         <Button
                                             type="button" size="sm" variant="outline"
+                                            className="h-7 px-2 text-xs w-full justify-center border-blue-200 text-blue-700 hover:bg-blue-50"
+                                            onClick={() => openDocs(vendor)}
+                                        >
+                                            <FileText className="w-3 h-3 mr-1" />
+                                            Documents ({(vendor.documents || []).length})
+                                        </Button>
+                                    )}
+                                    {canEdit && (
+                                        <Button
+                                            type="button" size="sm" variant="outline"
                                             className="h-7 px-2 text-xs w-full justify-center border-emerald-200 text-emerald-700 hover:bg-emerald-50"
                                             onClick={() => openCoverage(vendor)}
                                         >
@@ -508,7 +540,14 @@ const VendorMaster = () => {
                             <Input name="phone" defaultValue={editingVendor?.phone} required />
                         </div>
                         <div>
-                            <label className="text-sm font-medium">WhatsApp Number</label>
+                            <div className="flex items-center justify-between">
+                                <label className="text-sm font-medium">WhatsApp Number</label>
+                                {/* Same number as Phone — copied, not retyped (2026-10-28, client). */}
+                                <button type="button" className="text-[11px] font-medium text-blue-600 hover:underline disabled:text-slate-400 disabled:no-underline"
+                                    onClick={e => { const f = e.currentTarget.form; if (f) f.elements.whatsappNumber.value = f.elements.phone.value; }}>
+                                    Same as phone
+                                </button>
+                            </div>
                             <Input name="whatsappNumber" defaultValue={editingVendor?.whatsappNumber} />
                         </div>
                         <div>
@@ -525,26 +564,19 @@ const VendorMaster = () => {
                         </div>
                         <div>
                             <label className="text-sm font-medium">Entity Type</label>
-                            <select name="entityType" className="w-full border rounded-md p-2" defaultValue={editingVendor?.entityType || 'Others'}>
-                                <option value="Individual">Individual</option>
-                                <option value="HUF">HUF</option>
-                                <option value="Company">Company</option>
-                                <option value="Firm">Firm</option>
-                                <option value="Others">Others</option>
+                            <select key={entityTypeNames.join('|')} name="entityType" className="w-full border rounded-md p-2" defaultValue={editingVendor?.entityType || ''}>
+                                <option value="">— Select —</option>
+                                {[...entityTypeNames, ...(editingVendor?.entityType && !entityTypeNames.includes(editingVendor.entityType) ? [editingVendor.entityType] : [])]
+                                    .map(name => <option key={name} value={name}>{name}</option>)}
                             </select>
+                            <p className="text-[11px] text-slate-400 mt-0.5">The list is edited in Purchase &amp; Outsource → Settings.</p>
                         </div>
                         {/* TDS Section hidden (2026-10-12 — client: no TDS on the purchase
                             side). Kept as a hidden field so saving a vendor never blanks a
                             value already stored. */}
                         <input type="hidden" name="tdsSection" value={editingVendor?.tdsSection || 'None'} />
-                        <div>
-                            <label className="text-sm font-medium">Status</label>
-                            <select name="status" className="w-full border rounded-md p-2" defaultValue={editingVendor?.status || 'active'}>
-                                <option value="active">Active</option>
-                                <option value="inactive">Inactive</option>
-                            </select>
-                            <p className="text-[11px] text-slate-400 mt-0.5">On/off switch — separate from approval.</p>
-                        </div>
+                        {/* Status (Active / Inactive) removed 2026-10-28 (client) — approval,
+                            suspend and blacklist decide who can be quoted or ordered from. */}
 
                         {/* Registration (blueprint §8) */}
                         <div className="col-span-2 pt-2">
@@ -823,7 +855,17 @@ const VendorMaster = () => {
                 </DialogContent>
             </Dialog>
 
-            {/* Step 2 — Products & Services, its own dialog (D2) */}
+            {/* Step 2 — Documents, its own dialog (2026-10-28) */}
+            <VendorDocumentsDialog
+                vendor={docsVendor}
+                open={!!docsVendor}
+                afterCreate={docsAfterCreate}
+                readOnly={docsVendor?.approvalStatus === 'Pending Approval'}
+                onVendorChange={(saved) => { setDocsVendor(v => ({ ...v, ...saved, standing: v?.standing, pendingRequests: v?.pendingRequests })); refreshVendors(); }}
+                onClose={closeDocs}
+            />
+
+            {/* Step 3 — Products & Services, its own dialog (D2) */}
             <VendorCoverageDialog
                 vendor={coverageVendor}
                 open={!!coverageVendor}

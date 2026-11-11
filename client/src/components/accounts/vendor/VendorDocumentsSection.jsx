@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { FileText, Trash2, Upload } from 'lucide-react';
-import { DOC_TYPES, fileHref, expiryBadge } from './vendorUi';
+import { fileHref, expiryBadge } from './vendorUi';
 
 // A vendor's compliance documents (Vendor Master v2, procurement-v2). Sits
 // INSIDE Vendor Master's uncontrolled <form>, so none of these inputs carry a
@@ -13,7 +14,7 @@ import { DOC_TYPES, fileHref, expiryBadge } from './vendorUi';
 // hand the updated vendor back through onChange.
 export default function VendorDocumentsSection({ vendor, readOnly, onChange }) {
   const { toast } = useToast();
-  const [docType, setDocType] = useState('PAN Card');
+  const [docType, setDocType] = useState('');
   const [docNumber, setDocNumber] = useState('');
   const [expiryDate, setExpiryDate] = useState('');
   const [file, setFile] = useState(null);
@@ -22,6 +23,19 @@ export default function VendorDocumentsSection({ vendor, readOnly, onChange }) {
 
   const documents = vendor?.documents || [];
 
+  // The company's document types and which ones a vendor needs — Company
+  // Admin's setting (2026-10-28, Purchase & Vendor Approval → Settings).
+  const { data: settingsData } = useQuery({
+    queryKey: ['purchase-settings'],
+    queryFn: () => apiRequest('GET', '/api/purchase-settings'),
+  });
+  const types = settingsData?.vendorDocumentTypes || [];
+  const hasGstin = !!String(vendor?.gstNumber || '').trim();
+  const needed = types
+    .filter(t => t.rule !== 'none' && (!t.onlyWithGstin || hasGstin))
+    .map(t => ({ ...t, uploaded: documents.some(d => d.docType === t.name) }));
+  const chosenType = docType || needed.find(t => !t.uploaded)?.name || types[0]?.name || '';
+
   const upload = async () => {
     if (!file) {
       toast({ title: 'Choose a file first', variant: 'destructive' });
@@ -29,7 +43,7 @@ export default function VendorDocumentsSection({ vendor, readOnly, onChange }) {
     }
     const fd = new FormData();
     fd.append('file', file);
-    fd.append('docType', docType);
+    fd.append('docType', chosenType);
     fd.append('docNumber', docNumber);
     if (expiryDate) fd.append('expiryDate', expiryDate);
     setBusy(true);
@@ -63,10 +77,17 @@ export default function VendorDocumentsSection({ vendor, readOnly, onChange }) {
 
   return (
     <div>
-      <p className="text-xs text-slate-500 mb-2">
-        Needed for approval: <b>PAN Card</b>, <b>Cancelled Cheque / Bank Proof</b>, and a <b>GST Certificate</b> if a GSTIN is entered.
-        Add an expiry date where the document has one (valid through that date); Purchase and the Company Admin are reminded 30 days before.
-      </p>
+      <div className="text-xs text-slate-500 mb-2 space-y-1.5">
+        <p>
+          {needed.length ? 'Needed for approval:' : 'No document is required for approval.'}
+          {needed.map(t => (
+            <span key={t.name} className={`ml-1.5 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium ${t.uploaded ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
+              {t.uploaded ? '✓' : '•'} {t.name}{t.onlyWithGstin ? ' (GSTIN entered)' : ''}{t.uploaded ? '' : ' — missing'}
+            </span>
+          ))}
+        </p>
+        <p>Add an expiry date where the document has one (valid through that date); Purchase and the Company Admin are reminded 30 days before.</p>
+      </div>
       <p className="text-[11px] text-slate-400 mb-2">
         Each upload or removal is saved straight away — closing or cancelling the vendor form doesn't undo it, and a removed file is deleted from the server.
       </p>
@@ -102,8 +123,8 @@ export default function VendorDocumentsSection({ vendor, readOnly, onChange }) {
         <div className="grid grid-cols-2 gap-2 items-end border rounded-md p-3 bg-slate-50">
           <div>
             <label className="text-xs font-medium">Document type</label>
-            <select value={docType} onChange={e => setDocType(e.target.value)} className="w-full border rounded-md p-2 text-sm bg-white">
-              {DOC_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+            <select value={chosenType} onChange={e => setDocType(e.target.value)} className="w-full border rounded-md p-2 text-sm bg-white">
+              {types.map(t => <option key={t.name} value={t.name}>{t.name}</option>)}
             </select>
           </div>
           <div>

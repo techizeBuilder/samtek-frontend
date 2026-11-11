@@ -8,7 +8,9 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { ThumbsUp, ThumbsDown, ClipboardCheck } from 'lucide-react';
 import { showSuccessToast, showSmartToast } from '@/lib/toast-utils';
-import ProductionCheckReviewRow from './ProductionCheckReviewRow';
+import QcCheckRow, { checksState } from './QcCheckRow';
+import RejectionPhotoPicker, { decisionBody } from './RejectionPhotoPicker';
+import RejectionEvidence from './RejectionEvidence';
 import PartReferencePanel from './PartReferencePanel';
 
 const partStatusBadge = {
@@ -49,6 +51,12 @@ export default function SubChildPartQCReview({ jobId, partChecks, canEdit, onRef
               <div>
                 <p className="text-sm font-semibold text-slate-800">{part.subChildPartName}</p>
                 <p className="text-[10px] text-slate-400">{part.childPartName}{part.producedBy && ` · sent by ${part.producedBy}`}</p>
+                {(part.status === 'Approved' || part.status === 'Rejected') && part.qcBy && (
+                  <p className={`text-[10px] ${part.status === 'Approved' ? 'text-emerald-700' : 'text-red-600'}`}>
+                    {part.status === 'Approved' ? 'Passed' : 'Rejected'} by {part.qcBy}{part.qcDate ? ` · ${part.qcDate}` : ''}{part.status === 'Rejected' && part.rejectReason ? ` — ${part.rejectReason}` : ''}
+                  </p>
+                )}
+                {part.status === 'Rejected' && <div className="mt-1"><RejectionEvidence compact failedChecks={part.failedChecks} photos={part.photos} downloadName={`${part.subChildPartName}-rejected`} /></div>}
               </div>
               <div className="flex items-center gap-2">
                 <Badge className={`text-xs ${badge.cls}`}>{badge.label}</Badge>
@@ -80,6 +88,7 @@ function ReviewDialog({ jobId, part, onOpenChange, onDecided }) {
   const [process, setProcess] = useState(part.process.map(r => ({ ...r })));
   const [rejectReason, setRejectReason] = useState('');
   const [showRejectInput, setShowRejectInput] = useState(false);
+  const [photos, setPhotos] = useState([]); // of the rejected part (2026-10-30)
 
   const decideMutation = useMutation({
     // Only QC's own qcStatus/qcRemarks per row travel to the server —
@@ -91,25 +100,42 @@ function ReviewDialog({ jobId, part, onOpenChange, onDecided }) {
     onError: (e) => showSmartToast(e, 'Failed to record decision'),
   });
 
-  const setRow = (list, setList, i, patch) => setList(rs => rs.map((r, idx) => idx === i ? { ...r, ...patch } : r));
-  const allDecided = [...initial, ...process].every(r => r.qcStatus !== 'Pending');
-  const failMissingRemarks = [...initial, ...process].some(r => r.qcStatus === 'Fail' && !r.qcRemarks?.trim());
+  // "Save checks" (2026-10-30): the rows this person checked, no decision.
+  const checksMutation = useMutation({
+    mutationFn: () => apiRequest('PUT', `/api/qc/jobs/${jobId}/parts/${part._id}/checks`, { initial: toVerdicts(initial), process: toVerdicts(process) }),
+    onSuccess: () => { showSuccessToast('Saved', 'Checks saved — the decision can be made later.'); onDecided(); },
+    onError: (e) => showSmartToast(e, 'Failed to save the checks'),
+  });
+
+  // QC's verdict is qcStatus / qcRemarks; Production's own result is shown
+  // beside it, never edited (the shared QcCheckRow, 2026-10-30).
+  const setRow = (setList, i, patch) => setList(rs => rs.map((r, idx) => idx === i ? {
+    ...r,
+    ...(patch.status !== undefined ? { qcStatus: patch.status } : {}),
+    ...(patch.remarks !== undefined ? { qcRemarks: patch.remarks } : {}),
+  } : r));
+  const asQc = (r) => ({ ...r, status: r.qcStatus, remarks: r.qcRemarks });
+  const { pending, failMissingRemarks } = checksState([...initial, ...process].map(asQc));
+  const allDecided = pending === 0;
+  const busy = decideMutation.isPending || checksMutation.isPending;
   const toVerdicts = (rows) => rows.map(r => ({ _id: r._id, qcStatus: r.qcStatus, qcRemarks: r.qcRemarks }));
 
   const handleApprove = () => decideMutation.mutate({ decision: 'Approved', initial: toVerdicts(initial), process: toVerdicts(process) });
   const handleReject = () => {
     if (!rejectReason.trim()) { setShowRejectInput(true); return; }
-    decideMutation.mutate({ decision: 'Rejected', rejectReason: rejectReason.trim(), initial: toVerdicts(initial), process: toVerdicts(process) });
+    decideMutation.mutate(decisionBody({ decision: 'Rejected', rejectReason: rejectReason.trim(), initial: toVerdicts(initial), process: toVerdicts(process) }, photos));
   };
 
-  const Section = ({ title, rows, setList }) => (
+  const section = (title, rows, setList) => (
     <div>
       <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">{title}</p>
       <div className="space-y-2">
         {rows.length === 0 ? (
           <p className="text-xs text-slate-400">No checks configured for this stage.</p>
         ) : rows.map((row, i) => (
-          <ProductionCheckReviewRow key={row._id || i} row={row} canEdit onChange={patch => setRow(rows, setList, i, patch)} />
+          <QcCheckRow key={row._id || i} row={asQc(row)}
+            production={{ status: row.status, actualValue: row.actualValue, remarks: row.remarks }}
+            onChange={patch => setRow(setList, i, patch)} />
         ))}
       </div>
     </div>
@@ -124,29 +150,35 @@ function ReviewDialog({ jobId, part, onOpenChange, onDecided }) {
 
         <div className="space-y-4 py-2">
           <PartReferencePanel designFile={part.designFile} materials={part.materials} />
-          <Section title="Initial Checklist" rows={initial} setList={setInitial} />
-          <Section title="Process Checklist" rows={process} setList={setProcess} />
+          {section('Initial Checklist', initial, setInitial)}
+          {section('Process Checklist', process, setProcess)}
         </div>
 
         {showRejectInput && (
           <div>
             <label className="text-xs font-semibold text-slate-600 mb-1 block">Reject Reason *</label>
             <Input value={rejectReason} onChange={e => setRejectReason(e.target.value)} placeholder="Why is this part being rejected?" />
+            <div className="mt-2"><RejectionPhotoPicker files={photos} onChange={setPhotos} onError={(m) => showSmartToast(new Error(m), 'Photo not added')} /></div>
           </div>
         )}
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          {(initial.length + process.length) > 0 && (
+            <Button variant="outline" disabled={busy || failMissingRemarks} onClick={() => checksMutation.mutate()} title={failMissingRemarks ? 'Add a remark for each failed check' : 'Save the checks you did; the decision can be made later (by you or someone else)'}>
+              Save checks
+            </Button>
+          )}
           <Button
             variant="outline" className="text-red-600 border-red-200 hover:bg-red-50"
-            disabled={!allDecided || failMissingRemarks || decideMutation.isPending}
+            disabled={!allDecided || failMissingRemarks || busy}
             onClick={handleReject}
           >
             <ThumbsDown className="h-3.5 w-3.5 mr-1" /> Reject
           </Button>
           <Button
             className="bg-emerald-600 hover:bg-emerald-700 text-white"
-            disabled={!allDecided || failMissingRemarks || decideMutation.isPending}
+            disabled={!allDecided || failMissingRemarks || busy}
             onClick={handleApprove}
           >
             <ThumbsUp className="h-3.5 w-3.5 mr-1" /> Approve

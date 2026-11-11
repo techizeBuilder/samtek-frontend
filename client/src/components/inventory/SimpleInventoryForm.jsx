@@ -23,6 +23,15 @@ import { dimensionSignature } from '@/lib/fabricationDims';
 import FabricationItemPicker from './FabricationItemPicker';
 import { AMOUNT_UNIT_TYPES } from './UnitAmountField';
 
+// Serial number work step 2 (2026-10-31): items counted in pieces must say how
+// they're used in production — the same unit list as the server's
+// purchasedUnitService.isCountableUnit.
+const isPiecesUnit = (u) => /^(pieces?|pcs?\.?|pc\.?|nos?\.?|numbers?|units?|sets?|each|ea)$/i.test(String(u || '').trim());
+const PRODUCTION_USE_OPTIONS = [
+  { value: 'BuiltIn', label: 'Built into the product', help: 'It ends up inside what we deliver — the customer receives it. E.g. a motor, bearing, controller, switch. Its serial number is followed from Store\'s issue → the part / machine it\'s fitted in → the customer\'s order, so a warranty claim can be traced either way.' },
+  { value: 'UsedToMake', label: 'Used to make the product', help: 'We use it while building, but it doesn\'t leave with the product. E.g. a grinding wheel, cutter, welding torch tip, jig. Its serial number is followed only to the production order that used it.' },
+];
+
 const DIMENSION_UNITS = ['Inch', 'MM', 'Feet', 'Meter'];
 const DIMENSION_FIELDS = [
   ['length', 'Length'], ['height', 'Height'], ['width', 'Width'],
@@ -71,10 +80,13 @@ export default function SimpleInventoryForm({
       length: { value: '', unit: '' }, height: { value: '', unit: '' }, width: { value: '', unit: '' },
       diaOD: { value: '', unit: '' }, diaID: { value: '', unit: '' }, thickness: { value: '', unit: '' },
     },
-    warranty: { period: 12, type: 'Comprehensive', terms: '' }
+    warranty: { period: 12, type: 'Comprehensive', terms: '' },
+    productionUse: '',
   };
 
   const [formData, setFormData] = useState(emptyForm);
+  // Not for a Machine / Child Part / Sub Child Part (the server skips those too).
+  const showProductionUse = isPiecesUnit(formData.unit) && !item?.productKind;
 
   const availableUnits = React.useMemo(() => {
     if (!formData.unitType) return [];
@@ -374,7 +386,8 @@ export default function SimpleInventoryForm({
           diaID: { value: item.dimensions?.diaID?.value ?? '', unit: item.dimensions?.diaID?.unit || '' },
           thickness: { value: item.dimensions?.thickness?.value ?? '', unit: item.dimensions?.thickness?.unit || '' },
         },
-        warranty: item.warranty || { period: 12, type: 'Comprehensive', terms: '' }
+        warranty: item.warranty || { period: 12, type: 'Comprehensive', terms: '' },
+        productionUse: item.productionUse || '',
       });
       setErrors({});
       setImagePreview(item.image || null);
@@ -465,6 +478,7 @@ export default function SimpleInventoryForm({
       if (!formData.code || !formData.code.trim()) validationErrors.code = 'Item Code is mandatory (R&D defined).';
       if (!formData.unitType && !formData.unit) validationErrors.unitType = 'Unit Type is required';
       if (!formData.unit) validationErrors.unit = 'Unit is required';
+      if (showProductionUse && !formData.productionUse) validationErrors.productionUse = 'Pick how this item is used in production.';
       if (formData.purchase) {
         if (!formData.purchaseUnitType && !formData.purchaseUnit) validationErrors.purchaseUnitType = 'Purchase Unit Type is required';
         if (!formData.purchaseUnit) validationErrors.purchaseUnit = 'Purchase Unit is required';
@@ -497,6 +511,7 @@ export default function SimpleInventoryForm({
       const processedData = {
         ...formData,
         code: formData.code.trim(),
+        productionUse: showProductionUse ? formData.productionUse : null,
         // Only meaningful when Item Type is "Job Work" — cleared client-side
         // too (server enforces the same in sanitizeItemData) so it can't
         // linger stale if Item Type is changed away from Job Work without
@@ -637,9 +652,16 @@ export default function SimpleInventoryForm({
                       <Layers className="h-3.5 w-3.5" />
                       {formData.fabricationRef ? `Linked: ${formData.name || 'Fabrication item'}` : 'No fabrication item selected yet'}
                     </span>
-                    <Button type="button" variant="outline" size="sm" className="h-7 text-xs bg-white" onClick={() => setFabricationPickerOpen(true)}>
-                      {formData.fabricationRef ? 'Change' : 'Select'}
-                    </Button>
+                    {/* An item already saved with its link is kept in step by
+                        Fabrication Master's own save (2026-10-28) — the old
+                        "Change" re-copy made duplicate sizes, so it's gone. */}
+                    {item?.fabricationRef ? (
+                      <span className="text-[11px] text-blue-600">Sizes follow Fabrication Master</span>
+                    ) : (
+                      <Button type="button" variant="outline" size="sm" className="h-7 text-xs bg-white" onClick={() => setFabricationPickerOpen(true)}>
+                        {formData.fabricationRef ? 'Change' : 'Select'}
+                      </Button>
+                    )}
                   </div>
                 )}
               </div>
@@ -907,6 +929,26 @@ export default function SimpleInventoryForm({
             </div>
           </div>
 
+          {/* Serial number work step 2: how a piece item is used in production (required, no default). */}
+          {showProductionUse && (
+            <div className={`rounded-md border p-3 space-y-2 ${errors.productionUse ? 'border-red-400 bg-red-50/40' : 'border-slate-200 bg-slate-50/60'}`}>
+              <Label className="text-sm font-medium text-gray-700">How is this item used in production? *</Label>
+              <RadioGroup value={formData.productionUse || ''} onValueChange={(v) => { handleInputChange('productionUse', v); if (errors.productionUse) setErrors(prev => ({ ...prev, productionUse: null })); }} className="space-y-2">
+                {PRODUCTION_USE_OPTIONS.map(o => (
+                  <label key={o.value} className="flex items-start gap-2 cursor-pointer">
+                    <RadioGroupItem value={o.value} className="mt-1" />
+                    <span>
+                      <span className="block text-sm font-medium text-slate-800">{o.label}</span>
+                      <span className="block text-xs text-slate-500">{o.help}</span>
+                    </span>
+                  </label>
+                ))}
+              </RadioGroup>
+              <p className="text-xs text-slate-500"><span className="font-medium">Not sure?</span> Ask: "When the machine is delivered, does the customer get this item inside it?" Yes → Built into the product.</p>
+              {errors.productionUse && <p className="text-xs text-red-600">{errors.productionUse}</p>}
+            </div>
+          )}
+
           {/* ── 15: Receive Unit — unit Store actually receives/counts stock in.
               Only meaningfully independent of Used Unit for fabrication items
               (Pieces received vs. a Length/Area unit used, bridged by geometry
@@ -979,6 +1021,8 @@ export default function SimpleInventoryForm({
                       <div className="flex items-center justify-between">
                         <span className="text-gray-700">
                           {dv.designation || Object.entries(dv.values || {}).map(([k, v]) => `${k}: ${v}`).join(', ')}
+                          {dv.isDiscontinued && <span className="ml-2 text-[10px] font-semibold uppercase tracking-wide text-orange-600">Discontinued</span>}
+                          {dv.isLeftover && <span className="ml-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Leftover</span>}
                         </span>
                         <span className="flex items-center gap-3">
                           <span className="font-semibold text-gray-800">{dv.weightPerPieceKg != null ? `${Number(dv.weightPerPieceKg).toFixed(2)} kg` : '—'}</span>

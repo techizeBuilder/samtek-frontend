@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { FileText, Eye, Download, CheckCircle2 } from 'lucide-react';
 import { showSuccessToast, showSmartToast } from '@/lib/toast-utils';
-import { KIND_LABEL, StageChips, BlockersPanel } from './approvalShared';
+import { KIND_LABEL, StageChips, BlockersPanel, RedoBanner } from './approvalShared';
 import PrototypePanel from './PrototypePanel';
 
 const IMAGE_EXTS = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'];
@@ -70,7 +70,8 @@ export default function ApprovalManageDialog({ itemId, open, onClose }) {
   };
 
   const close = () => { setBlockers([]); onClose(); };
-  const purchase = item?.purchaseMachine;
+  // No Design / BOM / Prototype: a Purchase Machine, or a bought part (2026-10-29).
+  const purchase = item?.qcOnly ?? item?.purchaseMachine;
   const isMachine = item?.productKind === 'Machine';
   const release = item?.releaseReadiness;
 
@@ -81,7 +82,7 @@ export default function ApprovalManageDialog({ itemId, open, onClose }) {
           <DialogHeader>
             <DialogTitle>
               {item ? `${item.code} — ${item.name}` : 'Loading...'}
-              {item && <span className="ml-2 text-xs font-normal text-slate-500">{KIND_LABEL[item.productKind]}{purchase ? ' · Purchase Machine' : ''}</span>}
+              {item && <span className="ml-2 text-xs font-normal text-slate-500">{KIND_LABEL[item.productKind]}{item.boughtPart ? ' · Bought from a vendor' : purchase ? ' · Purchase Machine' : ''}</span>}
             </DialogTitle>
           </DialogHeader>
 
@@ -92,9 +93,13 @@ export default function ApprovalManageDialog({ itemId, open, onClose }) {
               <StageChips item={item} />
               <BlockersPanel blockers={blockers} />
 
+              <RedoBanner item={item} />
+
               {purchase && (
                 <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-xs text-blue-800">
-                  Purchase Machine — only the <strong>QC List</strong> needs approval before release. Design, BOM and Prototype don't apply.
+                  {item.boughtPart
+                    ? <>Bought from a vendor — only its <strong>Incoming (bought) QC List</strong> needs approval before release. Design and BOM don't apply; for a parent above it, it counts as passing both.</>
+                    : <>Purchase Machine — only the <strong>QC List</strong> needs approval before release. Design, BOM and Prototype don't apply.</>}
                 </div>
               )}
 

@@ -117,7 +117,13 @@ export default function FabricationMaster() {
   });
   const updateMutation = useMutation({
     mutationFn: ({ id, data }) => apiRequest('PUT', `/api/fabrication-master/items/${id}`, data),
-    onSuccess: () => { invalidate(); showSuccessToast('Fabrication Item Updated', 'Fabrication item updated successfully'); setEditOpen(false); },
+    // The server syncs the linked inventory item in the same save (2026-10-28).
+    onSuccess: (res) => {
+      invalidate();
+      const synced = (res?.sync || []).map(s => `${s.item}: ${s.updated} updated${s.added ? `, ${s.added} added` : ''}${s.removed ? `, ${s.removed} removed` : ''}`).join(' · ');
+      showSuccessToast('Fabrication Item Updated', synced ? `Inventory item kept in step — ${synced}` : 'Fabrication item updated successfully');
+      setEditOpen(false);
+    },
     onError: (e) => showSmartToast(e, 'Failed to update fabrication item'),
   });
   const statusMutation = useMutation({
@@ -183,6 +189,11 @@ export default function FabricationMaster() {
     setCalculatorOpen(false);
   };
   const removeDimension = (idx) => setForm(f => ({ ...f, dimensions: f.dimensions.filter((_, i) => i !== idx) }));
+  // A size in use can't be removed — R&D retires it instead (still issued /
+  // received, never bought anew). docs/fabrication-size-sync-2026-10.md §5.
+  const toggleDimensionDiscontinued = (idx) => setForm(f => ({ ...f, dimensions: f.dimensions.map((d, i) => (i === idx ? { ...d, isDiscontinued: !d.isDiscontinued } : d)) }));
+  // Once an inventory item is made from the entry, its code is locked.
+  const codeLocked = editOpen && (selected?.linkedItemCodes || []).length > 0;
 
   const canSave = form.itemName.trim() && form.category && form.density.value && form.dimensions.length > 0;
 
@@ -199,10 +210,11 @@ export default function FabricationMaster() {
         <div>
           <Label className="text-xs font-semibold text-slate-600 mb-1 block">Item Code</Label>
           <div className="flex gap-2">
-            <Input className="font-mono" value={form.itemCode} placeholder="Auto-suggested, e.g. MET-001"
+            <Input className="font-mono" value={form.itemCode} placeholder="Auto-suggested, e.g. MET-001" disabled={codeLocked}
               onChange={e => { setCodeTouched(true); setForm(f => ({ ...f, itemCode: e.target.value })); }} />
-            <Button type="button" variant="outline" size="sm" onClick={() => { setCodeTouched(false); suggestCode(); }}>Generate</Button>
+            {!codeLocked && <Button type="button" variant="outline" size="sm" onClick={() => { setCodeTouched(false); suggestCode(); }}>Generate</Button>}
           </div>
+          {codeLocked && <p className="text-[11px] text-slate-500 mt-1">Locked — inventory item {selected.linkedItemCodes.join(', ')} is made from this entry.</p>}
         </div>
       </div>
 
@@ -256,11 +268,18 @@ export default function FabricationMaster() {
         {form.dimensions.length > 0 && (
           <div className="border border-slate-200 rounded-lg divide-y divide-slate-100 bg-white">
             {form.dimensions.map((d, i) => (
-              <div key={i} className="flex items-center justify-between px-3 py-2 text-xs">
-                <span className="text-slate-700">{summarizeDimension(activeCategory?.fields || [], d)}{d.pieces > 1 ? ` × ${d.pieces} pcs` : ''}</span>
+              <div key={i} className={`flex items-center justify-between px-3 py-2 text-xs ${d.isDiscontinued ? 'bg-slate-50' : ''}`}>
+                <span className={d.isDiscontinued ? 'text-slate-400 line-through' : 'text-slate-700'}>{summarizeDimension(activeCategory?.fields || [], d)}{d.pieces > 1 ? ` × ${d.pieces} pcs` : ''}</span>
                 <div className="flex items-center gap-3">
-                  <span className="font-semibold text-slate-800">{d.weightPerPieceKg.toFixed(2)} kg</span>
-                  <button type="button" onClick={() => removeDimension(i)} className="text-slate-400 hover:text-red-500"><XCircle className="h-3.5 w-3.5" /></button>
+                  {d.isDiscontinued && <span className="text-[10px] font-semibold uppercase tracking-wide text-orange-600">Discontinued</span>}
+                  <span className="font-semibold text-slate-800">{Number(d.weightPerPieceKg).toFixed(2)} kg</span>
+                  {editOpen && (
+                    <button type="button" onClick={() => toggleDimensionDiscontinued(i)} title={d.isDiscontinued ? 'Continue this size' : 'Discontinue this size (kept, never bought anew)'}
+                      className={d.isDiscontinued ? 'text-slate-400 hover:text-emerald-600' : 'text-slate-400 hover:text-orange-600'}>
+                      {d.isDiscontinued ? <RefreshCw className="h-3.5 w-3.5" /> : <Ban className="h-3.5 w-3.5" />}
+                    </button>
+                  )}
+                  <button type="button" onClick={() => removeDimension(i)} title="Remove (only if nothing uses this size)" className="text-slate-400 hover:text-red-500"><XCircle className="h-3.5 w-3.5" /></button>
                 </div>
               </div>
             ))}
@@ -431,7 +450,10 @@ export default function FabricationMaster() {
                     const cat = categories.find(c => c.key === selected.category);
                     return (
                       <div key={i} className="flex items-center justify-between py-1.5">
-                        <span className="text-xs text-slate-700">{summarizeDimension(cat?.fields || [], d)}</span>
+                        <span className="text-xs text-slate-700">
+                          {summarizeDimension(cat?.fields || [], d)}
+                          {d.isDiscontinued && <span className="ml-2 text-[10px] font-semibold uppercase tracking-wide text-orange-600">Discontinued</span>}
+                        </span>
                         <span className="text-xs font-semibold text-slate-600">{d.weightPerPieceKg?.toFixed(2)} kg</span>
                       </div>
                     );

@@ -126,6 +126,9 @@ export default function PurchaseOrderList({
   // change) — the table stays on screen and the open PO, page, filters and
   // search are kept (2026-10-14; it used to remount the whole list).
   reloadSignal = 0,
+  // Store's page (2026-10-26): Store only receives — no rates, totals,
+  // charges, payment or terms (the server doesn't send them either).
+  hideMoney = false,
 }) {
   const [purchases, setPurchases] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -225,8 +228,8 @@ export default function PurchaseOrderList({
                   <TableHead>Expected Delivery</TableHead>
                   <TableHead>Transport</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Payment</TableHead>
-                  <TableHead className="text-right">Grand Total</TableHead>
+                  {!hideMoney && <TableHead>Payment</TableHead>}
+                  {!hideMoney && <TableHead className="text-right">Grand Total</TableHead>}
                   <TableHead className="text-right">Items</TableHead>
                 </TableRow>
               </TableHeader>
@@ -255,18 +258,18 @@ export default function PurchaseOrderList({
                           {po.status !== 'Cancelled' && !notOrdered(po) && (po.items || []).some(it => lineDue(it, po, lineIsReceived(it))?.bucket === 'overdue') && <Badge variant="outline" className="ml-1 bg-red-50 text-red-700 border-red-200">Overdue</Badge>}
                           {(po.cancellations || []).some(c => c.status === 'Approved' && c.kind === 'ShortClose') && <Badge variant="outline" className="ml-1 bg-slate-50 text-slate-600 border-slate-200">Short closed</Badge>}
                         </TableCell>
-                        <TableCell>
+                        {!hideMoney && <TableCell>
                           {notOrdered(po)
                             ? <span className="text-xs text-slate-400">—</span>
                             : <Badge variant="outline" className={paymentStatusColor[po.paymentStatus] || ''}>{po.paymentStatus}</Badge>}
                           {awaitingAdvance(po) && po.status !== 'Cancelled' && !notOrdered(po) && <Badge variant="outline" className="ml-1 bg-violet-50 text-violet-700 border-violet-200">Advance due</Badge>}
-                        </TableCell>
-                        <TableCell className="text-right font-medium text-slate-800">{inr(po.grandTotal)}</TableCell>
+                        </TableCell>}
+                        {!hideMoney && <TableCell className="text-right font-medium text-slate-800">{inr(po.grandTotal)}</TableCell>}
                         <TableCell className="text-right text-slate-500">{po.items?.length || 0}</TableCell>
                       </TableRow>
                       {isOpen && (
                         <TableRow>
-                          <TableCell colSpan={9} className="bg-slate-50 p-4">
+                          <TableCell colSpan={hideMoney ? 7 : 9} className="bg-slate-50 p-4">
                             <div className="space-y-2">
                               <div className="border rounded-md divide-y bg-white">
                                 {(po.items || []).map((it, i) => {
@@ -334,6 +337,12 @@ export default function PurchaseOrderList({
                                           <span className="truncate">{it.itemName}</span>
                                           {/* From the item master, decided when the PO was made (2026-10-15). */}
                                           {it.isFabrication && <span className="ml-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded border bg-slate-50 text-slate-500 border-slate-200">Fabrication</span>}
+                                          {/* The vendor's quoted warranty (2026-10-29). */}
+                                          {Number(it.warrantyMonths) > 0 && (
+                    <span className="ml-1.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full border bg-emerald-50 text-emerald-700 border-emerald-200 whitespace-nowrap" title="Warranty the vendor quoted for this item">
+                      {it.warrantyMonths} month{Number(it.warrantyMonths) === 1 ? '' : 's'} warranty
+                    </span>
+                  )}
                                           {/* A fabrication line's size × pieces, so lines of one item can be told apart (2026-10-14). */}
                                           {it.fabricationDimensionLines?.[0]?.values && (
                                             <span className="block text-[11px] font-mono text-slate-500">{formatDims(it.fabricationDimensionLines[0].values)} × {it.fabricationDimensionLines[0].quantity} pcs</span>
@@ -342,7 +351,7 @@ export default function PurchaseOrderList({
                                         <DueBadge due={due} />
                                       </span>
                                       <span className="flex items-center gap-2 shrink-0">
-                                        <span className="text-slate-600">{it.quantity} {lineUnit} × {inr(it.unitPrice)}{it.itemChargesTotal > 0 ? ` + ${inr(it.itemChargesTotal)} charges` : ''}{it.gstInclusive ? ' (incl. GST)' : it.gstRate ? ` + ${it.gstRate}% GST` : ''} = {inr(it.totalPrice + (it.itemChargesTotal || 0) + (it.gstAmount || 0))}</span>
+                                        <span className="text-slate-600">{hideMoney ? `${it.quantity} ${lineUnit || ''}` : <>{it.quantity} {lineUnit} × {inr(it.unitPrice)}{it.itemChargesTotal > 0 ? ` + ${inr(it.itemChargesTotal)} charges` : ''}{it.gstInclusive ? (it.gstRate > 0 ? ` (incl. ${it.gstRate}% GST)` : ' (incl. GST)') :it.gstRate ? ` + ${it.gstRate}% GST` : ''} = {inr(it.totalPrice + (it.itemChargesTotal || 0) + (it.gstAmount || 0))}</>}</span>
                                         <Badge variant="outline" className={`text-[10px] ${receiveCls}`}>{receiveLabel}</Badge>
                                         {renderLineAction && !isCancelled && po.status !== 'Cancelled' && !notOrdered(po) && renderLineAction(it, po, { isReceived, prRefs })}
                                       </span>
@@ -374,7 +383,7 @@ export default function PurchaseOrderList({
                                   );
                                 })}
                               </div>
-                              {po.poCharges?.length > 0 && (
+                              {!hideMoney && po.poCharges?.length > 0 && (
                                 <div className="flex flex-wrap gap-2">
                                   {po.poCharges.map((c, i) => (
                                     <span key={i} className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs border ${c.waived ? toneClass.good : toneClass.warn}`}>
@@ -384,7 +393,7 @@ export default function PurchaseOrderList({
                                 </div>
                               )}
                               {/* PO-time charges (procurement-v2) — typed on the PO, whole-PO. */}
-                              {po.charges?.length > 0 && (
+                              {!hideMoney && po.charges?.length > 0 && (
                                 <div className="flex flex-wrap gap-2">
                                   {po.charges.map((c, i) => (
                                     <span key={i} className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs border ${toneClass.warn}`}>
@@ -393,7 +402,7 @@ export default function PurchaseOrderList({
                                   ))}
                                 </div>
                               )}
-                              {po.paymentTerms && (po.paymentTerms.advancePercent != null || po.paymentTerms.creditDays != null || po.paymentTerms.others?.length > 0) && (
+                              {!hideMoney && po.paymentTerms && (po.paymentTerms.advancePercent != null || po.paymentTerms.creditDays != null || po.paymentTerms.others?.length > 0) && (
                                 <p className="text-xs text-slate-600">
                                   <span className="font-medium">Payment terms:</span>
                                   {' '}Advance {po.paymentTerms.advancePercent != null ? `${po.paymentTerms.advancePercent}%` : '—'}
@@ -440,13 +449,13 @@ export default function PurchaseOrderList({
                               {po.status === 'Rejected' && (
                                 <p className="text-xs text-red-700">Rejected by the Company Admin{po.approval?.remarks ? `: ${po.approval.remarks}` : ''}. Its items are free to quote / order again on RFQ/PO.</p>
                               )}
-                              <p className="text-xs text-slate-500">
+                              {!hideMoney && <p className="text-xs text-slate-500">
                                 Goods {inr(po.totalAmount)} + GST {inr((po.taxAmount || 0) + (po.chargesGstTotal || 0))} + Charges {inr((po.chargesTotal || 0) + (po.poChargesTotal || 0) + (po.items || []).reduce((s, it) => s + (it.itemChargesTotal || 0), 0))} = <strong>{inr(po.grandTotal)}</strong>
                                 {/* Point 15: how that GST splits (fixed when the PO was created). */}
                                 {po.gstSplit && ((po.taxAmount || 0) + (po.chargesGstTotal || 0)) > 0 && (
                                   <> · <GstSplitNote split={po.gstSplit} gstAmount={(po.taxAmount || 0) + (po.chargesGstTotal || 0)} /></>
                                 )}
-                              </p>
+                              </p>}
                               {renderPoActions && <div className="flex flex-wrap items-center gap-2 pt-1">{renderPoActions(po, quietReload)}</div>}
                             </div>
                           </TableCell>

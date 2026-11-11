@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import axios from "axios";
 import { toast } from "../../../hooks/use-toast";
 import { useAuth } from "../../../hooks/useAuth";
-import { never } from "zod";
+import PersonPicker, { PickedPerson } from "../PersonPicker";
 
 interface Props {
   isOpen: boolean;
@@ -29,6 +29,7 @@ const AddSalaryStructureModal = ({ isOpen, onClose, editData }: Props) => {
 
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [employee, setEmployee] = useState("");
+  const [picked, setPicked] = useState<PickedPerson | null>(null);
 
   // Earnings
   const [basic, setBasic] = useState(0);
@@ -61,6 +62,7 @@ const AddSalaryStructureModal = ({ isOpen, onClose, editData }: Props) => {
       setOthers(editData.others || 0);
     } else {
       setEmployee("");
+      setPicked(null);
       setBasic(0);
       setHra(0);
       setOtherAllowance(0);
@@ -72,31 +74,8 @@ const AddSalaryStructureModal = ({ isOpen, onClose, editData }: Props) => {
     }
   }, [editData, isOpen]);
 
-  useEffect(() => {
-    if (!isOpen) return;
-    axios
-      .get(`${API_BASE}/users`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      .then((res) => {
-        const allUsers = res.data.users || res.data.data?.users || res.data || [];
-        // Filter by same company as current user
-        if (currentUser?.companyId) {
-          const companyId = typeof currentUser.companyId === 'string' ? currentUser.companyId : currentUser.companyId._id;
-          const filtered = allUsers.filter((u: any) => {
-            const userCompanyId = typeof u.companyId === 'string' ? u.companyId : u.companyId?._id;
-            return userCompanyId === companyId;
-          });
-          setEmployees(filtered);
-        } else {
-          setEmployees(allUsers);
-        }
-      })
-      .catch((err) => {
-        console.error("Failed to fetch employees", err);
-        setEmployees([]);
-      });
-  }, [isOpen, currentUser, token]);
+  // The person is found by typing (PersonPicker): the old dropdown loaded /users,
+  // which held only the 15 newest people (2026-11-11).
 
   if (!isOpen) return null;
 
@@ -168,18 +147,9 @@ const AddSalaryStructureModal = ({ isOpen, onClose, editData }: Props) => {
                 {editData.employee?.employeeId ? ` (${editData.employee.employeeId})` : ""}
               </div>
             ) : (
-              <select
-                className="w-full border px-3 py-2 rounded mt-1 text-sm outline-none focus:border-orange-500"
-                value={employee}
-                onChange={(e) => setEmployee(e.target.value)}
-              >
-                <option value="">Select Employee</option>
-                {employees.map((e) => (
-                  <option key={e._id} value={e._id}>
-                    {e.fullName || (e as any).name || "No Name"} ({e.role || "No Role"})
-                  </option>
-                ))}
-              </select>
+              <div className="mt-1">
+                <PersonPicker value={picked} onChange={(p) => { setPicked(p); setEmployee(p?._id || ""); }} />
+              </div>
             )}
             {editData && <p className="text-[10px] text-gray-400 mt-1 italic">* Cannot change employee in edit mode</p>}
           </div>

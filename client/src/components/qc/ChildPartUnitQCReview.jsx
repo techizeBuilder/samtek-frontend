@@ -6,9 +6,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { ThumbsUp, ThumbsDown, ClipboardCheck, CheckCircle, XCircle, History } from 'lucide-react';
+import { ThumbsUp, ThumbsDown, ClipboardCheck, History } from 'lucide-react';
 import { showSuccessToast, showSmartToast } from '@/lib/toast-utils';
 import ProductionCheckReviewRow from './ProductionCheckReviewRow';
+import QcCheckRow, { checksState } from './QcCheckRow';
+import RejectionPhotoPicker, { decisionBody } from './RejectionPhotoPicker';
+import RejectionEvidence from './RejectionEvidence';
 
 const unitStatusBadge = {
   'Awaiting Production': { label: 'Awaiting Production', cls: 'bg-slate-100 text-slate-500' },
@@ -42,7 +45,7 @@ const unitStatusBadge = {
 // at once — everything below this point in the file is unchanged, the new
 // mode is a fully separate render path (renderStepped) so Machine's
 // existing behavior (stepped always false there) is untouched.
-export default function ChildPartUnitQCReview({ jobId, unitChecks, canEdit, onRefetch, singleStage = false, stepped = false }) {
+export default function ChildPartUnitQCReview({ jobId, unitChecks, canEdit, onRefetch, singleStage = false, stepped = false, inspector = '' }) {
   const [reviewUnit, setReviewUnit] = useState(null);
   const [reviewStep, setReviewStep] = useState(null); // { unit, entry } — stepped mode only
   const [historyStep, setHistoryStep] = useState(null); // { unit, entry } — stepped mode only
@@ -55,6 +58,7 @@ export default function ChildPartUnitQCReview({ jobId, unitChecks, canEdit, onRe
         <SteppedUnitsCard
           unitChecks={unitChecks}
           canEdit={canEdit}
+          inspector={inspector}
           onReview={(unit, entry) => setReviewStep({ unit, entry })}
           onHistory={(unit, entry) => setHistoryStep({ unit, entry })}
         />
@@ -208,7 +212,7 @@ function ReviewDialog({ jobId, unit, singleStage, onOpenChange, onDecided }) {
 // a step with an undecided attempt gets a Review button; every step with any
 // attempts at all (decided or not) gets a History button, so QC can see what
 // was checked in the current or any prior round, not just an aggregate count.
-function SteppedUnitsCard({ unitChecks, canEdit, onReview, onHistory }) {
+function SteppedUnitsCard({ unitChecks, canEdit, onReview, onHistory, inspector = '' }) {
   return (
     <Card className="border-none shadow-sm">
       <CardHeader className="border-b border-slate-50 pb-3">
@@ -236,20 +240,27 @@ function SteppedUnitsCard({ unitChecks, canEdit, onReview, onHistory }) {
               </div>
               {steps.length > 0 && (
                 <div className="mt-2 space-y-1.5">
-                  {steps.map(entry => {
+                  {steps.map((entry, si) => {
                     const attempt = entry.attempts[entry.attempts.length - 1];
                     const pending = !!attempt && !attempt.decidedAt;
+                    // 2026-10-25: steps are decided in order (the server refuses
+                    // otherwise too). 2026-10-30: no "start the inspection first" —
+                    // the first QC person to save or decide becomes the inspector.
+                    const earlier = steps.slice(0, si).find(s => { const a = s.attempts?.[s.attempts.length - 1]; return a && !a.decidedAt; });
+                    const why = earlier ? `Decide ${earlier.stepName} first` : '';
                     const badge = unitStatusBadge[entry.status] || unitStatusBadge['Awaiting Production'];
                     return (
                       <div key={entry._id} className="flex items-center justify-between gap-2 bg-slate-50 rounded-md px-2.5 py-1.5">
                         <p className="text-xs text-slate-700">{entry.category} › {entry.stepName}</p>
                         <div className="flex items-center gap-1.5">
                           <Badge className={`text-xs ${badge.cls}`}>{badge.label}</Badge>
-                          {pending && canEdit && (
+                          {pending && canEdit && (why
+                            ? <span className="text-[10px] text-slate-500" title={why}>after {earlier.stepName}</span>
+                            : (
                             <Button size="sm" className="h-6 text-xs bg-gradient-to-r from-blue-600 to-purple-600 text-white" onClick={() => onReview(unit, entry)}>
                               Review
                             </Button>
-                          )}
+                          ))}
                           {entry.attempts.length > 0 && (
                             <Button size="sm" variant="outline" className="h-6 text-xs" onClick={() => onHistory(unit, entry)}>
                               <History className="h-3 w-3 mr-1" /> History
@@ -289,7 +300,7 @@ function StepHistoryDialog({ unit, stepEntry, onOpenChange }) {
                 <p className="text-xs text-slate-400">No checks configured for this step.</p>
               ) : (
                 <div className="space-y-2">
-                  {attempt.rows.map((row, i) => <ReadOnlyChecklistRow key={row._id || i} row={row} />)}
+                  {attempt.rows.map((row, i) => <QcCheckRow key={row._id || i} row={row} readOnly />)}
                 </div>
               )}
               {attempt.decidedAt ? (
@@ -300,6 +311,7 @@ function StepHistoryDialog({ unit, stepEntry, onOpenChange }) {
                     {attempt.decision}
                   </span>
                   {attempt.rejectReason && <p className="mt-1 italic text-slate-500">Reason: {attempt.rejectReason}</p>}
+                  <div className="mt-1.5"><RejectionEvidence failedChecks={attempt.failedChecks} photos={attempt.photos} downloadName={`unit${unit.unitNumber}-${stepEntry.stepName}-${attempt.attemptNumber}`} /></div>
                 </div>
               ) : (
                 <p className="text-xs text-amber-600 border-t border-slate-100 pt-2">Awaiting QC decision.</p>
@@ -309,30 +321,6 @@ function StepHistoryDialog({ unit, stepEntry, onOpenChange }) {
         </div>
       </DialogContent>
     </Dialog>
-  );
-}
-
-// Same visual shape as StepChecklistRow below, but read-only — no inputs, no
-// Pass/Fail buttons, just what was recorded.
-function ReadOnlyChecklistRow({ row }) {
-  return (
-    <div className="bg-slate-50 border border-slate-100 rounded-lg p-3">
-      <p className="text-sm font-medium text-slate-800">{row.parameter}</p>
-      {row.type === 'value' && row.standardValue && (
-        <p className="text-xs text-slate-400 mt-0.5">Standard: {row.standardValue}</p>
-      )}
-      {row.type === 'value' && row.actualValue && (
-        <p className="text-xs text-slate-600 mt-1">Actual: {row.actualValue}</p>
-      )}
-      <div className="flex items-center gap-2 mt-2">
-        <span className={`h-6 px-2.5 text-xs rounded-md flex items-center gap-1 ${row.status === 'Pass' ? 'bg-emerald-100 text-emerald-700' : row.status === 'Fail' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-500'}`}>
-          {row.status === 'Pass' && <CheckCircle className="h-3.5 w-3.5" />}
-          {row.status === 'Fail' && <XCircle className="h-3.5 w-3.5" />}
-          {row.status || 'Pending'}
-        </span>
-      </div>
-      {row.remarks && <p className="text-xs text-slate-500 italic mt-1.5">{row.remarks}</p>}
-    </div>
   );
 }
 
@@ -347,18 +335,26 @@ function StepReviewDialog({ jobId, unit, stepEntry, onOpenChange, onDecided }) {
     onSuccess: () => { showSuccessToast('Saved', 'Step decision recorded.'); onDecided(); },
     onError: (e) => showSmartToast(e, 'Failed to record decision'),
   });
+  // "Save checks" (2026-10-30): the rows this person checked, no decision.
+  const results = () => rows.map(r => ({ parameter: r.parameter, actualValue: r.actualValue, status: r.status, remarks: r.remarks }));
+  const checksMutation = useMutation({
+    mutationFn: () => apiRequest('PUT', `/api/qc/jobs/${jobId}/units/${unit.unitNumber}/checks`, { category: stepEntry.category, step: stepEntry.stepName, results: results() }),
+    onSuccess: () => { showSuccessToast('Saved', 'Checks saved — the decision can be made later.'); onDecided(); },
+    onError: (e) => showSmartToast(e, 'Failed to save the checks'),
+  });
 
-  const allDecided = rows.every(r => r.status !== 'Pending');
-  const failMissingRemarks = rows.some(r => r.status === 'Fail' && !r.remarks?.trim());
-  const canDecide = allDecided && !failMissingRemarks && !decideMutation.isPending;
+  const { pending, failMissingRemarks } = checksState(rows);
+  const busy = decideMutation.isPending || checksMutation.isPending;
+  const canDecide = pending === 0 && !failMissingRemarks && !busy;
 
+  const [photos, setPhotos] = useState([]); // of the rejected work (2026-10-30)
   const handleDecide = (decision) => {
     if (decision === 'Reject' && !rejectReason.trim()) { setShowRejectInput(true); return; }
-    decideMutation.mutate({
+    decideMutation.mutate(decisionBody({
       category: stepEntry.category, step: stepEntry.stepName, decision,
-      results: rows.map(r => ({ parameter: r.parameter, actualValue: r.actualValue, status: r.status, remarks: r.remarks })),
+      results: results(),
       rejectReason: decision === 'Reject' ? rejectReason.trim() : undefined,
-    });
+    }, decision === 'Reject' ? photos : []));
   };
 
   return (
@@ -374,7 +370,7 @@ function StepReviewDialog({ jobId, unit, stepEntry, onOpenChange, onDecided }) {
               No checks configured for this step by R&amp;D — decide Pass or Reject below directly.
             </p>
           ) : rows.map((row, i) => (
-            <StepChecklistRow
+            <QcCheckRow
               key={row._id || i}
               row={row}
               onChange={patch => setRows(rs => rs.map((r, idx) => idx === i ? { ...r, ...patch } : r))}
@@ -386,11 +382,17 @@ function StepReviewDialog({ jobId, unit, stepEntry, onOpenChange, onDecided }) {
           <div>
             <label className="text-xs font-semibold text-slate-600 mb-1 block">Reject Reason *</label>
             <Input value={rejectReason} onChange={e => setRejectReason(e.target.value)} placeholder="Why is this step being rejected?" />
+            <div className="mt-2"><RejectionPhotoPicker files={photos} onChange={setPhotos} onError={(m) => showSmartToast(new Error(m), 'Photo not added')} /></div>
           </div>
         )}
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          {rows.length > 0 && (
+            <Button variant="outline" disabled={busy || failMissingRemarks} onClick={() => checksMutation.mutate()} title={failMissingRemarks ? 'Add a remark for each failed check' : 'Save the checks you did; the decision can be made later (by you or someone else)'}>
+              Save checks
+            </Button>
+          )}
           <Button
             variant="outline" className="text-red-600 border-red-200 hover:bg-red-50"
             disabled={!canDecide}
@@ -408,49 +410,5 @@ function StepReviewDialog({ jobId, unit, stepEntry, onOpenChange, onDecided }) {
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  );
-}
-
-// QC fills status/actualValue/remarks directly, one shared fill (no separate
-// Production-recorded layer to display alongside — unlike ProductionCheckReviewRow,
-// which assumes one) — same shape SubChildPartBatchQCReview's own
-// BatchChecklistRow already uses for this exact schema (QCFilledRowSchema).
-function StepChecklistRow({ row, onChange }) {
-  return (
-    <div className="bg-slate-50 border border-slate-100 rounded-lg p-3">
-      <p className="text-sm font-medium text-slate-800">{row.parameter}</p>
-      {row.type === 'value' && row.standardValue && (
-        <p className="text-xs text-slate-400 mt-0.5">Standard: {row.standardValue}</p>
-      )}
-      {row.type === 'value' && (
-        <Input
-          className="h-8 text-xs mt-2" placeholder="Actual value"
-          value={row.actualValue || ''} onChange={e => onChange({ actualValue: e.target.value })}
-        />
-      )}
-      <div className="flex items-center gap-2 mt-2">
-        <button
-          type="button" onClick={() => onChange({ status: 'Pass' })}
-          className={`h-7 px-3 text-xs rounded-md flex items-center gap-1 ${row.status === 'Pass' ? 'bg-emerald-600 text-white' : 'bg-white text-slate-600 border border-slate-200'}`}
-        >
-          <CheckCircle className="h-3.5 w-3.5" /> Pass
-        </button>
-        <button
-          type="button" onClick={() => onChange({ status: 'Fail' })}
-          className={`h-7 px-3 text-xs rounded-md flex items-center gap-1 ${row.status === 'Fail' ? 'bg-red-600 text-white' : 'bg-white text-slate-600 border border-slate-200'}`}
-        >
-          <XCircle className="h-3.5 w-3.5" /> Fail
-        </button>
-      </div>
-      {row.status === 'Fail' && (
-        <div className="mt-2">
-          <label className="text-xs font-semibold text-red-600 mb-1 block">Remarks *</label>
-          <Input
-            className="h-8 text-xs" placeholder="Why did this fail?"
-            value={row.remarks || ''} onChange={e => onChange({ remarks: e.target.value })}
-          />
-        </div>
-      )}
-    </div>
   );
 }

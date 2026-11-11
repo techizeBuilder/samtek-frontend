@@ -707,6 +707,12 @@ export default function MachineBOMTab() {
                     <Lock className="h-3.5 w-3.5" /> Locked on {selectedBom.lockedAt}
                   </span>
                 )}
+                {selectedBom.isLocked && (
+                  <p className="text-xs text-slate-500">To change it, raise a request on R&D → Change Management. Approving it unlocks this BOM.</p>
+                )}
+                {selectedItem?.machineDetails?.bomApproved && (
+                <p className="text-xs text-amber-700 mt-1">This BOM is approved. Changing it pulls back its BOM approval and Release, and it needs approving and releasing again.</p>
+              )}
               </div>
               <div className="flex gap-2">
                 <Button size="sm" variant="outline" disabled={downloading} onClick={handleDownload}>
@@ -721,7 +727,7 @@ export default function MachineBOMTab() {
             </CardContent>
           </Card>
 
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="p-4 rounded-lg bg-blue-50 border border-blue-100">
               <p className="text-xs text-blue-600 flex items-center gap-1"><IndianRupee className="h-3.5 w-3.5" /> Total Cost</p>
               <p className="text-lg font-bold text-blue-800 mt-0.5">{fmtMoney(selectedCost?.totalCost)}</p>
@@ -733,6 +739,20 @@ export default function MachineBOMTab() {
             <div className="p-4 rounded-lg bg-slate-50 border border-slate-200">
               <p className="text-xs text-slate-500 flex items-center gap-1"><Factory className="h-3.5 w-3.5" /> Production Cost</p>
               <p className="text-lg font-bold text-slate-800 mt-0.5">{fmtMoney((selectedBom.productionCost || 0) + (selectedBom.productionExpense || 0))}</p>
+            </div>
+            {/* Slice 4 (2026-10-24): the outsourced (job work) cost of the
+                last finished build — read from its Outsource Orders. */}
+            <div className="p-4 rounded-lg bg-violet-50 border border-violet-100">
+              <p className="text-xs text-violet-600 flex items-center gap-1"><IndianRupee className="h-3.5 w-3.5" /> Job Work (outsource)</p>
+              <p className="text-lg font-bold text-violet-800 mt-0.5">{fmtMoney(selectedBom?.jobWorkCost || 0)}</p>
+              <p className="text-[10px] text-violet-500 mt-0.5">
+                {selectedBom?.costFrom?.orderId
+                  ? `From ${selectedBom.costFrom.orderId}${selectedBom.costFrom.unitIndex != null ? ` unit ${selectedBom.costFrom.unitIndex + 1}` : ''}${selectedBom.costFrom.finishedAt ? ` · ${new Date(selectedBom.costFrom.finishedAt).toLocaleDateString('en-IN')}` : ''}`
+                  : 'From the Outsource Orders — never typed'}
+              </p>
+              {selectedBom?.jobWorkWaitingFor?.length > 0 && (
+                <p className="text-[10px] text-violet-700 font-medium mt-0.5">Waiting for the time on {selectedBom.jobWorkWaitingFor.join(', ')}</p>
+              )}
             </div>
           </div>
 

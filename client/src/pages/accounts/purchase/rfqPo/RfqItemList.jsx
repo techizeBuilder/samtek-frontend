@@ -23,7 +23,7 @@ import QuoteComparison from './QuoteComparison';
 // filters never hide a card — matching cards move to the top (client ask).
 export const PRIORITIES = ['Low', 'Medium', 'High'];
 
-function ItemCard({ card, checked, onToggle, highlight, minVendors, eligibleCount, hasQuotes, quotes = [], onGroupUpdated, focusSignal }) {
+function ItemCard({ card, checked, onToggle, highlight, minVendors, minQuotations = 1, eligibleCount, hasQuotes, quotes = [], onGroupUpdated, focusSignal }) {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
@@ -176,6 +176,17 @@ function ItemCard({ card, checked, onToggle, highlight, minVendors, eligibleCoun
         {newCount > 0 && group && (
           <span className="text-[11px] text-blue-700 bg-blue-50 border border-blue-200 rounded-full px-2 py-0.5">{newCount} new — not selected</span>
         )}
+        {/* Quotations received (2026-10-29): valid, unexpired, one per vendor —
+            the same count the server's selection check uses. */}
+        {group && minQuotations > 1 && (() => {
+          const got = new Set(quotes.filter(q => q.status === 'Submitted' && !q.isExpired).map(q => String(q.vendor))).size;
+          const met = got >= minQuotations;
+          return (
+            <span title="Different vendors with a valid quote — needed before a PO" className={`inline-flex items-center gap-1 text-[11px] rounded-full border px-2 py-0.5 ${met ? 'text-emerald-700 bg-emerald-50 border-emerald-200' : 'text-amber-700 bg-amber-50 border-amber-200'}`}>
+              Quotations {got} of {minQuotations}
+            </span>
+          );
+        })()}
         {eligibleCount < minVendors && (
           <span className="inline-flex items-center gap-1 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">
             <AlertTriangle className="w-3 h-3" /> {eligibleCount} approved vendor{eligibleCount === 1 ? '' : 's'} — company minimum is {minVendors}
@@ -224,7 +235,7 @@ export default function RfqItemList({
   onCollapse,
   cards, selectedKeys, onToggle, onSelectAll, onClear,
   filters, setFilters, sourceOptions, categoryOptions, isMatch, anyFilter,
-  minVendors, eligibleCountOf, groupHasQuotes, quotesOf = () => [], onGroupUpdated,
+  minVendors, minQuotations = 1, eligibleCountOf, groupHasQuotes, quotesOf = () => [], onGroupUpdated,
   focus = null,
 }) {
   const set = (patch) => setFilters(f => ({ ...f, ...patch }));
@@ -292,6 +303,7 @@ export default function RfqItemList({
           onToggle={() => onToggle(card.key)}
           highlight={anyFilter && isMatch(card)}
           minVendors={minVendors}
+          minQuotations={minQuotations}
           eligibleCount={card.item ? eligibleCountOf(card.item._id) : 0}
           hasQuotes={card.group ? groupHasQuotes(card.group._id) : false}
           quotes={card.group ? quotesOf(card.group._id) : []}

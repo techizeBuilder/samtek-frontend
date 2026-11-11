@@ -75,7 +75,7 @@ function SubmittedSummary({ data }) {
                   <div className="text-sm text-right">
                     {!a || a.declined ? <span className="text-slate-400 italic">Not quoted</span> : (
                       <>
-                        <p className="font-semibold text-slate-800">{inr(a.unitPrice)}{it.purchaseUnit ? ` / ${it.purchaseUnit}` : ''} {a.gstInclusive ? '(incl. GST)' : `+ ${a.gstPercent ?? 0}% GST`}</p>
+                        <p className="font-semibold text-slate-800">{inr(a.unitPrice)}{it.purchaseUnit ? ` / ${it.purchaseUnit}` : ''} {a.gstInclusive ? `(incl. ${a.gstPercent != null ? `${a.gstPercent}% ` : ''}GST)` : `+ ${a.gstPercent ?? 0}% GST`}</p>
                         <p className="text-xs text-slate-500">{a.deliveryDays} days{a.warrantyMonths ? ` · ${a.warrantyMonths} months warranty` : ''}</p>
                         {a.remarks && <p className="text-xs text-slate-500">{a.remarks}</p>}
                       </>
@@ -194,7 +194,12 @@ export default function VendorQuotationForm() {
       const a = answers[String(it.vendorBidId)];
       if (a.cantSupply || !(Number(a.unitPrice) > 0)) continue;
       if (!(Number(a.deliveryDays) >= 1)) { setFormError(`Enter the delivery time (days) for "${it.itemName}".`); return; }
-      if (!a.gstInclusive && a.gstPercent === '') { setFormError(`Enter the GST % for "${it.itemName}" (0 if none), or tick "Price includes GST".`); return; }
+      if (a.gstPercent === '') {
+        setFormError(a.gstInclusive
+          ? `Enter the GST % included in the price for "${it.itemName}" (0 if none).`
+          : `Enter the GST % for "${it.itemName}" (0 if none), or tick "Price already includes GST".`);
+        return;
+      }
     }
     const saidCantSupply = openItems.some(it => answers[String(it.vendorBidId)]?.cantSupply);
     if (!totals.priced && !saidCantSupply) { setFormError('Enter a price for at least one item, or tick "Can\'t supply" on the items you can\'t supply.'); return; }
@@ -224,7 +229,7 @@ export default function VendorQuotationForm() {
             return a.cantSupply ? { vendorBidId: it.vendorBidId, unitPrice: 0, cantSupply: true } : {
               vendorBidId: it.vendorBidId,
               unitPrice: Number(a.unitPrice) || 0,
-              gstPercent: a.gstInclusive ? null : a.gstPercent,
+              gstPercent: a.gstPercent,
               gstInclusive: a.gstInclusive,
               deliveryDays: Number(a.deliveryDays) || 0,
               warrantyMonths: Number(a.warrantyMonths) || 0,
@@ -320,8 +325,8 @@ export default function VendorQuotationForm() {
                         <label className="text-xs text-slate-500">Price per {it.purchaseUnit || 'unit'} (₹)
                           <input type="number" min="0" step="0.01" className={`${inputCls} mt-0.5`} value={a.unitPrice} onChange={e => setAnswer(id, { unitPrice: e.target.value })} placeholder="e.g. 250" />
                         </label>
-                        <label className="text-xs text-slate-500">GST %
-                          <input type="number" min="0" max="100" step="0.01" className={`${inputCls} mt-0.5 disabled:bg-slate-100`} value={a.gstInclusive ? '' : a.gstPercent} disabled={a.gstInclusive} onChange={e => setAnswer(id, { gstPercent: e.target.value })} placeholder={a.gstInclusive ? 'included' : 'e.g. 18'} />
+                        <label className="text-xs text-slate-500">{a.gstInclusive ? 'GST % included' : 'GST %'}
+                          <input type="number" min="0" max="100" step="0.01" className={`${inputCls} mt-0.5`} value={a.gstPercent} onChange={e => setAnswer(id, { gstPercent: e.target.value })} placeholder="0 if none" />
                         </label>
                         <label className="text-xs text-slate-500">Delivery (days)
                           <input type="number" min="1" className={`${inputCls} mt-0.5`} value={a.deliveryDays} onChange={e => setAnswer(id, { deliveryDays: e.target.value })} placeholder="e.g. 7" />
