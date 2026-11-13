@@ -4,7 +4,7 @@ import axios from "axios";
 import {
   Building2, MapPin, FileText, Globe, Mail, Facebook, Instagram,
   Linkedin, Twitter, Youtube, Link2, Edit2, Save, X, Upload,
-  Plus, Trash2, CheckCircle, Image as ImageIcon, Lock, Eye, EyeOff, Landmark
+  Plus, Trash2, CheckCircle, Image as ImageIcon, Lock, Eye, EyeOff, Landmark, Copy
 } from "lucide-react";
 import { toast } from "../../Alert/Toast";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -371,6 +371,14 @@ export default function MyCompany() {
     }
   };
 
+  // ── copy Company ID — used to look this company up by id elsewhere (e.g.
+  // the public job-openings/webhook APIs, which take a companyId param) ────
+  const copyCompanyId = () => {
+    if (!company) return;
+    navigator.clipboard.writeText(company._id);
+    toast({ type: "success", title: "Copied", message: "Company ID copied to clipboard" });
+  };
+
   // ── stamp / logo URL helpers ───────────────────────────────────────────────
   const stampSrc = stampPreview || (company?.stampUrl ? `${IMG_BASE}${company.stampUrl}` : null);
   const logoSrc = logoPreview || (company?.logoUrl ? `${IMG_BASE}${company.logoUrl}` : null);
@@ -497,6 +505,21 @@ export default function MyCompany() {
               )}
             </div>
           )}
+          {/* Company ID — read-only, shown in both view & edit mode since it
+              never changes. Used to look this company up elsewhere, e.g. the
+              public job-openings/webhook APIs which take a companyId param. */}
+          <div className="flex items-center gap-1.5 mt-2">
+            <span className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">Company ID:</span>
+            <code className="text-xs font-mono text-gray-600 bg-white/70 border border-orange-200 rounded px-1.5 py-0.5">{company._id}</code>
+            <button
+              type="button"
+              onClick={copyCompanyId}
+              title="Copy Company ID"
+              className="w-5 h-5 rounded flex items-center justify-center text-gray-400 hover:text-orange-600 hover:bg-orange-100 transition"
+            >
+              <Copy className="w-3 h-3" />
+            </button>
+          </div>
         </div>
       </div>
 
